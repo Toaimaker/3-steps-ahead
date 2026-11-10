@@ -1,6 +1,6 @@
 {
- "version": "0.1.5",
+ "version": "0.1.6",
  "date": "2026-11-10",
- "notes": "The data pack no longer includes Untapped.gg statistics: the Meta tab covers Pioneer, Modern, Legacy, Vintage and Pauper, and card tooltips show 17Lands data only.",
+ "notes": "Meta tab: new Charts view with meta share against win rate, share over time and a per-deck table.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

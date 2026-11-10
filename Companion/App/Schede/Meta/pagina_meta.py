@@ -9,6 +9,9 @@ import prezzi_carte as PZ
 from dati_meta import FORMATI_META, formati_con_dati, meta_mazzi
 from pagina_base import Pagina, prepara_capsule
 from pagina_mazzi import PaginaMazzi
+import dati_grafici as DGR
+from icone import icona_set, nome_set
+from vista_grafici import VistaGrafici
 from tema import CI as C, PERSA, VINTA
 from widget import Tendina
 
@@ -20,6 +23,7 @@ class PaginaMeta(PaginaMazzi):
     prezzo delle carte vere. Il clic apre la finestra del mazzo, la stessa dei tuoi."""
 
     ORDINI = ("Meta share", "Win rate", "Price", "Cards you own", "Name")
+    VISTE = ("Decks", "Charts")
 
     def __init__(self, tk, padre, F, mana):
         Pagina.__init__(self, tk, padre, F, mana)
@@ -29,6 +33,16 @@ class PaginaMeta(PaginaMazzi):
         self.t_fmt.opzioni(formati, lambda o: self.cambia_formato()); self.t_fmt.set("Standard" if "Standard" in formati else formati[0])
         self.t_ord = Tendina(tk, self.barra_menu, "Sort by", F, larga=170); self.t_ord.fr.pack(side="left", padx=(10, 0))
         self.t_ord.opzioni(self.ORDINI, lambda o: self.riordina()); self.t_ord.set(self.ORDINI[0])
+        # la vista Charts e il meta del limited (10 nov 2026, Autore: «una seconda sezione che non e' visualizzata a scacchiera ma a elenchi e ci fa vedere il
+        # meta giocato per mazzo in termini di grafici», «includendo anche il meta del limited ovviamente»): View sceglie fra schede e grafici; nella tendina Format
+        # in fondo Quick Draft e Premier Draft, coi set che hanno i dati (la tendina Set compare solo li'); il limited e' solo a grafici
+        self.t_vista = Tendina(tk, self.barra_menu, "View", F, larga=130); self.t_vista.fr.pack(side="left", padx=(10, 0))
+        self.t_vista.opzioni(self.VISTE, lambda o: self.cambia_formato()); self.t_vista.set(self.VISTE[0])
+        self.t_set = Tendina(tk, self.barra_menu, "Set", F, larga=220)
+        self.formati_lim = [f for f, k in DGR.LIMITED if DGR.set_limited(k)]
+        if self.formati_lim:
+            self.t_fmt.opzioni(list(self.t_fmt.voci) + self.formati_lim, lambda o: self.cambia_formato())
+        self.vista_g = None; self.larga_g = 0
         self.col[1].grid_remove(); self.col[0].grid(row=2, column=0, columnspan=2, sticky="nsew", padx=0)
         self.dati = None; self.pp = []; self.aperto = None; self.premi = None; self.farm = []; self.fin = self.det = None
         self.arena = {}
@@ -82,6 +96,103 @@ class PaginaMeta(PaginaMazzi):
         self.disegna()
         self.cv.yview_moveto(0)
 
+    # ------------------------------------------------------------------ la vista Charts (10 nov 2026)
+    def limited(self):
+        return dict(DGR.LIMITED).get(self.t_fmt.get())
+
+    def grafici(self):
+        return bool(self.limited()) or self.t_vista.get() == "Charts"
+
+    def metti_set(self):
+        """Nel limited la tendina Set, coi set che hanno il meta di quel formato (dal piu' nuovo, col simbolo); fuori la tendina sparisce. View si nasconde
+        nel limited: li' ci sono solo i grafici (Untapped non da' le liste dei mazzi per coppia)."""
+        lim = self.limited()
+        if not lim:
+            self.t_set.fr.pack_forget()
+            if not self.t_vista.fr.winfo_manager():
+                self.t_vista.fr.pack(side="left", padx=(10, 0))
+            return
+        self.t_vista.fr.pack_forget()
+        sets = DGR.set_limited(lim)
+        if not hasattr(self, "_loghi_set"):
+            self._loghi_set = {}
+        icone = {}
+        for s in sets:
+            if s not in self._loghi_set:
+                f = icona_set(s, 16)
+                self._loghi_set[s] = self.tk.PhotoImage(file=f) if f else None
+            if self._loghi_set[s] is not None:
+                icone[s] = self._loghi_set[s]
+        scelto = self.t_set.get()
+        self.t_set.opzioni(sets, lambda o: self.cambia_formato(), icone, {s: f"{nome_set(s)} ({s})" if nome_set(s) else s for s in sets})
+        if scelto not in sets:
+            self.t_set.set(self.set_iniziale(sets))
+        if not self.t_set.fr.winfo_manager():
+            self.t_set.fr.pack(side="left", padx=(10, 0), after=self.t_fmt.fr)
+
+    @staticmethod
+    def set_iniziale(sets):
+        """Il set del drafter (percorsi.set_attivo: l'evento in corso, se no FRA) se ha i dati, se no il piu' nuovo."""
+        try:
+            import percorsi
+            s = percorsi.set_attivo()
+        except Exception:
+            s = None
+        return s if s in sets else (sets[0] if sets else "")
+
+    def chiave_grafico(self, m):
+        o = self.t_ord.get()
+        if o == "Win rate":
+            return (m.get("wr") is None, -(m.get("wr") or 0), m.get("forza") or 999, -m["quota"])
+        if o == "Price":
+            return (-(m.get("eur") or 0), -m["quota"])
+        if o == "Cards you own" and m.get("carte"):
+            return (-(m.get("possedute") or 0) / max(m["carte"], 1), -m["quota"])
+        if o == "Name":
+            return (m["nome"].lower(),)
+        return (-m["quota"],)
+
+    def disegna_grafici(self):
+        """La vista a elenco coi grafici (vista_grafici.py): costruito con le righe della vista a schede, limited con le coppie del set."""
+        fmt, lim = self.t_fmt.get(), self.limited()
+        if lim:
+            s = self.t_set.get()
+            righe = DGR.righe_limited(s, lim)
+            st = DGR.storico(DGR.chiave_storico(fmt, s))
+            self.sotto = f"{nome_set(s) or s} · {sum(r['partite'] for r in righe):,} games" if righe else ""
+            self.mazzi = []
+        else:
+            righe, self.sotto = DGR.righe_costruito(fmt)
+            st = DGR.storico(DGR.chiave_storico(fmt))
+            self.mazzi = righe
+        righe = sorted(righe, key=self.chiave_grafico)
+        self.titolo.configure(text=f"{(fmt + (' ' + self.t_set.get() if lim else '')).upper()} META · {len(righe)} DECKS"
+                              + (f" · {self.sotto.upper()}" if self.sotto else ""))
+        if not righe:
+            self.tk.Label(self.griglia_b, text="No meta data for this format yet", bg=C["scheda"], fg=C["grigio"], font=self.F(9)).pack(anchor="w")
+            self.vista_g = None
+            return
+        self.larga_g = self.cv.winfo_width()
+        self.vista_g = VistaGrafici(self, righe, not lim, st, self.larga_g)
+        self.vista_g.disegna()
+
+    def disponi(self, larga):
+        """In vista Charts i grafici si rifanno quando la larghezza cambia di molto; nelle schede la griglia di sempre."""
+        if self.vista_g is not None:
+            if abs(larga - self.larga_g) > 40:
+                self.sporco = True
+                self.cv.after_idle(self.disegna)
+            return
+        PaginaMazzi.disponi(self, larga)
+
+    def riordina(self):
+        if self.grafici():
+            self.sporco = True
+            self.disegna()
+            self.cv.yview_moveto(0)
+            return
+        PaginaMazzi.riordina(self)
+
     def disegna(self):
         if not self.davanti() and not Pagina.SUBITO:
             self.sporco = True
@@ -95,6 +206,10 @@ class PaginaMeta(PaginaMazzi):
             self.foto.clear()
         prepara_capsule(CC.carica())
         fmt = self.t_fmt.get()
+        self.metti_set()
+        if self.grafici():
+            return self.disegna_grafici()
+        self.vista_g = None
         mm, self.sotto = meta_mazzi(fmt)
         self.mazzi = sorted(mm, key=self.chiave)
         self.titolo.configure(text=f"{fmt.upper()} META · {len(self.mazzi)} DECKS" + (f" · {self.sotto.upper()}" if self.sotto else ""))
