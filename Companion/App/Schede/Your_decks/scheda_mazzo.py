@@ -6,7 +6,6 @@ import capsule as CAP
 import dati_mazzo as DM
 import disegni as DG
 import mazzi_salvati as MS
-import premi_eventi as PE
 import prezzi_carte as PZ
 
 from dati_app import BASI, COL_RARITA, NOMI_RARITA, _PREZZI_AGGIORNATI, collezione, collezione_nota, craft, jolly, rarita_nome, saldo_partite
@@ -294,8 +293,11 @@ class SchedaMazzo:
         clic = {"on the play": lambda: self.filtra_partenza("play"), "on the draw": lambda: self.filtra_partenza("draw")} if tutte_p else {}
         self.tessere_partite = self.tessere(self.sezione_tendina(col, "prestazioni", "Performance", (f"{n_} game{'s' if n_ != 1 else ''}" + (f" {nome_p}" if nome_p else ""))
                                                                  if n_ else ("no games " + nome_p if nome_p else "no games yet"), dopo=rilega),
-                                            v_part, colonne=4, clic=clic, scelta=nome_p)
+                                            v_part[:4], colonne=4, clic=clic, scelta=nome_p)
         s_an = self.sezione_tendina(col, "analisi", "Analysis", "from your Arena logs" + (f" · {nome_p}" if nome_p else ""), dopo=rilega)
+        # in Performance solo la prima riga (win rate, games played, on the play, on the draw); closes on e loses on in cima ad Analysis (Autore, 10 nov 2026:
+        # «nei dati schede mazzo in performance tieni solo la prima riga, il resto dei dati va in analytics»)
+        self.tessere_analisi = self.tessere(s_an, v_part[4:], colonne=4)
         self.sezione_analisi(s_an, tipo, chi, main, side, comandante, compagno, carte_db, lista, dopo=rilega, partenza=partenza)
         # le mani, lo snowball e le terre in mano ci sono sempre, vuote se il mazzo non ha partite: la stessa scheda per ogni mazzo (9 nov 2026)
         arch = DM.archetipo({**comandante, **main}, carte_db, an["chiude"] if an else None)
@@ -397,23 +399,21 @@ class SchedaMazzo:
             cv.after(120, lambda: cv.winfo_exists() and cv.yview_moveto(y))
 
     def voci_partite(self, partite, an, nome, an_tutte=None):
-        """Le voci delle partite di un mazzo: win rate, record, on the play e on the draw, closes on e loses on, partite, prima e ultima, premi degli eventi. Senza partite «-».
-        an_tutte: l'analisi di tutte le partite, per le due tessere on the play e on the draw, che restano su tutte anche col filtro acceso."""
+        """Le voci delle partite di un mazzo: win rate, games played (partite, con vinte e perse sotto), on the play e on the draw (le prime quattro, in Performance), closes on e
+        loses on (in Analysis).
+        Senza partite «-». an_tutte: l'analisi di tutte le partite, per le due tessere on the play e on the draw, che restano su tutte anche col filtro acceso.
+        Prima e ultima partita e premi degli eventi non ci sono piu' (Autore, 10 nov 2026: «togli le date di primo e ultimo game ed event prizes»)."""
         w = sum(x["vinta"] for x in partite); n = len(partite)
-        pr = PE.premi_mazzo(self.premi, nome) if self.premi is not None else None
-        pt = lambda x: f"{x:,}"
         partenza = lambda z: (f"{round(100 * z[0] / z[1])}%", f"{z[0]}-{z[1] - z[0]}", VINTA if z[0] / z[1] >= 0.5 else PERSA) if z[1] else ("-", "", None)
         turno = lambda z: (f"T{z[0]:.1f}", f"{z[1]} game{'s' if z[1] != 1 else ''}") if z else ("-", "")
         base = an_tutte or an
         pl, dr = partenza(base["play"] if base else (0, 0)), partenza(base["draw"] if base else (0, 0))
         ch, pe = turno(an["chiude"] if an else None), turno(an["perde"] if an else None)
         return [("win rate", f"{round(100 * w / n)}%" if n else "-", (VINTA if w / n >= 0.5 else PERSA) if n else None),
-                ("record", f"{w}-{n - w}" if n else "-", None),
+                ("games played", str(n) if n else "-", None, f"{w} won · {n - w} lost" if n else ""),     # al posto di record (10 nov 2026: «games total lo metti nella
+                # schedina games played con loss e win al posto di record»)
                 ("on the play", pl[0], pl[2], pl[1]), ("on the draw", dr[0], dr[2], dr[1]),
-                ("closes on", ch[0], None, ch[1]), ("loses on", pe[0], None, pe[1]), ("games", str(n), None),
-                ("first game", f"{min(x['quando'] for x in partite):%d/%m/%y}" if partite else "-", None),
-                ("last game", f"{max(x['quando'] for x in partite):%d/%m/%y}" if partite else "-", None),
-                ("event prizes", ("none" if not pr or not pr["eventi"] else f"+{pt(pr['gemme'])} gems" + (f" · {pt(pr['oro'])} gold" if pr["oro"] else "")), None)]
+                ("closes on", ch[0], None, ch[1]), ("loses on", pe[0], None, pe[1])]
 
     def voci_build(self, m, main, side, comandante, compagno, coll, carte_db, meta=None):
         """I dati di una build o di un mazzo in wishlist prima di giocarlo (Autore, 7 nov 2026: «build your deck dove possiamo testare delle build e guadagnare dati in anticipo»):

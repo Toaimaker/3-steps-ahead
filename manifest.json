@@ -1,6 +1,6 @@
 {
- "version": "0.1.7",
+ "version": "0.1.8",
  "date": "2026-11-10",
- "notes": "Deck window: click On the play or On the draw to see every stat, chart and analysis for those games only.",
+ "notes": "Deck window: Performance is one clean row (win rate, games played with wins and losses, on the play, on the draw); closing turns moved to Analysis.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }
