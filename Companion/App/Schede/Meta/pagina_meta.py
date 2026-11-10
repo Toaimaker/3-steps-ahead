@@ -6,7 +6,7 @@ import capsule as CAP
 import collezione_carte as CC
 import prezzi_carte as PZ
 
-from dati_meta import FORMATI_META, meta_mazzi
+from dati_meta import FORMATI_META, formati_con_dati, meta_mazzi
 from pagina_base import Pagina, prepara_capsule
 from pagina_mazzi import PaginaMazzi
 from tema import CI as C, PERSA, VINTA
@@ -25,7 +25,8 @@ class PaginaMeta(PaginaMazzi):
         Pagina.__init__(self, tk, padre, F, mana)
         self.esp.fr.pack_forget()
         self.t_fmt = Tendina(tk, self.barra_menu, "Format", F, larga=170); self.t_fmt.fr.pack(side="left")
-        self.t_fmt.opzioni([f for f, _ in FORMATI_META], lambda o: self.cambia_formato()); self.t_fmt.set("Standard")
+        formati = formati_con_dati()
+        self.t_fmt.opzioni(formati, lambda o: self.cambia_formato()); self.t_fmt.set("Standard" if "Standard" in formati else formati[0])
         self.t_ord = Tendina(tk, self.barra_menu, "Sort by", F, larga=170); self.t_ord.fr.pack(side="left", padx=(10, 0))
         self.t_ord.opzioni(self.ORDINI, lambda o: self.riordina()); self.t_ord.set(self.ORDINI[0])
         self.col[1].grid_remove(); self.col[0].grid(row=2, column=0, columnspan=2, sticky="nsew", padx=0)

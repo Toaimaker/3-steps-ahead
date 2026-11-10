@@ -1,6 +1,6 @@
 {
- "version": "0.1.4",
+ "version": "0.1.5",
  "date": "2026-11-10",
- "notes": "Meta tab: reads the meta period that has enough games (a set release no longer empties it), shows the period in the header and refreshes by itself when new data arrives.",
+ "notes": "The data pack no longer includes Untapped.gg statistics: the Meta tab covers Pioneer, Modern, Legacy, Vintage and Pauper, and card tooltips show 17Lands data only.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

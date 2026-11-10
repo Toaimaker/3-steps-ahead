@@ -88,8 +88,18 @@ def pacchetto(c):
             if not dest.startswith(radice + os.sep):        # un nome come ../x non esce mai dalla cartella
                 raise ValueError(f"pacchetto: percorso fuori dalla cartella: {n}")
         z.extractall(c["root"])
+        dentro = set(z.namelist())
+    for pat in USCITI:       # i file che un pacchetto di prima portava e questo no: via, se no restano sul PC e la finestra li legge ancora
+        for f in glob.glob(os.path.join(c["root"], pat)):
+            if os.path.relpath(f, c["root"]).replace(os.sep, "/") not in dentro:
+                os.remove(f)
     os.makedirs(os.path.dirname(c["versione"]), exist_ok=True)
     open(c["versione"], "w", encoding="utf-8").write(v)
+
+
+# usciti dal pacchetto con la 0.1.5 (10 nov 2026, Autore: «Sì, toglili»): il meta e le note del Quick presi da Untapped.gg, i cui termini vietano di
+# ridistribuirli. I quaderni delle carte (anagrafe.json) li sovrascrive il pacchetto nuovo, gia' senza il campo «untapped».
+USCITI = ["Note/meta_untapped*.json", "Espansioni/*/Quick/Quick_Draft.md"]
 
 
 def collezione_vuota(c):
@@ -195,6 +205,16 @@ def prova():
     except ValueError:
         fuori = True
     casi.append(("negativa: un pacchetto con un percorso fuori dalla cartella si rifiuta", fuori and not os.path.exists(os.path.join(os.path.dirname(d), "fuori.txt"))))
+    # un'installazione di prima con il meta di Untapped: il pacchetto nuovo lo toglie, e tiene quello che porta lui (negativa: il file di MTGGoldfish resta)
+    for n in ("Note/meta_untapped.json", "Note/meta_untapped_historic.json", "Espansioni/FRA/Quick/Quick_Draft.md", "Note/meta_goldfish_modern.json"):
+        os.makedirs(os.path.dirname(os.path.join(d, n)), exist_ok=True)
+        open(os.path.join(d, n), "w").write("vecchio")
+    nuovo = os.path.join(d, "nuovo.zip")
+    z = zipfile.ZipFile(nuovo, "w"); z.writestr("pacchetto.json", json.dumps({"versione": "2026.11.11"})); z.writestr("Note/meta_goldfish_modern.json", "[]"); z.close()
+    pacchetto(dict(c, pacchetto=nuovo))
+    casi.append(("il meta di Untapped di un'installazione vecchia se ne va", not glob.glob(os.path.join(d, "Note", "meta_untapped*.json"))
+                 and not os.path.exists(os.path.join(d, "Espansioni", "FRA", "Quick", "Quick_Draft.md"))))
+    casi.append(("negativa: il file che il pacchetto porta resta, nuovo", open(os.path.join(d, "Note", "meta_goldfish_modern.json")).read() == "[]"))
     ok = sum(1 for _n, v in casi if v)
     for n, v in casi:
         print(("ok    " if v else "ROSSO ") + n)

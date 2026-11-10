@@ -3,6 +3,7 @@ import json
 import os
 
 import capsule as CAP
+import dati_app
 import prezzi_carte as PZ
 
 from ambiente import ROOT
@@ -12,6 +13,24 @@ from dati_app import BASI, _meta_formato, collezione, collezione_nota, craft, jo
 FORMATI_META = (("Standard", "arena"), ("Alchemy", "arena"), ("Explorer", "arena"), ("Historic", "arena"), ("Timeless", "arena"), ("Brawl", "arena"),
                 ("Pioneer", "carta"), ("Modern", "carta"), ("Legacy", "carta"), ("Vintage", "carta"), ("Pauper", "carta"))
 QUANTI_META = 30
+
+
+def file_meta(fmt):
+    """Il file del meta di un formato: Standard Note/meta_untapped.json, gli altri di Arena Note/meta_untapped_<formato>.json, quelli di carta
+    Note/meta_goldfish_<formato>.json."""
+    if dict(FORMATI_META).get(fmt) == "carta":
+        return os.path.join(ROOT, "Note", f"meta_goldfish_{fmt.lower()}.json")
+    if fmt == "Standard":
+        return dati_app.META_STD
+    return os.path.join(ROOT, "Note", f"meta_untapped_{fmt.lower().replace(' ', '_')}.json")
+
+
+def formati_con_dati():
+    """I formati della tendina Format: solo quelli che hanno il file del meta (tutti se non ne ha nessuno, e la pagina lo dice). Dal 10 nov 2026 l'app
+    pubblica non porta piu' il meta di Untapped (i loro termini vietano di ridistribuirlo, Autore: «Sì, toglili»): li' restano i formati di carta e MTGO;
+    nell'app di Autore i file ci sono tutti e la tendina non cambia."""
+    ci = [f for f, _ in FORMATI_META if os.path.exists(file_meta(f))]
+    return ci or [f for f, _ in FORMATI_META]
 
 
 def meta_mazzi(fmt):

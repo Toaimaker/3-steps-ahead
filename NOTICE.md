@@ -12,8 +12,9 @@ The app is free. Optional support does not unlock anything.
 
 - Card data and images: [Scryfall](https://scryfall.com), downloaded by each user's PC. Not affiliated with Scryfall.
 - Arena card database: `mtgajson.untapped.gg` (public). Not affiliated with Untapped.gg.
-- Draft card ratings shown in card tooltips: [17Lands](https://www.17lands.com) public data and Untapped.gg public statistics. Not affiliated.
-- Metagame lists: Untapped.gg public metagame and MTGGoldfish. Not affiliated.
+- Draft card ratings shown in card tooltips: [17Lands](https://www.17lands.com) public data. Not affiliated.
+- Metagame lists: [MTGGoldfish](https://www.mtggoldfish.com). Not affiliated.
+- Untapped.gg: only if you link your own public profile, your collection and games are read from it for you. No Untapped.gg statistics are included in this package. Not affiliated.
 
 ## Third-party files in this package
 
