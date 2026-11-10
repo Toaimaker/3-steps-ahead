@@ -1,6 +1,6 @@
 {
- "version": "0.1.1",
+ "version": "0.1.2",
  "date": "2026-11-10",
- "notes": "A profile for each Arena account (account menu at the top); Edit on every Meta and Arena deck makes a copy in Deck builder; cards can be moved on the read-only Board; cleaner deck cards; opens on Meta.",
- "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest"
+ "notes": "One-file installer: download 3-Steps-Ahead-Setup.exe and run it, no Python to install. Uninstall from Windows Settings.",
+ "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

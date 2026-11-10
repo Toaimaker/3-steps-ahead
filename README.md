@@ -1,4 +1,4 @@
-# 3 Steps Ahead · free MTG Arena deck tracker and deck builder (alpha 0.1.1)
+# 3 Steps Ahead · free MTG Arena deck tracker and deck builder (alpha 0.1.2)
 
 A free desktop companion for MTG Arena on Windows. It reads your own Arena log (Player.log) and shows your decks with their real record,
 on the play and on the draw, a card-by-card analysis of why they win and lose, a deck builder over your collection with a mana base calculator,
@@ -8,11 +8,14 @@ Unofficial Fan Content permitted under the Fan Content Policy. Not approved/endo
 
 ## Install (Windows 10/11)
 
-1. Install [Python 3.11](https://www.python.org/downloads/) with "Add python.exe to PATH" ticked.
-2. Unzip this folder anywhere, for example `Documents\3 Steps Ahead`.
-3. Run `Install.bat` once.
-4. In Arena: *Options → Account → Detailed Logs (Plugin Support)* on.
-5. Run `3 Steps Ahead.bat`. The first start downloads about 125 MB of public card data.
+1. Download **3-Steps-Ahead-Setup.exe** from the [latest release](https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe) and run it. Everything is inside: no Python to install, no admin rights.
+   The setup is not signed yet: if Windows says "Windows protected your PC", click *More info → Run anyway*.
+2. In Arena: *Options → Account → Detailed Logs (Plugin Support)* on.
+3. Start 3 Steps Ahead from the Start menu or the desktop. The first start downloads about 125 MB of public card data.
+
+To uninstall: Windows Settings → Apps. Your decks and boards stay in the app folder's Log_Arena unless you delete it.
+
+From source (developers): unzip the release zip, install Python 3.11, run `Install.bat` once, then `3 Steps Ahead.bat`.
 
 ## What's in the alpha
 

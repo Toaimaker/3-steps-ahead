@@ -10,7 +10,7 @@ LOGDIR = os.path.join(ROOT, "Log_Arena")
 # --diario FILE (collaudo, 17 ott 2026): la finestra legge quel diario invece di quello di oggi, per esempio il diario di un
 # replay (Log_Arena/companion_replay_AAAAMMGG.txt); le ore delle righe valgono come ore di oggi
 DIARIO_FISSO = sys.argv[sys.argv.index("--diario") + 1] if "--diario" in sys.argv else None
-PRODOTTO, VERSIONE = "3 Steps Ahead", "0.1.1"      # in fondo a destra in ogni scheda (Autore, 4 nov 2026); si alza a ogni rilascio. Dal 10 nov 2026 il nome
+PRODOTTO, VERSIONE = "3 Steps Ahead", "0.1.2"      # in fondo a destra in ogni scheda (Autore, 4 nov 2026); si alza a ogni rilascio. Dal 10 nov 2026 il nome
 # dell'app, anche questa di Autore: «3 Steps Ahead» (fino a quel giorno «Companion Magic Arena»)
 ASSET = percorsi.GRAFICA      # font, icone, simboli, loghi: Companion/Grafica
 import account as _ACC     # chi usa l'app: Autore, o nell'app pubblica chi l'ha scaricata (account.py, 10 nov 2026)
