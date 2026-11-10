@@ -192,7 +192,7 @@ footer .wrap { padding-block: 28px; font-size: 12px; color: var(--muted); displa
   <thead><tr><th>Topic</th><th>What happens</th></tr></thead>
   <tbody>
     <tr><td>What the app reads</td><td>Arena's Player.log on your PC. Never Arena's memory or other files; it never clicks or types in the game.</td></tr>
-    <tr><td>What stays on your PC</td><td>Your games, decks, Boards, wishlist, plans and settings, in the app folder. Delete the folder and they are gone.</td></tr>
+    <tr><td>What stays on your PC</td><td>Your games, decks, Boards, wishlist, plans and settings, in the <code>Log_Arena</code> folder inside the app's folder. Uninstalling keeps it; delete it and they are gone.</td></tr>
     <tr><td>What goes online</td><td>Requests for public data: card data and images (Scryfall, Arena's public card database), prices, the update check, and your Untapped.gg profile if you linked one.</td></tr>
     <tr><td>Sharing, off by default</td><td>On first start you choose whether to share game data to improve the app. You can change it any time in Help.</td></tr>
     <tr><td>What is shared, if you say yes</td><td>Event, day, result, who started, mulligans, turns, your deck list, your kept hand and the opposing cards you saw.</td></tr>
@@ -210,10 +210,10 @@ footer .wrap { padding-block: 28px; font-size: 12px; color: var(--muted); displa
 <p>The app does not know your collection yet. Link your Untapped.gg profile in Help. After a pack opening or a craft, the new cards appear when Untapped.gg syncs your collection.</p>
 <h3>The balance looks old</h3>
 <p>Arena writes your balance when you log in. Restart Arena, or play an event, and the bar updates within a minute.</p>
-<h3>Install.bat cannot find Python</h3>
+<h3>Windows says “Windows protected your PC”</h3>
+<p>SmartScreen warns about programs it does not know yet, and the alpha is not signed. Click <i>More info</i>, then <i>Run anyway</i>. The setup installs only in your own user folder and asks for no administrator rights.</p>
+<h3>Install.bat cannot find Python (only if you install from the source zip)</h3>
 <p>Python was installed without <i>Add python.exe to PATH</i>. Run the Python installer again, choose <i>Modify</i>, then in the advanced options tick <i>Add Python to environment variables</i>, and run Install.bat again.</p>
-<h3>Windows warns about the .bat files</h3>
-<p>Windows SmartScreen warns about files downloaded from the internet that it does not know yet. The two .bat files are plain text: open them in Notepad to read what they do before you run them.</p>
 <h3>Something else</h3>
 <p>Write in the Discord's bug channel, with what you did and what you saw. If the app showed an error, the details are in the <code>Log_Arena</code> folder, in the file named after today's date.</p>
 

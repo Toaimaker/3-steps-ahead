@@ -174,23 +174,24 @@ footer .wrap { padding-block: 28px; font-size: 12px; color: var(--muted); displa
       <details class="rail-m"><summary>Guide · Getting started</summary><ol><li><a href="./">Overview</a></li><li><a href="getting-started.html" aria-current="page">Getting started</a></li><li><a href="your-decks.html">Your decks</a></li><li><a href="deck-analysis.html">Deck analysis</a></li><li><a href="deck-builder.html">Deck builder &amp; mana base</a></li><li><a href="board.html">Board</a></li><li><a href="meta.html">Meta</a></li><li><a href="collection.html">Collection</a></li><li><a href="performance.html">Performance</a></li><li><a href="resources.html">Resources</a></li><li><a href="social-and-accounts.html">Social &amp; accounts</a></li><li><a href="help-and-privacy.html">Help, updates &amp; privacy</a></li></ol></details>
       <nav class="crumbs" aria-label="Breadcrumb"><a href="../">Home</a> › <a href="./">Guide</a> › Getting started</nav>
 <h1>Getting started</h1>
-<p class="lead">3 Steps Ahead is a free desktop app for Windows that reads the log MTG Arena writes on your PC. Five minutes to install, one setting to turn on in Arena, and every game you play from then on is kept and analysed.</p>
+<p class="lead">3 Steps Ahead is a free desktop app for Windows that reads the log MTG Arena writes on your PC. One file to install, one setting to turn on in Arena, and every game you play from then on is kept and analysed.</p>
 
 <h2 id="requirements">What you need</h2>
 <ul>
   <li><b>Windows 10 or 11</b>, with MTG Arena installed on the same PC. Mac and Linux are not supported yet.</li>
-  <li><b>Python 3.11 or newer</b> from <a href="https://www.python.org/downloads/">python.org</a>. The alpha runs on it; a one-click installer will come later.</li>
   <li>About <b>400 MB</b> of free disk space: the app, the card data it downloads on first start, and your games as you play.</li>
   <li>An internet connection on first start, and from time to time for card images, prices and updates.</li>
 </ul>
+<p>Nothing else: the installer carries everything the app needs, Python included, and does not ask for administrator rights.</p>
 
 <h2 id="install">Install</h2>
 <ol>
-  <li><b>Install Python.</b> In the installer, tick <span class="ui">Add python.exe to PATH</span> before you press Install. If you skip it, Install.bat cannot find Python.</li>
-  <li><b>Download the zip</b> from the <a href="https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe">latest release</a> and unzip it anywhere you like, for example <code>Documents\3 Steps Ahead</code>. Avoid folders that need administrator rights, such as Program Files.</li>
-  <li><b>Run <code>Install.bat</code></b> once. It creates a private Python environment inside that folder and installs the few libraries the app needs. Nothing is installed elsewhere on your PC.</li>
-  <li><b>Start <code>3 Steps Ahead.bat</code></b>. Make a shortcut to it on your desktop if you like; that is the only file you need from now on.</li>
+  <li><b>Download <a href="https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"><code>3-Steps-Ahead-Setup.exe</code></a></b> from the latest release.</li>
+  <li><b>Run it.</b> If Windows says “Windows protected your PC”, click <span class="ui">More info</span>, then <span class="ui">Run anyway</span>: the alpha is not signed yet, so SmartScreen does not know it.</li>
+  <li><b>Follow the setup.</b> It installs for your Windows user only, in <code>%LOCALAPPDATA%\Programs\3 Steps Ahead</code>, with a shortcut in the Start menu and on the desktop.</li>
+  <li><b>Start 3 Steps Ahead</b> from the Start menu or the desktop.</li>
 </ol>
+<p>Prefer the source? The same release has a zip of the code, with <code>Install.bat</code> to set it up on your own Python 3.11.</p>
 
 <h2 id="detailed-logs">Turn on Detailed Logs in Arena</h2>
 <p>Arena writes the details of your games to its log only when this option is on. Without it the app sees that you logged in, but not your decks, hands and games.</p>
@@ -234,10 +235,10 @@ footer .wrap { padding-block: 28px; font-size: 12px; color: var(--muted); displa
 
 <h2 id="updates">Updates</h2>
 <p>The app checks for a new version when it starts and every six hours. When there is one, the Help tab gets a dot and an orange <span class="ui">Download update</span> button that opens the release page in your browser. The app never downloads or installs anything by itself.</p>
-<p>To update, unzip the new version over the old folder (or into a new one and move your <code>Log_Arena</code> folder across). Your games and settings live in that folder.</p>
+<p>To update, close the app and run the new setup: it installs over the old version. Your games, decks, Boards and settings are in the <code>Log_Arena</code> folder of the app and stay as they are.</p>
 
 <h2 id="uninstall">Uninstall</h2>
-<p>Close the app and delete its folder. Nothing else was installed, and no registry keys were written.</p>
+<p>Close the app, then in Windows <span class="ui">Settings › Apps › Installed apps</span> choose 3 Steps Ahead and <span class="ui">Uninstall</span>. It removes the app, its private Python and the card data it downloaded. Your own data, the <code>Log_Arena</code> folder, stays in <code>%LOCALAPPDATA%\Programs\3 Steps Ahead</code>, in case you reinstall: delete that folder too if you want everything gone.</p>
 
       <nav class="pn" aria-label="Previous and next"><a class="prev" href="./"><span>← Previous</span><b>Overview</b></a><a class="next" href="your-decks.html"><span>Next →</span><b>Your decks</b></a></nav>
     </article>

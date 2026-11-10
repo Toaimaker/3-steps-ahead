@@ -1,6 +1,6 @@
 {
- "version": "0.1.2",
+ "version": "0.1.3",
  "date": "2026-11-10",
- "notes": "One-file installer: download 3-Steps-Ahead-Setup.exe and run it, no Python to install. Uninstall from Windows Settings.",
+ "notes": "The website guide now covers the one-file installer: install, update over the old version, uninstall, and the SmartScreen warning.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }
