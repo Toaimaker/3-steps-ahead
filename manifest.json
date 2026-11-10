@@ -1,6 +1,6 @@
 {
- "version": "0.1.6",
+ "version": "0.1.7",
  "date": "2026-11-10",
- "notes": "Meta tab: new Charts view with meta share against win rate, share over time and a per-deck table.",
+ "notes": "Deck window: click On the play or On the draw to see every stat, chart and analysis for those games only.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

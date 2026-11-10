@@ -80,6 +80,19 @@ def e_terra(nome, carte):
     return bool(c) and "Land" in c["tipo"].split(" // ")[0]
 
 
+def primo(p):
+    """True se la partita l'hai cominciata tu (on the play), False se l'avversario (on the draw), None se non si sa: il giocatore attivo del primo game contro il tuo posto."""
+    g = (p.get("giochi") or [{}])[0]
+    return g.get("active_player_id") == p.get("seat") if g.get("active_player_id") is not None and p.get("seat") is not None else None
+
+
+def per_partenza(partite, partenza):
+    """Le partite cominciate sul play («play») o sul draw («draw»); None: tutte. Quelle di cui non si sa chi comincia restano fuori dal filtro."""
+    if not partenza:
+        return list(partite)
+    return [p for p in partite if primo(p) is (partenza == "play")]
+
+
 def righe(partite, carte, sc=None):
     """Una riga per partita: vinta, primo, turno tuo di fine, mano tenuta."""
     sc = schede() if sc is None else sc
@@ -87,17 +100,17 @@ def righe(partite, carte, sc=None):
     for p in partite:
         g = (p.get("giochi") or [{}])[0]
         s = scheda_di(p, sc) or ({"turni": p["turni"], "motivo": None} if p.get("turni") else None)      # una partita letta dal Player.log porta i suoi turni (9 nov 2026)
-        primo = g.get("active_player_id") == p.get("seat") if g.get("active_player_id") is not None and p.get("seat") is not None else None
+        primo_ = primo(p)
         turno = None
-        if s and primo is not None:
-            turno = (s["turni"] + 1) // 2 if primo else s["turni"] // 2
+        if s and primo_ is not None:
+            turno = (s["turni"] + 1) // 2 if primo_ else s["turni"] // 2
         mani = g.get("player_opening_hands") or []
         tenuta = mano(mani[-1]) if mani else {}
         terre = sum(q for n, q in tenuta.items() if e_terra(n, carte))
         magie = [n for n, q in tenuta.items() if not e_terra(n, carte) for _ in range(q)]
         if turno is not None and turno <= 3 and s.get("motivo") == "Concede":      # uno che lascia al terzo turno non dice quanto chiude il mazzo: niente turno, la partita resta nel record
             turno = None
-        out.append(dict(vinta=bool(p["vinta"]), primo=primo, turno=turno, mull=max(0, len(mani) - 1), terre=terre if tenuta else None, magie=magie, mano=dict(tenuta)))
+        out.append(dict(vinta=bool(p["vinta"]), primo=primo_, turno=turno, mull=max(0, len(mani) - 1), terre=terre if tenuta else None, magie=magie, mano=dict(tenuta)))
     return out
 
 
@@ -205,6 +218,15 @@ def prova():
             ("senza partite non cade", analizza([], carte, sc)["chiude"] is None),
             ("un mazzo di creature piccole e' aggro", aggro[0] == "Aggro"), ("rimozioni e pescate: control", contr[0] == "Control"),
             ("le percentuali fanno circa 100", 98 <= sum(aggro[1].values()) <= 102), ("senza carte lette: None", archetipo({"Plains": 60}, carte) is None)]
+    # il filtro on the play / on the draw della finestra del mazzo (10 nov 2026)
+    ignota = dict(quando=datetime.datetime(2026, 11, 1, 16), vinta=True, seat=1, giochi=[dict(player_opening_hands=["m1"])])      # chi comincia non si sa
+    tutte = pp + [ignota]
+    casi += [("on the play: le 4 partite cominciate da te", len(per_partenza(tutte, "play")) == 4 and all(primo(x) is True for x in per_partenza(tutte, "play"))),
+             ("on the draw: le 2 dell'avversario", len(per_partenza(tutte, "draw")) == 2),
+             ("negativa: chi comincia non si sa, fuori dai due filtri ma dentro tutte", ignota not in per_partenza(tutte, "play") + per_partenza(tutte, "draw")
+              and len(per_partenza(tutte, None)) == 7),
+             ("filtrata, l'analisi conta solo quelle: sul draw nessuna partita sul play", analizza(per_partenza(pp, "draw"), carte, sc)["play"] == (0, 0)
+              and analizza(per_partenza(pp, "draw"), carte, sc)["draw"] == (1, 2))]
     _M.clear()
     for n, v in casi:
         print(("  ok   " if v else "  ROSSO ") + n)

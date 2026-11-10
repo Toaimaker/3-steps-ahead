@@ -75,11 +75,13 @@ def carte_partite(cartella=None):
 
 
 def partite_mazzo(id_mazzo):
-    """Le partite del mazzo dal Player.log e dai log archiviati: [dict(matchId, vinta, quando)], finite, fuori dai limited."""
+    """Le partite del mazzo dal Player.log e dai log archiviati: [dict(matchId, vinta, quando, primo)], finite, fuori dai limited. primo: True se l'hai
+    cominciata tu (on the play), False se l'avversario, None se il log non lo dice (10 nov 2026: il filtro play/draw della finestra del mazzo)."""
     from dati_app import mazzi_arena_o_niente, mazzo_di_arena, partite_dal_log
     pl, nomi = partite_dal_log()
     rimappa = mazzo_di_arena(mazzi_arena_o_niente(), nomi)
-    return [dict(matchId=p["matchId"], vinta=bool(p["vinta"]), quando=datetime.datetime.fromtimestamp(p["inizio"] / 1000)) for p in pl
+    return [dict(matchId=p["matchId"], vinta=bool(p["vinta"]), quando=datetime.datetime.fromtimestamp(p["inizio"] / 1000),
+                 primo=(p["inizia"] == p["seat"]) if p.get("inizia") is not None and p.get("seat") is not None else None) for p in pl
             if p.get("vinta") is not None and p.get("mazzo") and rimappa(p["mazzo"]) == id_mazzo and not re.search(r"Draft|Sealed|Cube", p.get("evento") or "")]
 
 

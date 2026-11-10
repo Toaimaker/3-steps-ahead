@@ -11,7 +11,9 @@ class FinestraMazzo:
     MAZZI = None        # la pagina Your decks: il builder aperto da un'altra pagina salva li'
 
     def apri(self, chi):
-        """chi: ("mio", nome), ("meta", archetipo del meta) o ("farm", mazzo del farming). None torna al grafico."""
+        """chi: ("mio", nome), ("meta", archetipo del meta) o ("farm", mazzo del farming). None torna al grafico. Un altro mazzo riparte senza il filtro on the play / on the draw."""
+        if chi != getattr(self, "aperto", None):
+            self.partenza = None
         self.aperto = chi
         self.disegna_dettaglio()
         self.disegna_mazzi()

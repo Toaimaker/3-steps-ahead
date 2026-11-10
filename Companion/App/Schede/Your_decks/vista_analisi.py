@@ -12,7 +12,7 @@ from tema import CI as C
 class VistaAnalisi:
     """La sezione Analysis (mixin di PaginaStandard)."""
 
-    def sezione_analisi(self, padre, tipo, chi, main, side, comandante, compagno, carte_db, lista, dopo=None):
+    def sezione_analisi(self, padre, tipo, chi, main, side, comandante, compagno, carte_db, lista, dopo=None, partenza=None):
         """Riempie padre (il corpo della sezione) con l'analisi del mazzo; i mazzi che non sono tuoi su Arena (meta, wishlist, build) non hanno partite."""
         tk, F = self.tk, self.F
         am = self.mazzo_arena(chi) if tipo == "mio" else None
@@ -26,7 +26,10 @@ class VistaAnalisi:
 
         def calcola():
             try:
-                box["a"] = AM.analizza(AM.partite_mazzo(am["id"]), lista_mazzo, lambda n: DM.e_terra(n, carte_db))
+                pp = AM.partite_mazzo(am["id"])
+                if partenza:        # il filtro on the play / on the draw della finestra (10 nov 2026): le partite di cui il log non dice chi comincia restano fuori
+                    pp = [p for p in pp if p.get("primo") is (partenza == "play")]
+                box["a"] = AM.analizza(pp, lista_mazzo, lambda n: DM.e_terra(n, carte_db))
             except Exception as e:      # noqa: BLE001 - la sezione dice cosa e' andato storto, la finestra resta
                 box["errore"] = str(e)
         threading.Thread(target=calcola, daemon=True).start()

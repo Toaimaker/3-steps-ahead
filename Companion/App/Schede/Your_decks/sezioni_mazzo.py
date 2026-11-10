@@ -83,21 +83,43 @@ class SezioniMazzo:
         corpo.testa_sezione, corpo.cambia_sezione, corpo.aperta_sezione = testa, cambia, (lambda: st["aperta"])
         return corpo
 
-    def tessere(self, padre, voci, colonne=4):
-        """I dati come tessere: voci [(nome, valore, colore, riga sotto)]; tutte della stessa misura su una griglia, il filo a sinistra del colore del dato."""
+    def tessere(self, padre, voci, colonne=4, clic=None, scelta=None):
+        """I dati come tessere: voci [(nome, valore, colore, riga sotto)]; tutte della stessa misura su una griglia, il filo a sinistra del colore del dato.
+        clic: {nome: funzione}, le tessere che si premono (puntatore a mano, accese sotto il puntatore); scelta: il nome della tessera premuta, col fondo e il bordo
+        azzurri (on the play e on the draw: Autore, 10 nov 2026, «sulle schede del mazzo fai che i dati di analytics varino in base al premere on the draw on the play»)."""
         tk, F = self.tk, self.F
+        clic = clic or {}
         g = tk.Frame(padre, bg=C["scheda"]); g.pack(fill="x")
+        g.tessere_ = {}
         for j in range(colonne):
             g.columnconfigure(j, weight=1, uniform="tessere")
         for i, voce in enumerate(voci):
             et, val, col = voce[:3]
             sotto = voce[3] if len(voce) > 3 else ""
-            t = tk.Frame(g, bg=C["cap"]); t.grid(row=i // colonne, column=i % colonne, sticky="nsew", padx=(0, 6 if i % colonne < colonne - 1 else 0), pady=(0, 6))
-            tk.Frame(t, bg=col or C["filo"], width=3).pack(side="left", fill="y")
-            d = tk.Frame(t, bg=C["cap"], padx=9, pady=6); d.pack(side="left", fill="both", expand=True)
-            tk.Label(d, text=et.upper(), bg=C["cap"], fg=C["muto"], font=F(6, True), pady=0, anchor="w").pack(fill="x")
+            accesa = et == scelta
+            fondo = C["sel"] if accesa else C["cap"]
+            t = tk.Frame(g, bg=fondo, highlightthickness=1 if accesa else 0, highlightbackground=C["accento"])
+            t.grid(row=i // colonne, column=i % colonne, sticky="nsew", padx=(0, 6 if i % colonne < colonne - 1 else 0), pady=(0, 6))
+            tk.Frame(t, bg=C["accento"] if accesa else col or C["filo"], width=3).pack(side="left", fill="y")
+            d = tk.Frame(t, bg=fondo, padx=9, pady=6); d.pack(side="left", fill="both", expand=True)
+            tk.Label(d, text=et.upper(), bg=fondo, fg=C["accento"] if accesa else C["muto"], font=F(6, True), pady=0, anchor="w").pack(fill="x")
             v = str(val)
-            tk.Label(d, text=v, bg=C["cap"], fg=col or C["titolo"], font=F(13 if len(v) <= 9 else 10 if len(v) <= 16 else 8, True), pady=0, anchor="w", justify="left",
+            tk.Label(d, text=v, bg=fondo, fg=col or C["titolo"], font=F(13 if len(v) <= 9 else 10 if len(v) <= 16 else 8, True), pady=0, anchor="w", justify="left",
                      wraplength=150).pack(fill="x")
-            tk.Label(d, text=sotto or " ", bg=C["cap"], fg=C["grigio"], font=F(7), pady=0, anchor="w", justify="left", wraplength=150).pack(fill="x")
+            if et in clic:
+                sotto = (sotto + " · " if sotto else "") + ("click: all games" if accesa else "click: only these")
+            tk.Label(d, text=sotto or " ", bg=fondo, fg=C["grigio"], font=F(7), pady=0, anchor="w", justify="left", wraplength=150).pack(fill="x")
+            g.tessere_[et] = t
+            if et in clic:
+                pezzi = [t, d, *d.winfo_children()]
+
+                def luce(on, pezzi=pezzi, fondo=fondo):
+                    for w in pezzi:
+                        if w.winfo_exists():
+                            w.configure(bg=C["sel"] if on else fondo)
+                for w in pezzi:
+                    w.configure(cursor="hand2")
+                    w.bind("<Button-1>", lambda e, f=clic[et]: f())
+                    w.bind("<Enter>", lambda e, luce=luce: luce(True))
+                    w.bind("<Leave>", lambda e, luce=luce: luce(False))
         return g
