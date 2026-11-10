@@ -148,6 +148,8 @@ code { font: 400 13px var(--f-code); background: var(--raised); padding: 1px 6px
 .fn { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px }
 .fn-text { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 6px 48px; align-items: end }
 .fn-text .k { grid-column: 1 / -1 }
+.fn-text .guida { grid-column: 2; justify-self: start; font: 600 12px var(--f-data); letter-spacing: .04em; color: var(--link); text-decoration: none; margin-top: 4px }
+.fn-text .guida:hover { color: var(--title) }
 .fn-text .k { font: 600 11px var(--f-data); color: var(--accent); letter-spacing: .12em; text-transform: uppercase; display: block; margin-bottom: 10px }
 .fn-text h3 { font: 800 clamp(22px, 2.6vw, 32px)/1.02 var(--f-display); text-transform: uppercase; margin: 0 }
 .fn-text p { color: var(--muted); max-width: 60ch; margin: 0 }
@@ -177,6 +179,7 @@ footer .wrap { padding-block: 32px; font-size: 12px; color: var(--muted); displa
   .privacy dl { grid-template-columns: minmax(0, 1fr); gap: 4px }
   .shots { grid-template-columns: minmax(0, 1fr) }
   .fn-text { grid-template-columns: minmax(0, 1fr); gap: 10px }
+  .fn-text .guida { grid-column: 1 }
   .fns { gap: 48px }
   .privacy dd { margin-bottom: 10px }
 }
@@ -198,7 +201,7 @@ footer .wrap { padding-block: 32px; font-size: 12px; color: var(--muted); displa
     </a>
     <span class="tag">Alpha 0.1.1</span>
     <nav class="top" aria-label="Sections">
-      <a href="#features">How it works</a><a href="#more">Features</a><a href="#install">Install</a><a href="#faq">FAQ</a><a href="#support">Support</a><a href="#privacy">Privacy</a>
+      <a href="#features">How it works</a><a href="#more">Features</a><a href="guide/">Guide</a><a href="#install">Install</a><a href="#faq">FAQ</a><a href="#support">Support</a><a href="#privacy">Privacy</a>
     </nav>
   </div>
 </header>
@@ -244,6 +247,7 @@ footer .wrap { padding-block: 32px; font-size: 12px; color: var(--muted); displa
           <span class="k">Step 1 · Meta</span>
           <h3>Explore the meta</h3>
           <p>The most played decks of every format, with share, win rate, paper price and the wildcards you would need. Sort them, look around, open the one you like.</p>
+          <a class="guida" href="guide/meta.html">Read the guide: Meta →</a>
         </div>
         <figure class="fn-media"><img src="img/anim_giro1.webp" alt="Explore the meta: Standard sorted by win rate; Azorius Control opens with its list and its numbers." width="1200" height="750" loading="lazy" decoding="async">
           <figcaption>Standard sorted by win rate; Azorius Control opens with its list and its numbers.</figcaption></figure>
@@ -253,6 +257,7 @@ footer .wrap { padding-block: 32px; font-size: 12px; color: var(--muted); displa
           <span class="k">Step 2 · Wishlist</span>
           <h3>Pick your deck and wishlist it</h3>
           <p>One click keeps it in your wishlist, inside Your decks, next to the decks you already play, with the wildcards it still needs.</p>
+          <a class="guida" href="guide/your-decks.html#from-meta-to-your-deck">Read the guide: Your decks →</a>
         </div>
         <figure class="fn-media"><img src="img/anim_giro2.webp" alt="Pick your deck and wishlist it: Add to wishlist, then Your decks: Azorius Control is in the Wishlist group." width="1200" height="750" loading="lazy" decoding="async">
           <figcaption>Add to wishlist, then Your decks: Azorius Control is in the Wishlist group.</figcaption></figure>
@@ -260,17 +265,19 @@ footer .wrap { padding-block: 32px; font-size: 12px; color: var(--muted); displa
       <article class="fn" id="f-giro3">
         <div class="fn-text">
           <span class="k">Step 3 · Make it editable</span>
-          <h3>Copy it to Deck building</h3>
-          <p>The wishlist keeps the original. A copy in Deck building is yours to change, and Edit opens it in the builder.</p>
+          <h3>Copy it to the Deck builder</h3>
+          <p>The wishlist keeps the original. A copy in the Deck builder group is yours to change, and Edit opens it in the builder. (Edit on any meta deck does both at once.)</p>
+          <a class="guida" href="guide/your-decks.html#from-meta-to-your-deck">Read the guide: Your decks →</a>
         </div>
-        <figure class="fn-media"><img src="img/anim_giro3.webp" alt="Copy it to Deck building: From the wishlist, Copy to Deck building: the (lab) copy opens, ready to edit." width="1200" height="750" loading="lazy" decoding="async">
-          <figcaption>From the wishlist, Copy to Deck building: the (lab) copy opens, ready to edit.</figcaption></figure>
+        <figure class="fn-media"><img src="img/anim_giro3.webp" alt="Copy it to the Deck builder: from the wishlist, Copy to Deck builder: the (lab) copy opens, ready to edit." width="1200" height="750" loading="lazy" decoding="async">
+          <figcaption>From the wishlist, Copy to Deck builder: the (lab) copy opens, ready to edit.</figcaption></figure>
       </article>
       <article class="fn" id="f-giro4">
         <div class="fn-text">
           <span class="k">Step 4 · Edit</span>
           <h3>Change it over your collection</h3>
           <p>The builder opens over your collection: search by name, type or rules text and double-click or drag cards in. Every change redoes legality, land drops, curve and the closest meta deck. Mana base adds the lands it needs.</p>
+          <a class="guida" href="guide/deck-builder.html">Read the guide: Deck builder &amp; mana base →</a>
         </div>
         <figure class="fn-media"><img src="img/anim_giro4.webp" alt="Change it over your collection: Three Three Steps Ahead and two Restoration Seminar in; a Fatehold Charm, two Countersculpt and eight lands out; Mana base puts the lands back." width="1200" height="750" loading="lazy" decoding="async">
           <figcaption>Three Three Steps Ahead and two Restoration Seminar in; a Fatehold Charm, two Countersculpt and eight lands out; Mana base puts the lands back.</figcaption></figure>
@@ -280,6 +287,7 @@ footer .wrap { padding-block: 32px; font-size: 12px; color: var(--muted); displa
           <span class="k">Step 5 · Board</span>
           <h3>Lay it out: synergies and groups</h3>
           <p>The deck as real cards on an endless sheet. Pull cards out of their piles or stack them, change copies, draw synergy arrows and give them colour and weight, break a line with a dot, swap a card for another, add one by name, box-select a group, name it and move it by its title.</p>
+          <a class="guida" href="guide/board.html">Read the guide: Board →</a>
         </div>
         <figure class="fn-media"><img src="img/anim_giro5.webp" alt="Lay it out: synergies and groups: Everything the Board edits, sped up: one caption per action, two labelled groups at the end." width="1200" height="750" loading="lazy" decoding="async">
           <figcaption>Everything the Board edits, sped up: one caption per action, two labelled groups at the end.</figcaption></figure>
@@ -289,6 +297,7 @@ footer .wrap { padding-block: 32px; font-size: 12px; color: var(--muted); displa
           <span class="k">Step 6 · Stats</span>
           <h3>Read the numbers before you play</h3>
           <p>Legal or not, cards you own, land drops on turns 2 to 4, sources per colour, the closest meta deck and its win rate, the archetype, paper and MTGO prices. Once you play it, your own games fill the rest.</p>
+          <a class="guida" href="guide/deck-builder.html#before-you-play">Read the guide: Deck builder &amp; mana base →</a>
         </div>
         <figure class="fn-media"><img src="img/anim_giro6.webp" alt="Read the numbers before you play: The saved build: deck build, archetype and prices." width="1200" height="750" loading="lazy" decoding="async">
           <figcaption>The saved build: deck build, archetype and prices.</figcaption></figure>
@@ -307,6 +316,7 @@ footer .wrap { padding-block: 32px; font-size: 12px; color: var(--muted); displa
           <span class="k">Analysis</span>
           <h3>The cards behind your results</h3>
           <p>For the decks you play: which cards win when cast, which stay in hand, which show up in your losses, and the opposing cards and pairs that beat you most. Hover a card to see it. Every number comes from your own log.</p>
+          <a class="guida" href="guide/deck-analysis.html">Read the guide: Deck analysis →</a>
         </div>
         <figure class="fn-media"><img src="img/anim_analysis.webp" alt="The cards behind your results: A deck you play: each category opened, and the card image on hover." width="1200" height="750" loading="lazy" decoding="async">
           <figcaption>A deck you play: each category opened, and the card image on hover.</figcaption></figure>
@@ -316,6 +326,7 @@ footer .wrap { padding-block: 32px; font-size: 12px; color: var(--muted); displa
           <span class="k">Collection</span>
           <h3>Every card, searchable</h3>
           <p>Every card on Arena, the ones you own in full colour. Search name, type and rules text, filter by format and see the banned cards of that format in red.</p>
+          <a class="guida" href="guide/collection.html">Read the guide: Collection →</a>
         </div>
         <figure class="fn-media"><img src="img/anim_collection.webp" alt="Every card, searchable: Searching for “dragon”, then the cards banned in Standard." width="1200" height="750" loading="lazy" decoding="async">
           <figcaption>Searching for “dragon”, then the cards banned in Standard.</figcaption></figure>
@@ -325,6 +336,7 @@ footer .wrap { padding-block: 32px; font-size: 12px; color: var(--muted); displa
           <span class="k">Performance</span>
           <h3>Your history, game by game</h3>
           <p>Win rate over time with the league you reached, your numbers, and how each deck does in each event. Limited and constructed in one place.</p>
+          <a class="guida" href="guide/performance.html">Read the guide: Performance →</a>
         </div>
         <figure class="fn-media"><img src="img/anim_performance.webp" alt="Your history, game by game: The pointer along the ranked chart, then the switch to Limited." width="1200" height="750" loading="lazy" decoding="async">
           <figcaption>The pointer along the ranked chart, then the switch to Limited.</figcaption></figure>
@@ -334,11 +346,13 @@ footer .wrap { padding-block: 32px; font-size: 12px; color: var(--muted); displa
           <span class="k">Resources</span>
           <h3>Gold and gems with a plan</h3>
           <p>Monthly income from your log. Set a goal with the sliders and the farmer works out where to spend gold and gems; press Create and you get a day-by-day roadmap.</p>
+          <a class="guida" href="guide/resources.html">Read the guide: Resources →</a>
         </div>
         <figure class="fn-media"><img src="img/anim_resources.webp" alt="Gold and gems with a plan: Moving the goals, then Create: the roadmap appears beside the farmer." width="1200" height="750" loading="lazy" decoding="async">
           <figcaption>Moving the goals, then Create: the roadmap appears beside the farmer.</figcaption></figure>
       </article>
       </div>
+      <p style="margin-top:36px"><a class="btn ghost" href="guide/">Read the full guide: every screen, button and shortcut</a></p>
       <p class="next"><b>Coming next:</b> the live drafter that picks with you, advice during your games, and a one-click installer.</p>
       <p style="margin-top:10px;font-size:12px;color:var(--muted)">Recorded from the real app on one player's account.</p>
     </div>

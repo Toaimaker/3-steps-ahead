@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Your decks: win rate, hands, export · 3 Steps Ahead Guide</title>
+<meta name="description" content="Your MTG Arena decks with their real record from your own log: groups, wishlist, the deck window, best starting hands and export.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800;900&family=Inter:wght@400;500;600&family=Poppins:wght@500;600;700&display=swap">
+<link rel="canonical" href="https://toaimaker.github.io/3-steps-ahead/guide/your-decks.html">
+<meta property="og:url" content="https://toaimaker.github.io/3-steps-ahead/guide/your-decks.html">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#101014">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="icon" href="../favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="3 Steps Ahead">
+<meta property="og:title" content="Your decks: win rate, hands, export · 3 Steps Ahead Guide">
+<meta property="og:description" content="Your MTG Arena decks with their real record from your own log: groups, wishlist, the deck window, best starting hands and export.">
+<meta property="og:image" content="https://toaimaker.github.io/3-steps-ahead/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Your decks: win rate, hands, export · 3 Steps Ahead Guide">
+<meta name="twitter:description" content="Your MTG Arena decks with their real record from your own log: groups, wishlist, the deck window, best starting hands and export.">
+<meta name="twitter:image" content="https://toaimaker.github.io/3-steps-ahead/og.png">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "3 Steps Ahead", "item": "https://toaimaker.github.io/3-steps-ahead/"}, {"@type": "ListItem", "position": 2, "name": "Guide", "item": "https://toaimaker.github.io/3-steps-ahead/guide/"}, {"@type": "ListItem", "position": 3, "name": "Your decks", "item": "https://toaimaker.github.io/3-steps-ahead/guide/your-decks.html"}]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Your decks", "description": "Your MTG Arena decks with their real record from your own log: groups, wishlist, the deck window, best starting hands and export.", "image": "https://toaimaker.github.io/3-steps-ahead/og.png", "url": "https://toaimaker.github.io/3-steps-ahead/guide/your-decks.html", "inLanguage": "en", "dateModified": "2026-11-10", "author": {"@type": "Organization", "name": "3 Steps Ahead"}, "publisher": {"@type": "Organization", "name": "3 Steps Ahead"}, "about": {"@type": "SoftwareApplication", "name": "3 Steps Ahead", "applicationCategory": "GameApplication", "operatingSystem": "Windows 10, Windows 11"}}</script>
+<style>
+/* The guide: the same palette and type as the home page, a sticky category rail on the left, one reading column on the right. Dark-first like the app. */
+:root {
+  --bg: #101014; --panel: #18181c; --raised: #202024; --line: #303034;
+  --fg: #bebec2; --title: #ffffff; --muted: #8b8b94;
+  --accent: #24baff; --link: #61cdff; --good: #5cb85c; --bad: #d9534f; --warn: #f0ad4e;
+  --f-display: "Archivo", "Arial Black", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Inter", "Segoe UI", system-ui, sans-serif;
+  --f-data: "Poppins", "Segoe UI", system-ui, sans-serif;
+  --f-code: Consolas, "Courier New", monospace;
+  --pattern: rgba(97, 205, 255, 0.045);
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) {
+  --bg: #f5f6f8; --pattern: rgba(10, 80, 130, 0.05); --panel: #ffffff; --raised: #eef0f3; --line: #d9dce2;
+  --fg: #33363d; --title: #101014; --muted: #6b6f78;
+  --accent: #0a8fd0; --link: #0a7ab3; --good: #2f8a3a; --bad: #c0392b; --warn: #b9770e; color-scheme: light } }
+:root[data-theme="light"] {
+  --bg: #f5f6f8; --pattern: rgba(10, 80, 130, 0.05); --panel: #ffffff; --raised: #eef0f3; --line: #d9dce2;
+  --fg: #33363d; --title: #101014; --muted: #6b6f78;
+  --accent: #0a8fd0; --link: #0a7ab3; --good: #2f8a3a; --bad: #c0392b; --warn: #b9770e; color-scheme: light }
+
+* { box-sizing: border-box }
+html { scroll-padding-top: 76px }
+body { background: var(--bg); color: var(--fg); font: 400 15.5px/1.7 var(--f-body); margin: 0 }
+.sfondo { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; display: block }
+header.top, .page, footer { position: relative; z-index: 1 }
+a { color: var(--link) }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px }
+.wrap { max-width: 1180px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)) }
+
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg) }
+header.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line) }
+header.top .wrap { display: flex; align-items: center; gap: 16px; padding-block: 12px }
+.brand { display: flex; align-items: center; gap: 10px; color: var(--title); font: 800 15px var(--f-display); text-transform: uppercase; letter-spacing: .01em; text-decoration: none }
+.brand svg { width: 28px; height: 28px; border-radius: 7px }
+.brand small { font: 600 10px/1 var(--f-data); letter-spacing: .14em; color: var(--accent); margin-left: 2px }
+nav.top { margin-left: auto; display: flex; gap: 18px; font-size: 13px; align-items: center }
+nav.top a { color: var(--fg); text-decoration: none }
+nav.top a:hover { color: var(--title) }
+nav.top a.dl { font: 700 11px var(--f-data); letter-spacing: .08em; text-transform: uppercase; background: var(--accent); color: #0b1016; padding: 8px 12px }
+
+.page .wrap { display: grid; grid-template-columns: 236px minmax(0, 1fr); gap: 48px; padding-block: 36px 72px }
+.rail { position: sticky; top: 76px; align-self: start; max-height: calc(100vh - 96px); overflow: auto; font-size: 13.5px }
+.rail-t { font: 600 10px/1 var(--f-data); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin: 0 0 12px }
+.rail ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px }
+.rail a { display: block; color: var(--fg); text-decoration: none; padding: 5px 10px; border-left: 2px solid transparent }
+.rail a:hover { color: var(--title) }
+.rail a[aria-current="page"] { color: var(--title); border-left-color: var(--accent); background: var(--panel); font-weight: 600 }
+.rail .sub { margin: 4px 0 8px 12px; gap: 0 }
+.rail .sub a { font-size: 12.5px; color: var(--muted); padding: 3px 10px }
+.rail .sub a:hover { color: var(--title) }
+details.rail-m { display: none }
+
+article.doc { min-width: 0; max-width: 780px }
+.crumbs { font: 500 12px var(--f-data); color: var(--muted); margin-bottom: 14px }
+.crumbs a { color: var(--muted); text-decoration: none }
+.crumbs a:hover { color: var(--title) }
+.doc h1 { font: 900 clamp(32px, 5vw, 52px)/.95 var(--f-display); text-transform: uppercase; color: var(--title); margin: 0; letter-spacing: -0.005em; text-wrap: balance }
+.doc .lead { font-size: 18px; color: var(--fg); margin: 18px 0 0; max-width: 62ch }
+.doc h2 { font: 800 clamp(21px, 2.6vw, 27px)/1.1 var(--f-display); text-transform: uppercase; color: var(--title); margin: 56px 0 14px; padding-top: 18px; border-top: 1px solid var(--line); text-wrap: balance }
+.doc h3 { font: 600 16.5px/1.35 var(--f-body); color: var(--title); margin: 28px 0 8px }
+.doc p { margin: 0 0 14px; max-width: 68ch }
+.doc ul, .doc ol { margin: 0 0 16px; padding-left: 22px; max-width: 66ch }
+.doc li { margin: 4px 0 }
+.doc li::marker { color: var(--accent) }
+.doc b, .doc strong { color: var(--title); font-weight: 600 }
+.doc code { font: 400 13.5px var(--f-code); background: var(--raised); padding: 1px 6px }
+kbd { font: 600 12px var(--f-data); color: var(--title); background: var(--raised); border: 1px solid var(--line); border-bottom-width: 2px; padding: 1px 6px; white-space: nowrap }
+.ui { font: 600 13px var(--f-data); color: var(--title); white-space: nowrap }
+
+.doc figure { margin: 22px 0 26px; min-width: 0 }
+.doc figure img { display: block; width: 100%; height: auto; border: 1px solid var(--line); background: var(--raised) }
+.doc figcaption { font-size: 13px; color: var(--muted); margin-top: 8px }
+
+.scroll { overflow-x: auto; margin: 6px 0 20px; border: 1px solid var(--line); background: var(--panel) }
+table { width: 100%; border-collapse: collapse; font-size: 14px }
+th { text-align: left; font: 600 10px var(--f-data); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); padding: 9px 14px; border-bottom: 1px solid var(--line) }
+td { padding: 9px 14px; border-top: 1px solid var(--line); vertical-align: top }
+tr:first-child td { border-top: 0 }
+td:first-child { white-space: nowrap; color: var(--title); font-weight: 500 }
+
+.note { border-left: 3px solid var(--accent); background: var(--panel); padding: 12px 16px; margin: 18px 0 22px; font-size: 14.5px; max-width: 68ch }
+.note.limit { border-left-color: var(--warn) }
+.note b:first-child { font: 600 10px/1 var(--f-data); letter-spacing: .14em; text-transform: uppercase; display: block; margin-bottom: 6px; color: var(--accent) }
+.note.limit b:first-child { color: var(--warn) }
+.note p:last-child { margin-bottom: 0 }
+
+.cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 28px }
+.cards a { display: block; text-decoration: none; background: var(--panel); border: 1px solid var(--line); padding: 18px 18px 16px; color: var(--fg); min-width: 0 }
+.cards a:hover { border-color: var(--accent) }
+.cards .n { font: 600 10px/1 var(--f-data); letter-spacing: .14em; color: var(--accent) }
+.cards h2 { font: 800 19px/1.1 var(--f-display); text-transform: uppercase; color: var(--title); margin: 8px 0 6px; padding: 0; border: 0 }
+.cards p { font-size: 14px; margin: 0; color: var(--muted) }
+
+.pn { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; margin-top: 56px; padding-top: 22px; border-top: 1px solid var(--line) }
+.pn a { text-decoration: none; border: 1px solid var(--line); padding: 12px 16px; display: block; min-width: 0 }
+.pn a:hover { border-color: var(--accent) }
+.pn span { display: block; font: 600 10px/1 var(--f-data); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px }
+.pn b { color: var(--title); font-weight: 600 }
+.pn .next { text-align: right; grid-column: 2 }
+
+footer { border-top: 1px solid var(--line) }
+footer .wrap { padding-block: 28px; font-size: 12px; color: var(--muted); display: grid; gap: 8px }
+
+@media (max-width: 900px) {
+  .page .wrap { grid-template-columns: minmax(0, 1fr); gap: 0; padding-block: 20px 56px }
+  .rail { display: none }
+  details.rail-m { display: block; border: 1px solid var(--line); background: var(--panel); margin-bottom: 26px }
+  details.rail-m summary { cursor: pointer; padding: 12px 14px; font: 600 12px var(--f-data); letter-spacing: .08em; text-transform: uppercase; color: var(--title) }
+  details.rail-m ol { list-style: none; margin: 0; padding: 0 0 10px }
+  details.rail-m a { display: block; padding: 7px 14px; color: var(--fg); text-decoration: none }
+  details.rail-m a[aria-current="page"] { color: var(--title); border-left: 2px solid var(--accent) }
+  nav.top a:not(.dl) { display: none }
+  .cards { grid-template-columns: minmax(0, 1fr) }
+}
+@media (max-width: 520px) {
+  .pn { grid-template-columns: minmax(0, 1fr) }
+  .pn .next { grid-column: 1 }
+}
+</style>
+</head>
+<body>
+
+<canvas class="sfondo" aria-hidden="true"></canvas>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="../" aria-label="3 Steps Ahead home">
+      <svg viewBox="0 0 150 150" aria-hidden="true"><rect width="150" height="150" rx="28" fill="#101014"/><rect x="26" y="56" width="44" height="62" rx="6" fill="#18181c" stroke="#3a3a42" stroke-width="5"/><rect x="48" y="42" width="44" height="62" rx="6" fill="#18181c" stroke="#6a6a74" stroke-width="5"/><rect x="70" y="28" width="44" height="62" rx="6" fill="#18181c" stroke="#24baff" stroke-width="5"/></svg>
+      3 Steps Ahead <small>Guide</small>
+    </a>
+    <nav class="top" aria-label="Site">
+      <a href="../">Home</a><a href="./">Guide</a><a href="../#faq">FAQ</a><a class="dl" href="https://github.com/Toaimaker/3-steps-ahead/releases/latest">Download</a>
+    </nav>
+  </div>
+</header>
+<div class="page">
+  <div class="wrap">
+    <nav class="rail" aria-label="Guide">
+      <p class="rail-t">Guide</p>
+      <ol><li><a href="./">Overview</a></li><li><a href="getting-started.html">Getting started</a></li><li><a href="your-decks.html" aria-current="page">Your decks</a><ol class="sub"><li><a href="#groups">Groups and sections</a></li><li><a href="#deck-card">What a deck card shows</a></li><li><a href="#toolbar">Sort, Show and Import</a></li><li><a href="#deck-window">The deck window</a></li><li><a href="#starting-hands">Best starting hands and fast wins</a></li><li><a href="#from-meta-to-your-deck">From a meta deck to your own version</a></li></ol></li><li><a href="deck-analysis.html">Deck analysis</a></li><li><a href="deck-builder.html">Deck builder &amp; mana base</a></li><li><a href="board.html">Board</a></li><li><a href="meta.html">Meta</a></li><li><a href="collection.html">Collection</a></li><li><a href="performance.html">Performance</a></li><li><a href="resources.html">Resources</a></li><li><a href="social-and-accounts.html">Social &amp; accounts</a></li><li><a href="help-and-privacy.html">Help, updates &amp; privacy</a></li></ol>
+    </nav>
+    <article class="doc">
+      <details class="rail-m"><summary>Guide · Your decks</summary><ol><li><a href="./">Overview</a></li><li><a href="getting-started.html">Getting started</a></li><li><a href="your-decks.html" aria-current="page">Your decks</a></li><li><a href="deck-analysis.html">Deck analysis</a></li><li><a href="deck-builder.html">Deck builder &amp; mana base</a></li><li><a href="board.html">Board</a></li><li><a href="meta.html">Meta</a></li><li><a href="collection.html">Collection</a></li><li><a href="performance.html">Performance</a></li><li><a href="resources.html">Resources</a></li><li><a href="social-and-accounts.html">Social &amp; accounts</a></li><li><a href="help-and-privacy.html">Help, updates &amp; privacy</a></li></ol></details>
+      <nav class="crumbs" aria-label="Breadcrumb"><a href="../">Home</a> › <a href="./">Guide</a> › Your decks</nav>
+<h1>Your decks</h1>
+<p class="lead">Every deck you have on Arena right now, with the record of your own games, plus the decks Arena gave you, your wishlist and the decks you are building. One click opens a deck window with everything the app knows about it.</p>
+
+<figure><img src="../img/anim_decks.webp" alt="Your decks: deck cards grouped by format, Standard, Explorer, Pauper and Arena decks, scrolling down the groups." width="1200" height="750" loading="lazy" decoding="async">
+  <figcaption>Your decks grouped by format; each card lights up under the pointer.</figcaption></figure>
+
+<h2 id="groups">Groups and sections</h2>
+<p>Decks sit in groups, each with a large title and the number of decks inside. Click a title to fold or unfold the group; the app remembers what you closed.</p>
+<div class="scroll"><table>
+  <thead><tr><th>Group</th><th>What is in it</th></tr></thead>
+  <tbody>
+    <tr><td>Standard, Explorer, Historic…</td><td>Your own Arena decks, one group per format (Standard, Standard Bo3, Alchemy, Explorer, Historic, Timeless, Brawl and the others Arena uses).</td></tr>
+    <tr><td>Arena decks</td><td>The decks Arena gave you, such as the starter and Dual Color Precons decks, with the record of the games you played with them.</td></tr>
+    <tr><td>Wishlist</td><td>Decks you want to build: from the meta, imported from a list, or copied from another deck. The first card, <span class="ui">+ Add deck</span>, imports a new one.</td></tr>
+    <tr><td>Deck builder</td><td>Your own versions, which you can change in the builder. The first card, <span class="ui">+ New deck</span>, opens the builder on an empty deck.</td></tr>
+  </tbody>
+</table></div>
+<p>The decks are the ones Arena has <b>now</b>, read from your log: a deck you delete in Arena disappears here too, and a deck you created but never played shows as <i>never played</i>.</p>
+
+<h2 id="deck-card">What a deck card shows</h2>
+<ul>
+  <li><b>The cover</b>: the art of the rarest card of the last list you played.</li>
+  <li><b>Colours and the last game</b>: the mana symbols, and a dot that is green when you played the deck in the last seven days.</li>
+  <li><b>Record and Games</b>: wins and losses, and how many games, counted over every constructed event you played it in.</li>
+  <li><b>Win rate</b> in large figures, blue above 50% and red below, and the <span class="ui">View deck</span> button. The whole card opens the deck.</li>
+</ul>
+
+<h2 id="toolbar">Sort, Show and Import</h2>
+<div class="scroll"><table>
+  <thead><tr><th>Control</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr><td>Sort by</td><td>Last game, Win rate, Games, Name or First game.</td></tr>
+    <tr><td>Show</td><td><i>Decks you own</i> (default) hides the decks with cards you do not have, such as imported lists you never completed; <i>All decks</i> shows them.</td></tr>
+    <tr><td>Import</td><td>Copy a deck list (from Arena's Export, MTGO, or a website) and press Import: it becomes a Wishlist deck and opens.</td></tr>
+    <tr><td>Trash (on Wishlist and Deck builder cards)</td><td>Removes the deck at once. Arena decks are deleted in Arena: the app never writes into the game.</td></tr>
+  </tbody>
+</table></div>
+
+<h2 id="deck-window">The deck window</h2>
+<p>Click a deck and its window opens above the app. It is the same window for every deck, wherever you open it from: yours, Arena's, the wishlist, the Deck builder group or the meta. A value the app does not have yet shows as “-”.</p>
+<figure><img src="../img/anim_deckwindow.webp" alt="The deck window of UW Bouncer: the list on the left, the numbers on the right, a best starting hand opened card by card, then Export." width="1200" height="750" loading="lazy" decoding="async">
+  <figcaption>The deck window: the data column scrolls, a best starting hand opens card by card, Export copies the list.</figcaption></figure>
+<h3>On the left: the list</h3>
+<ul>
+  <li><b>Edit</b> and <b>Add to wishlist</b>, the orange buttons at the top. On a deck you cannot change directly (a meta deck, a deck of yours on Arena, an Arena deck) Edit first makes a copy in the Deck builder group and opens that copy in the builder; the original stays as it is. Add to wishlist is hidden when the deck is already in your wishlist.</li>
+  <li><b>The wildcards</b> the deck still needs, by rarity, with the ones you have (red when you do not have enough). They need your <a href="getting-started.html#collection">collection linked</a>.</li>
+  <li><b>The deck header</b>: art, name, colours, card count and the mana curve.</li>
+  <li><b>Spells, Lands and Sideboard</b>, sorted by mana value, as in Arena. Hover a card to see it large, with its rarity, the copies you own and its paper price.</li>
+  <li><b>Board</b>, under the list: the deck as real cards on a sheet, to look at. To change it, go through Edit. See <a href="board.html">Board</a>.</li>
+  <li><b>Export</b>: <span class="ui">Copy for Arena</span> (then <i>Decks › Import</i> in Arena), <span class="ui">Copy for MTGO / text</span>, and the same two as a saved text file. Commander and companion go where each client expects them.</li>
+  <li>Below Export, the other actions of that kind of deck, such as <span class="ui">Copy to Deck builder</span> on a wishlist deck.</li>
+</ul>
+<h3>On the right: the sections</h3>
+<p>The data column is divided into sections that fold and unfold; the app remembers which ones you keep open, for every deck.</p>
+<div class="scroll"><table>
+  <thead><tr><th>Section</th><th>What it holds</th></tr></thead>
+  <tbody>
+    <tr><td>Performance</td><td>Win rate, record, games, on the play and on the draw, the average turn of your wins (Closes on) and of your losses (Loses on), first and last game, event prizes won with the deck.</td></tr>
+    <tr><td>Analysis</td><td>Which cards win and which lose, from your own games. It has its own page: <a href="deck-analysis.html">Deck analysis</a>.</td></tr>
+    <tr><td>Archetype &amp; hands</td><td>A small graph that places the deck between Aggro, Midrange, Control and Ramp (an estimate from the costs and rules text of its cards); the best starting hands; the fastest wins; the win rate by number of lands in the opening hand.</td></tr>
+    <tr><td>Win rate</td><td>The win rate of the deck game after game.</td></tr>
+    <tr><td>Deck build</td><td>Format and legality, cards you own, lands and the chance of an opening hand with 2 to 5 lands, land drops on turns 2, 3 and 4, sources per colour, the closest meta deck and its win rate.</td></tr>
+    <tr><td>Prices</td><td>Paper price (euro and dollars, the cheapest printing) and MTGO price in tix. Alchemy and Arena-only cards have no price.</td></tr>
+  </tbody>
+</table></div>
+
+<h2 id="starting-hands">Best starting hands and fast wins</h2>
+<p><b>Best starting hands</b> lists the pairs of spells you kept together in your opening hand at least three times, with their record and the average turn you closed the game. <b>Snowball</b> lists your fastest wins with the hand you kept.</p>
+<p>Click a row and a window shows the real hands, card by card: the cards of the pair have a blue frame, and the header says whether you won, on which turn, on the play or on the draw, and how many lands you had. Use <kbd>‹</kbd> <kbd>›</kbd> (or the arrow keys) to go through the other games with the same pair, wins first. <kbd>Esc</kbd> closes it.</p>
+<div class="note limit"><b>Good to know</b><p>Starting hands need games recorded with Detailed Logs on. With few games, a pair at 3-0 is a hint, not a rule.</p></div>
+
+<h2 id="from-meta-to-your-deck">From a meta deck to your own version</h2>
+<p>The quick way: open a deck in <a href="meta.html">Meta</a> and press <span class="ui">Edit</span>. A copy appears in the Deck builder group and opens in the builder; the meta deck stays as it is.</p>
+<p>If you want to keep the original next to your version:</p>
+<ol>
+  <li>In Meta, open the deck and press <span class="ui">Add to wishlist</span>. The original stays in your wishlist, untouched.</li>
+  <li>In the wishlist deck's window, press <span class="ui">Copy to Deck builder</span>. The copy, named “… (lab)”, is yours to change.</li>
+  <li>Press <span class="ui">Edit</span> on the copy: the builder opens over your collection. See <a href="deck-builder.html">Deck builder &amp; mana base</a>.</li>
+  <li>Export it to Arena when you are happy with it, and play. Your games fill the rest of the window.</li>
+</ol>
+<figure><img src="../img/anim_giro2.webp" alt="Add to wishlist, then Your decks: Azorius Control is in the Wishlist group." width="1200" height="750" loading="lazy" decoding="async">
+  <figcaption>Add to wishlist: the deck appears in the Wishlist group of Your decks.</figcaption></figure>
+<figure><img src="../img/anim_giro3.webp" alt="From the wishlist, Copy to Deck builder: the (lab) copy opens, ready to edit." width="1200" height="750" loading="lazy" decoding="async">
+  <figcaption>Copy to Deck builder: the copy opens, ready to edit.</figcaption></figure>
+
+      <nav class="pn" aria-label="Previous and next"><a class="prev" href="getting-started.html"><span>← Previous</span><b>Getting started</b></a><a class="next" href="deck-analysis.html"><span>Next →</span><b>Deck analysis</b></a></nav>
+    </article>
+  </div>
+</div>
+<footer>
+  <div class="wrap">
+    <p>3 Steps Ahead is unofficial Fan Content permitted under the Fan Content Policy. Not approved or endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.</p>
+    <p>Card data and images from Scryfall. Not affiliated with Scryfall, Untapped.gg or 17Lands. Screens and animations recorded from the real app on one player's account.</p>
+  </div>
+</footer>
+<script>
+(function () {
+  var tela = document.querySelector(".sfondo");
+  if (!tela || !tela.getContext) return;
+  var ctx = tela.getContext("2d"), dpr = 1, L = 0, A = 0, colore = "", attesa = false;
+  var fermo = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function misura() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    L = window.innerWidth; A = window.innerHeight;
+    tela.width = Math.round(L * dpr); tela.height = Math.round(A * dpr);
+    colore = getComputedStyle(document.documentElement).getPropertyValue("--pattern").trim() || "rgba(97,205,255,.1)";
+    disegna();
+  }
+  function disegna() {
+    attesa = false;
+    var fase = fermo ? 0 : (window.scrollY || 0) * 0.0035;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, L, A);
+    ctx.strokeStyle = colore; ctx.lineWidth = 1;
+    var passo = 26, n = Math.ceil(A / passo) + 4;
+    for (var i = -2; i < n; i++) {
+      var y0 = i * passo;
+      ctx.beginPath();
+      for (var x = -20; x <= L + 20; x += 14) {
+        var y = y0 + 9 * Math.sin(x * 0.006 + i * 0.42 + fase) + 5 * Math.sin(x * 0.017 - fase * 1.6 + i * 0.9);
+        if (x === -20) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+  }
+  window.addEventListener("resize", misura);
+  if (!fermo) window.addEventListener("scroll", function () { if (!attesa) { attesa = true; requestAnimationFrame(disegna); } }, { passive: true });
+  if (window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", misura);
+  misura();
+})();
+</script>
+
+</body>
+</html>
