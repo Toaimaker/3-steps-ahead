@@ -19,7 +19,10 @@ def meta_mazzi(fmt):
     di MTGO da MTGGoldfish (Note/meta_goldfish_<formato>.json, Motore/meta_goldfish_formati.py). Ogni mazzo ha lista, sideboard se c'e', prezzo e tix."""
     coll, _ = collezione()
     if dict(FORMATI_META).get(fmt) == "arena":
-        mm, sotto = _meta_formato(fmt, QUANTI_META)
+        mm, sotto = _meta_formato(fmt, 10 ** 6)
+        # solo gli archetipi con una lista: senza, la scheda e' vuota (niente copertina, View deck senza carte). 10 nov 2026, Autore: «la pagina meta
+        # non mostra i dati corretti»: col periodo di Star Trek appena aperto 28 archetipi su 32 non avevano la lista
+        mm = [x for x in mm if x.get("lista")][:QUANTI_META]
         for x in mm:
             x["url"] = url_untapped(fmt, x)
     else:

@@ -36,6 +36,38 @@ class PaginaMeta(PaginaMazzi):
         self.lista = CAP.Liste(tk, F)
         self.area("Meta")
         self.sotto = ""
+        self.firma_file = self.firma()
+        self.cv.after(self.OGNI_MS, self.guarda_file)
+
+    OGNI_MS = 60000
+
+    @staticmethod
+    def firma():
+        """L'ora dei file del meta (Untapped e MTGGoldfish, Note/): cambia quando il giro dello scout li riscrive (ogni 6 ore)."""
+        import glob
+        from ambiente import ROOT
+        out = []
+        for p in sorted(glob.glob(os.path.join(ROOT, "Note", "meta_untapped*.json")) + glob.glob(os.path.join(ROOT, "Note", "meta_goldfish_*.json"))):
+            try:
+                out.append((os.path.basename(p), os.path.getmtime(p)))
+            except OSError:
+                pass
+        return tuple(out)
+
+    def guarda_file(self):
+        """Ogni minuto: se il giro ha riscritto il meta, la pagina si rifa' (subito se e' davanti, se no quando ci torni). Fino al 10 nov 2026 il
+        meta si leggeva solo al primo disegno e al cambio di formato: un giro con l'app aperta non si vedeva fino al riavvio."""
+        try:
+            f = self.firma()
+            if f != self.firma_file:
+                self.firma_file = f
+                self.aggiorna()
+        except Exception as e:      # la pagina non deve mai fermare il giro della finestra
+            print("meta, controllo dei file:", e)
+        try:
+            self.cv.after(self.OGNI_MS, self.guarda_file)
+        except Exception:
+            pass
 
     def mazzo_arena(self, chi):
         return None

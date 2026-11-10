@@ -1,6 +1,6 @@
 {
- "version": "0.1.3",
+ "version": "0.1.4",
  "date": "2026-11-10",
- "notes": "The website guide now covers the one-file installer: install, update over the old version, uninstall, and the SmartScreen warning.",
+ "notes": "Meta tab: reads the meta period that has enough games (a set release no longer empties it), shows the period in the header and refreshes by itself when new data arrives.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

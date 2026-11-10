@@ -406,12 +406,36 @@ def saldo_partite(pp, ev="Ladder"):
     return punti, inizi, passaggi(ranghi), []
 
 
+def _json(p):
+    """Un json del meta, o None se manca o non si legge (il giro lo riscrive ogni 6 ore: mai un errore nella finestra)."""
+    try:
+        with open(p, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def sotto_meta(d, quando):
+    """Il sottotitolo del meta di Untapped: rango, periodo, partite, giorno dello scarico, e se il periodo nuovo ha ancora
+    troppe poche partite (10 nov 2026: Star Trek aperto da poche ore, si legge Reality Fracture, e lo si dice)."""
+    per = (d.get("periodo") or "").replace("Set Release - ", "")
+    pezzi = [f"{d.get('rango') or 'platinum'} rank"] + ([per] if per else [])
+    if d.get("partite_rango"):
+        pezzi.append(f"{d['partite_rango']:,} games")
+    pezzi.append(f"{quando:%d/%m}")
+    nuovo = (d.get("periodo_nuovo") or "").replace("Set Release - ", "")
+    if nuovo:
+        pezzi.append(f"{nuovo}: too few games yet")
+    return " · ".join(pezzi)
+
+
 def meta_standard(n=14):
-    if not os.path.exists(META_STD):
+    d = _json(META_STD)
+    if not isinstance(d, list):
         return [], ""
-    d = json.load(open(META_STD, encoding="utf-8"))
     quando = datetime.datetime.fromtimestamp(os.path.getmtime(META_STD))
-    return sorted(d, key=lambda x: -x.get("quota", 0))[:n], f"{quando:%d/%m}"
+    info = _json(os.path.join(ROOT, "Note", "meta_untapped_periodo.json"))
+    return sorted(d, key=lambda x: -x.get("quota", 0))[:n], sotto_meta(info if isinstance(info, dict) else {}, quando)
 
 
 def url_untapped(fmt, m):
@@ -441,18 +465,13 @@ def _meta_formato(fmt, n=14):
     """Il meta di un formato: (archetipi per quota, sottotitolo). Standard dal suo file (col win rate), gli altri da
     Note/meta_untapped_<formato>.json (con la «forza» al posto del win rate). ([], "") se il formato non ha meta."""
     if fmt == "Standard":
-        m, quando = meta_standard(n)
-        return m, (f"platinum rank · {quando}" if quando else "")
+        return meta_standard(n)
     p = os.path.join(ROOT, "Note", f"meta_untapped_{fmt.lower().replace(' ', '_')}.json")
-    try:
-        with open(p, encoding="utf-8") as f:
-            d = json.load(f)
-    except (OSError, ValueError):
+    d = _json(p)
+    if not isinstance(d, dict):
         return [], ""
     quando = datetime.datetime.fromtimestamp(os.path.getmtime(p))
-    tot = f"{d.get('partite_rango', 0):,}"
-    return (sorted(d.get("archetipi") or [], key=lambda x: -x.get("quota", 0))[:n],
-            f"{d.get('rango', '')} rank · {tot} games · {quando:%d/%m}")
+    return sorted(d.get("archetipi") or [], key=lambda x: -x.get("quota", 0))[:n], sotto_meta(d, quando)
 
 
 def farming(voci):
