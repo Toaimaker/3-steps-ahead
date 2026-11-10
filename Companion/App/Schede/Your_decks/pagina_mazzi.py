@@ -48,7 +48,7 @@ class PaginaMazzi(PaginaStandard):
     # decks deve diventare una sottocategoria in tendina prima di wishlist in my decks»). Con una sezione sola la barra delle linguette non si disegna
     SEZIONI = (("mine", "My decks"),)
     GRUPPO_ARENA = "Arena decks"
-    GRUPPO_BUILD = "Deck building"
+    GRUPPO_BUILD = "Deck builder"      # «Deck building» fino al 10 nov 2026 (Autore: «rinominiamo deck building in deck builder»)
 
 
     def __init__(self, tk, padre, F, mana):

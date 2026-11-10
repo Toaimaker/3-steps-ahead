@@ -111,7 +111,7 @@ class Roi:
         if pi and "mazzo" in self.goal.get():
             m, need = self.bisogno()
             if m is None:
-                t_m = "Add a deck to the Wishlist or to Deck building to target it"
+                t_m = "Add a deck to the Wishlist or to Deck builder to target it"
             elif not (need["R"] or need["M"]):
                 t_m = f"{m['nome']}: you can craft it now with the wildcards you have" if not (m["oltre"]["U"] or m["oltre"]["C"]) else f"{m['nome']}: your rare and mythic wildcards already cover it"
             else:

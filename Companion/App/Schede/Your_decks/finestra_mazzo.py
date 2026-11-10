@@ -77,17 +77,26 @@ class FinestraMazzo:
             MS.aggiungi("wish", base); self.fin.after(1200, lambda: self.fin is not None and self.fin.winfo_exists() and self.aperto and self.apri(self.aperto)); return "Added to wishlist"
 
         def a_build():
-            nuovo = MS.aggiungi("build", dict(base, nome=f"{nome} (lab)" if tipo != "build" else f"{nome} copy")); self.fin.after(10, lambda: self.apri(("build", nuovo))); return "Copied to Deck building"
+            nuovo = MS.aggiungi("build", dict(base, nome=f"{nome} (lab)" if tipo != "build" else f"{nome} copy")); self.fin.after(10, lambda: self.apri(("build", nuovo))); return "Copied to Deck builder"
+
+        def a_edit():
+            # Edit su un mazzo che non e' tuo da cambiare (del Meta, di Arena, tuo su Arena): nasce subito la sua copia in Your decks > Deck builder e si apre nel
+            # builder, editabile (Autore, 10 nov 2026: «a questi mazzi devi aggiungere un pulsante: edit / quando premo edit diventano editabili e nasce subito una
+            # loro copia in your decks > deck building»). L'originale non cambia
+            nuovo = MS.aggiungi("build", dict(base, nome=nome))
+            if nuovo is not None:
+                self.fin.after(10, lambda: self.builder("build", nuovo))
+            return "Copied to Deck builder"
 
         gia = tipo != "wish" and MS.in_wishlist(base) is not None       # un mazzo gia' in wishlist non ha Add to wishlist
         if tipo == "meta":
-            return ([] if gia else [("Add to wishlist", a_wish, False)]) + [("Copy to Deck building", a_build, False)]
+            return [("Edit", a_edit, False)] + ([] if gia else [("Add to wishlist", a_wish, False)])
         if tipo == "wish":
-            return [("Edit", lambda: (self.builder("wish", chi), None)[1], False), ("Copy to Deck building", a_build, False)]      # togliere: il cestino sulla scheda (9 nov 2026)
+            return [("Edit", lambda: (self.builder("wish", chi), None)[1], False), ("Copy to Deck builder", a_build, False)]      # togliere: il cestino sulla scheda (9 nov 2026)
         if tipo == "build":
             return [("Edit", lambda: (self.builder("build", chi), None)[1], False)] + ([] if gia else [("Add to wishlist", a_wish, False)])
         if tipo == "mio":
-            return [("Copy to Deck building", a_build, False)]
+            return [("Edit", a_edit, False)]
         return []
 
     def builder(self, sez="build", m=None):

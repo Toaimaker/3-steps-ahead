@@ -13,7 +13,7 @@ GRUPPI_FILE = os.path.join(LOGDIR, "mazzi_gruppi.json")
 GRUPPI_CHIUSI = set()
 try:
     with open(GRUPPI_FILE, encoding="utf-8") as _f:
-        GRUPPI_CHIUSI.update(json.load(_f))
+        GRUPPI_CHIUSI.update("Deck builder" if g == "Deck building" else g for g in json.load(_f))      # il gruppo si chiamava «Deck building» (10 nov 2026)
 except (OSError, ValueError):
     pass
 
@@ -38,7 +38,7 @@ def ordine_formato(g):
         return (2, -1, "")
     if g == "Wishlist":
         return (2, 0, "")
-    if g == "Deck building":       # sotto la wishlist (9 nov 2026)
+    if g == "Deck builder":        # sotto la wishlist (9 nov 2026; «Deck building» fino al 10 nov)
         return (2, 1, "")
     return (0, ORDINE_FORMATI.index(g), "") if g in ORDINE_FORMATI else (1, 0, g)
 
