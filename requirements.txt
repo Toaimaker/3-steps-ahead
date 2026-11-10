@@ -1,0 +1,4 @@
+pillow==12.3.0
+numpy==2.4.6
+pyglet==2.1.19
+certifi==2026.6.17

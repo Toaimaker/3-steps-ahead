@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://toaimaker.github.io/3-steps-ahead/sitemap.xml

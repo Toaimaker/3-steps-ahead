@@ -1,0 +1,4430 @@
+"""Il mazzo a carte intere su un tavolo (Autore, 9 nov 2026: «aggiungiamo un pulsante che ci permette di vedere il mazzo non piu' per pillows ma per carte in un nuovo
+spazio dove possiamo muoverle, spostarle impilarle / un'area grande per il mazzo sotto e una piu' stretta per la sideboard sopra»).
+
+Una tela sola, due zone: in alto la fascia stretta della sideboard (col comandante e il compagno, fermi), sotto l'area grande del mazzo. Le carte sono immagini con gli angoli
+arrotondati in antialias e un'ombra morbida, in pile sfalsate quanto basta per leggere nome e costo.
+Una carta per nome, non una per copia (stesso giorno: «invece di mettere ogni copia di una carta, mettiamo un counter su ogni carta che ci permette di aumentare fino a 4 la sua
+tiratura nel mazzo / in tutti i mazzi accanto a ogni carta avremo un numero che indica quante ne abbiamo inserite cosi' anche da sovrapposte sappiamo la quantita' accanto al
+nome / se clicco su una carta in mezzo a una colonna, la colonna si espande e mi mostra la carta con il suo counter»):
+- accanto al nome, sul bordo sinistro della carta, il numero delle copie: si legge anche nella pila;
+- sulle carte intere (l'ultima di ogni pila, o quella aperta) il contatore − N +, nei mazzi che si cambiano (Wishlist e Deck building): fino al limite del formato
+  (4, 1 nel Brawl, senza limite le basi e le carte «any number», `costruttore_mazzi.limite`), contando mazzo e sideboard insieme; a 0 la carta esce;
+- un clic su una carta in mezzo a una pila apre la pila: quella carta si vede intera col suo contatore, le altre scendono; un altro clic la richiude.
+Trascinare sposta la carta con tutte le copie (Maiuscolo: tutta la pila); lasciata su una pila ci si impila, altrove fa una pila nuova; fra fascia e area passa fra mazzo e
+sideboard. Il doppio clic passa UNA copia dall'altra parte. Una carta e' una sola per zona: arrivando dove c'e' gia', le copie si sommano.
+Il mazzo della Wishlist o di Deck building cambia davvero (mazzi_salvati); uno di Arena o del meta no: li' e' solo la disposizione, e la testata lo dice.
+La disposizione resta, mazzo per mazzo, in Log_Arena/tavoli_mazzi.json; se la lista nel frattempo e' cambiata si riparte per costo.
+Anche nel builder (stesso giorno: «questa option la voglio anche nell'editor di creazione mazzo, solo che anche qui posso trascinare dentro le carte direttamente dalla
+collezione o avere una tab di ricerca veloce per i nomi»): il pulsante Card view del builder apre il tavolo sopra il builder, alla sua misura, cosi' a sinistra resta la
+Collection. Il tavolo lavora sul mazzo del builder (editore): ogni cambio passa al builder, e ogni cambio del builder torna sul tavolo (allinea). Una carta trascinata dalla
+Collection cade dove la lasci (sulla pila sotto il mouse, nella fascia in sideboard); la casella Add card cerca per nome fra le carte del formato: Invio la mette nel mazzo,
+Maiuscolo+Invio in sideboard.
+Le connessioni padre -> figlio (stesso giorno, Autore: «quando premo synergies si blocca, ascolta fa cosi' togli il meccanismo di synergies, metti un pallino sotto
+le carte e tirando quel pallino posso agganciarle ad altre, la prima carta e' padre e chi riceve il pallino e' figlio, lo strumento impara sinergie guardando le connessioni
+tra padre e figlio»): niente pulsante ne' pannello. Sotto ogni carta che si vede intera un pallino d'oro: tirato su un'altra carta fa la connessione dal padre al figlio,
+una freccia d'oro dritta da pallino a pallino (una carta coperta nella pila con una freccia ha il pallino piccolo sul bordo destro della barra del nome), che
+segue la carta mentre la trascini; rifatta, la toglie, e la toglie anche la ✕ che compare a meta' della freccia sotto il puntatore (o il tasto destro). Il ⇄ accanto
+al pallino, nei mazzi che si cambiano, sostituisce la carta con una della collezione (prima quelle che hai). Il foglio non ha bordi: il pan col tasto centrale va ovunque e le carte si lasciano anche a sinistra e sopra.
+Ogni punto di una carta la prende (anche dove una freccia le passa vicino): il punto si cerca nella geometria delle pile, non nei pezzi disegnati. Per una carta coperta nella pila: un clic la apre e ha il suo pallino. Le connessioni e cosa ne impara lo strumento
+stanno in `rete_sinergie.py`.
+Il foglio (stesso giorno: «dammi la possibilita' di zoomare sul foglio / togli size sml e semplicemente fammi alzare la barra di separazione tra foglio e sideboard /
+se riduco la sideboard le carte si rimpiccioliscono fino a sparire se tolgo tutto lo spazio della sideboard / possiamo usare un segno sulla linea tra foglio e
+sideboard per indicare dove trascinare su o giu' / movimento libero nel foglio, vincolato con snap solo se impilo le carte e con semplice de snap, se le trascino
+via l'una dall'altra, si slegano»): lo zoom del foglio con la rotella (intorno al puntatore) o con − % + Fit nella testata, il pan col tasto centrale; la fascia della sideboard si alza e
+si abbassa trascinando la barra col segno ▲▼, e le sue carte prendono la scala che ci sta, fino a sparire; le carte si muovono libere sul foglio e si impilano
+solo se le lasci sopra un'altra pila, tirate fuori dalla pila se ne staccano. Zoom e fascia si salvano con la disposizione.
+`--prova` (fuori schermo): pile, contatore e limiti, colonna aperta, trascinamenti, cambio di zona, salvataggio e ripresa, il builder, lo zoom, la fascia, il pallino padre -> figlio, con le negative."""
+import os, sys
+_casa = os.path.dirname(os.path.abspath(__file__))      # si sale fino a percorsi.py, che mette nel sys.path tutte le cartelle del Companion
+while not os.path.isfile(os.path.join(_casa, "percorsi.py")):
+    _casa = os.path.dirname(_casa)
+if _casa not in sys.path:
+    sys.path.insert(0, _casa)
+import percorsi  # noqa: E402
+import collections
+import json
+import math
+import threading
+
+import capsule as CAP
+import disegni as DG
+import mazzi_salvati as MS
+import rete_sinergie as RS
+import tela_gpu as TG
+
+from tema import CI as C, barra_scura
+from widget import pulsante_solido
+
+import account as _ACC  # noqa: E402
+FILE = _ACC.lega(globals(), "FILE", "tavoli_mazzi.json")     # Log_Arena/tavoli_mazzi.json; nell'app pubblica uno per account (10 nov 2026, Magic 12)
+BASE_W = 146                    # la carta a zoom 1; le posizioni si salvano in questa scala
+SCALE = dict(S=0.8, M=1.0, L=1.25)      # le grandezze del primo giro: una disposizione salvata allora riprende il suo zoom
+ZOOM_MIN, ZOOM_MAX = 0.3, 2.0
+FASCIA_DEF = 250                # l'altezza della fascia della sideboard all'apertura, in pixel
+SPARISCE = 0.16                 # sotto questa scala le carte della fascia non si disegnano piu'
+
+MAX_PILA = 10                   # oltre, la pila si divide (o si allunga, se il mazzo non sta in una riga)
+MARGINE, SPAZIO = 22, 20        # dal bordo, fra le pile (il numero delle copie sporge a sinistra della carta)
+ETICHETTA = 30                  # la riga del titolo di una zona
+APERTA = 8                      # lo spazio sotto la carta aperta in mezzo a una pila
+# le label (Autore, 9 nov 2026: «la possibilita' di creare delle label di carte dentro le quali diamo un nome: es le carte in una label sono le carte finisher»;
+# scelta «riquadro sul foglio»): un riquadro col nome in alto, sotto le carte; misure in coordinate del mazzo (scala 1)
+LARGO_OUT, RIGA_OUT = 220, 20     # l'outliner: la larghezza e l'altezza di una riga
+FG_AIUTO, FG_DICI = "#ffffff", "#fff2c4"
+INFO_L, INFO_H, TESTA_HUD = 236, 84, 22     # l'HUD delle carte e della curva, in alto a destra sul foglio: larghezza, corpo, testa
+FONDO_HUD = (16, 16, 20, 168)       # lo sfondo semitrasparente dell'HUD      # il testo sulla testa azzurra dei comandi: il titolo e cosa e' appena successo
+TIT_L, PAD_L = 26, 18           # l'altezza del titolo, l'aria intorno alle pile quando la label nasce
+FONDO_L, TESTA_L, BORDO_L, SEGNO_L = "#26262c", "#303038", "#55555f", "#7a7a86"
+R_PUNTO = 7                     # il raggio del dot di una linea, in pixel
+GRIGIO_L = "#6a6a76"            # il colore di una label nuova
+OPZIONI = "_opzioni"            # nel file delle disposizioni: le preferenze del tavolo (non e' un mazzo)
+# i comandi del tavolo: solo nella finestrella in basso a destra (Autore, 10 nov 2026: «il menu dei comandi deve esistere solo e unicamente in basso a destra
+# come piccola finestra»); prima erano una riga sotto la testata
+COMANDI = (("Wheel", "zoom"), ("Middle-drag", "pan"), ("Drag a card", "move · drop on a pile stacks"), ("Shift+drag", "the whole pile"),
+           ("Click", "opens a pile"), ("Double-click", "one copy across"), ("Gold dot → card", "parent → child"), ("Click a line", "color and weight"),
+           ("✕ · right-click", "unlink"), ("Pin · double-click a line", "adds a dot"), ("Drag on the empty sheet", "select"), ("≡ in the frame", "label: name, color"),
+           ("A", "frame the whole network"), ("F", "frame the selection (or the card picked in the outliner)"), ("Esc", "clear the selection, then close"))
+COMANDI_MOD = (("− +", "copies"), ("⇄", "replace the card"))
+COMANDI_VISTA = (("Wheel", "zoom"), ("Middle-drag", "pan"), ("Drag a card", "move it (deck and sideboard stay as they are)"), ("Click", "opens a pile, selects the card"),
+                 ("A", "frame the whole network"),
+                 ("F", "frame the selection"), ("Hover", "the card large"), ("Edit the deck", "to change the board"), ("Esc", "close"))
+_FOTO = {}                      # (nome, larghezza) -> PhotoImage: le carte gia' pronte, fra un'apertura e l'altra
+_CHIAVE = threading.Lock()
+
+
+def misure(s):
+    """Larghezza, altezza, sfalsamento della pila e ombra alla scala s. Lo sfalsamento lascia leggere nome e costo della carta sotto (il 12,5% dell'altezza)."""
+    w = round(BASE_W * s)
+    h = round(w * CAP.ALTA_CARTA / CAP.LARGA_CARTA)
+    return w, h, round(h * 0.125), max(4, round(7 * s))
+
+
+# la griglia del foglio (Autore, 10 nov 2026: «facciamo che il movimento e' libero ma poi si allineano come se fossero su una griglia regolare»): in orizzontale
+# una colonna e' una carta piu' lo spazio fra le pile, in verticale il passo con cui le carte si sfalsano in una pila; in coordinate del mazzo (scala 1)
+PASSO_X = BASE_W + SPAZIO
+PASSO_Y = misure(1.0)[2]
+
+
+def a_griglia(x, y, mezza=False):
+    """Il punto della griglia piu' vicino (mezza: anche a meta' colonna, per i dot)."""
+    px = PASSO_X / 2 if mezza else PASSO_X
+    return MARGINE + round((x - MARGINE) / px) * px, round(y / PASSO_Y) * PASSO_Y
+
+
+def carica_tavoli(f=None):
+    try:
+        with open(f or FILE, encoding="utf-8") as g:
+            return json.load(g)
+    except (OSError, ValueError):
+        return {}
+
+
+def salva_tavolo(chiave, dato, f=None):
+    if f is None and _ACC.sola_lettura():       # All accounts: il Board si guarda e basta
+        return
+    f = f or FILE
+    with _CHIAVE:
+        d = carica_tavoli(f)
+        d[chiave] = dato
+        os.makedirs(os.path.dirname(f), exist_ok=True)
+        with open(f + ".tmp", "w", encoding="utf-8") as g:
+            json.dump(d, g, ensure_ascii=False, indent=1)
+        os.replace(f + ".tmp", f)
+
+
+def cuoci_carta(nome, s):
+    """La carta intera alla scala s come immagine PIL: angoli arrotondati (maschera a 3x ridotta: niente scalini) e un'ombra morbida sotto. -> (PIL, ombra p) o None
+    se l'immagine non c'e' ancora."""
+    w, h, _off, p = misure(s)
+    src = next((f for f in ((CAP.file_mini(nome), CAP.file_immagine(nome)) if w <= 200 else (CAP.file_immagine(nome), CAP.file_mini(nome))) if os.path.exists(f)), None)
+    if src is None:
+        return None
+    from PIL import Image, ImageDraw, ImageFilter
+    try:
+        im = Image.open(src).convert("RGBA").resize((w, h), Image.LANCZOS)
+    except Exception:
+        return None
+    m = Image.new("L", (w * 3, h * 3), 0)
+    ImageDraw.Draw(m).rounded_rectangle((0, 0, w * 3 - 1, h * 3 - 1), radius=round(w * 3 * 0.047), fill=255)
+    im.putalpha(m.resize((w, h), Image.LANCZOS))
+    tela = Image.new("RGBA", (w + 2 * p, h + 2 * p), (0, 0, 0, 0))
+    ombra = Image.new("L", tela.size, 0)
+    ImageDraw.Draw(ombra).rounded_rectangle((p, p + p // 3, p + w - 1, p + h - 1 + p // 3), radius=round(w * 0.047), fill=170)
+    nera = Image.new("RGBA", tela.size, (0, 0, 0, 255))
+    nera.putalpha(ombra.filter(ImageFilter.GaussianBlur(p / 2.2)))
+    tela = Image.alpha_composite(tela, nera)
+    tela.alpha_composite(im, (p, p))
+    return tela, p
+
+
+def foto_carta(tk, nome, s):
+    """La carta alla scala s come PhotoImage (la tela di Tk), con la sorgente registrata anche per la scheda. None se l'immagine non c'e' ancora."""
+    w, _h, _off, _p = misure(s)
+    k = (nome, w)
+    if k in _FOTO:
+        return _FOTO[k]
+    c = cuoci_carta(nome, s)
+    if c is None:
+        return None
+    from PIL import ImageTk
+    _FOTO[k] = TG.registra(ImageTk.PhotoImage(c[0]), c[0])
+    if len(_FOTO) > 600:
+        for x in list(_FOTO)[:200]:
+            TG.dimentica(_FOTO.pop(x))
+    return _FOTO[k]
+
+
+_FOTO_2X = {}       # nome -> (chiave della texture, ombra): sulla scheda una carta si cuoce una volta sola, a 2x, e la scheda la scala a ogni zoom
+
+
+def foto_gpu(nome):
+    """La carta per la tela sulla scheda video: cotta una volta a scala 2 (nitida fino allo zoom 200%), poi la scheda la scala (con le mipmap). -> (chiave, ombra a 2x)
+    o None se l'immagine non c'e' ancora. Prima ogni scatto di zoom rifaceva le immagini di tutte le carte: 135-171 ms."""
+    if nome in _FOTO_2X:
+        return _FOTO_2X[nome]
+    c = cuoci_carta(nome, 2.0)
+    if c is None:
+        return None
+    _FOTO_2X[nome] = (TG.registra_pil(f"carta2x:{nome}", c[0]), c[1])
+    return _FOTO_2X[nome]
+
+
+def pallino_nodo(lato=16):
+    """Il pallino delle carte: un tondo d'oro col bordo scuro e un punto chiaro nel mezzo (antialias); 16 pixel alla base, 10 sulla barra del nome."""
+    def fa():
+        d = DG.Disegno(lato, lato)
+        c = lato / 2
+        d.cerchio(c, c, c - 0.8, riempi=(214, 172, 46, 255), bordo=(16, 16, 20, 255), larghezza=1.4 if lato > 12 else 1.1)
+        d.cerchio(c, c, lato * 0.15, riempi=(255, 244, 205, 255))
+        return d
+    return DG._icona(("pallino_nodo", lato), fa)
+
+
+def pallino_punto(lato=14):
+    """Il dot di una linea (come in Nuke): un tondo scuro col bordo grigio perlato e il centro chiaro."""
+    def fa():
+        d = DG.Disegno(lato, lato)
+        c = lato / 2
+        d.cerchio(c, c, c - 0.8, riempi=(34, 34, 40, 255), bordo=(201, 202, 208, 255), larghezza=1.6)
+        d.cerchio(c, c, lato * 0.16, riempi=(230, 231, 236, 255))
+        return d
+    return DG._icona(("pallino_punto", lato), fa)
+
+
+def segno_chiodo(lato=20):
+    """Il chiodo sulla freccia accesa (Autore, 10 nov 2026: «fai che il dot si aggiunga con un nodo chiodo»): mette un dot sulla linea in quel punto.
+    Un tondo scuro col bordo perlato, dentro la testa del chiodo e il gambo."""
+    def fa():
+        d = DG.Disegno(lato, lato)
+        c = lato / 2
+        d.cerchio(c, c, c - 0.8, riempi=(30, 30, 36, 255), bordo=(201, 202, 208, 255), larghezza=1.4)
+        d.linea([(c, c - lato * 0.06), (c, c + lato * 0.28)], (230, 231, 236, 255), larghezza=1.8)
+        d.cerchio(c, c - lato * 0.14, lato * 0.15, riempi=(230, 231, 236, 255))
+        return d
+    return DG._icona(("segno_chiodo", lato), fa)
+
+
+def segno_menu(lato=26):
+    """Le tre linee del menu (al centro della cornice della selezione e sul titolo della label): un quadrato scuro col bordo azzurro e tre linee chiare."""
+    def fa():
+        d = DG.Disegno(lato, lato)
+        d.rett(0.8, 0.8, lato - 0.8, lato - 0.8, riempi=(24, 26, 32, 240), bordo=(36, 186, 255, 255), larghezza=1.4, raggio=lato * 0.18)
+        for k in (0.34, 0.5, 0.66):
+            d.linea([(lato * 0.28, lato * k), (lato * 0.72, lato * k)], (235, 236, 240, 255), larghezza=1.8)
+        return d
+    return DG._icona(("segno_menu", lato), fa)
+
+
+def mescola(c1, c2, k):
+    """Il colore c1 portato verso c2 di k (0..1)."""
+    a, b = c1.lstrip("#"), c2.lstrip("#")
+    return "#%02x%02x%02x" % tuple(round(int(a[i:i + 2], 16) * (1 - k) + int(b[i:i + 2], 16) * k) for i in (0, 2, 4))
+
+
+def croce(lato=12):
+    """La ✕ disegnata (sulla scheda il font non ha il segno): due tratti grigi in antialias."""
+    def fa():
+        d = DG.Disegno(lato, lato)
+        b = lato * 0.22
+        d.linea([(b, b), (lato - b, lato - b)], (170, 170, 180, 255), larghezza=1.6)
+        d.linea([(b, lato - b), (lato - b, b)], (170, 170, 180, 255), larghezza=1.6)
+        return d
+    return DG._icona(("croce", lato), fa)
+
+
+def segno_x(lato=20):
+    """La ✕ che toglie una connessione: un tondo scuro col bordo d'oro e la croce chiara (antialias)."""
+    def fa():
+        d = DG.Disegno(lato, lato)
+        c = lato / 2
+        d.cerchio(c, c, c - 0.8, riempi=(30, 22, 18, 255), bordo=(214, 172, 46, 255), larghezza=1.4)
+        b = lato * 0.2
+        d.linea([(c - b, c - b), (c + b, c + b)], (255, 236, 200, 255), larghezza=1.8)
+        d.linea([(c - b, c + b), (c + b, c - b)], (255, 236, 200, 255), larghezza=1.8)
+        return d
+    return DG._icona(("segno_x", lato), fa)
+
+
+def segno_stile(lato=20):
+    """Sulla freccia accesa, accanto alla ✕: il tondo coi tre colori che apre la tavolozza della linea (colore e importanza)."""
+    def fa():
+        d = DG.Disegno(lato, lato)
+        c = lato / 2
+        d.cerchio(c, c, c - 0.8, riempi=(30, 30, 36, 255), bordo=(201, 202, 208, 255), larghezza=1.4)
+        r = lato * 0.12
+        for k, col in enumerate(((214, 172, 46, 255), (36, 186, 255, 255), (217, 83, 79, 255))):
+            a = math.pi / 2 + k * 2 * math.pi / 3
+            d.cerchio(c + lato * 0.2 * math.cos(a), c - lato * 0.2 * math.sin(a), r, riempi=col)
+        return d
+    return DG._icona(("segno_stile", lato), fa)
+
+
+def chiaro(col, k=0.55):
+    """Il colore schiarito verso il bianco (la freccia sotto il puntatore)."""
+    c = col.lstrip("#")
+    r, g, b = int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16)
+    return "#%02x%02x%02x" % tuple(round(x + (255 - x) * k) for x in (r, g, b))
+
+
+def segno_scambia(lato=16):
+    """Il ⇄ sotto la carta: un tondo scuro col bordo azzurro e due frecce opposte (antialias)."""
+    def fa():
+        d = DG.Disegno(lato, lato)
+        c = lato / 2
+        d.cerchio(c, c, c - 0.8, riempi=(24, 24, 28, 255), bordo=(36, 186, 255, 255), larghezza=1.2)
+        b, h = lato * 0.26, lato * 0.13
+        bianco = (230, 240, 250, 255)
+        d.linea([(c - b, c - h), (c + b * 0.55, c - h)], bianco, larghezza=1.3)
+        d.poligono([(c + b, c - h), (c + b * 0.45, c - h - lato * 0.12), (c + b * 0.45, c - h + lato * 0.12)], riempi=bianco)
+        d.linea([(c + b, c + h), (c - b * 0.55, c + h)], bianco, larghezza=1.3)
+        d.poligono([(c - b, c + h), (c - b * 0.45, c + h - lato * 0.12), (c - b * 0.45, c + h + lato * 0.12)], riempi=bianco)
+        return d
+    return DG._icona(("segno_scambia", lato), fa)
+
+
+def segno_barra():
+    """Il segno sulla barra fra fascia e foglio: una pillola scura col bordo e i due triangoli ▲▼ disegnati (antialias), che dice «trascinami su e giu'»."""
+    def fa():
+        d = DG.Disegno(60, 18)
+        d.rett(0.5, 0.5, 59.5, 17.5, riempi=(32, 32, 36, 255), bordo=(120, 120, 128, 255), larghezza=1.0, raggio=8.5)
+        for cx in (22, 38):
+            d.poligono([(cx - 4.5, 7.5), (cx + 4.5, 7.5), (cx, 3)], riempi=(220, 220, 226, 255))      # su
+            d.poligono([(cx - 4.5, 10.5), (cx + 4.5, 10.5), (cx, 15)], riempi=(220, 220, 226, 255))    # giu'
+        return d
+    return DG._icona(("segno_barra",), fa)
+
+
+def pillola(l, h, riempi, bordo=None):
+    """Una pillola arrotondata in antialias (disegni.py), fatta una volta per misura e colori."""
+    def fa():
+        d = DG.Disegno(l, h)
+        d.rett(0.5, 0.5, l - 0.5, h - 0.5, riempi=riempi, bordo=bordo, larghezza=1.0, raggio=h / 2 - 0.5)
+        return d
+    return DG._icona(("pillola", l, h, riempi, bordo), fa)
+
+
+def tondo_segno(lato, riempi, segno, colore):
+    """Il bottone tondo del contatore, col meno o col piu' disegnati (non scritti: centrati)."""
+    def fa():
+        d = DG.Disegno(lato, lato)
+        d.cerchio(lato / 2, lato / 2, lato / 2 - 0.5, riempi=riempi)
+        b = lato * 0.27
+        d.linea([(lato / 2 - b, lato / 2), (lato / 2 + b, lato / 2)], colore, larghezza=max(1.6, lato / 11))
+        if segno == "+":
+            d.linea([(lato / 2, lato / 2 - b), (lato / 2, lato / 2 + b)], colore, larghezza=max(1.6, lato / 11))
+        return d
+    return DG._icona(("tondo_segno", lato, riempi, segno, colore), fa)
+
+
+class TavoloCarte:
+    """La finestra del tavolo. main, side, comandante, compagno: {nome: copie}. carte_db: {nome: dict(cmc, tipo, testo)}. modificabile: (sezione, id) di mazzi_salvati, o None.
+    formato: per il limite delle copie. al_cambio(lista, side): chiamata quando il mazzo cambia (solo se modificabile). alla_fine(): chiuso il tavolo, se il mazzo e' cambiato."""
+
+    def __init__(self, tk, F, padre, nome, main, side, comandante=None, compagno=None, carte_db=None, chiave=None, modificabile=None, al_cambio=None,
+                 file_tavoli=None, file_mazzi=None, fuori=False, alla_fine=None, formato="Standard", limite=None, editore=None, nomi_ricerca=None, geometria=None,
+                 chiave_rete=None, file_rete=None, chiave_vecchia=None, sola_lettura=False):
+        self.tk, self.F = tk, F
+        self.nome, self.carte_db, self.formato = nome or "Deck", carte_db or {}, formato
+        self.chiave, self.modificabile, self.al_cambio, self.alla_fine = chiave, modificabile, al_cambio, alla_fine
+        self.chiave_vecchia = chiave_vecchia      # dove stava la disposizione prima (il builder la teneva a parte: «builder:<id>»)
+        self.file_tavoli, self.file_mazzi = file_tavoli, file_mazzi
+        self._limite = limite
+        self.editore = editore              # il builder: riceve (lista, side) a ogni cambio, e salva lui
+        self.nomi_ricerca = nomi_ricerca    # i nomi per la ricerca veloce (una funzione: si leggono quando servono)
+        # sola lettura: il Board aperto dalla finestra del mazzo, da guardare (Autore, 10 nov 2026: «non avra' i tool di editing del mazzo, quelli si usano solo
+        # dopo essere entrati nella modalita' edit», «sara' personalizzabile solo dopo essere andati in modalita' edit»): zoom, pan, una pila che si apre, la carta
+        # grande; niente pallini, contatori, ⇄, connessioni, dot, label, selezione, Arrange network, Grid snap; la disposizione non si salva
+        self.sola = bool(sola_lettura) or _ACC.sola_lettura()       # All accounts: sempre in sola lettura (10 nov 2026)
+        # in sola lettura le carte si spostano lo stesso, e la disposizione resta (Autore, 10 nov 2026: «e' vero che non abbiamo le funzioni di edit ma le carte
+        # possono cmq essere spostate e trascinate in giro»): una carta non cambia zona, il mazzo non cambia. Con All accounts no: li' non si salva niente
+        self.sposta = bool(sola_lettura) and not _ACC.sola_lettura()
+        self.modifica = bool(modificabile or editore) and not self.sola
+        # le connessioni padre -> figlio: le stesse per lo stesso mazzo, dalla scheda e dal builder (chiave_rete)
+        self.rete = RS.Rete(chiave_rete if chiave_rete is not None else chiave, file_rete)
+        self.tira, self._img_rete, self._segmenti, self._arco = None, None, [], None
+        self._xy = None             # il punto della tela dell'ultimo clic o movimento: da li' si cerca la carta
+        self._fine_drag = 0.0       # quando e' finito l'ultimo trascinamento (la carta grande non salta fuori subito dopo)
+        self.cambiato = False
+        self.voci = {}          # id -> dict(nome, zona, q): una carta per nome e zona
+        self.pile = []          # dict(zona="main"|"side"|"cmd", x, y, carte=[id...], aperta=id|None) in coordinate di scala M
+        self.zoom = 1.0             # lo zoom del foglio (il mazzo)
+        self.hs = FASCIA_DEF        # l'altezza della fascia della sideboard, in pixel: la barra di separazione
+        self.separa = None          # la barra mentre la trascini
+        self._zoom_dopo = None
+        self.drag = None
+        self.sel = []           # le pile selezionate (riquadro sul vuoto, Ctrl+clic): si spostano insieme, e da loro nasce una label
+        self.banda = None       # il riquadro di selezione mentre lo tiri
+        self.ridim = None       # l'angolo di una label mentre lo tiri
+        self.etichette = []     # le label: dict(nome, x, y, w, h) in coordinate del mazzo (scala 1), riquadri col nome; le carte dentro ne fanno parte
+        # i dot delle linee (Autore, 9 nov 2026: «la possibilita' di spezzare le linee con dei dot dai quali possiamo fare partire altre linee (come in nuke)»):
+        # id -> dict(x, y nel mazzo a scala 1, padre = la carta da cui viene il segnale, da = il dot prima nella catena o None); vie: (padre, figlio) -> l'ultimo dot
+        self.punti, self.vie = {}, {}
+        self.sel_punti = set()
+        self.sel_label = set()          # le label tutte dentro il riquadro di selezione: si spostano col gruppo
+        self._pezzi, self._tronchi = [], []
+        self._stile_pop = self._nome_pop = None
+        # la griglia (Autore, 10 nov 2026: «rendiamo l'opzione spuntabile in alto: grid snap»): una preferenza sola per tutti i mazzi, nel file delle disposizioni
+        pref = carica_tavoli(self.file_tavoli).get(OPZIONI) or {}
+        self.griglia = bool(pref.get("griglia", True))
+        self.comandi_aperti = False      # la lista dei comandi parte sempre chiusa (Autore, 10 nov 2026: «commands parte chiuso»)
+        self.outliner_aperto = bool(pref.get("outliner", True))    # l'outliner a sinistra, chiuso o aperto (10 nov 2026)
+        self.sel_carta = None       # la carta scelta col clic, sul Board o nell'outliner: F la inquadra
+        self.clic = None        # il clic semplice aspetta un attimo: se arriva il doppio clic, non apre la pila
+        self.hover = dict(cid=None, timer=None, pop=None)
+        self.pronte, self.attese = collections.deque(), set()
+        self.lista = CAP.Liste(tk, F)
+        # la finestra, sopra quella del mazzo (transient, mai topmost: non sta sopra Arena)
+        f = self.fin = tk.Toplevel(padre, bg=C["fondo"])
+        f.transient(padre)
+        f.title(f"Board · {self.nome}")
+        barra_scura(f, C["fondo"], C["titolo"], C["filo"])
+        padre.update_idletasks()
+        L = min(1500, f.winfo_screenwidth() - 80)
+        H = min(980, f.winfo_screenheight() - 90)
+        if fuori:
+            f.geometry(f"{L}x{H}+5000+20")
+        elif geometria:     # nel builder: sopra il builder, alla sua misura (a sinistra resta la Collection)
+            f.geometry(geometria)
+        else:
+            x = padre.winfo_rootx() + (padre.winfo_width() - L) // 2
+            y = padre.winfo_rooty() + max(0, (padre.winfo_height() - H) // 2)
+            f.geometry(f"{L}x{H}+{max(0, x)}+{max(0, y)}")
+        f.minsize(900, 600)
+        f.after(50, self.pulsante_ingrandisci)       # una finestra transient su Windows non ha il pulsante per ingrandirla: lo rimette
+        f.bind("<Escape>", lambda e: self.esc())
+        f.bind("<Key>", self.tasto, add="+")       # A e F
+        f.protocol("WM_DELETE_WINDOW", self.chiudi)
+        self.testata()
+        # il foglio sulla scheda video (Autore, 9 nov 2026: «Sì, portalo»): la tela GPU ha le funzioni della tela di Tk; se la scheda non parte, Tk come prima.
+        # Senza bordi: il pan va ovunque (confine=False nella tela di Tk)
+        self.cv = TG.crea(tk, f, bg=C["scheda"], highlightthickness=0, bd=0, confine=False)
+        self.gpu = not isinstance(self.cv, tk.Canvas)
+        self.outliner()
+        self.cv.pack(fill="both", expand=True)
+        self.pannello_comandi()
+        self.info_aperto = True         # l'HUD delle carte e della curva: si chiude e si riapre dalla sua testa
+        self._hud_rect, self._hud_vista = None, None
+        self.fin.after(120, self.giro_hud)
+        i = 0
+        for zona, carte in (("cmd", dict(comandante or {}, **(compagno or {}))), ("main", main or {}), ("side", side or {})):
+            for n, q in carte.items():
+                if q > 0:
+                    self.voci[i] = dict(nome=n, zona=zona, q=q); i += 1
+        self.compagno = set(compagno or {})
+        f.update_idletasks()        # la tela alla sua misura: le pile per costo vanno a capo sulla larghezza vera
+        if self.riprendi():
+            self.disegna()      # la disposizione di prima: si disegna subito, senza aspettare che la finestra cambi misura
+        else:
+            self.disponi("cost", salva=False)
+        # un clic solo, sulla tela (premi_tela): la barra, il pallino, il contatore, se no la carta sotto il puntatore, in ogni suo punto (Autore, 9 nov 2026:
+        # «ovunque appoggio il mouse voglio muovere la carta»). Prima i clic erano legati ai pezzi disegnati e lo strato delle frecce, sopra le carte, se li prendeva.
+        self.cv.bind("<Double-Button-1>", self.doppio)
+        self.cv.bind("<ButtonPress-3>", self.destro)          # il tasto destro su una freccia la toglie
+        self.cv.bind("<B1-Motion>", self.trascina)
+        self.cv.bind("<ButtonRelease-1>", self.rilascia)
+        self.cv.bind("<Motion>", self.passa)
+        self.cv.bind("<Leave>", lambda e: self.nascondi())
+        # la rotella e' lo zoom, intorno al puntatore; il tasto centrale tenuto premuto sposta il foglio (Autore, 9 nov 2026)
+        self.cv.bind("<MouseWheel>", lambda e: self.rotella(e) if not e.state & 0x1 else None)
+        self.cv.bind("<Control-MouseWheel>", self.rotella)
+        self.cv.bind("<ButtonPress-2>", self.pan_inizio)
+        self.cv.bind("<B2-Motion>", self.pan_muovi)
+        self.cv.bind("<ButtonRelease-2>", self.pan_fine)
+        self.cv.bind("<ButtonPress-1>", self.premi_tela)
+        if self.gpu:        # i tasti che arrivano alla finestra della scheda video (A, F, Esc): la tela li passa qui
+            self.cv.bind("<Key>", self.tasto)
+            self.cv.bind("<Escape>", lambda e: self.esc())
+        self.cv.bind("<Shift-MouseWheel>", lambda e: self.cv.xview_scroll(-1 if e.delta > 0 else 1, "units"))
+        self.cv.bind("<Configure>", lambda e: self.disegna())
+        self.carica_mancanti()
+        f.lift(); f.focus_set()
+
+    # ------------------------------------------------ la testata
+    def testata(self):
+        tk, F = self.tk, self.F
+        t = tk.Frame(self.fin, bg=C["cap"]); t.pack(fill="x")
+        tk.Label(t, text=self.nome, bg=C["cap"], fg=C["titolo"], font=F(13, True)).pack(side="left", padx=(14, 12), pady=10)
+
+        if self.nomi_ricerca is not None and self.modifica:
+            self.ricerca(t)
+        dx = tk.Frame(t, bg=C["cap"]); dx.pack(side="right", padx=10)
+        # lo zoom del foglio (al posto di S M L): − e + a passi, il numero torna al 100%, Fit fa stare il mazzo nella finestra; anche Ctrl+rotella
+        for testo, azione in (("Fit", lambda: self.adatta()), ("+", lambda: self.zoom_a(self.zoom * 1.15)), ("%", None), ("−", lambda: self.zoom_a(self.zoom / 1.15))):
+            if azione is None:
+                self.l_zoom = tk.Label(dx, text="100%", bg=C["cap"], fg=C["titolo"], font=F(9, True), width=5, cursor="hand2"); self.l_zoom.pack(side="right")
+                self.l_zoom.bind("<Button-1>", lambda e: self.zoom_a(1.0))
+                continue
+            b = tk.Label(dx, text=testo, bg=C["cap"], fg=C["grigio"] if testo == "Fit" else C["titolo"], font=F(9 if testo == "Fit" else 12, True), padx=6, cursor="hand2")
+            b.pack(side="right", padx=(8, 0) if testo == "Fit" else 0)
+            b.bind("<Button-1>", lambda e, a=azione: a())
+        tk.Label(dx, text="ZOOM", bg=C["cap"], fg=C["muto"], font=F(7, True)).pack(side="right", padx=(14, 4))
+        self.b_pagina = tk.Label(dx, text="⤢ Full page", bg=C["cap"], fg=C["titolo"], font=F(9, True), cursor="hand2", padx=6)
+        self.b_pagina.pack(side="right", padx=(10, 0))
+        self.b_pagina.bind("<Button-1>", lambda e: self.tutta_pagina())
+        # By type, By cost e Label non ci sono piu' (Autore, 10 nov 2026: «togli i pulsanti by type by cost ecc»): la prima apertura dispone per costo,
+        # la label nasce dalle tre linee della cornice della selezione. Resta un pulsante solo: la rete riordinata per connessioni (stesso giorno)
+        if self.sola:
+            tk.Label(dx, text="VIEW ONLY · Cards can be moved · Edit the deck to change it" if self.sposta else "VIEW ONLY · Edit the deck to change the board",
+                     bg=C["cap"], fg=C["muto"], font=F(8, True)).pack(side="right", padx=(4, 12))
+            self.b_griglia = None
+        else:
+            b = pulsante_solido(tk, F, dx, "Arrange network", False, lambda: self.disponi_rete(), alto=28, bg=C["cap"])
+            b.configure(width=140); b.pack(side="right", padx=(4, 12))
+            self.b_griglia = tk.Label(dx, text="  Grid snap", bg=C["cap"], fg=C["testo"], font=F(9, True), compound="left", cursor="hand2")
+            self.b_griglia.pack(side="right", padx=(4, 10))
+            self.b_griglia.bind("<Button-1>", lambda e: self.cambia_griglia())
+            self.spunta_griglia()
+        tk.Frame(self.fin, bg=C["filo"], height=1).pack(fill="x")
+
+    def spunta_griglia(self):
+        self.b_griglia.configure(image=DG.spunta(14, self.griglia, C["accento"], C["scheda"], C["grigio"], C["fondo"]))
+
+    def cambia_griglia(self, on=None):
+        """La spunta Grid snap: accesa, cio' che lasci si aggancia alla griglia; spenta, resta dove lo lasci. Si ricorda per tutti i mazzi."""
+        self.griglia = (not self.griglia) if on is None else bool(on)
+        self.spunta_griglia()
+        self.salva_pref(griglia=self.griglia)
+        self.dici("Grid snap " + ("on: what you drop lines up on the grid" if self.griglia else "off: what you drop stays where you leave it"))
+
+    def outliner(self):
+        """L'outliner, come in Maya (Autore, 10 nov 2026: «sulla sinistra voglio qualcosa come un outliner di Maya con tutta la lista carte / quantita' accanto / se
+        clicco su una di quelle carte e premo F il network deve portarmi sulla carta / l'outliner ha le carte sopra e le terre sotto separate da un piccolo spazio»,
+        «l'outliner deve essere chiudibile da sinistra a destra»): una riga per carta col numero delle copie, prima le magie, poi le terre, poi la sideboard, ogni
+        gruppo staccato. Il clic sceglie la carta (anche sul Board), F la inquadra, il doppio clic la inquadra subito. La linguetta a destra lo chiude e lo riapre."""
+        tk, F = self.tk, self.F
+        f = self.f_out = tk.Frame(self.fin, bg=C["fondo"]); f.pack(side="left", fill="y")
+        self.b_out = tk.Label(f, text="", bg=C["cap"], fg=C["titolo"], font=F(8, True), cursor="hand2", width=2)
+        self.b_out.pack(side="right", fill="y")
+        self.b_out.bind("<Button-1>", lambda e: self.apri_outliner(not self.outliner_aperto))
+        corpo = self.out_corpo = tk.Frame(f, bg=C["fondo"], width=LARGO_OUT)
+        corpo.pack_propagate(False)
+        tk.Label(corpo, text="OUTLINER", bg=C["fondo"], fg=C["muto"], font=F(7, True), anchor="w").pack(fill="x", padx=10, pady=(8, 4))
+        self.out_cv = tk.Canvas(corpo, bg=C["fondo"], highlightthickness=0, bd=0, width=LARGO_OUT)
+        self.out_cv.pack(fill="both", expand=True)
+        self.out_cv.bind("<Button-1>", lambda e: self.scegli_outliner(e))
+        self.out_cv.bind("<Double-Button-1>", lambda e: (self.scegli_outliner(e), self.inquadra_selezione()))
+        self.out_cv.bind("<MouseWheel>", lambda e: self.out_cv.yview_scroll(-1 if e.delta > 0 else 1, "units"))
+        self.out_cv.bind("<Configure>", lambda e: self.disegna_outliner())
+        self._out_righe = []
+        self.apri_outliner(self.outliner_aperto, salva=False)
+
+    def apri_outliner(self, aperto, salva=True):
+        self.outliner_aperto = bool(aperto)
+        if self.outliner_aperto:
+            self.out_corpo.pack(side="left", fill="both", before=self.b_out)
+        else:
+            self.out_corpo.pack_forget()
+        self.b_out.configure(text="◀" if self.outliner_aperto else "▶")
+        if salva:
+            self.salva_pref(outliner=self.outliner_aperto)
+
+    def gruppi_outliner(self):
+        """[(titolo, [vid])]: comandante, magie, terre, sideboard; dentro, per costo e nome."""
+        terra = lambda i: "Land" in (self.info(i).get("tipo") or "").split(" // ")[0] or self.voci[i]["nome"] in MS.BASI
+        ordinate = sorted(self.voci, key=self.ordine)
+        return [("COMMANDER", [i for i in ordinate if self.voci[i]["zona"] == "cmd"]),
+                ("", [i for i in ordinate if self.voci[i]["zona"] == "main" and not terra(i)]),
+                ("", [i for i in ordinate if self.voci[i]["zona"] == "main" and terra(i)]),
+                ("SIDEBOARD", [i for i in ordinate if self.voci[i]["zona"] == "side"])]
+
+    def disegna_outliner(self):
+        cv = getattr(self, "out_cv", None)
+        if cv is None or not cv.winfo_exists():
+            return
+        import tkinter.font as tkf
+        F = self.F
+        fnt = tkf.Font(font=F(8))
+        L = max(cv.winfo_width(), LARGO_OUT)
+        cv.delete("all")
+        self._out_righe, y = [], 2
+        primo = True
+        for titolo, vids in self.gruppi_outliner():
+            if not vids:
+                continue
+            if not primo:
+                y += 9          # un piccolo spazio fra i gruppi
+            primo = False
+            if titolo:
+                cv.create_text(10, y + 6, text=titolo, fill=C["muto"], font=F(6, True), anchor="w")
+                y += 14
+            for vid in vids:
+                v = self.voci[vid]
+                scelta = vid == self.sel_carta
+                if scelta:
+                    cv.create_rectangle(0, y, L, y + RIGA_OUT, fill="#1d3a52", width=0)
+                nome = v["nome"]
+                spazio = L - 44
+                if fnt.measure(nome) > spazio:
+                    while nome and fnt.measure(nome + "…") > spazio:
+                        nome = nome[:-1]
+                    nome += "…"
+                cv.create_text(10, y + RIGA_OUT / 2, text=nome, fill="#ffffff" if scelta else C["testo"], font=F(8), anchor="w")
+                cv.create_text(L - 10, y + RIGA_OUT / 2, text=str(v["q"]), fill=C["accento"] if scelta else C["grigio"], font=F(8, True), anchor="e")
+                self._out_righe.append((y, y + RIGA_OUT, vid))
+                y += RIGA_OUT
+        cv.configure(scrollregion=(0, 0, L, y + 6))
+
+    def scegli_outliner(self, e):
+        y = self.out_cv.canvasy(e.y)
+        vid = next((v for y0, y1, v in self._out_righe if y0 <= y < y1), None)
+        if vid is None:
+            return
+        self.sel_carta = vid
+        self.disegna_sel()
+        self.disegna_outliner()
+        self.out_cv.focus_set()
+
+    # ------------------------------------------------ inquadrare: A tutta la rete, F la selezione (come in Maya)
+    def tasto(self, e):
+        """A e F sul Board (anche quando i tasti arrivano dalla finestra della scheda video); non mentre scrivi in una casella."""
+        if isinstance(self.fin.focus_get(), self.tk.Entry):
+            return
+        k = (getattr(e, "keysym", "") or "").lower()
+        if k == "a":
+            return self.inquadra_tutto()
+        if k == "f":
+            return self.inquadra_selezione()
+
+    def rett_tutto(self):
+        """Il rettangolo di tutta la rete del mazzo, in pixel della tela: le pile, le label, i dot."""
+        rr = [self.ingombro_px(pl) for pl in self.pile if pl["zona"] == "main"]
+        rr += [self.lb_px(k) for k in range(len(self.etichette))]
+        rr += [(lambda pt: (pt[0] - 10, pt[1] - 10, pt[0] + 26, pt[1] + 10))(self.punto_xy(q)) for q in self.punti]
+        if not rr:
+            return None
+        return min(r[0] for r in rr) - 16, min(r[1] for r in rr) - 8, max(r[2] for r in rr) + 8, max(r[3] for r in rr) + 26
+
+    def rett_selezione(self):
+        cor = self.cornice_sel()
+        if cor:
+            return cor
+        if self.sel_carta in self.voci:
+            pl = self.pila_di(self.sel_carta)
+            if pl is not None and not (pl["zona"] != "main" and self.nascosta()):
+                x0, y0, x1, y1 = self.ingombro_px(pl)
+                return x0 - 16, y0 - 8, x1 + 8, y1 + 26
+        return None
+
+    def inquadra_tutto(self):
+        r = self.rett_tutto()
+        if r is None:
+            self.dici("Nothing to frame")
+            return False
+        return self.inquadra(r)
+
+    def inquadra_selezione(self):
+        r = self.rett_selezione()
+        if r is None:
+            self.dici("F frames the selection: click a card, pick one in the outliner, or drag a box")
+            return False
+        return self.inquadra(r)
+
+    def inquadra(self, r, margine=50):
+        """Lo zoom e la vista che mettono il rettangolo (pixel della tela, allo zoom di adesso) al centro della finestra, il piu' grande possibile."""
+        cv = self.cv
+        z0, o = self.zoom, self.oy("main")
+        fx0, fx1 = r[0] / z0, r[2] / z0
+        fy0, fy1 = (r[1] - o) / z0, (r[3] - o) / z0
+        W, H = max(200, cv.winfo_width()), max(200, cv.winfo_height())
+        z = min((W - 2 * margine) / max(1.0, fx1 - fx0), (H - 2 * margine) / max(1.0, fy1 - fy0))
+        z = round(max(ZOOM_MIN, min(ZOOM_MAX, z)) * 20) / 20
+        if self._zoom_dopo is not None:
+            cv.after_cancel(self._zoom_dopo)
+            self._zoom_dopo = None
+        if self.gpu:
+            cv.azzera_zoom()
+        self.zoom = z
+        self.l_zoom.configure(text=f"{round(z * 100)}%")
+        self.disegna()
+        cx, cy = (fx0 + fx1) / 2 * z, o + (fy0 + fy1) / 2 * z
+        dx, dy = cx - cv.canvasx(W / 2), cy - cv.canvasy(H / 2)
+        cv.scan_mark(0, 0)
+        cv.scan_dragto(int(round(-dx)), int(round(-dy)), gain=1)
+        self.salva()
+        return True
+
+    def curva(self):
+        """La curva di mana delle magie del mazzo, con le copie: [quante a 0, 1, ..., 6, 7+]."""
+        c = [0] * 8
+        for i, v in self.voci.items():
+            if v["zona"] != "main" or "Land" in (self.info(i).get("tipo") or "").split(" // ")[0] or v["nome"] in MS.BASI:
+                continue
+            c[min(7, int(self.info(i).get("cmc", 0) or 0))] += v["q"]
+        return c
+
+    def disegna_info(self, conti=None, tot=None):
+        """L'HUD delle carte e della curva di mana, in alto a destra sul foglio (Autore, 10 nov 2026: «sposta l'hud mana curve a dx che abbia colori e stile dell'app e
+        fallo con sfondo semi trasparente e chiudibile come i comandi»; prima un riquadro opaco in alto a sinistra): la testa azzurra col totale e la freccia (si chiude
+        e si riapre), sotto, su uno sfondo scuro semitrasparente, magie, terre, sideboard e la curva delle magie del mazzo (0-6, 7+). Sta fermo nella finestra: sulla
+        scheda video nello strato fisso della tela; con la tela di Tk si rimette a posto quando la vista cambia (giro_hud)."""
+        cv, F = self.cv, self.F
+        if conti is None:
+            conti = collections.Counter()
+            for v in self.voci.values():
+                conti[v["zona"]] += v["q"]
+            tot = conti["main"] + conti["side"]
+        conti = collections.Counter(conti)
+        self._hud_dati = (conti, tot)
+        cv.delete("hud")
+        W = cv.winfo_width()
+        self._hud_vista = (cv.canvasx(0), cv.canvasy(0), W)
+        if W < 200:         # la tela non ancora a misura (una finestra di prova nascosta): l'HUD aspetta, se no finirebbe sopra le carte in alto a sinistra
+            self._hud_rect = None
+            return
+        x0, y0 = W - INFO_L - 14, 12
+        alto = TESTA_HUD + (INFO_H if self.info_aperto else 0)
+        self._hud_rect = (x0, y0, x0 + INFO_L, y0 + alto)
+        ox, oy = (0.0, 0.0) if self.gpu else (cv.canvasx(0), cv.canvasy(0))      # con la tela di Tk il foglio scorre: l'HUD si mette dove si guarda
+        self._hud_vista = (cv.canvasx(0), cv.canvasy(0), W)
+        kw = dict(fisso=True) if self.gpu else {}
+        X, Y = x0 + ox, y0 + oy
+        cv.create_rectangle(X, Y, X + INFO_L, Y + TESTA_HUD, fill=C["accento"], width=0, tags=("hud", "hud_testa"), **kw)
+        cv.create_text(X + 10, Y + TESTA_HUD / 2, text=f"DECK · {conti['main']} CARDS" if tot else "DECK · no list", fill="#ffffff", font=F(7, True), anchor="w",
+                       tags=("hud", "hud_testa"), **kw)
+        cv.create_image(X + INFO_L - 8 - 14, Y + TESTA_HUD / 2 - 7, image=DG.triangolo(14, self.info_aperto, "#ffffff"), anchor="nw", tags=("hud", "hud_testa"), **kw)      # disegnato: il font della scheda non ha ▾
+        if self.info_aperto and tot:
+            fondo = DG._icona(("hud_fondo", INFO_L, INFO_H), lambda: (lambda d: (d.rett(0, 0, INFO_L, INFO_H, riempi=FONDO_HUD, raggio=0), d)[1])(DG.Disegno(INFO_L, INFO_H)))
+            cv.create_image(X, Y + TESTA_HUD, image=fondo, anchor="nw", tags=("hud", "hud_fondo"), **kw)
+            curva = self.curva()
+            magie = sum(curva)
+            cv.create_text(X + 10, Y + TESTA_HUD + 12, text=f"{magie} spells · {conti['main'] - magie} lands · {conti['side']} sideboard"
+                           + (f" · {conti['cmd']} commander" if conti["cmd"] else ""), fill=C["testo"], font=F(8), anchor="w", tags=("hud",), **kw)
+            alto_b, base, passo = 34, Y + TESTA_HUD + INFO_H - 14, (INFO_L - 24) / 8
+            mx = max(curva) or 1
+            for k, n in enumerate(curva):
+                x = X + 12 + k * passo
+                h = round(alto_b * n / mx)
+                if n:
+                    cv.create_rectangle(x + 3, base - h, x + passo - 3, base, fill=C["accento"], width=0, tags=("hud", "curva"), **kw)
+                    cv.create_text(x + passo / 2, base - h - 6, text=str(n), fill="#ffffff", font=F(6, True), tags=("hud",), **kw)
+                cv.create_text(x + passo / 2, base + 7, text="7+" if k == 7 else str(k), fill=C["grigio"], font=F(6), tags=("hud",), **kw)
+        if not self.gpu:
+            cv.tag_raise("hud")
+
+    def giro_hud(self):
+        """Con la tela di Tk l'HUD sta sul foglio: quando la vista cambia (pan, zoom, finestra) si rimette nell'angolo; sulla scheda video solo se la finestra cambia misura."""
+        try:
+            if not self.fin.winfo_exists():
+                return
+        except Exception:
+            return
+        cv = self.cv
+        W = cv.winfo_width()
+        vista = (cv.canvasx(0), cv.canvasy(0), W)
+        if self._hud_vista is not None and (vista != self._hud_vista if not self.gpu else vista[2] != self._hud_vista[2]) and getattr(self, "_hud_dati", None):
+            self.disegna_info(*self._hud_dati)
+        self.fin.after(90, self.giro_hud)
+
+    def hud_su(self, ex, ey):
+        """Il punto (coordinate della finestra della tela) e' sull'HUD? -> "testa", "corpo" o None."""
+        r = self._hud_rect
+        if not r or not (r[0] <= ex <= r[2] and r[1] <= ey <= r[3]):
+            return None
+        return "testa" if ey <= r[1] + TESTA_HUD else "corpo"
+
+    def apri_info(self, aperto=None):
+        self.info_aperto = (not self.info_aperto) if aperto is None else bool(aperto)
+        self.disegna_info()
+
+    def pulsante_ingrandisci(self):
+        """Il pulsante per ingrandire nella barra del titolo (Autore, 10 nov 2026: «fai in modo che si possa allargare questa finestra della board fino a tutta
+        pagina»): una finestra transient su Windows non lo ha; Tk sa ingrandirla lo stesso (zoomed). Anche il doppio clic sulla barra del titolo."""
+        try:
+            import ctypes
+            u = ctypes.windll.user32
+            u.GetParent.restype = ctypes.c_void_p
+            hw = u.GetParent(self.fin.winfo_id())
+            st = u.GetWindowLongW(ctypes.c_void_p(hw), -16)
+            u.SetWindowLongW(ctypes.c_void_p(hw), -16, st | 0x10000)        # WS_MAXIMIZEBOX
+            u.SetWindowPos(ctypes.c_void_p(hw), None, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0004 | 0x0010 | 0x0020)      # niente spostamenti, il bordo rifatto
+        except Exception:
+            pass
+
+    def tutta_pagina(self, on=None):
+        """Full page nella testata: la finestra del Board su tutto lo schermo (l'area di lavoro, sopra la barra di Windows), o com'era."""
+        on = (self.fin.state() != "zoomed") if on is None else bool(on)
+        self.fin.state("zoomed" if on else "normal")
+        self.b_pagina.configure(text="⤡ Restore" if on else "⤢ Full page")
+        return on
+
+    def salva_pref(self, **kw):
+        """Le preferenze del Board, per tutti i mazzi: nel file delle disposizioni, sotto _opzioni."""
+        try:
+            salva_tavolo(OPZIONI, dict(carica_tavoli(self.file_tavoli).get(OPZIONI) or {}, **kw), self.file_tavoli)
+        except OSError:
+            pass
+
+    def pannello_comandi(self):
+        """La finestrella dei comandi, in basso a destra sopra il foglio: in testa la riga che dice cosa e' appena successo (self.aiuto), sotto i comandi."""
+        tk, F = self.tk, self.F
+        box = self.pannello = tk.Frame(self.fin, bg=C["filo"], padx=1, pady=1)
+        dentro = tk.Frame(box, bg=C["cap"]); dentro.pack()
+        self.aiuto_base = "COMMANDS · view only" if self.sola else "COMMANDS" + ("" if self.modifica else " · only arranged, not changed")
+        # la testa azzurra (Autore, 10 nov 2026: «la testina della sua tendina deve essere azzurrina»); tutta la testa apre e chiude la lista
+        testa = tk.Frame(dentro, bg=C["accento"], cursor="hand2"); testa.grid(row=0, column=0, sticky="ew")
+        self.aiuto = tk.Label(testa, text=self.aiuto_base, bg=C["accento"], fg=FG_AIUTO, font=F(7, True), anchor="w", justify="left", wraplength=280, cursor="hand2")
+        self.aiuto.pack(side="left", padx=(8, 4), pady=(5, 4))
+        # la lista si chiude e si riapre dalla freccia in testa (Autore, 10 nov 2026: «la lista comandi deve essere chiudibile o espandibile»)
+        self.b_comandi = tk.Label(testa, text="", bg=C["accento"], fg="#ffffff", font=F(8, True), cursor="hand2", padx=6)
+        self.b_comandi.pack(side="right", pady=(4, 3))
+        for w_ in (testa, self.aiuto, self.b_comandi):
+            w_.bind("<Button-1>", lambda e: self.apri_comandi(not self.comandi_aperti))
+        self.f_comandi = tk.Frame(dentro, bg=C["cap"])
+        for i, (tasto, cosa) in enumerate(COMANDI_VISTA if self.sola else COMANDI + (COMANDI_MOD if self.modifica else ())):
+            tk.Label(self.f_comandi, text=tasto, bg=C["cap"], fg=C["titolo"], font=F(7, True), anchor="w").grid(row=i, column=0, sticky="w", padx=(8, 6))
+            tk.Label(self.f_comandi, text=cosa, bg=C["cap"], fg=C["grigio"], font=F(7), anchor="w").grid(row=i, column=1, sticky="w", padx=(0, 8))
+        tk.Frame(self.f_comandi, bg=C["cap"], height=5).grid(row=99, column=0)
+        self.apri_comandi(self.comandi_aperti)
+        box.place(relx=1.0, rely=1.0, x=-12, y=-12, anchor="se")
+        box.lift()
+
+    def apri_comandi(self, aperta):
+        self.comandi_aperti = bool(aperta)
+        if self.comandi_aperti:
+            self.f_comandi.grid(row=1, column=0, sticky="w")
+        else:
+            self.f_comandi.grid_remove()
+        self.b_comandi.configure(text="▾" if self.comandi_aperti else "▸")
+
+    # ------------------------------------------------ lo zoom del foglio e la fascia della sideboard
+    def zoom_a(self, nuovo, ex=None, ey=None):
+        """Lo zoom del foglio (il mazzo), a passi di 5 punti; intorno al puntatore se c'e' (Ctrl+rotella), se no intorno all'angolo in alto. Il disegno aspetta un attimo:
+        la rotella manda tanti scatti e le carte si ricuociono una volta sola."""
+        nuovo = round(max(ZOOM_MIN, min(ZOOM_MAX, nuovo)) * 20) / 20
+        if nuovo == self.zoom:
+            return
+        cv = self.cv
+        if self.gpu:
+            return self.zoom_gpu(nuovo, ex, ey)
+        if self._zoom_dopo is not None:     # piu' scatti prima del disegno: il punto fermo resta quello del primo, misurato sul foglio disegnato
+            cv.after_cancel(self._zoom_dopo)
+            fermo = self._zoom_fermo
+        elif ex is not None:
+            cx, cy = cv.canvasx(ex), cv.canvasy(ey)
+            fermo = (cx / self.zoom, (cy - self.oy("main")) / self.zoom, ex, ey)
+        else:
+            fermo = None
+        self._zoom_fermo = fermo
+        self.zoom = nuovo
+        self.l_zoom.configure(text=f"{round(nuovo * 100)}%")
+
+        def fai():
+            self._zoom_dopo = None
+            self.disegna()
+            if fermo:       # il punto del mazzo che stava sotto il puntatore resta li' (anche oltre i bordi: il foglio non ne ha)
+                nx, ny = fermo[0] * self.zoom, self.oy("main") + fermo[1] * self.zoom
+                spx, spy = nx - cv.canvasx(fermo[2]), ny - cv.canvasy(fermo[3])
+                cv.scan_mark(0, 0)
+                cv.scan_dragto(int(round(-spx)), int(round(-spy)), gain=1)
+            self.salva()
+        self._zoom_dopo = cv.after(60, fai)
+
+    def zoom_gpu(self, nuovo, ex, ey):
+        """Lo zoom sulla scheda video: a ogni scatto la scheda ingrandisce subito quello che c'e' intorno al puntatore (zoom_immediato, niente da ridisegnare),
+        e quando la rotella si ferma (140 ms) Card view ridisegna una volta alla misura nuova, col punto sotto il puntatore fermo. Sulla scheda le carte non si
+        rifanno (texture a 2x), quindi il ridisegno costa quanto un disegno normale."""
+        cv = self.cv
+        if ex is None:
+            ex, ey = cv.winfo_width() / 2, cv.winfo_height() / 2
+        if self._zoom_dopo is None:
+            self._zoom_base = self.zoom         # lo zoom del foglio disegnato
+        cv.zoom_immediato(nuovo / self.zoom, ex, ey)
+        self.zoom = nuovo
+        self.l_zoom.configure(text=f"{round(nuovo * 100)}%")
+        self._zoom_punto = (ex, ey)
+        if self._zoom_dopo is not None:
+            cv.after_cancel(self._zoom_dopo)
+
+        def fai():
+            self._zoom_dopo = None
+            px, py = self._zoom_punto
+            base = self._zoom_base
+            omain = self.oy("main")
+            cx, cy = cv.canvasx(px), cv.canvasy(py)         # il punto sotto il puntatore, nel foglio disegnato (lo zoom immediato compreso)
+            fx, fy = cx / base, (cy - omain) / base
+            cv.azzera_zoom()
+            self.disegna()
+            nx, ny = fx * self.zoom, omain + fy * self.zoom
+            cv.vx, cv.vy = nx - px, ny - py                 # il punto torna sotto il puntatore
+            cv.sporco = True
+            self.salva()
+        self._zoom_dopo = cv.after(140, fai)
+
+    def rotella(self, e):
+        self.nascondi()
+        self.zoom_a(self.zoom * (1.12 if e.delta > 0 else 1 / 1.12), e.x, e.y)
+
+    def pan_inizio(self, e):
+        """Il tasto centrale premuto: il foglio segue il mouse (la mano), fino al rilascio."""
+        self.nascondi()
+        self.cv.configure(cursor="fleur")
+        self.cv.scan_mark(e.x, e.y)
+
+    def pan_muovi(self, e):
+        self.cv.scan_dragto(e.x, e.y, gain=1)
+
+    def pan_fine(self, e):
+        self.cv.configure(cursor="")
+        bb = self.cv.bbox("all")
+        self.cv.delete("barra")
+        self.barra(bb[2] if bb else max(self.cv.winfo_width(), 400))       # il segno della barra torna al centro di quello che si vede
+
+    def adatta(self):
+        """Fit: lo zoom che fa stare tutto il mazzo nella finestra, sotto la fascia."""
+        w, h, _off, _p = misure(1.0)
+        main = [pl for pl in self.pile if pl["zona"] == "main"]
+        if not main:
+            return
+        larga = max(pl["x"] + w for pl in main) + MARGINE
+        alta = max(self.posizioni(pl)[-1] + h for pl in main) + MARGINE
+        W, H = max(200, self.cv.winfo_width()), max(200, self.cv.winfo_height() - self.oy("main"))
+        self.cv.xview_moveto(0); self.cv.yview_moveto(0)
+        self.zoom_a(min(W / larga, H / alta))
+
+    def sf(self):
+        """La scala delle carte della fascia: quella che ci sta nell'altezza della fascia (una carta e due sfalsate), al massimo 1,25. Sotto SPARISCE non si disegnano."""
+        _w, h, off, _p = misure(1.0)
+        v = max(0.0, min(1.25, (self.hs - ETICHETTA - 12) / (h + 2 * off)))
+        return int(v * 20) / 20     # a passi di 5 punti: trascinando la barra le carte si ricuociono solo quando cambia il passo
+
+    def nascosta(self):
+        return self.sf() < SPARISCE
+
+    def sc(self, zona):
+        return self.zoom if zona == "main" else self.sf()
+
+    def oy(self, zona):
+        """Dove comincia la zona sulla tela, in pixel: la fascia sotto il suo titolo, il mazzo sotto la barra e il suo titolo."""
+        return self.hs + ETICHETTA if zona == "main" else ETICHETTA
+
+    def pos_px(self, pl):
+        s_ = self.sc(pl["zona"])
+        return pl["x"] * s_, self.oy(pl["zona"]) + pl["y"] * s_, s_
+
+    def ys_px(self, pl):
+        s_ = self.sc(pl["zona"]); o = self.oy(pl["zona"])
+        return [o + y * s_ for y in self.posizioni(pl)]
+
+    def ingombro_px(self, pl):
+        """Il rettangolo della pila sulla tela, in pixel."""
+        x, y, s_ = self.pos_px(pl)
+        w, h, _off, _p = misure(1.0)
+        return x, y, x + w * s_, self.oy(pl["zona"]) + (self.posizioni(pl)[-1] + h) * s_
+
+    def vicino_barra(self, cy):
+        return abs(cy - self.hs) <= 6
+
+    def premi_tela(self, e):
+        """Il tasto sinistro, ovunque sulla tela. In ordine: la barra della fascia (si trascina), il contatore (lo fa contatore), il pallino (una freccia
+        nuova), una carta in ogni suo punto (si trascina), il vuoto (niente)."""
+        cx, cy = self.cv.canvasx(e.x), self.cv.canvasy(e.y)
+        self._xy = (cx, cy)
+        self.stile_chiudi()
+        su_hud = self.hud_su(e.x, e.y)
+        if su_hud:          # l'HUD: la testa lo chiude e lo riapre, il corpo non lascia passare il clic al foglio
+            self.drag = self.tira = None
+            if su_hud == "testa":
+                self.apri_info()
+            return
+        if self.sola:       # da guardare: la barra della fascia e una pila che si apre, nient'altro
+            self.drag = self.tira = None
+            if self.vicino_barra(cy):
+                self.separa = dict(y0=cy, hs0=self.hs, attesa=None)
+                return
+            vid = self.carta_a(cx, cy)
+            if vid is not None and self.sposta and not e.state & 0x4:      # la carta si trascina; un clic senza muoversi apre la pila, come prima
+                return self.premi(e)
+            if vid is not None:
+                self.sel_carta = vid
+                self.disegna_sel(); self.disegna_outliner()
+                if self.clic is not None:
+                    self.cv.after_cancel(self.clic)
+                self.clic = self.cv.after(230, lambda: self.apri_pila(vid))
+            return
+        sopra = self.pezzo_a(cx, cy)
+        if self.vicino_barra(cy) and sopra[0] is None:      # la barra della fascia si prende solo dove non c'e' altro (10 nov 2026: il titolo di una label vicino
+            self.drag = self.tira = None                    # alla barra trascinava la barra)
+            self.separa = dict(y0=cy, hs0=self.hs, attesa=None)
+            return
+        if sopra[0] == "sel_menu":
+            self.drag = None
+            return self.menu_label(None)
+        cor = self.cornice_sel()
+        if (cor and sopra[0] in (None, "carta", "punto", "label_t") and not e.state & 0x4 and cor[0] <= cx <= cor[2] and cor[1] <= cy <= cor[3]):
+            # con una selezione, dentro la sua cornice (una carta, un dot, il titolo di una label o il vuoto) si sposta sempre tutta la selezione, mai una carta sola
+            # (Autore, 10 nov 2026: «non puo' essere che muovendolo per sbaglio si sposti solo una carta, e' obbligatorio che si muova l'intera selezione»)
+            return self.gruppo_inizio(cx, cy)
+        if sopra[0] == "ctrl":
+            self.drag = None
+            return self.contatore_su(sopra[1])
+        if sopra[0] == "nodo":
+            return self.nodo_inizio(e, sopra[1])
+        if sopra[0] == "rete_x" and sopra[1] is not None:
+            self.drag = None
+            return self.togli_arco(sopra[1])
+        if sopra[0] == "scambia" and sopra[1] is not None:
+            self.drag = None
+            return self.scambia_apri(sopra[1])
+        if sopra[0] == "rete_s" and sopra[1] is not None:
+            self.drag = None
+            return self.stile_apri(sopra[1])
+        if sopra[0] == "rete_c" and sopra[1] is not None:
+            self.drag = None
+            return self.inserisci_punto(*sopra[1], hit=getattr(self, "_chiodo_su", None))
+        if sopra[0] == "rete_barra":        # il fondo della barretta dei pulsantini: niente
+            self.drag = None
+            return
+        if sopra[0] == "rete_xt" and sopra[1] is not None:
+            self.drag = None
+            return self.togli_ingresso(sopra[1][0], sopra[1][3])
+        if sopra[0] == "punto_out" and sopra[1] in self.punti:
+            return self.punto_inizio(sopra[1], cx, cy, tira=True)
+        if sopra[0] == "label_x":
+            self.drag = None
+            return self.togli_etichetta(sopra[1])
+        if sopra[0] == "label_l":
+            self.drag = None
+            return self.lucchetto_label(sopra[1])
+        if sopra[0] == "label_m":
+            self.drag = None
+            return self.menu_label(sopra[1])
+        if sopra[0] == "label_r":
+            lb = self.etichette[sopra[1]]
+            self.drag = None
+            self.ridim = dict(k=sopra[1], x0=cx, y0=cy, w0=lb["w"], h0=lb["h"], attesa=None)
+            return
+        if sopra[0] == "label_t":
+            return self.etichetta_inizio(sopra[1], cx, cy)
+        if sopra[0] == "punto" and sopra[1] in self.punti:
+            return self.punto_inizio(sopra[1], cx, cy, tira=bool(e.state & 0x1))
+        if sopra[0] is None:        # nel vuoto (anche dentro una label): una freccia sotto il puntatore apre la sua tavolozza, fra un attimo (il doppio clic mette un dot)
+            sg = self.arco_a(cx, cy)
+            if sg is not None:
+                self.drag = None
+                if self.clic is not None:
+                    self.cv.after_cancel(self.clic)
+                self.clic = self.cv.after(260, lambda: (setattr(self, "clic", None), self.stile_apri(sg)))
+                return
+        self.premi(e)
+
+    def pezzo_a(self, x, y):
+        """Cosa c'e' sotto il punto della tela: ("ctrl", None) il contatore, ("nodo", vid) il pallino, ("carta", vid), o (None, None). Le frecce, i bordi e la barra
+        non contano: la carta si prende anche dove una freccia le passa sopra."""
+        for it in reversed(self.cv.find_overlapping(x - 1, y - 1, x + 1, y + 1)):
+            tags = self.cv.gettags(it)
+            if "ctrl" in tags:
+                return "ctrl", it
+            if "nodo" in tags:
+                return "nodo", next((int(t[1:]) for t in tags if t[0] == "n" and t[1:].isdigit()), None)
+            if "rete_x" in tags:
+                return "rete_x", self._arco
+            if "rete_s" in tags:
+                return "rete_s", self._arco
+            if "rete_c" in tags:
+                return "rete_c", getattr(self, "_chiodo", None)
+            if "rete_barra" in tags:
+                return "rete_barra", None
+            if "rete_xt" in tags:
+                return "rete_xt", self._arco_t
+            if "punto_out" in tags:
+                return "punto_out", next((int(t[2:]) for t in tags if t.startswith("po") and t[2:].isdigit()), None)
+            if "scambia" in tags:
+                return "scambia", next((int(t[1:]) for t in tags if t[0] == "s" and t[1:].isdigit()), None)
+            if "punto" in tags:     # i dot stanno sopra le carte: si prendono anche li'
+                return "punto", next((int(t[1:]) for t in tags if t[0] == "p" and t[1:].isdigit()), None)
+            if "sel_menu" in tags:
+                return "sel_menu", None
+            for nome_, pre in (("label_x", "lx"), ("label_l", "ll"), ("label_m", "lm"), ("label_r", "lr"), ("label_t", "lt")):     # la label sta sotto le carte: una carta sopra vince
+                if nome_ in tags and self.carta_a(x, y) is None:
+                    return nome_, next((int(t[2:]) for t in tags if t.startswith(pre) and t[2:].isdigit()), None)
+        vid = self.carta_a(x, y)
+        return ("carta", vid) if vid is not None else (None, None)
+
+    def rett(self, vid, dx=0.0, dy=0.0):
+        """Il rettangolo della carta che si vede, in pixel della tela: tutta se e' intera, la barra del nome se e' coperta nella pila. None se non si vede."""
+        pl = self.pila_di(vid)
+        if pl is None or (pl["zona"] != "main" and self.nascosta()):
+            return None
+        x, _y, s_ = self.pos_px(pl)
+        w, h, off, _p = misure(s_)
+        k = pl["carte"].index(vid)
+        y = self.ys_px(pl)[k]
+        intera = vid == pl["carte"][-1] or vid == pl.get("aperta")
+        alto = h if intera else (self.ys_px(pl)[k + 1] - y if k + 1 < len(pl["carte"]) else h)
+        return x + dx, y + dy, x + w + dx, y + alto + dy
+
+    def carta_a(self, x, y):
+        if self.hud_su(x - self.cv.canvasx(0), y - self.cv.canvasy(0)):      # sotto l'HUD le carte non si prendono
+            return None
+        return self._carta_a(x, y)
+
+    def _carta_a(self, x, y):
+        """La carta sotto il punto, dalla geometria delle pile (non dai pezzi disegnati): in ogni punto della carta, compreso il numero delle copie che sporge a
+        sinistra; fra due carte che si coprono vince quella sopra (disegnata dopo)."""
+        for pl in reversed(self.pile):
+            if pl["zona"] != "main" and self.nascosta():
+                continue
+            px, _py, s_ = self.pos_px(pl)
+            w, h, _off, _p = misure(s_)
+            sporge = round(14 * max(s_, 0.75))
+            ys = self.ys_px(pl)
+            for k in range(len(pl["carte"]) - 1, -1, -1):
+                if px - sporge <= x <= px + w and ys[k] <= y <= ys[k] + h:
+                    return pl["carte"][k]
+        return None
+
+    def muovi_barra(self, e):
+        d = self.separa
+        cy = self.cv.canvasy(e.y)
+        self.hs = int(max(0, min(max(370, self.cv.winfo_height() * 0.8), d["hs0"] + cy - d["y0"])))      # fino alla scala piu' grande delle carte, o all'80% della tela
+        if d["attesa"] is None:     # un disegno alla volta: i movimenti del mouse arrivano piu' in fretta di un disegno
+            def fai():
+                d["attesa"] = None
+                self.disegna()
+            d["attesa"] = self.cv.after(16, fai)
+
+    # ------------------------------------------------ la geometria (in scala M)
+    def fascia(self):
+        """Dove finisce la fascia della sideboard sulla tela, in pixel: la barra."""
+        return self.hs
+
+    def inizio_mazzo(self):
+        """Dove comincia il mazzo sulla tela, in pixel."""
+        return self.oy("main")
+
+    def posizioni(self, pila):
+        """La y di ogni carta della pila (scala M): sfalsate; dopo la carta aperta, lo spazio di una carta intera."""
+        _w, h, off, _p = misure(1.0)
+        ys, y, dopo = [], pila["y"], False
+        for vid in pila["carte"]:
+            ys.append(y)
+            y += (h + APERTA) if vid == pila.get("aperta") and vid != pila["carte"][-1] else off
+        return ys
+
+    def ingombro(self, pila):
+        w, h, _off, _p = misure(1.0)
+        ys = self.posizioni(pila) or [pila["y"]]
+        return pila["x"], pila["y"], pila["x"] + w, ys[-1] + h
+
+    def info(self, vid):
+        n = self.voci[vid]["nome"]
+        return self.carte_db.get(n) or self.carte_db.get(n.split(" // ")[0].strip()) or {}
+
+    def ordine(self, vid):
+        n, c = self.voci[vid]["nome"], self.info(vid)
+        tipo = (c.get("tipo") or "").split(" // ")[0]
+        terra = "Land" in tipo
+        return (terra, 99 if terra else c.get("cmc", 0), "Creature" not in tipo, n)
+
+    def gruppo(self, vid, modo):
+        c = self.info(vid)
+        tipo = (c.get("tipo") or "").split(" // ")[0]
+        if "Land" in tipo:
+            return 9
+        if modo == "cost":
+            return min(int(c.get("cmc", 0) or 0), 7)
+        return 0 if "Creature" in tipo else 1 if ("Instant" in tipo or "Sorcery" in tipo) else 2
+
+    def disponi_rete(self, salva=True):
+        """Il pulsante Arrange network (Autore, 10 nov 2026: «aggiungi un pulsante che riordina la rete per connessioni»): le carte del mazzo legate fra loro
+        diventano un grafo a livelli, come in Nuke: i padri in alto, ogni figlio nella riga sotto il suo padre piu' in basso (il cammino piu' lungo; i giri chiusi si
+        rompono dove si chiudono), l'ordine nella riga per baricentro dei vicini (quattro passate giu' e su, meno incroci). Ogni carta della rete e' una pila sua.
+        Le carte senza connessioni vanno per costo in un blocco sotto la rete; sideboard e comandante restano; i dot tornano a meta' fra ingressi e uscite; le
+        label restano dove sono. -> quante carte ha messo in rete (0: niente da riordinare)."""
+        w, h, off, _p = misure(1.0)
+        main = {}
+        for i, v in self.voci.items():
+            if v["zona"] == "main":
+                main.setdefault(v["nome"], i)
+        archi = [(p_, c_) for p_, c_, _f in self.rete.legami(set(main)) if p_ != c_]
+        archi += [(p_, c_) for q in self.punti for (p_, c_), r in self.vie.items() if r == q and p_ in main and c_ in main and (p_, c_) not in archi]
+        nodi = sorted({n for a in archi for n in a}, key=lambda n: (self.ordine(main[n])))
+        if not nodi:
+            self.dici("No connections between the deck's cards to arrange")
+            return 0
+        figli = collections.defaultdict(list)
+        padri = collections.defaultdict(list)
+        # i giri chiusi: un arco che torna su un antenato nella visita si salta
+        stato, tieni = {}, []
+
+        def visita(n):
+            stato[n] = 1
+            for p_, c_ in archi:
+                if p_ != n:
+                    continue
+                if stato.get(c_) == 1:
+                    continue
+                tieni.append((p_, c_))
+                if c_ not in stato:
+                    visita(c_)
+            stato[n] = 2
+        for n in nodi:
+            if n not in stato:
+                visita(n)
+        for p_, c_ in dict.fromkeys(tieni):
+            figli[p_].append(c_)
+            padri[c_].append(p_)
+        livello = {}
+
+        def liv(n, visti=()):
+            if n in livello:
+                return livello[n]
+            livello[n] = 0 if not padri[n] else 1 + max(liv(p_, visti + (n,)) for p_ in padri[n] if p_ not in visti)
+            return livello[n]
+        for n in nodi:
+            liv(n)
+        righe = collections.defaultdict(list)
+        for n in nodi:
+            righe[livello[n]].append(n)
+        k_max = max(righe)
+        for _passata in range(4):
+            for k in range(1, k_max + 1):
+                pos = {n: i for i, n in enumerate(righe[k - 1])}
+                righe[k].sort(key=lambda n: (sum(pos[p_] for p_ in padri[n] if p_ in pos) / max(1, sum(1 for p_ in padri[n] if p_ in pos)) if any(p_ in pos for p_ in padri[n])
+                                             else len(pos)))
+            for k in range(k_max - 1, -1, -1):
+                pos = {n: i for i, n in enumerate(righe[k + 1])}
+                righe[k].sort(key=lambda n: (sum(pos[c_] for c_ in figli[n] if c_ in pos) / max(1, sum(1 for c_ in figli[n] if c_ in pos)) if any(c_ in pos for c_ in figli[n])
+                                             else len(pos)))
+        passo_x = PASSO_X                                   # sulla griglia: una colonna fra due carte della stessa riga
+        passo_y = -(-(h + 110) // PASSO_Y) * PASSO_Y        # e righe a multipli del passo verticale, con l'aria per le frecce
+        larga = max(len(r) for r in righe.values()) * passo_x
+        in_rete = set(nodi)
+        restano = [pl for pl in self.pile if pl["zona"] != "main"]
+        nuove = []
+        for k in range(k_max + 1):
+            x0 = a_griglia(MARGINE + (larga - len(righe[k]) * passo_x) / 2, 0)[0]
+            for j, n in enumerate(righe[k]):
+                nuove.append(dict(zona="main", x=round(x0 + j * passo_x), y=k * passo_y, carte=[main[n]], aperta=None))
+        # le altre carte del mazzo: per costo, in un blocco sotto la rete
+        y0 = (k_max + 1) * passo_y
+        gruppi = collections.OrderedDict()
+        for i in sorted((i for i, v in self.voci.items() if v["zona"] == "main" and not (v["nome"] in in_rete and main[v["nome"]] == i)), key=self.ordine):
+            gruppi.setdefault(self.gruppo(i, "cost"), []).append(i)
+        x = MARGINE
+        for _g, carte in sorted(gruppi.items()):
+            for a in range(0, len(carte), MAX_PILA):
+                nuove.append(dict(zona="main", x=x, y=y0, carte=carte[a:a + MAX_PILA], aperta=None))
+                x += w + SPAZIO
+        self.pile = restano + nuove
+        self.vuota_sel()
+        # i dot: a meta' fra i loro ingressi e le loro uscite (due giri, per le catene)
+        for _giro in range(2):
+            for q in self.punti:
+                fonti, uscite = [], []
+                for kk, v in self.ingressi(q):
+                    if kk == "c" and v in main:
+                        pl = self.pila_di(main[v])
+                        fonti.append((pl["x"] + w / 2, pl["y"] + h + 9))
+                    elif kk == "p" and v in self.punti:
+                        fonti.append((self.punti[v]["x"], self.punti[v]["y"]))
+                for (_a, c_), r in self.vie.items():
+                    if r == q and c_ in main:
+                        pl = self.pila_di(main[c_])
+                        uscite.append((pl["x"] + w / 2, pl["y"] + h + 9))
+                uscite += [(self.punti[r]["x"], self.punti[r]["y"]) for r in self.punti if ("p", q) in self.ingressi(r)]
+                pts = [(sum(x_ for x_, _y in g) / len(g), sum(y_ for _x, y_ in g) / len(g)) for g in (fonti, uscite) if g]
+                if pts:
+                    gx, gy = a_griglia(sum(x_ for x_, _y in pts) / len(pts) + (0 if len(pts) > 1 else 40),
+                                       sum(y_ for _x, y_ in pts) / len(pts) + (0 if len(pts) > 1 else 40), mezza=True)
+                    self.punti[q]["x"], self.punti[q]["y"] = gx, gy
+        self.disegna()
+        if salva:
+            self.salva()
+        self.dici(f"Network arranged: {len(nodi)} linked cards in {k_max + 1} row{'s' if k_max else ''}, parents above children · the others below by cost")
+        return len(nodi)
+
+    def disponi(self, modo="cost", salva=True):
+        """Le pile in ordine: per costo (una colonna per costo, le terre in fondo) o per tipo (creature, istantanei e stregonerie, il resto, le terre).
+        Nella fascia le carte una accanto all'altra, prima il comandante e il compagno. Le pile si allungano quanto basta perche' il mazzo stia in una riga."""
+        larga = max(800, (self.cv.winfo_width() or 1400) / self.zoom)
+        w, h, off, _p = misure(1.0)
+        pile = []
+        x = MARGINE
+        for zona in ("cmd", "side"):
+            ids = sorted((i for i, v in self.voci.items() if v["zona"] == zona), key=self.ordine)
+            for i in ids:
+                pile.append(dict(zona=zona, x=x, y=0, carte=[i], aperta=None))
+                x += w + SPAZIO
+            if zona == "cmd" and ids:
+                x += SPAZIO
+        gruppi = collections.OrderedDict()
+        for i in sorted((i for i, v in self.voci.items() if v["zona"] == "main"), key=self.ordine):
+            gruppi.setdefault(self.gruppo(i, modo), []).append(i)
+        entrano = max(1, int((larga - MARGINE) // (w + SPAZIO)))
+        # piu' colonne di quante ne entrano (il tavolo stretto del builder): si uniscono i costi piu' alti, le terre restano a parte; a capo una pila finirebbe sotto il fondo
+        while len(gruppi) > entrano:
+            magie = [k for k in sorted(gruppi) if k != 9]
+            if len(magie) < 2:
+                break
+            gruppi[magie[-2]] = gruppi[magie[-2]] + gruppi.pop(magie[-1])
+        lunga =next((k for k in (MAX_PILA, 12, 14, 16, 20) if sum(-(-len(c) // k) for c in gruppi.values()) <= entrano), 20)
+        x, y, alta = MARGINE, 0, 0
+        for _g, carte in sorted(gruppi.items()):
+            for a in range(0, len(carte), lunga):
+                pezzo = carte[a:a + lunga]
+                if x + w > larga - MARGINE and x > MARGINE:        # a capo: una riga nuova sotto la piu' alta, sulla griglia
+                    x, y, alta = MARGINE, -(-(y + alta + SPAZIO * 2) // PASSO_Y) * PASSO_Y, 0
+                pile.append(dict(zona="main", x=x, y=y, carte=pezzo, aperta=None))
+                alta = max(alta, h + (len(pezzo) - 1) * off)
+                x += w + SPAZIO
+        self.pile = pile
+        self.disegna()
+        if salva:
+            self.salva()
+
+    # ------------------------------------------------ il disegno
+    def disegna(self):
+        cv = self.cv
+        self.nascondi()
+        cv.delete("all")
+        L = max(cv.winfo_width(), 400)
+        hs = self.hs
+        conti = collections.Counter()
+        for v in self.voci.values():
+            conti[v["zona"]] += v["q"]
+        destra = max([L] + [self.ingombro_px(pl)[2] + MARGINE for pl in self.pile])
+        cv.create_rectangle(-50000, -50000, 50000, hs, fill=C["fondo"], width=0, tags="fondo")        # la fascia senza bordi, come il foglio
+        if hs >= 22:
+            cv.create_text(MARGINE, 8, text=f"SIDEBOARD · {conti['side']}", fill=C["titolo"], font=self.F(8, True), anchor="nw")
+        cv.create_text(MARGINE, hs + 8, text=f"DECK · {conti['main']}" + ("" if hs >= 22 else f"   ·   SIDEBOARD · {conti['side']}"), fill=C["titolo"], font=self.F(8, True),
+                       anchor="nw")
+        cmd = [pl for pl in self.pile if pl["zona"] == "cmd"]
+        if cmd and not self.nascosta():
+            x0, y0 = min(self.ingombro_px(pl)[0] for pl in cmd) - 16 * self.sf(), ETICHETTA - 6
+            x1, y1 = max(self.ingombro_px(pl)[2] for pl in cmd) + 6, max(self.ingombro_px(pl)[3] for pl in cmd) + 6
+            cv.create_rectangle(x0, y0, x1, y1, outline="#c9a227", width=1)
+            cv.create_text(x0 + 4, y0 - 2, text="COMPANION" if all(self.voci[i]["nome"] in self.compagno for pl in cmd for i in pl["carte"]) else "COMMANDER",
+                           fill="#c9a227", font=self.F(7, True), anchor="sw")
+        self.disegna_etichette()        # le label sotto le carte
+        legate = {n for p_, c_, _f in self.rete.legami({v["nome"] for v in self.voci.values()}) for n in (p_, c_)}      # le carte coperte con una freccia hanno il pallino piccolo
+        tot = conti["main"] + conti["side"]
+        self.disegna_info(conti, tot)
+        for pl in self.pile:
+            if pl["zona"] != "main" and self.nascosta():        # la fascia chiusa: le sue carte non ci sono piu'
+                continue
+            x, _y, s_ = self.pos_px(pl)
+            ys = self.ys_px(pl)
+            for k, vid in enumerate(pl["carte"]):
+                intera = vid == pl["carte"][-1] or vid == pl.get("aperta")
+                self.carta(vid, x, ys[k], intera and pl["zona"] != "cmd", s_)
+                if intera or self.voci[vid]["nome"] in legate:
+                    self.nodo(vid)
+        bb = cv.bbox("all") or (0, 0, L, 400)
+        H = max(cv.winfo_height(), 300)      # mezza finestra d'aria a destra e sotto: col tasto centrale il foglio si sposta anche quando il mazzo ci sta tutto
+        cv.configure(scrollregion=(0, 0, max(bb[2] + MARGINE, L) + L // 2, max(bb[3] + MARGINE * 2, H) + H // 2))
+        self.barra(destra)
+        self.disegna_rete()
+        self.disegna_sel()
+        self.disegna_outliner()
+        cv.tag_raise("nodo")
+
+    def barra(self, destra):
+        """La barra fra la fascia e il foglio: una linea e, nel mezzo, il segno ▲▼ disegnato che dice che si trascina su e giu'. Sopra le carte."""
+        cv = self.cv
+        L = max(cv.winfo_width(), 400)
+        y = self.hs
+        cv.create_line(-50000, y, 50000, y, fill=C["filo"], width=1, tags="barra")
+        cx = cv.canvasx(0) + L / 2
+        cv.create_image(cx - 30, y - 9, image=segno_barra(), anchor="nw", tags="barra")
+        cv.tag_raise("barra")
+
+    def carta(self, vid, x, y, intera, s=1.0):
+        """Una carta: l'immagine con l'ombra (o il riquadro col nome finche' non c'e'), il numero delle copie accanto al nome e, se si vede intera e il mazzo si cambia,
+        il contatore. Tutti i pezzi col tag della carta, cosi' si muovono insieme."""
+        cv, F = self.cv, self.F
+        w, h, _off, p = misure(s)
+        v = self.voci[vid]
+        tag = ("carta", f"c{vid}")
+        g2 = foto_gpu(v["nome"]) if self.gpu else None
+        im = None if self.gpu else foto_carta(self.tk, v["nome"], s)
+        if g2 is not None:          # sulla scheda: la carta a 2x, scalata dalla scheda; lo zoom non la rifa'
+            k = s / 2
+            cv.create_image(x - g2[1] * k, y - g2[1] * k, image=g2[0], anchor="nw", tags=tag, scala=k)
+        elif im is not None:
+            cv.create_image(x - p, y - p, image=im, anchor="nw", tags=tag)
+        else:
+            cv.create_rectangle(x, y, x + w, y + h, fill=C["cap"], outline=C["filo"], tags=tag)
+            cv.create_text(x + w / 2 + 6, y + 10, text=v["nome"], width=w - 28, fill=C["testo"], font=F(8, True), anchor="n", justify="center", tags=tag)
+        # il numero delle copie, sul bordo sinistro all'altezza del nome: si legge anche quando la carta e' coperta dalle altre
+        bs = max(s, 0.75)       # il numero resta leggibile anche sulle carte piccole (la fascia bassa, lo zoom indietro)
+        bl, bh = round(26 * bs), round(17 * bs)
+        cy = y + h * 0.072
+        cv.create_image(x - round(14 * bs), cy - bh / 2, image=pillola(bl, bh, (16, 16, 20, 235), C["accento"]), anchor="nw", tags=tag)
+        cv.create_text(x - round(14 * bs) + bl / 2, cy, text=f"{v['q']}x", fill="#ffffff", font=F(max(7, round(8 * bs)), True), tags=tag)
+        if intera and self.modifica:
+            self.contatore_disegna(vid, x, y, w, h, s)
+
+    def contatore_disegna(self, vid, x, y, w, h, s=1.0):
+        """Il contatore sulla carta intera, in basso al centro: − N +. Il + si spegne al limite. Sempre della stessa misura, a qualunque zoom, come pallini, ⇄, icone
+        e linee (Autore, 10 nov 2026: «lascia che i pulsanti vari e le linee mantengano la loro dimensione anche zoom in / non rimpicciolirli»); prima scalava con
+        la carta."""
+        cv, F = self.cv, self.F
+        v = self.voci[vid]
+        s = 1.0
+        lato = round(24 * s)
+        pl_l, pl_h = round(98 * s), round(32 * s)
+        cx, cy = x + w / 2, y + h - pl_h / 2 - round(10 * s)
+        cv.create_image(cx - pl_l / 2, cy - pl_h / 2, image=pillola(pl_l, pl_h, (16, 16, 20, 225), C["filo"]), anchor="nw", tags=("carta", f"c{vid}"))
+        pieno = self.totale(v["nome"]) >= self.limite(v["nome"])
+        cv.create_image(cx - pl_l / 2 + round(4 * s), cy - lato / 2, image=tondo_segno(lato, C["cap"], "-", "#ffffff"), anchor="nw", tags=("ctrl", f"meno{vid}", f"c{vid}"))
+        cv.create_image(cx + pl_l / 2 - round(4 * s) - lato, cy - lato / 2, image=tondo_segno(lato, C["cap"] if pieno else C["accento"], "+", C["muto"] if pieno else "#ffffff"),
+                        anchor="nw", tags=("ctrl", f"piu{vid}", f"c{vid}"))
+        cv.create_text(cx, cy, text=str(v["q"]), fill="#ffffff", font=F(max(9, round(11 * s)), True), tags=("carta", f"c{vid}"))
+
+    # ------------------------------------------------ il contatore e il limite
+    def limite(self, nome):
+        if self._limite is not None:
+            return self._limite(nome)
+        try:
+            import costruttore_mazzi
+            return costruttore_mazzi.limite(nome, self.formato, self.carte_db)
+        except Exception:
+            return 10 ** 6 if nome in MS.BASI else 4
+
+    def totale(self, nome):
+        return sum(v["q"] for v in self.voci.values() if v["nome"] == nome and v["zona"] in ("main", "side"))
+
+    def contatore(self, e):
+        it = self.cv.find_withtag("current")
+        if it:
+            self.contatore_su(it[0])
+
+    def contatore_su(self, it):
+        """Il − o il + del contatore: una copia in meno o in piu'."""
+        for t in self.cv.gettags(it):
+            if t.startswith("piu") and t[3:].isdigit():
+                return self.cambia_copie(int(t[3:]), +1)
+            if t.startswith("meno") and t[4:].isdigit():
+                return self.cambia_copie(int(t[4:]), -1)
+
+    def cambia_copie(self, vid, d):
+        v = self.voci.get(vid)
+        if v is None or not self.modifica or v["zona"] == "cmd":
+            return False
+        if d > 0 and self.totale(v["nome"]) >= self.limite(v["nome"]):
+            return False
+        v["q"] += d
+        if v["q"] <= 0:
+            self.togli(vid)
+        self.mazzo_cambiato()
+        self.disegna()
+        self.salva()
+        return True
+
+    def togli(self, vid):
+        pl = self.pila_di(vid)
+        del self.voci[vid]
+        if pl is not None:
+            pl["carte"].remove(vid)
+            if pl.get("aperta") == vid:
+                pl["aperta"] = None
+            if not pl["carte"]:
+                self.pile.remove(pl)
+
+    # ------------------------------------------------ col builder: allinearsi, ricevere le carte dalla Collection, cercare per nome
+    def allinea(self, main, side, comandante=None):
+        """Il mazzo e' cambiato nel builder: le copie si rimettono uguali, le carte nuove vanno sulla pila del loro costo (o in una pila nuova), quelle tolte escono.
+        La disposizione delle altre resta. -> True se e' cambiato qualcosa."""
+        voluto = collections.Counter()
+        for zona, carte in (("main", main or {}), ("side", side or {}), ("cmd", comandante or {})):
+            for n, q in carte.items():
+                if q > 0:
+                    voluto[(n, zona)] += q
+        ora = collections.Counter({(v["nome"], v["zona"]): v["q"] for v in self.voci.values()})
+        if ora == voluto:
+            return False
+        for vid in list(self.voci):
+            v = self.voci[vid]
+            q = voluto.get((v["nome"], v["zona"]), 0)
+            if q <= 0:
+                self.togli(vid)
+            else:
+                v["q"] = q
+        for (n, zona), q in voluto.items():
+            if (n, zona) not in ora:
+                self.nuova_voce(n, zona, q)
+        self.carica_mancanti()
+        self.disegna()
+        self.salva()
+        return True
+
+    def posto_isolato(self):
+        """Dove va una carta nuova del mazzo: una colonna vuota a destra di tutto (pile, label, dot), sulla griglia; le carte arrivate dopo, sotto, nella stessa colonna."""
+        w, h, _off, _p = misure(1.0)
+        arrivi = [pl for pl in self.pile if pl.get("arrivo") and pl["zona"] == "main"]
+        altre = [pl for pl in self.pile if pl["zona"] == "main" and not pl.get("arrivo")]
+        destra = max([pl["x"] + w for pl in altre] + [lb["x"] + lb["w"] for lb in self.etichette] + [p_["x"] + 30 for p_ in self.punti.values()], default=MARGINE)
+        x = a_griglia(destra + PASSO_X, 0)[0]
+        sotto = [self.posizioni(pl)[-1] + h for pl in arrivi if pl["x"] == x]
+        y = a_griglia(x, max(sotto) + 2 * PASSO_Y)[1] if sotto else 0
+        return x, y
+
+    def nuova_voce(self, nome, zona, q=1, pila=None, xy=None):
+        """Una carta nuova sul tavolo: sulla pila data, o alla posizione xy (in scala 1, dentro la sua zona), o nel mazzo in uno spazio isolato (posto_isolato),
+        o nella fascia in una pila nuova in fondo alla riga."""
+        vid = max(self.voci, default=-1) + 1
+        self.voci[vid] = dict(nome=nome, zona=zona, q=q)
+        if pila is not None:
+            pila["carte"].append(vid)
+            return vid
+        w, _h, _off, _p = misure(1.0)
+        if xy is not None:
+            x, y = xy
+            self.pile.append(dict(zona=zona, x=round(x, 2), y=0 if zona != "main" else round(y, 2), carte=[vid], aperta=None))
+            return vid
+        if zona == "main":      # in uno spazio isolato, a destra della rete, una sotto l'altra (Autore, 10 nov 2026: «se le inserisco per doppio clic devono
+            # apparire in uno spazio isolato»); fino a quel giorno andavano sulla pila del loro costo
+            x, y = self.posto_isolato()
+            self.pile.append(dict(zona="main", x=x, y=y, carte=[vid], aperta=None, arrivo=True))
+            return vid
+        stesse = [q for q in self.pile if q["zona"] in ((zona, "cmd") if zona in ("side", "cmd") else (zona,))]
+        y = 0 if zona in ("side", "cmd") else min((q["y"] for q in stesse), default=0)
+        riga = [q["x"] for q in stesse if q["y"] == y]
+        self.pile.append(dict(zona=zona, x=max(riga) + w + SPAZIO if riga else MARGINE, y=y, carte=[vid], aperta=None))
+        return vid
+
+    def sopra(self, x_root, y_root):
+        """Il punto dello schermo sta sul tavolo? (la Collection lo chiede mentre trascini una carta)"""
+        try:
+            return self.fin.winfo_exists() and self.fin.winfo_containing(x_root, y_root) is self.cv
+        except Exception:
+            return False
+
+    def punto(self, x_root, y_root):
+        """Dallo schermo alla tela, in pixel della tela."""
+        return x_root - self.cv.winfo_rootx() + self.cv.canvasx(0), y_root - self.cv.winfo_rooty() + self.cv.canvasy(0)
+
+    def evidenzia(self, x_root, y_root, on=True):
+        """Mentre una carta della Collection passa sul tavolo: il bordo azzurro sulla pila dove cadrebbe."""
+        self.cv.delete("bersaglio")
+        if not on or not self.sopra(x_root, y_root):
+            return
+        b = self.bersaglio(*self.punto(x_root, y_root))
+        if b is not None:
+            x0, y0, x1, y1 = self.ingombro_px(b)
+            self.cv.create_rectangle(x0 - 4, y0 - 4, x1 + 4, y1 + 4, outline=C["accento"], width=2, tags="bersaglio")
+
+    def ricevi(self, nome, x_root=None, y_root=None, zona=None):
+        """Una copia di una carta dalla Collection (o dalla ricerca): cade dove la lasci. Sulla stessa carta della zona le copie si sommano; sulla pila sotto il mouse ci si
+        impila; nella fascia va in sideboard. Oltre il limite no. -> True se e' entrata."""
+        if not self.modifica:
+            return False
+        self.cv.delete("bersaglio")
+        b, xy = None, None
+        if x_root is not None:
+            mx, my = self.punto(x_root, y_root)
+            b = self.bersaglio(mx, my)
+            zona = b["zona"] if b is not None else ("side" if my < self.hs and not self.nascosta() else "main")
+            s_ = self.sc(zona)
+            w, _h, _off, _p = misure(s_)
+            xy = ((mx - w / 2) / s_, (my - 20 - self.oy(zona)) / s_)
+        zona = zona or "main"
+        if self.totale(nome) >= self.limite(nome):
+            self.dici(f"{nome}: max {self.limite(nome)} copies")
+            return False
+        gemella = next((i for i, v in self.voci.items() if v["nome"] == nome and v["zona"] == zona), None)
+        if gemella is not None:
+            self.voci[gemella]["q"] += 1
+        else:
+            self.nuova_voce(nome, zona, 1, pila=b, xy=xy if b is None and x_root is not None else None)
+        self.mazzo_cambiato()
+        self.carica_mancanti()
+        self.disegna()
+        self.salva()
+        return True
+
+    # ------------------------------------------------ le connessioni padre -> figlio: il pallino sotto le carte
+    def nodo(self, vid):
+        """Il pallino della carta: alla base, al centro, se la carta si vede intera (16 pixel); se e' coperta nella pila, piccolo sul bordo destro della sua barra del
+        nome (10 pixel, solo se ha una freccia). Si tira su un'altra carta; le frecce partono e arrivano qui."""
+        pt = self.nodo_xy(vid) if not self.sola else None       # il pallino e' uno strumento: in sola lettura no
+        if pt:
+            x, y, rr = pt
+            self.cv.create_image(x - rr, y - rr, image=pallino_nodo(2 * rr), anchor="nw", tags=("nodo", f"n{vid}"))
+            v = self.voci[vid]
+            if rr == 8 and self.modifica and v["zona"] != "cmd":       # alla base delle carte intere, nei mazzi che si cambiano: il ⇄ accanto al pallino
+                self.cv.create_image(x + 22 - 8, y - 8, image=segno_scambia(16), anchor="nw", tags=("scambia", f"s{vid}"))
+
+    def scambia_apri(self, vid):
+        """Il ⇄ sotto la carta: una casella accanto, scrivi il nome, le carte della collezione che combaciano (prima quelle che hai, con le copie), Invio o il clic
+        la mettono al posto di questa (Autore, 9 nov 2026: «un pulsante sotto la carta che ci permette di sostituirla con un'altra carta dalla collezione»)."""
+        tk, F = self.tk, self.F
+        self.scambia_chiudi()
+        v = self.voci[vid]
+        p = self._scambio = tk.Toplevel(self.fin); p.overrideredirect(True); p.configure(bg=C["accento"])
+        dentro = tk.Frame(p, bg=C["cap"]); dentro.pack(padx=1, pady=1)
+        tk.Label(dentro, text=f"Replace {v['nome']} ({v['q']}x) with…", bg=C["cap"], fg=C["titolo"], font=F(9, True)).pack(anchor="w", padx=10, pady=(8, 4))
+        var = tk.StringVar()
+        e = tk.Entry(dentro, textvariable=var, width=36, bg=C["scheda"], fg=C["titolo"], insertbackground=C["titolo"], relief="flat", font=F(10))
+        e.pack(padx=10, ipady=4)
+        lista = tk.Listbox(dentro, bg=C["cap"], fg=C["testo"], selectbackground=C["accento"], selectforeground="#ffffff", relief="flat", bd=0, highlightthickness=0,
+                           font=F(10), activestyle="none", height=8, width=40)
+        lista.pack(padx=10, pady=(6, 4))
+        tk.Label(dentro, text="type a name · Enter replaces · Esc closes · cards you own first", bg=C["cap"], fg=C["grigio"], font=F(7)).pack(anchor="w", padx=10,
+                                                                                                                                          pady=(0, 8))
+        voci = []
+
+        def aggiorna(*_a):
+            voci[:] = self.scambia_trova(var.get(), v["nome"])
+            lista.delete(0, "end")
+            for n, q in voci:
+                lista.insert("end", f"{n}   ·   x{q}" if q else f"{n}   ·   not owned")
+            if voci:
+                lista.selection_set(0)
+
+        def scegli(*_a):
+            sel = lista.curselection()
+            if voci:
+                self.scambia(vid, voci[sel[0] if sel else 0][0])
+            self.scambia_chiudi()
+            return "break"
+
+        def muovi(dd):
+            sel = lista.curselection()
+            i = max(0, min(len(voci) - 1, (sel[0] if sel else -1) + dd))
+            lista.selection_clear(0, "end"); lista.selection_set(i); lista.see(i)
+            return "break"
+        var.trace_add("write", aggiorna)
+        e.bind("<Return>", scegli); e.bind("<Escape>", lambda ev: self.scambia_chiudi())
+        e.bind("<Down>", lambda ev: muovi(1)); e.bind("<Up>", lambda ev: muovi(-1))
+        lista.bind("<ButtonRelease-1>", scegli)
+        bb = self.cv.bbox(f"s{vid}") or self.cv.bbox(f"c{vid}")
+        x = self.cv.winfo_rootx() + int(bb[0] - self.cv.canvasx(0)) if bb else self.fin.winfo_pointerx()
+        y = self.cv.winfo_rooty() + int(bb[3] - self.cv.canvasy(0)) + 4 if bb else self.fin.winfo_pointery()
+        p.geometry(f"+{x}+{y}")
+        e.focus_force()
+        return p
+
+    def scambia_chiudi(self):
+        p = getattr(self, "_scambio", None)
+        if p is not None:
+            try:
+                p.destroy()
+            except Exception:
+                pass
+        self._scambio = None
+
+    def scambia_trova(self, testo, escludi=None, quante=40):
+        """Le carte per il ⇄: quelle del formato (se il tavolo le ha, il builder) o della collezione, che contengono il testo; prima quelle che hai, poi quelle che
+        cominciano col testo. -> [(nome, copie che hai)]."""
+        t = testo.strip().lower()
+        if len(t) < 2:
+            return []
+        try:
+            import dati_app
+            mie = dati_app.collezione()[0] or {}
+        except Exception:
+            mie = {}
+        nomi = self.nomi_ricerca() if callable(self.nomi_ricerca) else (self.nomi_ricerca or list(mie))
+        trovate = [n for n in nomi if t in n.lower() and n != escludi]
+        trovate.sort(key=lambda n: (not mie.get(n), not n.lower().startswith(t), len(n), n))
+        return [(n, mie.get(n, 0)) for n in trovate[:quante]]
+
+    def scambia(self, vid, nuovo):
+        """La carta nuova prende il posto della vecchia: stessa pila, stessa zona, le stesse copie fino al limite del formato. Se nella zona c'e' gia', le copie si
+        sommano su quella. Le connessioni della vecchia passano alla nuova (Autore, 9 nov 2026: «quando cambio una carta se ha delle connessioni deve
+        mantenerle»); se la vecchia resta nel mazzo in un'altra zona, tiene anche le sue."""
+        v = self.voci.get(vid)
+        if v is None or not nuovo or nuovo == v["nome"] or not self.modifica or v["zona"] == "cmd":
+            return False
+        vecchio = v["nome"]
+        posto = max(0, self.limite(nuovo) - self.totale(nuovo))
+        q = min(v["q"], posto)
+        if q <= 0:
+            self.dici(f"{nuovo}: already at the limit")
+            return False
+        gemella = next((i for i, x in self.voci.items() if i != vid and x["nome"] == nuovo and x["zona"] == v["zona"]), None)
+        if gemella is not None:
+            self.voci[gemella]["q"] += q
+            self.togli(vid)
+        else:
+            v["nome"], v["q"] = nuovo, q
+        resta = any(x["nome"] == vecchio for x in self.voci.values())
+        passate = self.rete.rinomina(vecchio, nuovo, self.carte_db, tieni=resta)
+        if not resta:
+            self.vie = {((nuovo if a == vecchio else a), (nuovo if b == vecchio else b)): q for (a, b), q in self.vie.items()}
+            for p_ in self.punti.values():
+                p_["ingressi"] = [["c", nuovo] if (k == "c" and v == vecchio) else [k, v] for k, v in p_.get("ingressi", [])]
+        self.dici(f"{vecchio} → {nuovo}: replaced ({q}x)" + (f", {passate} link{'s' if passate != 1 else ''} kept" if passate else ""))
+        self.mazzo_cambiato()
+        self.carica_mancanti()
+        self.disegna()
+        self.salva()
+        return True
+
+    def nodo_xy(self, vid, dx=0.0, dy=0.0):
+        """(x, y, raggio) del pallino della carta, spostato di dx, dy (la carta che si trascina). None se la carta non si vede."""
+        pl = self.pila_di(vid)
+        if pl is None or (pl["zona"] != "main" and self.nascosta()):
+            return None
+        x, _y, s_ = self.pos_px(pl)
+        w, h, off, _p = misure(s_)
+        k = pl["carte"].index(vid)
+        y = self.ys_px(pl)[k]
+        if vid == pl["carte"][-1] or vid == pl.get("aperta"):
+            return x + w / 2 + dx, y + h + 9 + dy, 8
+        return x + w + dx, y + off * 0.5 + dy, 5
+
+    def vid_nome(self, nome):
+        """La carta col nome che si vede: prima nel mazzo, poi nella fascia."""
+        cand = [i for i, v in self.voci.items() if v["nome"] == nome]
+        cand.sort(key=lambda i: self.voci[i]["zona"] != "main")
+        return next((i for i in cand if self.rett(i) is not None), None)
+
+    @staticmethod
+    def segmento(a, b):
+        """La freccia fra due pallini (x, y, raggio): dritta, dal bordo del pallino del padre al bordo di quello del figlio, staccata di 2 pixel. None se si toccano."""
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        lung = (dx * dx + dy * dy) ** 0.5
+        if lung < a[2] + b[2] + 10:
+            return None
+        ux, uy = dx / lung, dy / lung
+        return (a[0] + ux * (a[2] + 2), a[1] + uy * (a[2] + 2)), (b[0] - ux * (b[2] + 2), b[1] - uy * (b[2] + 2))
+
+    def legami_visti(self):
+        """[(padre, figlio, vid padre, vid figlio)] delle connessioni fra carte che si vedono."""
+        out = []
+        for p_, c_, _fam in self.rete.legami({v["nome"] for v in self.voci.values()}):
+            va, vb = self.vid_nome(p_), self.vid_nome(c_)
+            if va is not None and vb is not None:
+                out.append((p_, c_, va, vb))
+        return out
+
+    def punto_xy(self, pid, dx=0.0, dy=0.0):
+        p_ = self.punti[pid]
+        return p_["x"] * self.zoom + dx, self.oy("main") + p_["y"] * self.zoom + dy, R_PUNTO
+
+    def uscita_xy(self, pid):
+        """Il pallino d'oro del dot: a destra, staccato."""
+        x, y, r = self.punto_xy(pid)
+        return x + r + 9, y
+
+    def fine_xy(self, fine, mobili=None, dx=0.0, dy=0.0):
+        """Dove sta un capo di un pezzo di linea: ("c", vid) il pallino della carta, ("p", id) il dot; spostato di dx, dy se e' fra quelli che si trascinano."""
+        k, v = fine
+        sp = (dx, dy) if mobili is not None and fine in mobili else (0.0, 0.0)
+        if k == "c":
+            return self.nodo_xy(v, *sp) if v in self.voci else None
+        return self.punto_xy(v, *sp) if v in self.punti else None
+
+    def pezzi(self):
+        """I pezzi di linea da disegnare: dict(a, b, freccia, link=(vid padre, vid figlio) o None, links, punto, ingresso, stile). Una connessione senza dot e' un
+        pezzo solo, con la punta. Un dot ha un pezzo per ogni ingresso (una carta o un altro dot: un dot riceve piu' frecce, Autore 10 nov 2026) e un pezzo con
+        la punta per ogni figlio, uno solo anche se ci passano le connessioni di piu' padri (links)."""
+        out, gruppi = [], {}
+        for p_, c_, va, vb in self.legami_visti():
+            q = self.vie.get((p_, c_))
+            if q in self.punti and p_ in self.fonti(q):
+                gruppi.setdefault((q, vb), []).append((va, vb))
+            else:
+                out.append(dict(a=("c", va), b=("c", vb), freccia=True, link=(va, vb), links=[(va, vb)], punto=None, stile=(va, vb)))
+        for (q, vb), links in gruppi.items():
+            out.append(dict(a=("p", q), b=("c", vb), freccia=True, link=links[0], links=links, punto=None, stile=links[0]))
+        for q in self.punti:
+            sotto = set(self.sotto_punto(q))
+            for k, v in self.ingressi(q):
+                if k == "c":
+                    va = self.vid_nome(v)
+                    if va is None:
+                        continue
+                    stile = next((l_ for (q2, _vb), links in gruppi.items() if q2 in sotto for l_ in links if l_[0] == va), None)
+                    out.append(dict(a=("c", va), b=("p", q), freccia=False, link=None, punto=q, ingresso=("c", v), stile=stile))
+                elif v in self.punti:
+                    out.append(dict(a=("p", v), b=("p", q), freccia=False, link=None, punto=q, ingresso=("p", v), stile=None))
+        return out
+
+    def stile_pezzo(self, pz):
+        if pz.get("stile"):
+            return self.stile_px(*pz["stile"])
+        w = RS.SPESSORI[1]
+        return RS.PERLA, w, (round(7 + 2.2 * w), round(8 + 2.2 * w), round(2.6 + 0.9 * w))
+
+    def disegna_rete(self):
+        """Le linee padre -> figlio, dritte da pallino a pallino o spezzate dai dot, SOTTO le carte (Autore, 9 nov 2026: «le linee passano dietro le carte e mai
+        sopra») e sopra le label. Sulla scheda una linea per pezzo; in Tk un'immagine sola in antialias (2x ridotta; 1x se sarebbe troppo grande). Non prendono i
+        clic: la carta si cerca nella geometria delle pile, la linea solo nel vuoto. Mentre trascini l'immagine si nasconde e i pezzi diventano linee della tela
+        (frecce_vive). Un'immagine per freccia costava di piu' (misurato su UW Bouncer, 10 ms a movimento invece di 4)."""
+        from PIL import Image, ImageDraw, ImageTk
+        cv = self.cv
+        cv.delete("rete"); cv.delete("rete_hover"); cv.delete("punto")
+        self._img_rete, self._segmenti, self._tronchi, self._arco, self._arco_t, self._barra_box = None, [], [], None, None, None
+        self._pezzi = self.pezzi()
+        for pz in self._pezzi:
+            a, b = self.fine_xy(pz["a"]), self.fine_xy(pz["b"])
+            pz["sg"] = self.segmento(a, b) if a and b else None
+            if pz["sg"] is None:
+                continue
+            if pz["link"]:
+                self._segmenti.append((pz["link"][0], pz["link"][1], pz["sg"][0], pz["sg"][1]))
+            else:
+                self._tronchi.append((pz["punto"], pz["sg"][0], pz["sg"][1], pz["ingresso"]))
+        visti = [pz for pz in self._pezzi if pz["sg"]]
+        if visti and self.gpu:      # sulla scheda video: linee con la punta, l'antialias lo fa la scheda (MSAA); niente immagine da rifare
+            for pz in visti:
+                col, w, ash = self.stile_pezzo(pz)
+                a, b = pz["sg"]
+                cv.create_line(a[0], a[1], b[0], b[1], fill=col, width=w, arrow="last" if pz["freccia"] else "none", arrowshape=ash, capstyle="round", tags="rete")
+        elif visti:
+            xs = [x for pz in visti for x in (pz["sg"][0][0], pz["sg"][1][0])]
+            ys = [y for pz in visti for y in (pz["sg"][0][1], pz["sg"][1][1])]
+            x0, y0 = int(min(xs)) - 14, int(min(ys)) - 14
+            x1, y1 = int(max(xs)) + 14, int(max(ys)) + 14
+            K = 2 if (x1 - x0) * (y1 - y0) * 4 <= 16_000_000 else 1
+            im = Image.new("RGBA", ((x1 - x0) * K, (y1 - y0) * K), (0, 0, 0, 0))
+            d = ImageDraw.Draw(im)
+            for pz in visti:
+                col, w, ash = self.stile_pezzo(pz)
+                rgb = tuple(int(col.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
+                a, b = pz["sg"]
+                A, B = ((a[0] - x0) * K, (a[1] - y0) * K), ((b[0] - x0) * K, (b[1] - y0) * K)
+                if not pz["freccia"]:
+                    d.line([A, B], fill=rgb + (235,), width=max(1, round(w * K)))
+                    continue
+                ang = math.atan2(B[1] - A[1], B[0] - A[0])
+                L, AP = ash[1] * K, 0.42
+                base = (B[0] - L * 0.8 * math.cos(ang), B[1] - L * 0.8 * math.sin(ang))       # la linea finisce dentro la punta, non la buca
+                d.line([A, base], fill=rgb + (235,), width=max(1, round(w * K)))
+                d.polygon([B, (B[0] - L * math.cos(ang - AP), B[1] - L * math.sin(ang - AP)), (B[0] - L * math.cos(ang + AP), B[1] - L * math.sin(ang + AP))],
+                          fill=rgb + (255,))
+            if K > 1:
+                im = im.resize((x1 - x0, y1 - y0), Image.LANCZOS)
+            self._img_rete = ImageTk.PhotoImage(im)
+            cv.create_image(x0, y0, image=self._img_rete, anchor="nw", tags="rete")
+        for pid in self.punti:      # i dot, sopra le linee e sotto le carte; accanto il pallino d'oro da cui parte una linea nuova (come quello delle carte)
+            pt = self.punto_xy(pid)
+            cv.create_image(pt[0] - R_PUNTO, pt[1] - R_PUNTO, image=pallino_punto(2 * R_PUNTO), anchor="nw", tags=("punto", f"p{pid}"))
+            if not self.sola:
+                ox, oy_ = self.uscita_xy(pid)
+                cv.create_image(ox - 5, oy_ - 5, image=pallino_nodo(10), anchor="nw", tags=("punto", f"p{pid}", "punto_out", f"po{pid}"))
+        if cv.find_withtag("carta"):
+            cv.tag_lower("rete", "carta")
+        # i dot sopra le carte, come i pallini (10 nov 2026): sono nodi da toccare, e il centro di una linea fra le basi di padre e figlio cade spesso dentro la
+        # carta del figlio; sotto le carte un dot messo col chiodo spariva e non si prendeva piu'. Le linee restano dietro le carte.
+        cv.tag_raise("punto")
+        cv.tag_raise("nodo")
+        cv.tag_raise("scambia")
+
+    def stile_px(self, va, vb):
+        """(colore, spessore, punta) della freccia: il colore e l'importanza scelti da Autore, di partenza grigio perlato e sottile (9 nov 2026)."""
+        col, w = self.rete.colore_spessore(self.voci[va]["nome"], self.voci[vb]["nome"])
+        return col, w, (round(7 + 2.2 * w), round(8 + 2.2 * w), round(2.6 + 0.9 * w))
+
+    @staticmethod
+    def distanza(pt, a, b):
+        """Distanza del punto dal segmento a-b."""
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        l2 = dx * dx + dy * dy or 1.0
+        t = max(0.0, min(1.0, ((pt[0] - a[0]) * dx + (pt[1] - a[1]) * dy) / l2))
+        qx, qy = a[0] + t * dx, a[1] + t * dy
+        return ((pt[0] - qx) ** 2 + (pt[1] - qy) ** 2) ** 0.5
+
+    def arco_a(self, x, y, raggio=7):
+        """La freccia piu' vicina al punto, entro raggio pixel: (padre vid, figlio vid, a, b) o None."""
+        meglio, dmin = None, raggio
+        for sg in getattr(self, "_segmenti", []):
+            dd = self.distanza((x, y), sg[2], sg[3])
+            if dd <= dmin:
+                meglio, dmin = sg, dd
+        return meglio
+
+    def barretta(self, a, b, icone):
+        """I pulsantini di una linea accesa in una barretta accanto al suo centro, staccata dalla linea, uguale per ogni lunghezza (Autore, 10 nov 2026: «in linee
+        troppo corte non appaiono tutti i pulsantini come quello dei colori»; prima stavano lungo la linea a 24 pixel dal centro e su una linea corta finivano sopra i
+        pallini o fuori). icone: [(immagine, tag)]. Il chiodo mette il dot a meta' della linea. -> il riquadro della barretta."""
+        (ax, ay), (bx, by) = a, b
+        mx, my = (ax + bx) / 2, (ay + by) / 2
+        lung = max(1.0, ((bx - ax) ** 2 + (by - ay) ** 2) ** 0.5)
+        nx, ny = -(by - ay) / lung, (bx - ax) / lung        # la perpendicolare verso l'alto; per una linea verticale, a destra
+        if ny > 0 or (ny == 0 and nx < 0):
+            nx, ny = -nx, -ny
+        L, H = len(icone) * 24 + 6, 28
+        meta = abs(nx) * L / 2 + abs(ny) * H / 2
+        cx, cy = mx + nx * (12 + meta), my + ny * (12 + meta)
+        x0, y0 = cx - L / 2, cy - H / 2
+        self.cv.create_image(x0, y0, image=pillola(round(L), H, (16, 16, 20, 235), C["filo"]), anchor="nw", tags=("rete_hover", "rete_barra"))
+        for k, (img, tag) in enumerate(icone):
+            self.cv.create_image(x0 + 5 + k * 24, y0 + 4, image=img, anchor="nw", tags=("rete_hover", tag))
+        self._chiodo = (mx, my)
+        self._barra_box = (min(x0, mx) - 10, min(y0, my) - 10, max(x0 + L, mx) + 10, max(y0 + H, my) + 10)       # la zona dove la linea resta accesa
+        self.cv.tag_raise("rete_barra")
+        for _img, tag in icone:
+            self.cv.tag_raise(tag)
+        return x0, y0, x0 + L, y0 + H
+
+    def accendi_arco(self, sg):
+        """La freccia sotto il puntatore: piu' chiara, e accanto al suo centro la barretta: il chiodo (un dot), la ✕ (la toglie), i colori."""
+        if sg is not None and self._arco is not None and sg[:2] == self._arco[:2]:
+            return
+        self.cv.delete("rete_hover")
+        self._arco, self._arco_t, self._barra_box = sg, None, None
+        if sg is None:
+            return
+        (ax, ay), (bx, by) = sg[2], sg[3]
+        col, w, ash = self.stile_px(sg[0], sg[1])
+        self.cv.create_line(ax, ay, bx, by, fill=chiaro(col), width=w + 1.6, arrow="last", arrowshape=(ash[0] + 1, ash[1] + 2, ash[2] + 1), capstyle="round",
+                            tags=("rete_hover", "rete_hl"))
+        if self.cv.find_withtag("carta"):
+            self.cv.tag_lower("rete_hl", "carta")
+        self._chiodo_su = ("link", sg)
+        self.barretta(sg[2], sg[3], [(segno_chiodo(20), "rete_c"), (segno_x(20), "rete_x"), (segno_stile(20), "rete_s")])
+
+    def tronco_a(self, x, y, raggio=7):
+        """Il pezzo d'ingresso di un dot piu' vicino al punto: (dot, a, b, ingresso), o None."""
+        meglio, dmin = None, raggio
+        for tr in self._tronchi:
+            dd = self.distanza((x, y), tr[1], tr[2])
+            if dd <= dmin:
+                meglio, dmin = tr, dd
+        return meglio
+
+    def accendi_tronco(self, tr):
+        """L'ingresso di un dot sotto il puntatore: piu' chiaro, e accanto al suo centro la barretta: il chiodo e la ✕ che toglie quell'ingresso."""
+        if self._arco_t is not None and tr[0] == self._arco_t[0] and tr[3] == self._arco_t[3]:
+            return
+        cv = self.cv
+        cv.delete("rete_hover")
+        self._arco, self._arco_t = None, tr
+        (ax, ay), (bx, by) = tr[1], tr[2]
+        cv.create_line(ax, ay, bx, by, fill=chiaro(RS.PERLA), width=RS.SPESSORI[1] + 1.6, capstyle="round", tags=("rete_hover", "rete_hl"))
+        if cv.find_withtag("carta"):
+            cv.tag_lower("rete_hl", "carta")
+        self._chiodo_su = ("tronco", tr)
+        self.barretta(tr[1], tr[2], [(segno_chiodo(20), "rete_c"), (segno_x(20), "rete_xt")])
+
+    def togli_arco(self, sg):
+        """Toglie la connessione della freccia: la riga d'aiuto lo dice."""
+        pa, pb = self.voci[sg[0]]["nome"], self.voci[sg[1]]["nome"]
+        for a, b in self.fratelli(pa, pb):      # da un dot: tutte le connessioni che passano da quel pezzo
+            if (a, b) in self.rete.figli:
+                self.rete.lega(a, b, self.carte_db)       # gia' c'e': lega la toglie
+            self.via_tolta(a, b)
+        self.dici(f"{pa} → {pb}: unlinked")
+        self._arco = None
+        self.disegna()
+        self.salva()
+
+    def destro(self, e):
+        """Il tasto destro: su un dot lo toglie (la linea torna dritta), su una freccia nel vuoto la toglie. In sola lettura niente."""
+        if self.sola:
+            return
+        cx, cy = self.cv.canvasx(e.x), self.cv.canvasy(e.y)
+        sopra = self.pezzo_a(cx, cy)
+        if sopra[0] == "punto":
+            return self.togli_punto(sopra[1])
+        if sopra[0] not in (None, "rete_x", "rete_s", "rete_c", "rete_xt"):
+            return
+        sg = self.arco_a(cx, cy)
+        if sg is not None:
+            return self.togli_arco(sg)
+        tr = self.tronco_a(cx, cy)
+        if tr is not None:
+            self.togli_ingresso(tr[0], tr[3])
+
+    def dici(self, testo):
+        """Una riga in testa alla finestrella dei comandi per 4 secondi, poi torna il titolo."""
+        self.aiuto.configure(text=testo, fg=FG_DICI)
+        self.aiuto.after(4000, lambda: self.aiuto.winfo_exists() and self.aiuto.configure(text=self.aiuto_base, fg=FG_AIUTO))
+
+    def frecce_vive(self, d):
+        """All'inizio di un trascinamento: i pezzi di linea delle carte e dei dot presi passano a linee della tela, che seguono il mouse; le altre restano ferme.
+        Tutte le linee ferme di prima si nascondono: nessuna traccia vecchia (fino al 9 nov 2026 sulla scheda se ne nascondeva una sola)."""
+        d["mobili"] = {("c", c) for c in d["prese"]} | {("p", q) for q in d.get("punti") or ()}
+        d["vive"] = []
+        if not any(pz["a"] in d["mobili"] or pz["b"] in d["mobili"] for pz in self._pezzi):
+            return
+        cv = self.cv
+        cv.delete("rete_hover")
+        cv.itemconfigure("rete", state="hidden")
+        for pz in self._pezzi:
+            col, w, ash = self.stile_pezzo(pz)
+            punta = "last" if pz["freccia"] else "none"
+            if pz["a"] in d["mobili"] or pz["b"] in d["mobili"]:
+                it = cv.create_line(0, 0, 1, 1, fill=col, width=w, arrow=punta, arrowshape=ash, capstyle="round", tags="rete_viva")
+                d["vive"].append((it, pz))
+            elif pz.get("sg"):
+                a, b = pz["sg"]
+                cv.create_line(a[0], a[1], b[0], b[1], fill=col, width=w, arrow=punta, arrowshape=ash, capstyle="round", tags="rete_viva")
+        if cv.find_withtag("carta"):
+            cv.tag_lower("rete_viva", "carta")
+        for c in d["prese"]:         # la carta presa resta sopra tutto
+            cv.tag_raise(f"c{c}")
+        cv.tag_raise("nodo")
+        cv.tag_raise("scambia")
+
+    def muovi_frecce(self, d):
+        """A ogni movimento: i pezzi di linea delle carte e dei dot presi, dai loro capi spostati di quanto si e' mosso il mouse."""
+        dx, dy = d["x"] - d["x0"], d["y"] - d["y0"]
+        mobili = d.get("mobili") or set()
+        for it, pz in d.get("vive", []):
+            a, b = self.fine_xy(pz["a"], mobili, dx, dy), self.fine_xy(pz["b"], mobili, dx, dy)
+            sg = self.segmento(a, b) if a and b else None
+            if sg:
+                self.cv.coords(it, sg[0][0], sg[0][1], sg[1][0], sg[1][1])
+                self.cv.itemconfigure(it, state="normal")
+            else:
+                self.cv.itemconfigure(it, state="hidden")
+
+    def nodo_inizio(self, e, vid=None):
+        """Premuto il pallino: comincia una freccia da questa carta (il padre). I figli che lo strumento ha imparato per questa carta, se sono nel mazzo,
+        si accendono mentre tiri (un suggerimento, non una connessione)."""
+        self.nascondi()
+        if vid is None:
+            vid = next((int(t[1:]) for t in self.cv.gettags("current") if t[0] == "n" and t[1:].isdigit()), None)
+        if vid is None or vid not in self.voci:
+            return
+        bb = self.cv.bbox(f"n{vid}")
+        da = self.voci[vid]["nome"]
+        nomi = {v["nome"] for v in self.voci.values()}
+        imparati = [c for c in RS.figli_imparati(da, self.rete.f_imp) if c in nomi and c != da and (da, c) not in self.rete.figli]
+        self.drag = None
+        self.tira = dict(da=da, x=(bb[0] + bb[2]) / 2, y=(bb[1] + bb[3]) / 2, mosso=False, imparati=imparati)
+
+    def tira_muovi(self, e):
+        t = self.tira
+        x, y = self.cv.canvasx(e.x), self.cv.canvasy(e.y)
+        if not t["mosso"] and abs(x - t["x"]) + abs(y - t["y"]) < 6:
+            return
+        t["mosso"] = True
+        cv = self.cv
+        cv.delete("tirando")
+        for n in t["imparati"]:
+            vid = self.vid_nome(n)
+            rr = self.rett(vid) if vid is not None else None
+            if rr:
+                cv.create_rectangle(rr[0] - 4, rr[1] - 4, rr[2] + 4, rr[3] + 4, outline="#d6ac2e", width=1, dash=(3, 4), tags="tirando")
+        cv.create_line(t["x"], t["y"], x, y, fill="#d6ac2e", width=2, dash=(6, 4), arrow="last", tags="tirando")
+        q = self.punto_a(x, y)
+        if q is not None and self.ingresso_possibile(q, t):         # il dot che riceve si accende
+            px_, py_, r_ = self.punto_xy(q)
+            cv.create_rectangle(px_ - r_ - 4, py_ - r_ - 4, px_ + r_ + 4, py_ + r_ + 4, outline="#d6ac2e", width=2, tags="tirando")
+            return
+        vid = self.carta_a(x, y)
+        if vid is not None and self.voci[vid]["nome"] != t["da"]:        # il figlio si accende mentre ci passi
+            rr = self.rett(vid)
+            if rr:
+                cv.create_rectangle(rr[0] - 3, rr[1] - 3, rr[2] + 3, rr[3] + 3, outline="#d6ac2e", width=2, tags="tirando")
+
+    def tira_fine(self, e):
+        """Lasciato su un'altra carta: padre -> figlio, o la connessione tolta se c'era gia'. La riga d'aiuto dice cosa e' successo."""
+        t, self.tira = self.tira, None
+        self.cv.delete("tirando")
+        if not t["mosso"]:
+            return
+        q = self.punto_a(self.cv.canvasx(e.x), self.cv.canvasy(e.y))
+        if q is not None:       # lasciata su un dot: il dot la riceve, e' il suo ingresso
+            return self.ricevi_punto(q, t)
+        if t.get("punto") is not None:
+            return self.tira_fine_punto(t, self.cv.canvasx(e.x), self.cv.canvasy(e.y))
+        vb = self.carta_a(self.cv.canvasx(e.x), self.cv.canvasy(e.y))
+        b = self.voci[vb]["nome"] if vb is not None else None
+        esito = self.rete.lega(t["da"], b, self.carte_db)
+        if esito is None:
+            return
+        fam = self.rete.figli.get((t["da"], b)) or []
+        testo = f"{t['da']} → {b}: " + ("linked" + (f" ({RS.etichetta(fam)})" if fam else "") if esito == "nuova" else "unlinked")
+        self.aiuto.configure(text=testo, fg=FG_DICI)
+        self.aiuto.after(4000, lambda: self.aiuto.winfo_exists() and self.aiuto.configure(text=self.aiuto_base, fg=FG_AIUTO))
+        self.disegna()
+
+    def ricerca(self, padre):
+        """La ricerca veloce per nome: scrivi, le carte del formato che combaciano (prima quelle che cominciano cosi'), frecce e Invio; Maiuscolo+Invio in sideboard."""
+        tk, F = self.tk, self.F
+        box = tk.Frame(padre, bg=C["filo"], padx=1, pady=1); box.pack(side="left", padx=(18, 0))
+        self.v_cerca = tk.StringVar()
+        e = self.e_cerca = tk.Entry(box, textvariable=self.v_cerca, width=30, bg=C["scheda"], fg=C["titolo"], insertbackground=C["titolo"], relief="flat", font=F(10))
+        e.pack(ipady=4, padx=6)
+        segnaposto = "Add card…"
+
+        def vuoto(on):
+            if on and not self.v_cerca.get():
+                e.configure(fg=C["muto"]); self.v_cerca.set(segnaposto)
+            elif not on and self.v_cerca.get() == segnaposto:
+                self.v_cerca.set(""); e.configure(fg=C["titolo"])
+        vuoto(True)
+        e.bind("<FocusIn>", lambda ev: vuoto(False))
+        e.bind("<FocusOut>", lambda ev: (vuoto(True), self.fin.after(150, self.chiudi_scelte)))
+        self.scelte = dict(pop=None, lista=None, voci=[])
+        self.v_cerca.trace_add("write", lambda *a: self.cerca_nomi())
+        e.bind("<Down>", lambda ev: self.muovi_scelta(1)); e.bind("<Up>", lambda ev: self.muovi_scelta(-1))
+        e.bind("<Return>", lambda ev: self.scegli(zona="main")); e.bind("<Shift-Return>", lambda ev: self.scegli(zona="side"))
+        e.bind("<Escape>", lambda ev: (self.chiudi_scelte(), self.v_cerca.set(""), "break")[2])
+
+    def trova(self, testo, quante=10):
+        t = testo.strip().lower()
+        if len(t) < 2:
+            return []
+        nomi = self.nomi_ricerca() if callable(self.nomi_ricerca) else (self.nomi_ricerca or [])
+        inizio = [n for n in nomi if n.lower().startswith(t)]
+        dentro = [n for n in nomi if t in n.lower() and not n.lower().startswith(t)]
+        return (sorted(inizio, key=len) + sorted(dentro, key=len))[:quante]
+
+    def cerca_nomi(self):
+        testo = self.v_cerca.get()
+        if testo == "Add card…" or self.fin.focus_get() is not self.e_cerca:
+            return
+        voci = self.trova(testo)
+        self.scelte["voci"] = voci
+        if not voci:
+            self.chiudi_scelte()
+            return
+        tk = self.tk
+        if self.scelte["pop"] is None or not self.scelte["pop"].winfo_exists():
+            p = self.scelte["pop"] = tk.Toplevel(self.fin); p.overrideredirect(True); p.configure(bg=C["filo"])
+            l = self.scelte["lista"] = tk.Listbox(p, bg=C["cap"], fg=C["testo"], selectbackground=C["accento"], selectforeground="#ffffff", relief="flat", bd=0,
+                                                  highlightthickness=0, font=self.F(10), activestyle="none", height=10, width=34)
+            l.pack(padx=1, pady=1)
+            l.bind("<ButtonRelease-1>", lambda ev: self.scegli(zona="main"))
+        l = self.scelte["lista"]
+        l.delete(0, "end")
+        for n in voci:
+            l.insert("end", n)
+        l.configure(height=len(voci))
+        l.selection_clear(0, "end"); l.selection_set(0)
+        e = self.e_cerca
+        self.scelte["pop"].geometry(f"+{e.winfo_rootx() - 7}+{e.winfo_rooty() + e.winfo_height() + 6}")
+
+    def muovi_scelta(self, d):
+        l = self.scelte.get("lista")
+        if not self.scelte["voci"] or l is None or not l.winfo_exists():
+            return "break"
+        sel = l.curselection()
+        i = max(0, min(len(self.scelte["voci"]) - 1, (sel[0] if sel else -1) + d))
+        l.selection_clear(0, "end"); l.selection_set(i); l.see(i)
+        return "break"
+
+    def scegli(self, zona="main"):
+        voci = self.scelte["voci"]
+        if not voci:
+            return "break"
+        l = self.scelte.get("lista")
+        sel = l.curselection() if l is not None and l.winfo_exists() else ()
+        nome = voci[sel[0] if sel else 0]
+        self.ricevi(nome, zona=zona)
+        self.v_cerca.set("")
+        self.chiudi_scelte()
+        self.e_cerca.focus_set()
+        return "break"
+
+    def chiudi_scelte(self):
+        p = self.scelte.get("pop") if hasattr(self, "scelte") else None
+        if p is not None:
+            try:
+                p.destroy()
+            except Exception:
+                pass
+            self.scelte["pop"] = None
+
+    # ------------------------------------------------ le immagini che mancano
+    def carica_mancanti(self):
+        da_fare = [n for n in {v["nome"] for v in self.voci.values()} if not os.path.exists(CAP.file_mini(n)) and not os.path.exists(CAP.file_immagine(n)) and n not in self.attese]
+        if not da_fare:
+            return
+        self.attese.update(da_fare)
+
+        def lavora():
+            for n in da_fare:
+                try:
+                    if not self.fin.winfo_exists():
+                        return
+                except Exception:
+                    return
+                CAP.scarica_immagine(n)
+                self.pronte.append(n)
+        threading.Thread(target=lavora, daemon=True).start()
+        self.fin.after(200, self.raccogli)
+
+    def raccogli(self):
+        if not self.fin.winfo_exists():
+            return
+        arrivate = False
+        while self.pronte:
+            self.attese.discard(self.pronte.popleft()); arrivate = True
+        if arrivate and self.drag is None:
+            self.disegna()
+        if self.attese:
+            self.fin.after(250, self.raccogli)
+
+    # ------------------------------------------------ cliccare, trascinare, impilare
+    def sotto_al_mouse(self):
+        """La carta sotto l'ultimo punto del mouse (clic o movimento)."""
+        return self.carta_a(*self._xy) if self._xy else None
+
+    def pila_di(self, vid):
+        for pl in self.pile:
+            if vid in pl["carte"]:
+                return pl
+        return None
+
+    def premi(self, e):
+        self.nascondi()
+        if self._xy is None:
+            self._xy = (self.cv.canvasx(e.x), self.cv.canvasy(e.y))
+        vid = self.sotto_al_mouse()
+        pl = self.pila_di(vid) if vid is not None else None
+        x, y = self.cv.canvasx(e.x), self.cv.canvasy(e.y)
+        if pl is None or pl["zona"] == "cmd":
+            self.drag = None
+            if pl is None:      # il vuoto: il riquadro di selezione (Maiuscolo: aggiunge a quella che c'e')
+                self.banda = dict(x0=x, y0=y, x=x, y=y, aggiungi=bool(e.state & 0x1))
+            return
+        if e.state & 0x4:       # Ctrl+clic: la pila entra o esce dalla selezione
+            self.drag = None
+            if self.in_sel(pl):
+                self.sel = [q for q in self.sel if q is not pl]
+            else:
+                self.sel.append(pl)
+            self.disegna_sel()
+            return
+        if not self.in_sel(pl) and (self.sel or self.sel_punti or self.sel_label):        # una carta fuori dalla selezione: la selezione si scioglie
+            self.vuota_sel()
+        gruppo = list(self.sel) if self.in_sel(pl) else None       # una pila della selezione: si sposta tutta la selezione, anche se e' una pila sola
+        prese = [c for q in gruppo for c in q["carte"]] if gruppo else list(pl["carte"]) if e.state & 0x1 else [vid]
+        px, _py, _s = self.pos_px(pl)
+        self.drag = dict(prese=prese, da=pl, x0=x, y0=y, x=x, y=y, mosso=False, vid=vid, x_presa=px,
+                         y_presa=self.ys_px(pl)[pl["carte"].index(prese[0])] if not gruppo else 0, gruppo=gruppo,
+                         etichette=sorted(self.sel_label) if gruppo else [], punti=list(self.sel_punti) if gruppo else [])
+        for c in prese:
+            self.cv.tag_raise(f"c{c}")
+            self.cv.tag_raise(f"n{c}")
+            self.cv.tag_raise(f"s{c}")
+
+    def trascina(self, e):
+        if self.separa:
+            return self.muovi_barra(e)
+        if self.tira:
+            return self.tira_muovi(e)
+        if self.banda:
+            return self.banda_muovi(e)
+        if self.ridim:
+            return self.ridim_muovi(e)
+        d = self.drag
+        if d is None:
+            return
+        x, y = self.cv.canvasx(e.x), self.cv.canvasy(e.y)
+        d["ex"], d["ey"] = e.x, e.y
+        if not d["mosso"] and abs(x - d["x0"]) + abs(y - d["y0"]) >= 3:       # da qui e' un trascinamento; prima la carta segue lo stesso, senza ritardo
+            d["mosso"] = True
+            self.frecce_vive(d)
+        self.sposta_presi(d, x - d["x"], y - d["y"])
+        d["x"], d["y"] = x, y
+        if not d["mosso"]:
+            return
+        self.muovi_frecce(d)
+        if d.get("gruppo") is None:
+            self.accendi_bersaglio(x, y)
+        self.bordo_scorre()
+
+    def sposta_presi(self, d, dx, dy):
+        """Sposta sulla tela quello che si trascina: le carte prese coi loro pallini e il ⇄, i contorni della selezione, le label prese."""
+        cv = self.cv
+        for c in d["prese"]:
+            cv.move(f"c{c}", dx, dy)
+            cv.move(f"n{c}", dx, dy)
+            cv.move(f"s{c}", dx, dy)
+        if d.get("gruppo") is not None:
+            cv.move("sel", dx, dy)
+        for k in d.get("etichette") or ():
+            cv.move(f"l{k}", dx, dy)
+        for q in d.get("punti") or ():
+            cv.move(f"p{q}", dx, dy)
+
+    def accendi_bersaglio(self, x, y):
+        self.cv.delete("bersaglio")
+        b = self.bersaglio(x, y)
+        if b is not None:
+            x0, y0, x1, y1 = self.ingombro_px(b)
+            self.cv.create_rectangle(x0 - 4, y0 - 4, x1 + 4, y1 + 4, outline=C["accento"], width=2, tags="bersaglio")
+
+    def bordo_scorre(self):
+        """Col mouse a meno di 40 pixel da un bordo, mentre trascini, il foglio scorre da solo, a ogni fotogramma (16 ms), piu' veloce piu' sei vicino al bordo, e
+        la carta resta sotto il mouse. Prima scorreva a scatti, una riga intera a ogni movimento."""
+        d = self.drag
+        if d is None or not d.get("mosso") or d.get("scorre"):
+            return
+        W, H = self.cv.winfo_width(), self.cv.winfo_height()
+        if W < 200 or H < 200:      # la tela non ancora a misura (una finestra di prova nascosta): niente bordi
+            return
+        def v(p, lato):
+            return -round((40 - p) / 40 * 18) if p < 40 else round((40 - (lato - p)) / 40 * 18) if p > lato - 40 else 0
+        vx, vy = v(d["ex"], W), v(d["ey"], H)
+        if not vx and not vy:
+            return
+        cv = self.cv
+        cv.scan_mark(0, 0)
+        cv.scan_dragto(-vx, -vy, gain=1)
+        self.sposta_presi(d, vx, vy)
+        d["x"] += vx; d["y"] += vy
+        self.muovi_frecce(d)
+        if d.get("gruppo") is None:
+            self.accendi_bersaglio(d["x"], d["y"])
+        d["scorre"] = cv.after(16, lambda: (d.pop("scorre", None), self.bordo_scorre()))
+
+    def bersaglio(self, x, y, d=None):
+        """La pila sotto il mouse (pixel della tela): ci si impila solo lasciando la carta sopra un'altra pila, se no la carta resta libera dove la lasci. Escluse le
+        pile che si stanno spostando, quelle del comandante e quelle della fascia chiusa, e la pila da cui viene la carta: tirata fuori, la carta se ne stacca dovunque
+        la lasci (10 nov 2026, Autore: «quando sposto delle carte in un punto senza il grid snap scattano spostandosi in un punto leggermente differente»: la carta
+        in cima tirata di poco fuori dalla sua pila aveva il mouse ancora sopra la pila e ci tornava, indietro di quanto l'avevi spostata; e al rilascio il
+        trascinamento era gia' chiuso, quindi anche la pila tirata via tutta contava come bersaglio: il bordo azzurro diceva libera, la carta tornava a posto).
+        d: il trascinamento, se non e' piu' in self.drag (il rilascio)."""
+        d = d or self.drag
+        for pl in reversed(self.pile):
+            if pl["zona"] == "cmd" or (d and pl is d["da"]) or (pl["zona"] == "side" and self.nascosta()):
+                continue
+            x0, y0, x1, y1 = self.ingombro_px(pl)
+            if x0 - 4 <= x <= x1 + 4 and y0 - 4 <= y <= y1 + 4:
+                return pl
+        return None
+
+    def rilascia(self, e):
+        import time as _tm
+        if self.drag is not None and self.drag.get("mosso"):
+            self._fine_drag = _tm.time()
+        if self.drag is not None and self.drag.get("scorre"):
+            self.cv.after_cancel(self.drag.pop("scorre"))
+        if self.separa:     # la barra lasciata: la fascia resta a quell'altezza
+            d, self.separa = self.separa, None
+            if d["attesa"] is not None:
+                self.cv.after_cancel(d["attesa"])
+            self.disegna(); self.salva()
+            return
+        if self.tira:
+            return self.tira_fine(e)
+        if self.banda:
+            return self.banda_fine()
+        if self.ridim:
+            self.ridim = None
+            self.disegna(); self.salva()
+            return
+        d, self.drag = self.drag, None
+        self.cv.delete("bersaglio")
+        if d is None:
+            return
+        if not d["mosso"]:      # un clic: la carta torna dove era (si era spostata di meno di 3 pixel) e la pila si apre o si chiude, fra un attimo
+            self.sposta_presi(d, d["x0"] - d["x"], d["y0"] - d["y"])
+            if d["vid"] is not None:
+                self.sel_carta = d["vid"]       # la carta scelta: F la inquadra
+                self.disegna_sel(); self.disegna_outliner()
+                self.clic = self.cv.after(230, lambda: self.apri_pila(d["vid"]))
+            return
+        if d.get("gruppo") is not None:     # la selezione o la label: tutte le pile insieme, alla stessa distanza fra loro, senza impilarsi
+            return self.lascia_gruppo(d)
+        b = self.bersaglio(d["x"], d["y"], d)
+        da = d["da"]
+        if self.sola:       # in sola lettura una carta non passa fra mazzo e sideboard: lasciata nell'altra zona torna al suo posto
+            verso = b["zona"] if b is not None else ("side" if d["y"] < self.hs and not self.nascosta() else "main")
+            if verso != da["zona"]:
+                self.disegna()
+                return
+        for c in d["prese"]:
+            da["carte"].remove(c)
+            if da.get("aperta") == c:
+                da["aperta"] = None
+        if b is not None:
+            b["carte"].extend(d["prese"])
+            zona = b["zona"]
+        else:       # libera: una pila nuova dove e' finita la prima carta presa (nella fascia se il mouse e' sopra la barra)
+            nx, ny = d["x_presa"] + d["x"] - d["x0"], d["y_presa"] + d["y"] - d["y0"]
+            zona = "side" if d["y"] < self.hs and not self.nascosta() else "main"
+            s_ = self.sc(zona)
+            bx, by = nx / s_, (ny - self.oy(zona)) / s_
+            if self.griglia:        # libera mentre la trascini, sulla griglia quando la lasci, in una cella libera
+                gx, gy = self.cella_libera(zona, bx, by if zona == "main" else 0, len(d["prese"]))
+            else:
+                gx, gy = round(bx, 2), round(by, 2)       # dove la lasci, al pixel (prima a passi di 2)
+            b = dict(zona=zona, x=gx, y=0 if zona != "main" else gy, carte=list(d["prese"]), aperta=None)
+            self.pile.append(b)
+        if not da["carte"]:
+            self.pile.remove(da)
+        cambiate = False
+        for c in d["prese"]:
+            cambiate |= self.metti_in_zona(c, zona)
+        if cambiate:
+            self.mazzo_cambiato()
+        self.disegna()
+        self.salva()
+
+    def metti_in_zona(self, vid, zona):
+        """La carta passa nella zona; se li' c'e' gia' la stessa carta, le copie si sommano su quella (una carta per nome e zona). -> True se mazzo o sideboard cambiano."""
+        v = self.voci[vid]
+        if v["zona"] == zona:
+            return False
+        gemella = next((i for i, x in self.voci.items() if i != vid and x["nome"] == v["nome"] and x["zona"] == zona), None)
+        if gemella is not None:
+            self.voci[gemella]["q"] += v["q"]
+            self.togli(vid)
+        else:
+            v["zona"] = zona
+        return True
+
+    def apri_pila(self, vid):
+        """Il clic su una carta in mezzo alla pila la apre: si vede intera col suo contatore, le altre scendono. Sull'ultima, o sulla carta gia' aperta, la pila si richiude."""
+        self.clic = None
+        pl = self.pila_di(vid)
+        if pl is None:
+            return
+        nuova = None if (vid == pl["carte"][-1] or pl.get("aperta") == vid) else vid
+        for q in self.pile:
+            q["aperta"] = None
+        pl["aperta"] = nuova
+        self.disegna()
+
+    def doppio(self, e):
+        """Doppio clic: UNA copia passa fra mazzo e sideboard, sulla stessa carta se dall'altra parte c'e' gia', se no in una pila nuova in fondo alla zona."""
+        if self.sola:
+            return
+        if self.clic is not None:
+            self.cv.after_cancel(self.clic); self.clic = None
+        if e is not None:
+            cx, cy = self.cv.canvasx(e.x), self.cv.canvasy(e.y)
+            sopra = self.pezzo_a(cx, cy)
+            if sopra[0] == "label_t":
+                self.drag = None
+                return self.rinomina_etichetta(sopra[1])
+            if sopra[0] is None and self.linea_a(cx, cy) is not None:
+                self.drag = None
+                self.stile_chiudi()
+                return self.inserisci_punto(cx, cy)
+            if self.vicino_barra(cy) or sopra[0] in ("ctrl", "nodo"):
+                return
+            self._xy = (cx, cy)
+        vid = self.sotto_al_mouse()
+        pl = self.pila_di(vid) if vid is not None else None
+        if pl is None or pl["zona"] == "cmd":
+            return
+        v = self.voci[vid]
+        verso = "side" if v["zona"] == "main" else "main"
+        gemella = next((i for i, x in self.voci.items() if x["nome"] == v["nome"] and x["zona"] == verso), None)
+        if gemella is not None:
+            self.voci[gemella]["q"] += 1
+        else:       # una pila nuova in fondo alla prima riga della zona
+            w, _h, _off, _p = misure(1.0)
+            stesse = [q for q in self.pile if q["zona"] in ((verso, "cmd") if verso == "side" else (verso,))]
+            y = 0 if verso == "side" else min((q["y"] for q in stesse), default=0)
+            riga = [q["x"] for q in stesse if q["y"] == y]
+            nuovo = max(self.voci) + 1
+            self.voci[nuovo] = dict(nome=v["nome"], zona=verso, q=1)
+            self.pile.append(dict(zona=verso, x=max(riga) + w + SPAZIO if riga else MARGINE, y=y, carte=[nuovo], aperta=None))
+        v["q"] -= 1
+        if v["q"] <= 0:
+            self.togli(vid)
+        self.drag = None
+        self.mazzo_cambiato()
+        self.disegna()
+        self.salva()
+
+    def mazzo_cambiato(self):
+        if not self.modifica:
+            return
+        lista, side = self.liste()
+        if self.editore is not None:        # nel builder: il mazzo e' suo, lo salva lui
+            self.editore(lista, side)
+        else:
+            sez, mid = self.modificabile
+            MS.cambia(sez, mid, f=self.file_mazzi, lista=lista, side=side)
+        self.cambiato = True
+        if self.al_cambio:
+            self.al_cambio(lista, side)
+
+    def liste(self):
+        lista, side = collections.Counter(), collections.Counter()
+        for v in self.voci.values():
+            if v["zona"] == "main":
+                lista[v["nome"]] += v["q"]
+            elif v["zona"] == "side":
+                side[v["nome"]] += v["q"]
+        return dict(lista), dict(side)
+
+    # ------------------------------------------------ salvare e riprendere la disposizione
+    def salva(self):
+        if not self.chiave or (self.sola and not self.sposta):        # in sola lettura si salva solo la disposizione delle carte spostate (10 nov 2026)
+            return
+        try:
+            salva_tavolo(self.chiave, dict(v=2, zoom=self.zoom, fascia=self.hs, etichette=[dict(lb) for lb in self.etichette],
+                                                    punti=[dict(id=q, **p_) for q, p_ in self.punti.items()], vie=[[a, b, q] for (a, b), q in self.vie.items()], pile=[dict(zona=pl["zona"], x=pl["x"], y=pl["y"], carte=[[self.voci[c]["nome"], self.voci[c]["q"]] for c in pl["carte"]])
+                                                                    for pl in self.pile]), self.file_tavoli)
+        except OSError as e:
+            print("tavolo: non salvato:", e)
+
+    def riprendi(self):
+        """La disposizione salvata, sempre (Autore, 9 nov 2026: «alla riapertura mantenga il posizionamento che ho creato delle carte»): ogni carta che c'e'
+        ancora torna al suo posto, con le copie di adesso; una carta nuova va sulla pila del suo costo (o in una pila nuova), una tolta sparisce. Fino a quel giorno la
+        disposizione tornava solo se il mazzo era identico copia per copia, e il builder la teneva sotto un'altra chiave (e per un mazzo nuovo, senza id, non la salvava).
+        Un mazzo che si cambia torna zona per zona; uno di Arena o del meta per nome (li' mazzo e sideboard sul tavolo sono solo una disposizione)."""
+        if not self.chiave:
+            return False
+        tutte = carica_tavoli(self.file_tavoli)
+        t = tutte.get(self.chiave) or (tutte.get(self.chiave_vecchia) if self.chiave_vecchia else None)
+        if not t or not all(isinstance(c, list) for pl in t.get("pile", []) for c in pl["carte"]):     # una disposizione del primo giro (una carta per copia): si rifa'
+            return False
+        self.etichette = [dict(nome=str(x.get("nome") or "Label"), x=x["x"], y=x["y"], w=x["w"], h=x["h"], colore=x.get("colore") or GRIGIO_L,
+                               lucchetto=x.get("lucchetto", True)) for x in t.get("etichette") or [] if all(k in x for k in ("x", "y", "w", "h"))]
+        self.punti = {}
+        for x in t.get("punti") or []:
+            if not all(k in x for k in ("id", "x", "y")):
+                continue
+            ing = x.get("ingressi")
+            if ing is None:         # il primo giro: un ingresso solo, il dot prima o il padre
+                ing = [["p", int(x["da"])]] if x.get("da") is not None else [["c", x["padre"]]] if x.get("padre") else []
+            self.punti[int(x["id"])] = dict(x=x["x"], y=x["y"], ingressi=[[k, int(v) if k == "p" else v] for k, v in ing])
+        self.vie = {(a, b): int(q) for a, b, q in t.get("vie") or [] if int(q) in self.punti}
+        ora = collections.Counter()
+        for v in self.voci.values():
+            ora[(v["nome"], v["zona"])] += v["q"]
+        per_nome = collections.Counter()
+        for (n, z), q in ora.items():
+            if z != "cmd":
+                per_nome[n] += q
+        nuova = t.get("v") == 2
+        _w, h, off, _p = misure(1.0)
+        vecchio_inizio = 2 * ETICHETTA + h + 2 * off + 28       # la disposizione del primo giro: y assolute, il mazzo cominciava qui (scala 1)
+        voci, pile, resto, messe = {}, [], dict(ora), 0
+        for pl in t["pile"]:
+            carte = []
+            for n, q_salvato in pl["carte"]:
+                if self.modifica or pl["zona"] == "cmd":
+                    q = resto.pop((n, pl["zona"]), 0)
+                else:       # di Arena o del meta: il nome conta, la zona e' quella che gli hai dato sul tavolo
+                    q = min(q_salvato, per_nome[n])
+                    per_nome[n] -= q
+                if q > 0:
+                    i = len(voci)
+                    voci[i] = dict(nome=n, zona=pl["zona"], q=q)
+                    carte.append(i)
+            if carte:
+                y = pl["y"] if nuova else (max(0, pl["y"] - vecchio_inizio) if pl["zona"] == "main" else 0)
+                pile.append(dict(zona=pl["zona"], x=pl["x"], y=y if pl["zona"] == "main" else 0, carte=carte, aperta=None))
+                messe += len(carte)
+        if not messe:
+            return False
+        self.voci, self.pile = voci, pile
+        if self.modifica:
+            mancanti = resto.items()
+        else:
+            mancanti = [((n, z), min(q, per_nome[n])) for (n, z), q in ora.items() if z != "cmd" and per_nome[n] > 0]
+            mancanti += [((n, z), q) for (n, z), q in resto.items() if z == "cmd" and not any(v["nome"] == n and v["zona"] == "cmd" for v in voci.values())]
+        for (n, z), q in mancanti:
+            if q > 0:
+                if not self.modifica and z != "cmd":
+                    per_nome[n] -= q
+                self.nuova_voce(n, z, q)
+        self.zoom = float(t["zoom"]) if nuova and t.get("zoom") else SCALE.get(t.get("taglia"), 1.0)
+        self.hs = int(t["fascia"]) if nuova and t.get("fascia") is not None else FASCIA_DEF
+        self.l_zoom.configure(text=f"{round(self.zoom * 100)}%")
+        return True
+
+    def nuova_chiave(self, chiave, chiave_rete=None):
+        """Il mazzo del builder ha appena preso il suo id (il primo Save): da qui la disposizione e la rete si salvano sotto la sua chiave."""
+        if chiave and chiave != self.chiave:
+            self.chiave = chiave
+            self.salva()
+        if chiave_rete and self.rete.chiave != chiave_rete:
+            self.rete.chiave = chiave_rete
+            self.rete.salva()
+
+    # ------------------------------------------------ la carta grande al passaggio del mouse
+    def passa(self, e):
+        import time as _tm
+        cx, cy = self.cv.canvasx(e.x), self.cv.canvasy(e.y)
+        self._xy = (cx, cy)
+        if self.drag is None and not self.tira and self.hud_su(e.x, e.y):
+            self.nascondi()
+            self.cv.configure(cursor="hand2" if self.hud_su(e.x, e.y) == "testa" else "")
+            return
+        pezzo = self.pezzo_a(cx, cy)[0]
+        bx_ = getattr(self, "_barra_box", None)
+        verso_barra = bool(bx_ and (self._arco or self._arco_t) and bx_[0] <= cx <= bx_[2] and bx_[1] <= cy <= bx_[3])
+        if self.drag is None and not self.tira and not self.sola and not verso_barra and pezzo not in ("rete_x", "rete_s", "rete_c", "rete_xt"):
+            sg = self.arco_a(cx, cy) if pezzo is None else None
+            tr = self.tronco_a(cx, cy) if pezzo is None and sg is None else None
+            if tr is not None:
+                self.accendi_tronco(tr)
+            else:
+                self.accendi_arco(sg)
+        self.cv.configure(cursor="sb_v_double_arrow" if self.vicino_barra(cy) and pezzo is None else "hand2" if pezzo in ("nodo", "ctrl", "rete_x", "rete_s", "rete_c", "rete_xt", "punto_out", "scambia", "label_x", "label_l", "label_m", "sel_menu")
+                          or self._arco else "fleur" if pezzo in ("carta", "label_t", "punto") else "size_nw_se" if pezzo == "label_r" else "")
+        if self.drag is not None or _tm.time() - self._fine_drag < 0.8:
+            return
+        vid = self.sotto_al_mouse()
+        if vid == self.hover["cid"]:
+            return
+        self.nascondi()
+        self.hover["cid"] = vid
+        if vid is not None:
+            self.hover["timer"] = self.cv.after(450, lambda: self.mostra(vid))
+
+    def nascondi(self):
+        h = self.hover
+        if h["timer"] is not None:
+            try:
+                self.cv.after_cancel(h["timer"])
+            except Exception:
+                pass
+        if h["pop"] is not None:
+            try:
+                h["pop"].destroy()
+            except Exception:
+                pass
+        h.update(cid=None, timer=None, pop=None)
+
+    def mostra(self, vid):
+        h = self.hover
+        h["timer"] = None
+        if self.drag is not None or h["cid"] != vid or vid not in self.voci:
+            return
+        n = self.voci[vid]["nome"]
+        if not os.path.exists(CAP.file_immagine(n)):
+            return
+        try:
+            img = self.lista.immagine(n)
+        except Exception:
+            return
+        bb = self.cv.bbox(f"c{vid}")
+        if not bb:
+            return
+        p = h["pop"] = self.tk.Toplevel(self.fin)
+        p.overrideredirect(True)
+        p.configure(bg=C["fondo"])
+        self.tk.Label(p, image=img, bd=0, bg=C["fondo"]).pack()
+        p.update_idletasks()
+        w, hh = p.winfo_reqwidth(), p.winfo_reqheight()
+        rx = self.cv.winfo_rootx() - int(self.cv.canvasx(0))
+        ry = self.cv.winfo_rooty() - int(self.cv.canvasy(0))
+        x = rx + bb[2] + 8
+        if x + w > self.fin.winfo_rootx() + self.fin.winfo_width():
+            x = rx + bb[0] - w - 8
+        y = max(self.fin.winfo_rooty(), min(ry + bb[1], self.fin.winfo_rooty() + self.fin.winfo_height() - hh))
+        p.geometry(f"{w}x{hh}+{x}+{y}")
+
+    # ------------------------------------------------ la fine
+    # ------------------------------------------------ la selezione, il gruppo e le label (Autore, 9 nov 2026: «possiamo mettere la possibilita' di selezionare ad
+    # area piu' carte e spostarle mantenendo le connessioni?», «label di carte dentro le quali diamo un nome»)
+    def in_sel(self, pl):
+        return any(q is pl for q in self.sel)
+
+    def disegna_sel(self):
+        """Il contorno azzurro di ogni pila selezionata, sopra le carte e sotto i pallini."""
+        cv = self.cv
+        cv.delete("sel")
+        cv.delete("sel_c")
+        if self.sel_carta in self.voci and not self.sel and not self.sel_punti and not self.sel_label:      # la carta scelta, col filo azzurro
+            rc = self.rett(self.sel_carta)
+            if rc:
+                cv.create_rectangle(rc[0] - 3, rc[1] - 3, rc[2] + 3, rc[3] + 3, outline=C["accento"], width=2, tags="sel_c")
+        self.sel = [q for q in self.sel if any(q is p_ for p_ in self.pile)]
+        for q in self.sel:
+            if q["zona"] != "main" and self.nascosta():
+                continue
+            x0, y0, x1, y1 = self.ingombro_px(q)
+            m = round(14 * max(self.sc(q["zona"]), 0.75))
+            cv.create_rectangle(x0 - m - 4, y0 - 5, x1 + 5, y1 + 5, outline=C["accento"], width=2, tags="sel")
+        self.sel_punti = {q for q in self.sel_punti if q in self.punti}
+        for q in self.sel_punti:
+            x, y, r = self.punto_xy(q)
+            cv.create_rectangle(x - r - 4, y - r - 4, x + r + 4, y + r + 4, outline=C["accento"], width=2, tags=("sel", f"p{q}"))
+        self.sel_label = {k for k in self.sel_label if k < len(self.etichette)}
+        for k in self.sel_label:
+            x0, y0, x1, y1 = self.lb_px(k)
+            cv.create_rectangle(x0 - 3, y0 - 3, x1 + 3, y1 + 3, outline=C["accento"], width=2, tags="sel")
+        cor = self.cornice_sel()
+        if cor:     # la cornice intorno a tutta la selezione, e fuori, in alto a destra, le tre linee del menu (Autore, 10 nov 2026: «l'iconcina mettila fuori dalla
+            # selezione in alto a dx»; prima stava al centro)
+            cv.create_rectangle(*cor, outline=C["accento"], width=1, dash=(6, 4), tags=("sel", "sel_cornice"))
+            cv.create_image(cor[2] + 6, cor[1], image=segno_menu(26), anchor="nw", tags=("sel", "sel_menu"))
+        cv.tag_raise("sel")
+        cv.tag_raise("nodo")
+        cv.tag_raise("sel_menu")
+
+    def vuota_sel(self):
+        self.sel, self.sel_punti, self.sel_label = [], set(), set()
+        self.sel_carta = None
+        self.disegna_sel()
+
+    def cornice_sel(self):
+        """La cornice della selezione, in pixel della tela: intorno alle pile, ai dot e alle label selezionati. None senza selezione."""
+        rr = []
+        for q in self.sel:
+            if q["zona"] != "main" and self.nascosta():
+                continue
+            x0, y0, x1, y1 = self.ingombro_px(q)
+            m = round(14 * max(self.sc(q["zona"]), 0.75))
+            rr.append((x0 - m - 4, y0 - 5, x1 + 5, y1 + 5))
+        for q in self.sel_punti:
+            if q in self.punti:
+                x, y, r = self.punto_xy(q)
+                rr.append((x - r - 4, y - r - 4, x + r + 4 + 14, y + r + 4))
+        for k in self.sel_label:
+            if k < len(self.etichette):
+                rr.append(self.lb_px(k))
+        if not rr:
+            return None
+        return min(r[0] for r in rr) - 12, min(r[1] for r in rr) - 12, max(r[2] for r in rr) + 12, max(r[3] for r in rr) + 12
+
+    def gruppo_inizio(self, cx, cy):
+        """Premuto dentro la cornice della selezione: si trascina tutto, pile, dot e label, anche una pila sola."""
+        piles = list(self.sel)
+        self.drag = dict(prese=[c for q in piles for c in q["carte"]], da=None, x0=cx, y0=cy, x=cx, y=cy, mosso=False, vid=None, x_presa=0, y_presa=0,
+                         gruppo=piles, etichette=sorted(self.sel_label), punti=list(self.sel_punti))
+
+    def banda_muovi(self, e):
+        b = self.banda
+        b["x"], b["y"] = self.cv.canvasx(e.x), self.cv.canvasy(e.y)
+        self.cv.delete("banda")
+        self.cv.create_rectangle(min(b["x0"], b["x"]), min(b["y0"], b["y"]), max(b["x0"], b["x"]), max(b["y0"], b["y"]), outline=C["accento"], width=1, dash=(4, 3),
+                                 tags="banda")
+
+    def banda_fine(self):
+        """Lasciato il riquadro: le pile che tocca sono la selezione (con Maiuscolo si aggiungono). Un clic nel vuoto la scioglie."""
+        b, self.banda = self.banda, None
+        self.cv.delete("banda")
+        if abs(b["x"] - b["x0"]) + abs(b["y"] - b["y0"]) < 3:
+            if (self.sel or self.sel_punti or self.sel_label) and not b["aggiungi"]:
+                self.vuota_sel()
+            return
+        X0, X1 = sorted((b["x0"], b["x"]))
+        Y0, Y1 = sorted((b["y0"], b["y"]))
+        nuove = []
+        for pl in self.pile:
+            if pl["zona"] == "cmd" or (pl["zona"] != "main" and self.nascosta()):
+                continue
+            a = self.ingombro_px(pl)
+            if a[0] <= X1 and a[2] >= X0 and a[1] <= Y1 and a[3] >= Y0:
+                nuove.append(pl)
+        self.sel = (list(self.sel) if b["aggiungi"] else []) + [q for q in nuove if not (b["aggiungi"] and self.in_sel(q))]
+        punti = {q for q in self.punti if (lambda pt: X0 <= pt[0] <= X1 and Y0 <= pt[1] <= Y1)(self.punto_xy(q))}
+        self.sel_punti = (self.sel_punti | punti) if b["aggiungi"] else punti
+        label = {k for k in range(len(self.etichette)) if (lambda r: X0 <= r[0] and r[2] <= X1 and Y0 <= r[1] and r[3] <= Y1)(self.lb_px(k))}
+        self.sel_label = (self.sel_label | label) if b["aggiungi"] else label
+        self.disegna_sel()
+        if self.sel or self.sel_punti or self.sel_label:
+            self.dici("Selected: drag inside the frame to move them together · ≡ in the middle: label")
+
+    def lascia_gruppo(self, d):
+        """Lasciato un gruppo (la selezione, o le pile di una label): ogni pila si sposta dello stesso passo, nella sua zona (nella fascia solo in orizzontale), le
+        label prese pure. Le connessioni restano: sono fra le carte, non fra i posti."""
+        dx, dy = d["x"] - d["x0"], d["y"] - d["y0"]
+        # sulla griglia (10 nov 2026): il primo elemento del gruppo va nella cella piu' vicina e tutto il resto si sposta dello stesso passo, cosi' le distanze
+        # restano; per zona, perche' mazzo e fascia hanno scale diverse
+        passo = {}
+        if not self.griglia:        # la griglia spenta: tutto dello stesso passo del mouse
+            for zona in ("main", "side"):
+                s_ = self.sc(zona) or 1.0
+                passo[zona] = (dx / s_, dy / s_ if zona == "main" else 0)
+        for zona in ("main", "side") if self.griglia else ():
+            pl0 = next((pl for pl in d["gruppo"] if pl["zona"] == zona), None)
+            if pl0 is not None:
+                s_ = self.sc(zona) or 1.0
+                gx, gy = a_griglia(pl0["x"] + dx / s_, pl0["y"] + dy / s_)
+                passo[zona] = (gx - pl0["x"], (gy - pl0["y"]) if zona == "main" else 0)
+        if "main" not in passo:
+            z = self.zoom
+            etq = list(d.get("etichette") or ())
+            if etq:     # una label da sola: il suo interno sulla griglia
+                lb = self.etichette[etq[0]]
+                ix, iy = lb["x"] + PAD_L + 14 + dx / z, lb["y"] + TIT_L + PAD_L + dy / z
+                gx, gy = a_griglia(ix, iy)
+                passo["main"] = (gx - ix + dx / z, gy - iy + dy / z)
+            elif d.get("punti"):        # un dot da solo: a meta' colonna
+                p_ = self.punti.get(d["punti"][0])
+                if p_ is not None:
+                    gx, gy = a_griglia(p_["x"] + dx / z, p_["y"] + dy / z, mezza=True)
+                    passo["main"] = (gx - p_["x"], gy - p_["y"])
+            else:
+                passo["main"] = (dx / z, dy / z)
+        if self.griglia and "main" in passo and any(pl["zona"] == "main" for pl in d["gruppo"]):        # le pile del gruppo non finiscono sopra altre pile
+            passo["main"] = self.passo_libero(d["gruppo"], passo["main"], (dx / self.zoom, dy / self.zoom))
+        for pl in d["gruppo"]:
+            ddx, ddy = passo.get(pl["zona"], (0, 0))
+            pl["x"] += ddx
+            if pl["zona"] == "main":
+                pl["y"] += ddy
+        ddx, ddy = passo["main"]
+        for k in d.get("etichette") or ():
+            lb = self.etichette[k]
+            lb["x"] += ddx
+            lb["y"] += ddy
+        for q in d.get("punti") or ():
+            if q in self.punti:
+                self.punti[q]["x"] += ddx
+                self.punti[q]["y"] += ddy
+        self.disegna()
+        self.salva()
+
+    def occupato(self, zona, r, ignora=()):
+        """Il rettangolo r (coordinate del mazzo, scala 1) tocca una pila della zona che non e' fra quelle da ignorare?"""
+        for pl in self.pile:
+            if pl["zona"] != zona or not pl["carte"] or any(pl is q for q in ignora):
+                continue
+            a = self.ingombro(pl)
+            if a[0] < r[2] - 1 and r[0] < a[2] - 1 and a[1] < r[3] - 1 and r[1] < a[3] - 1:
+                return True
+        return False
+
+    def cella_libera(self, zona, x, y, n, ignora=()):
+        """La cella della griglia per una pila di n carte lasciata in (x, y): la piu' vicina, e se e' occupata da un'altra pila, la cella libera piu' vicina al punto
+        (Autore, 10 nov 2026: «ha ancora alcuni difettini di autosnap nel movimento»: una carta lasciata accanto a una pila poteva agganciarsi sulla sua colonna e
+        finirle sopra). Si cerca fino a 3 colonne e 24 righe di distanza."""
+        w, h, off, _p = misure(1.0)
+        alta = h + (max(1, n) - 1) * off
+        cand = []
+        gx, gy = a_griglia(x, y)
+        for i in range(-3, 4):
+            for j in (range(-24, 25) if zona == "main" else (0,)):
+                cx, cy = gx + i * PASSO_X, (gy + j * PASSO_Y) if zona == "main" else 0
+                cand.append(((cx - x) ** 2 + (cy - y) ** 2, cx, cy))
+        cand.sort()
+        for _d, cx, cy in cand:
+            if not self.occupato(zona, (cx, cy, cx + w, cy + alta), ignora):
+                return cx, cy
+        return a_griglia(x, y if zona == "main" else 0)
+
+    def passo_libero(self, gruppo, passo, voluto):
+        """Il passo del gruppo sulla griglia: quello del primo elemento, e se una pila del gruppo finirebbe sopra una pila che non ne fa parte, il passo libero piu'
+        vicino a quello voluto (il movimento del mouse)."""
+        main = [pl for pl in gruppo if pl["zona"] == "main"]
+        rett = [self.ingombro(pl) for pl in main]
+
+        def libero(dx, dy):
+            return not any(self.occupato("main", (r[0] + dx, r[1] + dy, r[2] + dx, r[3] + dy), ignora=gruppo) for r in rett)
+        if libero(*passo):
+            return passo
+        cand = sorted((((passo[0] + i * PASSO_X - voluto[0]) ** 2 + (passo[1] + j * PASSO_Y - voluto[1]) ** 2), passo[0] + i * PASSO_X, passo[1] + j * PASSO_Y)
+                      for i in range(-3, 4) for j in range(-24, 25))
+        for _d, dx, dy in cand:
+            if libero(dx, dy):
+                return dx, dy
+        return passo
+
+    def membri(self, k):
+        """Le pile del mazzo dentro la label (il centro della pila nel riquadro) e le label tutte dentro di lei."""
+        lb = self.etichette[k]
+        dentro = lambda cx, cy: lb["x"] <= cx <= lb["x"] + lb["w"] and lb["y"] <= cy <= lb["y"] + lb["h"]
+        pile = [pl for pl in self.pile if pl["zona"] == "main" and dentro(*(lambda r: ((r[0] + r[2]) / 2, (r[1] + r[3]) / 2))(self.ingombro(pl)))]
+        altre = [j for j, l2 in enumerate(self.etichette) if j != k and lb["x"] <= l2["x"] and l2["x"] + l2["w"] <= lb["x"] + lb["w"]
+                 and lb["y"] <= l2["y"] and l2["y"] + l2["h"] <= lb["y"] + lb["h"]]
+        self._punti_dentro = [q for q, p_ in self.punti.items() if dentro(p_["x"], p_["y"])]
+        return pile, altre
+
+    def etichetta_inizio(self, k, cx, cy):
+        """Premuto il titolo di una label: col lucchetto chiuso si trascina lei con le sue pile, i suoi dot e le label dentro (le connessioni seguono); col lucchetto
+        aperto si sposta da sola, cosi' la porti sopra altre carte per metterle dentro (Autore, 10 nov 2026)."""
+        if self.sel or self.sel_punti or self.sel_label:
+            self.vuota_sel()
+        if not self.etichette[k].get("lucchetto", True):
+            self.drag = dict(prese=[], da=None, x0=cx, y0=cy, x=cx, y=cy, mosso=False, vid=None, x_presa=0, y_presa=0, gruppo=[], etichette=[k], punti=[])
+            return
+        pile, altre = self.membri(k)
+        self.drag = dict(prese=[c for pl in pile for c in pl["carte"]], da=None, x0=cx, y0=cy, x=cx, y=cy, mosso=False, vid=None, x_presa=0, y_presa=0,
+                         gruppo=pile, etichette=[k] + altre, punti=list(self._punti_dentro))
+
+    def lucchetto_label(self, k):
+        """Il lucchetto sul titolo della label: chiuso, la label si sposta con quello che ha dentro; aperto, da sola."""
+        if k is None or not 0 <= k < len(self.etichette):
+            return
+        lb = self.etichette[k]
+        lb["lucchetto"] = not lb.get("lucchetto", True)
+        self.disegna()
+        self.salva()
+        self.dici(f"«{lb['nome']}» " + ("locked: it moves with its cards" if lb["lucchetto"] else "unlocked: it moves alone, drop it over other cards to take them in"))
+
+    def menu_label(self, k):
+        """Il menu della label (Autore, 10 nov 2026: «al centro della cornice un'icona a 3 linee: e' li' che voglio il menu della label: nome e colore»): dalla
+        cornice della selezione fa una label nuova intorno alla selezione; dal titolo di una label la cambia (nome, colore, lucchetto, Delete). Invio salva, Esc chiude."""
+        tk, F = self.tk, self.F
+        self.stile_chiudi()
+        self.nome_chiudi()
+        nuova = k is None
+        if nuova and not any(q["zona"] == "main" for q in self.sel) and not self.sel_punti and not self.sel_label:
+            self.dici("Select the cards first: drag a box on the empty sheet, or Ctrl+click the piles")
+            return None
+        lb = None if nuova else self.etichette[k]
+        scelto = dict(colore=(lb.get("colore") if lb else None) or GRIGIO_L)
+        p = self._nome_pop = tk.Toplevel(self.fin); p.overrideredirect(True); p.configure(bg=C["accento"])
+        dentro = tk.Frame(p, bg=C["cap"]); dentro.pack(padx=1, pady=1)
+        tk.Label(dentro, text="New label" if nuova else "Label", bg=C["cap"], fg=C["titolo"], font=F(9, True)).pack(anchor="w", padx=10, pady=(8, 4))
+        tk.Label(dentro, text="NAME", bg=C["cap"], fg=C["muto"], font=F(7, True)).pack(anchor="w", padx=10)
+        var = tk.StringVar(value=lb["nome"] if lb else "")
+        e = tk.Entry(dentro, textvariable=var, width=26, bg=C["scheda"], fg=C["titolo"], insertbackground=C["titolo"], relief="flat", font=F(10))
+        e.pack(padx=10, ipady=4, anchor="w")
+        tk.Label(dentro, text="COLOR", bg=C["cap"], fg=C["muto"], font=F(7, True)).pack(anchor="w", padx=10, pady=(6, 0))
+        colori = [("Gray", GRIGIO_L)] + list(RS.COLORI)
+        cvc = tk.Canvas(dentro, width=len(colori) * 26 + 4, height=28, bg=C["cap"], highlightthickness=0, cursor="hand2"); cvc.pack(anchor="w", padx=8, pady=(2, 4))
+
+        def tinte():
+            cvc.delete("all")
+            for i, (_n, hx) in enumerate(colori):
+                x = 4 + i * 26 + 11
+                cvc.create_oval(x - 9, 5, x + 9, 23, fill=hx, outline="#ffffff" if hx == scelto["colore"] else C["filo"], width=2 if hx == scelto["colore"] else 1)
+
+        def colore(c):
+            scelto["colore"] = c
+            if lb is not None:
+                lb["colore"] = c
+                self.disegna(); self.salva()
+            tinte()
+
+        def clic(ev):
+            i = int((ev.x - 4) // 26)
+            if 0 <= i < len(colori):
+                colore(colori[i][1])
+        cvc.bind("<Button-1>", clic)
+        giu = tk.Frame(dentro, bg=C["cap"]); giu.pack(fill="x", padx=10, pady=(4, 8))
+
+        def applica(*_a):
+            n = var.get().strip()
+            self.nome_chiudi()
+            if nuova:
+                self.crea_etichetta(n or "Label", scelto["colore"])
+            else:
+                lb["nome"] = n or lb["nome"]
+                lb["colore"] = scelto["colore"]
+                self.disegna(); self.salva()
+            return "break"
+        ok = tk.Label(giu, text="Create" if nuova else "Save", bg=C["accento"], fg="#ffffff", font=F(8, True), padx=10, pady=2, cursor="hand2"); ok.pack(side="right")
+        ok.bind("<Button-1>", applica)
+        if not nuova:
+            chiusa = tk.Label(giu, text="", bg=C["cap"], fg=C["testo"], font=F(8), cursor="hand2"); chiusa.pack(side="left")
+
+            def scritta():
+                chiusa.configure(text="🔒 locked" if lb.get("lucchetto", True) else "🔓 unlocked")
+            chiusa.bind("<Button-1>", lambda ev: (self.lucchetto_label(k), scritta()))
+            scritta()
+            via = tk.Label(giu, text="Delete", bg=C["cap"], fg=C["rosso"], font=F(8, True), cursor="hand2"); via.pack(side="left", padx=(12, 0))
+            via.bind("<Button-1>", lambda ev: (self.nome_chiudi(), self.togli_etichetta(k)))
+        e.bind("<Return>", applica)
+        e.bind("<Escape>", lambda ev: self.nome_chiudi())
+        p.bind("<Escape>", lambda ev: self.nome_chiudi())
+        tinte()
+        p.geometry(f"+{self.fin.winfo_pointerx() + 10}+{self.fin.winfo_pointery() + 10}")
+        e.focus_force()
+        e.select_range(0, "end")
+        p.menu = dict(applica=applica, colore=colore, nome=var)        # per le prove
+        return p
+
+    def ridim_muovi(self, e):
+        """L'angolo in basso a destra della label: la misura, a passi di un disegno per fotogramma."""
+        r = self.ridim
+        cx, cy = self.cv.canvasx(e.x), self.cv.canvasy(e.y)
+        lb = self.etichette[r["k"]]
+        lb["w"] = max(160, round(r["w0"] + (cx - r["x0"]) / self.zoom))
+        lb["h"] = max(90, round(r["h0"] + (cy - r["y0"]) / self.zoom))
+        if r["attesa"] is None:
+            def fai():
+                r["attesa"] = None
+                self.disegna()
+            r["attesa"] = self.cv.after(16, fai)
+
+    def lb_px(self, k):
+        lb, z, o = self.etichette[k], self.zoom, self.oy("main")
+        return lb["x"] * z, o + lb["y"] * z, (lb["x"] + lb["w"]) * z, o + (lb["y"] + lb["h"]) * z
+
+    def disegna_etichette(self):
+        """Ogni label: il riquadro, il titolo col nome (si trascina; doppio clic lo rinomina), la ✕ che la toglie (le carte restano), l'angolo che la allarga."""
+        cv, z, o = self.cv, self.zoom, self.oy("main")
+        for k, lb in enumerate(self.etichette):
+            x0, y0 = lb["x"] * z, o + lb["y"] * z
+            x1, y1 = x0 + lb["w"] * z, y0 + lb["h"] * z
+            th = max(16, TIT_L * z)
+            tg = ("label", f"l{k}")
+            fz = max(7, round(9 * min(z, 1.6)))
+            col = lb.get("colore") or GRIGIO_L
+            cv.create_rectangle(x0, y0, x1, y1, fill=mescola(FONDO_L, col, 0.06), outline=col, width=1, tags=tg)
+            cv.create_rectangle(x0, y0, x1, y0 + th, fill=mescola(TESTA_L, col, 0.3), outline=col, width=1, tags=tg + ("label_t", f"lt{k}"))
+            cv.create_text(x0 + 10, y0 + th / 2, text=lb["nome"].upper(), fill=C["titolo"], font=self.F(fz, True), anchor="w", tags=tg + ("label_t", f"lt{k}"))
+            if self.sola:       # in sola lettura la label si vede col suo nome, senza strumenti
+                continue
+            cv.create_image(x1 - 8 - 12, y0 + th / 2 - 6, image=croce(12), anchor="nw", tags=tg + ("label_x", f"lx{k}"))
+            chiusa = lb.get("lucchetto", True)      # chiusa: si sposta con quello che ha dentro; aperta: da sola
+            cv.create_image(x1 - 30 - 14, y0 + th / 2 - 7, image=DG.lucchetto(14, chiusa, "#f0ad4e" if chiusa else "#bebec2"), anchor="nw",
+                            tags=tg + ("label_l", f"ll{k}"))
+            cv.create_image(x1 - 52 - 16, y0 + th / 2 - 8, image=segno_menu(16), anchor="nw", tags=tg + ("label_m", f"lm{k}"))
+            g = 14
+            cv.create_rectangle(x1 - g, y1 - g, x1 - 1, y1 - 1, fill=FONDO_L, outline="", width=0, tags=tg + ("label_r", f"lr{k}"))
+            for a in (4, 8, 12):
+                cv.create_line(x1 - a, y1 - 3, x1 - 3, y1 - a, fill=SEGNO_L, width=1, tags=tg)
+
+    def crea_etichetta(self, nome=None, colore=None):
+        """Una label intorno alla selezione (pile del mazzo, dot, label), col nome e il colore del menu. Senza nome apre il menu. -> la label, o None."""
+        main = [q for q in self.sel if q["zona"] == "main"]
+        if not main and not self.sel_punti and not self.sel_label:
+            self.dici("Select the cards first: drag a box on the empty sheet, or Ctrl+click the piles")
+            return None
+        if nome is None:
+            self.menu_label(None)
+            return None
+        r = [self.ingombro(q) for q in main]
+        r += [(self.punti[q]["x"] - 10, self.punti[q]["y"] - 10, self.punti[q]["x"] + 26, self.punti[q]["y"] + 10) for q in self.sel_punti if q in self.punti]
+        r += [(self.etichette[k]["x"], self.etichette[k]["y"], self.etichette[k]["x"] + self.etichette[k]["w"], self.etichette[k]["y"] + self.etichette[k]["h"])
+              for k in self.sel_label if k < len(self.etichette)]
+        x0, y0 = min(a[0] for a in r) - PAD_L - 14, min(a[1] for a in r) - PAD_L - TIT_L
+        x1, y1 = max(a[2] for a in r) + PAD_L, max(a[3] for a in r) + PAD_L
+        lb = dict(nome=nome.strip() or "Label", x=round(x0), y=round(y0), w=round(x1 - x0), h=round(y1 - y0), colore=colore or GRIGIO_L, lucchetto=True)
+        self.etichette.append(lb)
+        self.sel, self.sel_punti, self.sel_label = [], set(), set()
+        self.disegna()
+        self.salva()
+        self.dici(f"Label «{lb['nome']}»: drag its title to move it with its cards · lock: open to move it alone · ≡: name and color · ✕ removes")
+        return lb
+
+    def togli_etichetta(self, k):
+        if k is None or not 0 <= k < len(self.etichette):
+            return
+        lb = self.etichette.pop(k)
+        self.sel_label = set()
+        self.disegna()
+        self.salva()
+        self.dici(f"Label «{lb['nome']}» removed: the cards stay where they are")
+
+    def rinomina_etichetta(self, k, nome=None):
+        if k is None or not 0 <= k < len(self.etichette):
+            return
+        if nome is None:
+            return self.chiedi_nome("Rename label", self.etichette[k]["nome"], lambda n: self.rinomina_etichetta(k, n))
+        self.etichette[k]["nome"] = nome.strip() or self.etichette[k]["nome"]
+        self.disegna()
+        self.salva()
+
+    def chiedi_nome(self, titolo, iniziale, fatto):
+        """Una casella accanto al puntatore: Invio salva, Esc chiude."""
+        tk, F = self.tk, self.F
+        self.nome_chiudi()
+        p = self._nome_pop = tk.Toplevel(self.fin); p.overrideredirect(True); p.configure(bg=C["accento"])
+        dentro = tk.Frame(p, bg=C["cap"]); dentro.pack(padx=1, pady=1)
+        tk.Label(dentro, text=titolo, bg=C["cap"], fg=C["titolo"], font=F(9, True)).pack(anchor="w", padx=10, pady=(8, 4))
+        var = tk.StringVar(value=iniziale)
+        e = tk.Entry(dentro, textvariable=var, width=28, bg=C["scheda"], fg=C["titolo"], insertbackground=C["titolo"], relief="flat", font=F(10))
+        e.pack(padx=10, ipady=4)
+        tk.Label(dentro, text="Enter saves · Esc closes", bg=C["cap"], fg=C["grigio"], font=F(7)).pack(anchor="w", padx=10, pady=(4, 8))
+
+        def ok(*_a):
+            n = var.get().strip()
+            self.nome_chiudi()
+            if n:
+                fatto(n)
+            return "break"
+        e.bind("<Return>", ok)
+        e.bind("<Escape>", lambda ev: self.nome_chiudi())
+        p.geometry(f"+{self.fin.winfo_pointerx() + 10}+{self.fin.winfo_pointery() + 10}")
+        e.focus_force()
+        e.select_range(0, "end")
+        return p
+
+    def nome_chiudi(self):
+        p = getattr(self, "_nome_pop", None)
+        if p is not None:
+            try:
+                p.destroy()
+            except Exception:
+                pass
+        self._nome_pop = None
+
+    def stile_apri(self, sg):
+        """La tavolozza della freccia (Autore, 9 nov 2026: «possiamo dare colore e pesatura alle linee?», scelta «tutti e due tuoi»): i colori, l'importanza
+        1-3 (lo spessore), Unlink. Il clic cambia subito la linea; Esc o un clic sul foglio la chiudono."""
+        tk, F = self.tk, self.F
+        self.stile_chiudi()
+        pa, pb = self.voci[sg[0]]["nome"], self.voci[sg[1]]["nome"]
+        p = self._stile_pop = tk.Toplevel(self.fin); p.overrideredirect(True); p.configure(bg=C["accento"])
+        dentro = tk.Frame(p, bg=C["cap"]); dentro.pack(padx=1, pady=1)
+        tk.Label(dentro, text=f"{pa}  →  {pb}", bg=C["cap"], fg=C["titolo"], font=F(9, True)).pack(anchor="w", padx=10, pady=(8, 6))
+        tk.Label(dentro, text="COLOR", bg=C["cap"], fg=C["muto"], font=F(7, True)).pack(anchor="w", padx=10)
+        cv1 = tk.Canvas(dentro, width=len(RS.COLORI) * 28 + 4, height=30, bg=C["cap"], highlightthickness=0, cursor="hand2"); cv1.pack(anchor="w", padx=8, pady=(2, 6))
+        tk.Label(dentro, text="WIDTH", bg=C["cap"], fg=C["muto"], font=F(7, True)).pack(anchor="w", padx=10)
+        # lo spessore della linea a slider (Autore, 10 nov 2026: «nel pallino di selezione colore metti lo slider di spessore linea»); prima tre riquadri 1-3
+        v_sp = tk.DoubleVar(value=self.rete.colore_spessore(pa, pb)[1])
+        L_S = len(RS.COLORI) * 28 + 4      # disegnato in antialias come le altre icone (lo Scale di Tk prendeva il colore del fondo e la manopola spariva)
+        cv2 = tk.Canvas(dentro, width=L_S, height=26, bg=C["cap"], highlightthickness=0, cursor="hand2"); cv2.pack(anchor="w", padx=8, pady=(2, 6))
+        x0s, x1s = 10, L_S - 56
+        giu = tk.Frame(dentro, bg=C["cap"]); giu.pack(fill="x", padx=10, pady=(0, 8))
+        via = tk.Label(giu, text="Unlink", bg=C["cap"], fg=C["rosso"], font=F(8, True), cursor="hand2"); via.pack(side="left")
+        tk.Label(giu, text="Esc closes", bg=C["cap"], fg=C["grigio"], font=F(7)).pack(side="right")
+
+        def ridisegna():
+            col, _w = self.rete.colore_spessore(pa, pb)
+            cv1.delete("all")
+            for i, (_n, hx) in enumerate(RS.COLORI):
+                x = 4 + i * 28 + 12
+                cv1.create_oval(x - 10, 5, x + 10, 25, fill=hx, outline="#ffffff" if hx == col else C["filo"], width=2 if hx == col else 1)
+            if "slider" in p.stile:
+                p.stile["slider"](avvisa=False)
+
+        def imposta(**kw):
+            cambiate = [self.rete.imposta_stile(a, b, **kw) for a, b in self.fratelli(pa, pb)]
+            if any(cambiate):
+                self.disegna()
+            ridisegna()
+
+        def colore(e):
+            i = int((e.x - 4) // 28)
+            if 0 <= i < len(RS.COLORI):
+                imposta(colore=RS.COLORI[i][1])
+
+        attesa = {"id": None}
+
+        def scorre(_v=None):        # lo slider: la linea cambia mentre lo tiri, un disegno ogni 60 ms
+            if attesa["id"] is not None:
+                p.after_cancel(attesa["id"])
+            attesa["id"] = p.after(60, lambda: (attesa.update(id=None), imposta(spessore=round(float(v_sp.get()), 1))))
+
+        def slider(v=None, avvisa=True):
+            """Il binario, la parte accesa nel colore della linea, la manopola bianca, il valore in pixel."""
+            if v is not None:
+                v_sp.set(round(max(RS.SPESSORE_MIN, min(RS.SPESSORE_MAX, v)), 1))
+            v = float(v_sp.get())
+            xk = x0s + (v - RS.SPESSORE_MIN) / (RS.SPESSORE_MAX - RS.SPESSORE_MIN) * (x1s - x0s)
+            col = self.rete.colore_spessore(pa, pb)[0]
+            cv2.delete("all")
+            cv2._img = DG.tratti(L_S, 26, linee=[([(x0s, 13), (x1s, 13)], C["filo"], 4, None), ([(x0s, 13), (xk, 13)], col, 4, None)],
+                                 punti=[(xk, 13, 7, "#ffffff", C["accento"], 1.5)])
+            cv2.create_image(0, 0, image=cv2._img, anchor="nw")
+            cv2.create_text(L_S - 4, 13, text=f"{v:.1f} px", fill=C["titolo"], font=F(8, True), anchor="e")
+            if avvisa:
+                scorre()
+
+        def da_x(ev):
+            slider(RS.SPESSORE_MIN + max(0.0, min(1.0, (ev.x - x0s) / (x1s - x0s))) * (RS.SPESSORE_MAX - RS.SPESSORE_MIN))
+        cv1.bind("<Button-1>", colore)
+        cv2.bind("<Button-1>", da_x)
+        cv2.bind("<B1-Motion>", da_x)
+        via.bind("<Button-1>", lambda e: (self.stile_chiudi(), self.togli_arco(sg)))
+        p.bind("<Escape>", lambda e: self.stile_chiudi())
+        p.stile = dict(imposta=imposta, coppia=(pa, pb), slider=slider)      # per le prove
+        ridisegna()
+        p.geometry(f"+{self.fin.winfo_pointerx() + 12}+{self.fin.winfo_pointery() + 12}")
+        return p
+
+    def stile_chiudi(self):
+        p = getattr(self, "_stile_pop", None)
+        if p is not None:
+            try:
+                p.destroy()
+            except Exception:
+                pass
+        self._stile_pop = None
+
+    # ------------------------------------------------ i dot delle linee, come in Nuke: piu' ingressi, piu' uscite
+    def ingressi(self, q):
+        return [tuple(x) for x in self.punti[q].get("ingressi", [])]
+
+    def fonti(self, q, visti=None):
+        """Le carte da cui arriva il segnale al dot: gli ingressi carta, e le fonti dei dot in ingresso."""
+        visti = visti if visti is not None else set()
+        if q in visti or q not in self.punti:
+            return set()
+        visti.add(q)
+        out = set()
+        for k, v in self.ingressi(q):
+            if k == "c":
+                out.add(v)
+            else:
+                out |= self.fonti(v, visti)
+        return out
+
+    def sotto_punto(self, q):
+        """I dot a valle di q, q compreso: quelli che ricevono da q, anche passando da altri dot."""
+        out, cambia = {q}, True
+        while cambia:
+            cambia = False
+            for r in self.punti:
+                if r not in out and any(k == "p" and v in out for k, v in self.ingressi(r)):
+                    out.add(r)
+                    cambia = True
+        return list(out)
+
+    def fratelli(self, a, b):
+        """Le connessioni che si disegnano nello stesso pezzo di a -> b: se passa da un dot, tutte quelle verso b che passano di li'."""
+        q = self.vie.get((a, b))
+        if q not in self.punti:
+            return [(a, b)]
+        return [(s_, c_) for (s_, c_), r in self.vie.items() if r == q and c_ == b and (s_, c_) in self.rete.figli] or [(a, b)]
+
+    def linea_a(self, x, y, raggio=7):
+        """Il pezzo di linea piu' vicino al punto: ("link", segmento) un pezzo con la punta, ("tronco", (dot, a, b, ingresso)) l'ingresso di un dot, o None."""
+        meglio, dmin = None, raggio
+        for sg in self._segmenti:
+            dd = self.distanza((x, y), sg[2], sg[3])
+            if dd <= dmin:
+                meglio, dmin = ("link", sg), dd
+        for tr in self._tronchi:
+            dd = self.distanza((x, y), tr[1], tr[2])
+            if dd <= dmin:
+                meglio, dmin = ("tronco", tr), dd
+        return meglio
+
+    def inserisci_punto(self, x, y, hit=None):
+        """Il chiodo o il doppio clic su una linea la spezza con un dot in quel punto. Su un pezzo con la punta il dot va prima del figlio (con tutte le connessioni
+        di quel pezzo); sull'ingresso di un dot, fra l'ingresso e il dot. -> l'id del dot, o None."""
+        hit = hit or self.linea_a(x, y)
+        if hit is None:
+            return None
+        q = max(self.punti, default=0) + 1
+        fx, fy = x / self.zoom, (y - self.oy("main")) / self.zoom
+        if hit[0] == "link":
+            a, b = self.voci[hit[1][0]]["nome"], self.voci[hit[1][1]]["nome"]
+            prima = self.vie.get((a, b))
+            if prima in self.punti and a in self.fonti(prima):
+                self.punti[q] = dict(x=fx, y=fy, ingressi=[["p", prima]])
+                for k in self.fratelli(a, b):
+                    self.vie[k] = q
+            else:
+                self.punti[q] = dict(x=fx, y=fy, ingressi=[["c", a]])
+                self.vie[(a, b)] = q
+        else:
+            dopo, ing = hit[1][0], list(hit[1][3])
+            self.punti[q] = dict(x=fx, y=fy, ingressi=[ing])
+            self.punti[dopo]["ingressi"] = [["p", q] if [k, v] == ing else [k, v] for k, v in self.ingressi(dopo)]
+        self.disegna()
+        self.salva()
+        self.dici("Dot added: drag it to move · from its gold dot a new line · drop more lines on it (more inputs) · right-click removes it")
+        return q
+
+    def togli_punto(self, q):
+        """Il tasto destro sul dot: via il dot, i suoi ingressi vanno ai dot dopo, e le connessioni che passavano di li' vanno al dot in ingresso che porta il loro
+        padre, o dritte."""
+        p_ = self.punti.pop(q, None)
+        if p_ is None:
+            return
+        ing = [list(x) for x in p_.get("ingressi", [])]
+        for r in self.punti.values():
+            nuovi = []
+            for k, v in r.get("ingressi", []):
+                for x in (ing if (k == "p" and v == q) else [[k, v]]):
+                    if x not in nuovi:
+                        nuovi.append(x)
+            r["ingressi"] = nuovi
+        for (a, b), v in list(self.vie.items()):
+            if v == q:
+                via = next((x[1] for x in ing if x[0] == "p" and x[1] in self.punti and a in self.fonti(x[1])), None)
+                if via is not None:
+                    self.vie[(a, b)] = via
+                else:
+                    del self.vie[(a, b)]
+        self.sel_punti.discard(q)
+        self.disegna()
+        self.salva()
+        self.dici("Dot removed: the lines go straight")
+
+    def togli_ingresso(self, q, ing):
+        """La ✕ sull'ingresso di un dot (o il tasto destro): via quell'ingresso, e le connessioni che arrivavano solo da li' (il padre non arriva piu' al dot da
+        nessuna parte). Un dot rimasto senza ingressi sparisce."""
+        if q not in self.punti:
+            return
+        self.punti[q]["ingressi"] = [[k, v] for k, v in self.ingressi(q) if (k, v) != tuple(ing)]
+        for (a, b), r in list(self.vie.items()):
+            if r in self.punti and a not in self.fonti(r):
+                del self.vie[(a, b)]
+                if (a, b) in self.rete.figli:
+                    self.rete.lega(a, b, self.carte_db)
+        vuoti = [r for r in self.punti if not self.punti[r].get("ingressi")]
+        while vuoti:
+            r = vuoti.pop()
+            self.punti.pop(r, None)
+            for x in self.punti.values():
+                x["ingressi"] = [[k, v] for k, v in x.get("ingressi", []) if not (k == "p" and v == r)]
+            vuoti += [x for x in self.punti if not self.punti[x].get("ingressi") and x not in vuoti]
+            for k_, v_ in list(self.vie.items()):
+                if v_ not in self.punti:
+                    del self.vie[k_]
+        self.disegna()
+        self.salva()
+        self.dici("Input removed from the dot")
+
+    def via_tolta(self, a, b):
+        """La connessione a -> b non c'e' piu': via la sua strada, e i dot che non servono piu' a nessuno (niente connessioni, niente dot dopo), risalendo."""
+        q = self.vie.pop((a, b), None)
+        coda = [q] if q is not None else []
+        while coda:
+            q = coda.pop()
+            if q not in self.punti or q in self.vie.values() or any(k == "p" and v == q for r in self.punti.values() for k, v in r.get("ingressi", [])):
+                continue
+            p_ = self.punti.pop(q)
+            coda += [v for k, v in p_.get("ingressi", []) if k == "p"]
+
+    def punto_inizio(self, q, cx, cy, tira=False):
+        """Premuto un dot: si trascina (con le linee che passano di li'); dal suo pallino d'oro (o con Maiuscolo) parte una linea nuova."""
+        if tira:
+            self.drag = None
+            x, y = self.uscita_xy(q)
+            self.tira = dict(da=None, punto=q, x=x, y=y, mosso=False, imparati=[])
+            return
+        self.drag = dict(prese=[], da=None, x0=cx, y0=cy, x=cx, y=cy, mosso=False, vid=None, x_presa=0, y_presa=0, gruppo=[], etichette=[], punti=[q])
+
+    def punto_a(self, x, y):
+        """Il dot sotto il punto (fuori dalle carte), o None."""
+        sopra = self.pezzo_a(x, y)
+        return sopra[1] if sopra[0] in ("punto", "punto_out") and sopra[1] in self.punti else None
+
+    def ingresso_possibile(self, q, t):
+        """Una linea tirata puo' entrare nel dot q? Non dal dot stesso, non da un dot a valle (sarebbe un giro chiuso), non due volte la stessa."""
+        p = t.get("punto")
+        if p is not None:
+            return p != q and p not in self.sotto_punto(q) and ("p", p) not in self.ingressi(q)
+        return ("c", t["da"]) not in self.ingressi(q)
+
+    def ricevi_punto(self, q, t):
+        """Il dot riceve una linea, da una carta o da un altro dot: un ingresso in piu' (Autore, 10 nov 2026: «i nodi devono poter ricevere piu' frecce»).
+        Tutto quello che esce dal dot e dai dot dopo vale anche per il padre nuovo: le connessioni padre nuovo -> figlio nascono (col colore e l'importanza di quelle
+        che c'erano). Quella della carta con se stessa no. -> True se e' cambiato."""
+        if not self.ingresso_possibile(q, t):
+            self.dici("A dot can't take the same input twice, nor an input from itself or from a dot after it")
+            return False
+        p = t.get("punto")
+        ing = ["p", p] if p is not None else ["c", t["da"]]
+        self.punti[q].setdefault("ingressi", []).append(ing)
+        nuove = self.fonti(p) if p is not None else {t["da"]}
+        sotto = set(self.sotto_punto(q))
+        uscite = {}
+        for (a, c), r in self.vie.items():
+            if r in sotto and (a, c) in self.rete.figli:
+                uscite.setdefault((c, r), (a, c))
+        fatte = 0
+        for (c, r), vecchia in uscite.items():
+            st = self.rete.stili.get(vecchia)
+            for n in nuove:
+                if n == c:
+                    continue
+                if (n, c) not in self.rete.figli:
+                    self.rete.lega(n, c, self.carte_db)
+                    fatte += 1
+                if st:
+                    self.rete.imposta_stile(n, c, colore=st.get("colore"), peso=st.get("peso"), spessore=st.get("spessore"))
+                self.vie[(n, c)] = r
+        self.disegna()
+        self.salva()
+        chi = t["da"] if p is None else "a dot"
+        self.dici(f"Dot input added: {chi}" + (f" · {fatte} new link{'s' if fatte != 1 else ''}" if fatte else ""))
+        return True
+
+    def tira_fine_punto(self, t, x, y):
+        """La linea tirata da un dot: su una carta, la connessione di ogni padre del dot verso quella carta passa dal dot (rifatta quando ci sono gia' tutte, si
+        tolgono); nel vuoto, un dot nuovo dopo questo (una catena, come in Nuke)."""
+        q = t["punto"]
+        vb = self.carta_a(x, y)
+        if vb is None:
+            n = max(self.punti, default=0) + 1
+            self.punti[n] = dict(x=x / self.zoom, y=(y - self.oy("main")) / self.zoom, ingressi=[["p", q]])
+            self.dici("New dot: drag from its gold dot to a card to link")
+        else:
+            b = self.voci[vb]["nome"]
+            padri = sorted(self.fonti(q) - {b})
+            if not padri:
+                return
+            if all((a, b) in self.rete.figli and self.vie.get((a, b)) == q for a in padri):
+                for a in padri:
+                    self.rete.lega(a, b, self.carte_db)
+                    self.via_tolta(a, b)
+                self.dici(f"dot → {b}: unlinked")
+            else:
+                for a in padri:
+                    if (a, b) not in self.rete.figli:
+                        self.rete.lega(a, b, self.carte_db)
+                    self.vie[(a, b)] = q
+                self.dici(f"{', '.join(padri)} → {b}: linked through the dot")
+        self.disegna()
+        self.salva()
+
+    def esc(self):
+        """Esc: chiude prima la tavolozza o la casella del nome, poi scioglie la selezione, e solo allora chiude il tavolo."""
+        if self._stile_pop is not None or self._nome_pop is not None:
+            self.stile_chiudi(); self.nome_chiudi()
+            return
+        if self.sel or self.sel_punti or self.sel_label:
+            self.vuota_sel()
+            return
+        self.chiudi()
+
+    def chiudi(self):
+        self.scambia_chiudi()
+        self.stile_chiudi()
+        self.nome_chiudi()
+        self.nascondi()
+        self.salva()
+        try:
+            self.fin.destroy()
+        except Exception:
+            pass
+        if self.cambiato and self.alla_fine:       # il mazzo e' cambiato: la sua scheda si rifa'
+            self.alla_fine()
+
+
+def tutti_widget(w):
+    yield w
+    for x in w.winfo_children():
+        yield from tutti_widget(x)
+
+
+def prova():
+    """Fuori schermo, file temporanei: le pile, il numero delle copie, il contatore coi limiti, la pila che si apre, il trascinamento, l'impilare, il passaggio di zona,
+    il salvataggio del mazzo e della disposizione, la ripresa. Con le negative."""
+    import tempfile
+    import tkinter as tk
+    d = tempfile.mkdtemp()
+    ft, fm = os.path.join(d, "tavoli.json"), os.path.join(d, "mazzi.json")
+    m = MS.aggiungi("build", dict(nome="Prova", lista={"Lightning Bolt": 4, "Shock": 2, "Opt": 1, "Mountain": 14}, side={"Abrade": 2}), f=fm)
+    db = {"Lightning Bolt": dict(cmc=1, tipo="Instant"), "Shock": dict(cmc=1, tipo="Instant"), "Opt": dict(cmc=1, tipo="Instant"),
+          "Mountain": dict(cmc=0, tipo="Basic Land — Mountain"), "Abrade": dict(cmc=2, tipo="Instant")}
+    lim = lambda n: 10 ** 6 if n in MS.BASI else 4
+    root = tk.Tk(); root.withdraw()
+    F = lambda n, b=False: ("Poppins Medium" if b else "Poppins", n)
+    casi = []
+    cambi = []
+    t = TavoloCarte(tk, F, root, "Prova", m["lista"], m["side"], carte_db=db, chiave="build:" + m["id"], modificabile=("build", m["id"]),
+                    al_cambio=lambda a, b: cambi.append((a, b)), file_tavoli=ft, file_mazzi=fm, fuori=True, limite=lim)
+    root.update()
+    casi.append(("Grid snap: la spunta in alto, accesa di partenza", t.griglia is True and t.b_griglia.cget("text").strip() == "Grid snap"))
+    t.griglia = False       # le prove qui sotto lasciano le carte in punti esatti: la griglia ha le sue prove piu' avanti
+    voce = lambda n, z="main": next((i for i, v in t.voci.items() if v["nome"] == n and v["zona"] == z), None)
+    casi.append(("una carta per nome, non per copia", len(t.voci) == 5 and t.voci[voce("Mountain")]["q"] == 14))
+    zone = collections.Counter(pl["zona"] for pl in t.pile)
+    casi.append(("le pile: il mazzo per costo, la sideboard una per carta", zone["side"] == 1 and zone["main"] == 2))
+    testi = [t.cv.itemcget(i, "text") for i in t.cv.find_all() if t.cv.type(i) == "text"]
+    casi.append(("accanto al nome il numero delle copie, su ogni carta", testi.count("4x") == 1 and testi.count("14x") == 1 and testi.count("2x") == 2 and testi.count("1x") == 1))
+    # il contatore: fino a 4, contando la sideboard; a 0 la carta esce
+    bolt, shock = voce("Lightning Bolt"), voce("Shock")
+    casi.append(("al limite il + non aggiunge", not t.cambia_copie(bolt, +1) and t.voci[bolt]["q"] == 4))
+    t.cambia_copie(shock, +1)
+    casi.append(("il + aggiunge una copia e il mazzo salvato cambia", t.voci[shock]["q"] == 3 and next(x for x in MS.carica(fm)["build"] if x["id"] == m["id"])["lista"]["Shock"] == 3 and cambi))
+    abr = voce("Abrade", "side")
+    t.cambia_copie(abr, +1); t.cambia_copie(abr, +1)
+    casi.append(("il limite conta mazzo e sideboard insieme", t.voci[abr]["q"] == 4 and not t.cambia_copie(abr, +1)))
+    opt = voce("Opt")
+    t.cambia_copie(opt, -1)
+    sal = next(x for x in MS.carica(fm)["build"] if x["id"] == m["id"])
+    casi.append(("a 0 la carta esce dal mazzo e dal tavolo", opt not in t.voci and "Opt" not in sal["lista"]))
+    # la pila che si apre: la carta in mezzo intera, le altre scendono
+    pila = t.pila_di(bolt)
+    if len(pila["carte"]) < 2:
+        casi.append(("pila di prova con due carte", False))
+    else:
+        primo = pila["carte"][0]
+        prima = t.posizioni(pila)
+        t.apri_pila(primo)
+        dopo = t.posizioni(pila)
+        _w, h, off, _p = misure(1.0)
+        casi.append(("il clic in mezzo apre la pila: la carta dopo scende di una carta intera", pila["aperta"] == primo and dopo[1] - dopo[0] == h + APERTA and prima[1] - prima[0] == off))
+        cnt = [i for i in t.cv.find_withtag(f"meno{primo}")]
+        casi.append(("la carta aperta ha il suo contatore", bool(cnt)))
+        t.apri_pila(primo)
+        casi.append(("un altro clic la richiude", pila["aperta"] is None))
+
+    def trascina(cid, verso_pila=None, xy=None, shift=False):
+        bb = t.cv.bbox(f"c{cid}")
+        x0, y0 = bb[0] + 30, bb[1] + 12
+        orig = t.sotto_al_mouse
+        t.sotto_al_mouse = lambda: cid
+        t.premi(type("E", (), dict(x=x0, y=y0, state=1 if shift else 0))())
+        t.sotto_al_mouse = orig
+        if verso_pila is not None:
+            x1, y1, _a, _b = t.ingombro_px(verso_pila)
+            dest = (x1 + 30, y1 + 30)
+        else:
+            dest = xy
+        t.trascina(type("E", (), dict(x=(x0 + dest[0]) / 2, y=(y0 + dest[1]) / 2))())
+        t.trascina(type("E", (), dict(x=dest[0], y=dest[1]))())
+        t.rilascia(type("E", (), dict(x=dest[0], y=dest[1]))())
+        root.update()
+
+    mont = t.pila_di(voce("Mountain"))
+    n_prima = len(mont["carte"])
+    n_cambi = len(cambi)
+    trascina(bolt, verso_pila=mont)
+    casi.append(("lasciata su una pila si impila sopra, con tutte le copie", mont["carte"][-1] == bolt and len(mont["carte"]) == n_prima + 1 and t.voci[bolt]["q"] == 4))
+    casi.append(("dentro il mazzo la lista non cambia", len(cambi) == n_cambi))
+    # nella fascia: tutte le copie vanno in sideboard; il doppio clic ne riporta una
+    trascina(shock, xy=(900, 60))
+    sal = next(x for x in MS.carica(fm)["build"] if x["id"] == m["id"])
+    casi.append(("nella fascia tutte le copie diventano sideboard", t.voci[shock]["zona"] == "side" and "Shock" not in sal["lista"] and sal["side"].get("Shock") == 3))
+    orig = t.sotto_al_mouse
+    t.sotto_al_mouse = lambda: shock
+    t.doppio(None)
+    t.sotto_al_mouse = orig
+    sal = next(x for x in MS.carica(fm)["build"] if x["id"] == m["id"])
+    casi.append(("il doppio clic passa UNA copia nel mazzo", sal["lista"].get("Shock") == 1 and sal["side"].get("Shock") == 2 and t.voci[shock]["q"] == 2))
+    # riportata nel mazzo dove c'e' gia' la stessa carta: le copie si sommano, una carta per nome e zona
+    trascina(shock, xy=(600, t.oy("main") + 400))
+    sh_main = [v for v in t.voci.values() if v["nome"] == "Shock" and v["zona"] == "main"]
+    casi.append(("nella stessa zona le copie si sommano su una carta sola", len(sh_main) == 1 and sh_main[0]["q"] == 3 and not any(v["nome"] == "Shock" and v["zona"] == "side" for v in t.voci.values())))
+    # Maiuscolo: tutta la pila
+    pila_m = t.pila_di(voce("Mountain"))
+    quante = len(pila_m["carte"])
+    trascina(pila_m["carte"][0], xy=(1100, t.oy("main") + 300), shift=True)
+    casi.append(("con Maiuscolo si sposta tutta la pila", any(len(pl["carte"]) == quante and pl["x"] > 900 for pl in t.pile)))
+    # libera, e lo snap solo sopra un'altra pila: lasciata a 40 pixel da una pila resta da sola, dove l'hai lasciata
+    import time as _t
+
+    def aspetta(sec=0.25):
+        fine_ = _t.time() + sec
+        while _t.time() < fine_:
+            root.update(); _t.sleep(0.02)
+    mont = t.pila_di(voce("Mountain"))
+    bx0, by0, bx1, by1 = t.ingombro_px(mont)
+    ab = voce("Abrade", "side")
+    trascina(ab, xy=(bx1 + 70, by0 + 20))
+    pa = t.pila_di(ab)
+    casi.append(("libera: vicino a una pila ma fuori resta da sola, dove l'hai lasciata", pa is not mont and len(pa["carte"]) == 1 and pa["zona"] == "main"
+                 and abs(t.pos_px(pa)[0] - (bx1 + 70 - 30)) <= 16))      # presa a 30 pixel dal bordo della figura, che col numero sporge a sinistra
+    trascina(ab, verso_pila=mont)
+    casi.append(("snap: lasciata sopra la pila si impila", t.pila_di(ab) is mont))
+    trascina(ab, xy=(bx1 + 300, by1 + 200))
+    casi.append(("de-snap: tirata fuori dalla pila se ne stacca", t.pila_di(ab) is not mont and len(t.pila_di(ab)["carte"]) == 1 and ab not in mont["carte"]))
+    # lo zoom: le carte del mazzo piu' grandi, le posizioni salvate (scala 1) uguali
+    vb = t.pila_di(voce("Lightning Bolt"))["carte"][-1]
+    largo = lambda vid: (lambda b: b[2] - b[0])(t.cv.bbox(t.cv.find_withtag(f"c{vid}")[0]))      # l'immagine della carta (il contatore ha una misura fissa)
+    w0, base0 = largo(vb), [(pl["x"], pl["y"]) for pl in t.pile]
+    t.zoom_a(1.5); aspetta()
+    casi.append(("lo zoom ingrandisce il foglio, non cambia la disposizione", t.zoom == 1.5 and largo(vb) > w0 * 1.35 and [(pl["x"], pl["y"]) for pl in t.pile] == base0))
+    z0 = t.zoom
+    W_ = lambda d: type("E", (), dict(delta=d, x=300, y=400, state=0))()
+    t.rotella(W_(120)); aspetta()
+    casi.append(("la rotella zooma", t.zoom > z0))
+    t.rotella(W_(-120)); aspetta()
+    casi.append(("la rotella indietro torna", abs(t.zoom - z0) <= 0.05))
+    # il punto sotto il puntatore resta fermo, anche dopo piu' scatti di fila e il ridisegno finale
+    fermo = lambda: (t.cv.canvasx(300) / t.zoom, (t.cv.canvasy(400) - t.oy("main")) / t.zoom)
+    f0 = fermo()
+    nf = len(_FOTO)
+    t.rotella(W_(120)); t.rotella(W_(120)); t.rotella(W_(120))
+    if t.gpu:
+        casi.append(("sulla scheda lo zoom e' subito: niente ridisegno allo scatto", t.cv.zk > 1.2 and t._zoom_dopo is not None))
+    aspetta(0.4)
+    f1 = fermo()
+    casi.append(("lo zoom tiene fermo il punto sotto il puntatore", abs(f1[0] - f0[0]) < 2 and abs(f1[1] - f0[1]) < 2))
+    if t.gpu:
+        casi.append(("sulla scheda lo zoom non rifa' le immagini delle carte, e il ridisegno azzera lo zoom immediato", len(_FOTO) == nf and t.cv.zk == 1.0))
+    t.rotella(W_(-120)); t.rotella(W_(-120)); t.rotella(W_(-120)); aspetta(0.4)
+    t.cv.xview_moveto(0); t.cv.yview_moveto(0); root.update()
+    t.pan_inizio(type("E", (), dict(x=500, y=500))()); t.pan_muovi(type("E", (), dict(x=380, y=420))()); t.pan_fine(None); root.update()
+    casi.append(("il tasto centrale sposta il foglio", t.cv.canvasx(0) > 0 and t.cv.canvasy(0) > 0 and [(pl["x"], pl["y"]) for pl in t.pile] == base0))
+    t.cv.xview_moveto(0); t.cv.yview_moveto(0); root.update()
+    t.pan_inizio(type("E", (), dict(x=300, y=300))()); t.pan_muovi(type("E", (), dict(x=2300, y=2300))()); t.pan_fine(None); root.update()
+    casi.append(("il pan non ha bordi: oltre l'inizio del foglio, a sinistra e sopra", t.cv.canvasx(0) < -1500 and t.cv.canvasy(0) < -1500))
+    t.cv.xview_moveto(0); t.cv.yview_moveto(0); root.update()
+    t.zoom_a(9); aspetta()
+    casi.append(("lo zoom ha un tetto", t.zoom == ZOOM_MAX))
+    misura_ctrl = lambda: sorted({(lambda b_: (round(b_[2] - b_[0]), round(b_[3] - b_[1])))(t.cv.bbox(i_)) for i_ in t.cv.find_withtag("ctrl")})
+    t.zoom = ZOOM_MAX; t.disegna(); grandi_ = misura_ctrl()
+    t.zoom = ZOOM_MIN; t.disegna(); piccoli_ = misura_ctrl()
+    t.zoom = 1.0; t.disegna()
+    uguali_ = lambda a_, b_: bool(a_) and all(abs(p_[0] - q_[0]) <= 1 and abs(p_[1] - q_[1]) <= 1 for p_ in a_ for q_ in b_)      # un pixel: l'arrotondamento
+    casi.append(("i pulsanti − + hanno la stessa misura a ogni zoom", uguali_(grandi_, piccoli_) and uguali_(grandi_, misura_ctrl())))
+    t.zoom_a(1.25); aspetta()
+    # la fascia: la barra si trascina, le carte della sideboard si rimpiccioliscono fino a sparire
+    trascina(ab, xy=(500, 60))      # Abrade torna in sideboard
+    sb = ab
+    ws = largo(sb)
+    E = lambda x, y: type("E", (), dict(x=x - t.cv.canvasx(0), y=y - t.cv.canvasy(0), state=0))()
+    t.premi_tela(E(400, t.hs)); t.trascina(E(400, t.hs - 110)); t.rilascia(E(400, t.hs - 110)); root.update()
+    casi.append(("la barra trascinata abbassa la fascia", t.hs == FASCIA_DEF - 110 and t.cv.find_withtag("barra")))
+    casi.append(("fascia piu' bassa: le carte della sideboard piu' piccole", t.cv.bbox(f"c{sb}") and largo(sb) < ws * 0.7))
+    casi.append(("e il mazzo sale con la barra", t.oy("main") == t.hs + ETICHETTA))
+    t.premi_tela(E(400, t.hs)); t.trascina(E(400, -50)); t.rilascia(E(400, -50)); root.update()
+    casi.append(("fascia a zero: le carte della sideboard spariscono", t.hs == 0 and t.nascosta() and not t.cv.find_withtag(f"c{sb}")))
+    t.premi_tela(E(400, 300)); t.rilascia(E(400, 300))
+    casi.append(("negativa: premuta lontano dalla barra la fascia non si muove", t.hs == 0))
+    t.premi_tela(E(400, t.hs)); t.trascina(E(400, 140)); t.rilascia(E(400, 140)); root.update()
+    pos = [(pl["zona"], pl["x"], pl["y"], [t.voci[c]["q"] for c in pl["carte"]]) for pl in t.pile]
+    posti = {n: next(((pl["x"], pl["y"]) for pl in t.pile for c in pl["carte"] if t.voci[c]["nome"] == n), None) for n in ("Mountain", "Shock")}
+    t.chiudi()
+    sal = next(x for x in MS.carica(fm)["build"] if x["id"] == m["id"])
+    t2 = TavoloCarte(tk, F, root, "Prova", sal["lista"], sal["side"], carte_db=db, chiave="build:" + m["id"], modificabile=("build", m["id"]), file_tavoli=ft, file_mazzi=fm, fuori=True, limite=lim)
+    root.update()
+    casi.append(("riaperto: la stessa disposizione, lo stesso zoom e la stessa fascia", [(pl["zona"], pl["x"], pl["y"], [t2.voci[c]["q"] for c in pl["carte"]]) for pl in t2.pile] == pos
+                 and t2.zoom == 1.25 and t2.hs == 140))
+    t2.chiudi()
+    # la disposizione resta anche se il mazzo e' cambiato da fuori: le carte che ci sono tornano al loro posto con le copie di adesso, la nuova va sulla sua pila
+    db["Opt"] = dict(cmc=1, tipo="Instant")
+    t3 = TavoloCarte(tk, F, root, "Prova", dict(sal["lista"], **{"Lightning Bolt": 3, "Opt": 2}), sal["side"], carte_db=db, chiave="build:" + m["id"],
+                     modificabile=("build", m["id"]), file_tavoli=ft, file_mazzi=fm, fuori=True, limite=lim)
+    root.update()
+    dove = lambda t_, n: next(((pl["x"], pl["y"]) for pl in t_.pile for c in pl["carte"] if t_.voci[c]["nome"] == n), None)
+    casi.append(("mazzo cambiato da fuori: le carte restano dove le avevi messe, con le copie di adesso",
+                 t3.zoom == 1.25 and t3.hs == 140 and t3.voci[next(i for i, v in t3.voci.items() if v["nome"] == "Lightning Bolt")]["q"] == 3
+                 and dove(t3, "Mountain") == posti["Mountain"] and dove(t3, "Shock") == posti["Shock"]))
+    casi.append(("e la carta nuova entra", any(v["nome"] == "Opt" and v["q"] == 2 for v in t3.voci.values())))
+    t3.chiudi()
+    # il builder legge la disposizione di prima, salvata sotto «builder:<id>», se sotto la chiave del mazzo non c'e'
+    d_ = carica_tavoli(ft)
+    salva_tavolo("builder:vecchio", d_["build:" + m["id"]], ft)
+    tb = TavoloCarte(tk, F, root, "Prova", dict(sal["lista"], **{"Lightning Bolt": 3, "Opt": 2}), sal["side"], carte_db=db, chiave="build:nuovo",
+                     chiave_vecchia="builder:vecchio", editore=lambda a_, b_: None, file_tavoli=ft, file_mazzi=fm, fuori=True, limite=lim)
+    root.update()
+    casi.append(("il builder riprende la disposizione che teneva a parte", dove(tb, "Mountain") == posti["Mountain"] and tb.zoom == 1.25))
+    tb.chiave = None; tb.chiudi()
+    tn = TavoloCarte(tk, F, root, "Prova", {"Shock": 2}, {}, carte_db=db, chiave=None, editore=lambda a_, b_: None, file_tavoli=ft, file_mazzi=fm, fuori=True, limite=lim)
+    root.update()
+    tn.nuova_chiave("build:appena")
+    casi.append(("un mazzo nuovo del builder, al primo Save, salva la disposizione sotto la sua chiave", "build:appena" in carica_tavoli(ft)))
+    tn.chiudi()
+    # un mazzo di Arena: niente contatore, si sposta sul tavolo, il file dei mazzi non si tocca
+    prima_file = open(fm, encoding="utf-8").read()
+    t4 = TavoloCarte(tk, F, root, "Arena", {"Lightning Bolt": 4, "Mountain": 16}, {"Abrade": 1}, carte_db=db, chiave="mio:arena", file_tavoli=ft, file_mazzi=fm, fuori=True, limite=lim)
+    root.update()
+    t = t4
+    b4 = next(i for i, v in t4.voci.items() if v["nome"] == "Lightning Bolt")
+    casi.append(("un mazzo di Arena non ha il contatore", not t4.cv.find_withtag("ctrl") and not t4.cambia_copie(b4, -1)))
+    casi.append(("negativa: un mazzo di Arena non ha il ⇄ e non si sostituisce", not t4.cv.find_withtag("scambia") and not t4.scambia(b4, "Shock")))
+    trascina(b4, xy=(700, 60))
+    casi.append(("e la carta va in fascia ma i mazzi salvati non cambiano", t4.voci[b4]["zona"] == "side" and open(fm, encoding="utf-8").read() == prima_file))
+    t4.chiudi()
+    t5 = TavoloCarte(tk, F, root, "Arena", {"Lightning Bolt": 4, "Mountain": 16}, {"Abrade": 1}, carte_db=db, chiave="mio:arena", file_tavoli=ft, file_mazzi=fm, fuori=True, limite=lim)
+    root.update()
+    casi.append(("alla riapertura resta la sua disposizione", any(v["nome"] == "Lightning Bolt" and v["zona"] == "side" and v["q"] == 4 for v in t5.voci.values())))
+    t5.chiudi()
+    _w, h1, off1, _p = misure(1.0)
+    vecchio = 2 * ETICHETTA + h1 + 2 * off1 + 28
+    salva_tavolo("mio:vecchio", dict(taglia="L", pile=[dict(zona="side", x=22, y=ETICHETTA, carte=[["Abrade", 1]]), dict(zona="main", x=22, y=vecchio, carte=[["Mountain", 16]]),
+                                                       dict(zona="main", x=190, y=vecchio + 100, carte=[["Lightning Bolt", 4]])]), ft)
+    tv = TavoloCarte(tk, F, root, "Arena", {"Lightning Bolt": 4, "Mountain": 16}, {"Abrade": 1}, carte_db=db, chiave="mio:vecchio", file_tavoli=ft, file_mazzi=fm, fuori=True, limite=lim)
+    root.update()
+    casi.append(("una disposizione del primo giro: zoom da L, il mazzo dall'inizio del foglio", tv.zoom == 1.25 and sorted(pl["y"] for pl in tv.pile if pl["zona"] == "main") == [0, 100]
+                 and all(pl["y"] == 0 for pl in tv.pile if pl["zona"] == "side")))
+    tv.chiudi()
+    t6 = TavoloCarte(tk, F, root, "Brawl", {"Mountain": 10}, {}, comandante={"Lightning Bolt": 1}, carte_db=db, chiave=None, file_tavoli=ft, file_mazzi=fm, fuori=True,
+                     modificabile=None, limite=lim)
+    root.update()
+    cmd = next(i for i, v in t6.voci.items() if v["zona"] == "cmd")
+    t6.sotto_al_mouse = lambda: cmd
+    t6.premi(type("E", (), dict(x=10, y=10, state=0))())
+    casi.append(("il comandante resta fermo", t6.drag is None))
+    t6.chiudi()
+    # le connessioni padre -> figlio: il pallino sotto le carte intere, tirato su un'altra carta; rifatta la toglie; l'imparato fra i mazzi
+    fr = os.path.join(d, "rete.json")
+    dbr = {"Token Maker": dict(cmc=2, tipo="Creature — Human", testo="When this creature enters, create two 1/1 white Soldier creature tokens."),
+           "Anthem": dict(cmc=3, tipo="Enchantment", testo="Creatures you control get +1/+1."),
+           "Vanilla": dict(cmc=2, tipo="Creature — Bear", testo=""), "Plains": dict(cmc=0, tipo="Basic Land — Plains", testo=""),
+           "Side Anthem": dict(cmc=3, tipo="Enchantment", testo="Creatures you control get +1/+1.")}
+
+    def nuovo_t(chiave="build:rete", griglia=False):
+        t_ = TavoloCarte(tk, F, root, "Rete", {"Token Maker": 4, "Anthem": 2, "Vanilla": 4, "Plains": 10}, {"Side Anthem": 1}, carte_db=dbr, chiave=chiave,
+                         file_tavoli=ft, file_mazzi=fm, file_rete=fr, fuori=True, limite=lim, editore=lambda a_, b_: None)     # col contatore, come nel builder
+        root.update()
+        t_.griglia = griglia
+        return t_
+
+    def vid_di(t_, nome):
+        return next(i for i, v in t_.voci.items() if v["nome"] == nome)
+
+    def tira(t_, a, b=None, xy=None):
+        """Dal pallino di a fino a b (al centro della sua barra del nome) o al punto xy della tela."""
+        va = vid_di(t_, a)
+        bb = t_.cv.bbox(f"n{va}")
+        if b is not None:
+            bc = t_.cv.bbox(f"c{vid_di(t_, b)}")
+            xy = ((bc[0] + bc[2]) / 2, bc[1] + 14)
+        E = lambda x, y: type("E", (), dict(x=x - t_.cv.canvasx(0), y=y - t_.cv.canvasy(0), state=0))()
+        cx, cy = (bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2
+        t_.nodo_inizio(E(cx, cy), va); t_.trascina(E(cx + 60, cy + 40)); t_.trascina(E(*xy)); t_.rilascia(E(*xy)); root.update()
+
+    t7 = nuovo_t()
+    intere = sum(1 for pl in t7.pile if not (pl["zona"] != "main" and t7.nascosta()))
+    casi.append(("un pallino sotto ogni carta intera, nessuno sotto le coperte", len(t7.cv.find_withtag("nodo")) == intere and not t7.cv.find_withtag(f"n{vid_di(t7, 'Token Maker')}")))
+    tira(t7, "Vanilla", "Anthem")
+    casi.append(("il pallino tirato su un'altra carta: padre -> figlio, e la freccia", ("Vanilla", "Anthem") in t7.rete.figli and t7.cv.find_withtag("rete")))
+    t7.apri_pila(vid_di(t7, "Token Maker")); root.update()
+    casi.append(("la carta coperta, aperta, ha il suo pallino", bool(t7.cv.find_withtag(f"n{vid_di(t7, 'Token Maker')}"))))
+    tira(t7, "Token Maker", "Anthem")
+    casi.append(("le famiglie dal testo nella riga d'aiuto", ("Token Maker", "Anthem") in t7.rete.figli and "go wide" in t7.aiuto.cget("text")))
+    tira(t7, "Token Maker", "Side Anthem")
+    casi.append(("anche una carta della sideboard puo' essere figlia", ("Token Maker", "Side Anthem") in t7.rete.figli))
+    tira(t7, "Token Maker", "Side Anthem")
+    casi.append(("rifatta, la connessione si toglie", ("Token Maker", "Side Anthem") not in t7.rete.figli and "unlinked" in t7.aiuto.cget("text")))
+    n_prima = len(t7.rete.figli)
+    tira(t7, "Anthem", "Anthem")
+    casi.append(("negativa: lasciato sulla stessa carta niente", len(t7.rete.figli) == n_prima))
+    tira(t7, "Anthem", xy=(1300, t7.oy("main") + 700))
+    casi.append(("negativa: lasciato sul vuoto niente", len(t7.rete.figli) == n_prima))
+    an = t7.pila_di(vid_di(t7, "Anthem"))
+    x_prima = an["x"]
+    trascina_t = t
+    t = t7
+    trascina(vid_di(t7, "Anthem"), xy=(1000, t7.oy("main") + 60))
+    t = trascina_t
+    casi.append(("trascinare la carta (non il pallino) la sposta, non collega", t7.pila_di(vid_di(t7, "Anthem"))["x"] != x_prima and len(t7.rete.figli) == n_prima))
+    t7.chiudi()
+    t8 = nuovo_t()
+    casi.append(("riaperto: le connessioni restano, con le frecce", set(t8.rete.figli) == {("Vanilla", "Anthem"), ("Token Maker", "Anthem")} and t8.cv.find_withtag("rete")))
+    # il foglio come Obsidian: le frecce dritte sotto le carte, la carta si prende in ogni punto, le frecce la seguono
+    tutti = t8.cv.find_all()
+    prima_carta = min(tutti.index(i) for i in t8.cv.find_withtag("carta"))
+    ultima_carta = max(tutti.index(i) for i in t8.cv.find_withtag("carta"))
+    primo_nodo = min(tutti.index(i) for i in t8.cv.find_withtag("nodo"))
+    casi.append(("le frecce SOTTO le carte (mai sopra), i pallini sopra", all(tutti.index(i) < prima_carta for i in t8.cv.find_withtag("rete"))
+                 and primo_nodo > ultima_carta and t8.cv.find_withtag("rete")))
+    va, vb = t8.vid_nome("Vanilla"), t8.vid_nome("Anthem")
+    ra, rb = t8.rett(va), t8.rett(vb)
+    na, nb = t8.nodo_xy(va), t8.nodo_xy(vb)
+    sg = t8.segmento(na, nb)
+    dal = lambda pt, n_: abs(((pt[0] - n_[0]) ** 2 + (pt[1] - n_[1]) ** 2) ** 0.5 - (n_[2] + 2)) < 0.01
+    casi.append(("la freccia e' dritta, da pallino a pallino", sg is not None and dal(sg[0], na) and dal(sg[1], nb)))
+    tm = t8.vid_nome("Token Maker")
+    coperta = t8.pila_di(tm)["carte"][-1] != tm
+    casi.append(("la carta coperta con una freccia ha il pallino piccolo sulla barra del nome", coperta and t8.nodo_xy(tm)[2] == 5 and bool(t8.cv.find_withtag(f"n{tm}"))))
+    E8 = lambda x, y: type("E", (), dict(x=x - t8.cv.canvasx(0), y=y - t8.cv.canvasy(0), state=0))()
+    t8.premi_tela(E8((rb[0] + rb[2]) / 2, rb[1] + 3))
+    casi.append(("la carta si prende anche dove arriva la freccia", t8.drag is not None and t8.drag["vid"] == vb))
+    t8.rilascia(E8((rb[0] + rb[2]) / 2, rb[1] + 3)); t8.clic and t8.cv.after_cancel(t8.clic); t8.clic = None
+    t8.premi_tela(E8(rb[0] - 8, rb[1] + 8))
+    casi.append(("e dal numero delle copie che sporge a sinistra", t8.drag is not None and t8.drag["vid"] == vb))
+    t8.rilascia(E8(rb[0] - 8, rb[1] + 8)); t8.clic and t8.cv.after_cancel(t8.clic); t8.clic = None
+    t8.premi_tela(E8(rb[2] + 300, rb[3] + 300))
+    casi.append(("negativa: nel vuoto non si prende niente", t8.drag is None))
+    t8.cv.tag_raise("rete")     # lo strato delle frecce sopra tutto: il contatore deve rispondere lo stesso
+    piu = next(i for i in t8.cv.find_withtag("ctrl") if any(g.startswith("piu") for g in t8.cv.gettags(i)))
+    vpiu = int(next(g for g in t8.cv.gettags(piu) if g.startswith("piu"))[3:])
+    q0 = t8.voci[vpiu]["q"]
+    bp = t8.cv.bbox(piu)
+    t8.premi_tela(E8((bp[0] + bp[2]) / 2, (bp[1] + bp[3]) / 2)); t8.rilascia(E8((bp[0] + bp[2]) / 2, (bp[1] + bp[3]) / 2))
+    casi.append(("il + del contatore risponde anche sotto lo strato delle frecce", t8.voci[vpiu]["q"] == q0 + 1 and t8.drag is None))
+    meno = next(i for i in t8.cv.find_withtag(f"meno{vpiu}"))
+    bm = t8.cv.bbox(meno)
+    t8.premi_tela(E8((bm[0] + bm[2]) / 2, (bm[1] + bm[3]) / 2)); t8.rilascia(E8((bm[0] + bm[2]) / 2, (bm[1] + bm[3]) / 2))
+    casi.append(("e il − toglie la copia", t8.voci[vpiu]["q"] == q0))
+    # il bordo: col mouse vicino al bordo il foglio scorre da solo e la carta resta sotto il mouse
+    t8.cv.winfo_width = lambda: 900; t8.cv.winfo_height = lambda: 600
+    t8.cv.xview_moveto(0); t8.cv.yview_moveto(0); root.update()
+    cx_, cy_ = (rb[0] + rb[2]) / 2, (rb[1] + rb[3]) / 2
+    t8.premi_tela(E8(cx_, cy_)); t8.trascina(type("E", (), dict(x=450, y=590))())
+    y0_view = t8.cv.canvasy(0)
+    fine_ = _t.time() + 0.3
+    while _t.time() < fine_:
+        root.update(); _t.sleep(0.01)
+    y1_view = t8.cv.canvasy(0)
+    bbc = t8.cv.bbox(f"c{vb}")
+    casi.append(("vicino al bordo il foglio scorre dolce e la carta resta sotto il mouse", y1_view - y0_view > 40 and bbc[1] <= t8.drag["y"] <= bbc[3]))
+    t8.rilascia(type("E", (), dict(x=450, y=300))()); root.update()
+    del t8.cv.winfo_width, t8.cv.winfo_height
+    rb = t8.rett(vb)        # la carta e' stata spostata dalla prova dei bordi
+    cx_, cy_ = (rb[0] + rb[2]) / 2, (rb[1] + rb[3]) / 2
+    t8.premi_tela(E8(cx_, cy_)); t8.trascina(E8(cx_ + 40, cy_ + 30))
+    viva = t8.cv.find_withtag("rete_viva")
+    c1 = t8.cv.coords(viva[0]) if viva else None
+    t8.trascina(E8(cx_ + 160, cy_ + 120))
+    c2 = t8.cv.coords(viva[0]) if viva else None
+    casi.append(("trascinando, le frecce della carta la seguono", len(viva) == 2 and c1 != c2))
+    t8.rilascia(E8(cx_ + 160, cy_ + 120)); root.update()
+    casi.append(("lasciata, le frecce tornano nell'immagine, gia' al posto nuovo", not t8.cv.find_withtag("rete_viva") and t8.cv.find_withtag("rete")
+                 and t8.segmento(t8.nodo_xy(va), t8.nodo_xy(vb)) != sg))
+    # la carta segue dal primo pixel; sotto i 3 pixel e' un clic e torna al suo posto
+    rv = t8.rett(va)
+    px_, py_ = (rv[0] + rv[2]) / 2, (rv[1] + rv[3]) / 2
+    b0 = t8.cv.bbox(f"c{va}")
+    t8.premi_tela(E8(px_, py_)); t8.trascina(E8(px_ + 1, py_ + 1)); root.update()
+    b1 = t8.cv.bbox(f"c{va}")
+    casi.append(("la carta segue il mouse dal primo pixel", b1[0] - b0[0] == 1 and b1[1] - b0[1] == 1))
+    t8.rilascia(E8(px_ + 1, py_ + 1)); root.update()
+    casi.append(("sotto i 3 pixel e' un clic: la carta torna al suo posto", t8.cv.bbox(f"c{va}") == b0 and t8.clic is not None and t8.pila_di(va)["x"] == t8.pila_di(va)["x"]))
+    t8.cv.after_cancel(t8.clic); t8.clic = None
+    # una freccia un'immagine; all'inizio del trascinamento si nascondono solo quelle della carta presa
+    t8.disegna(); root.update()
+    casi.append(("le frecce: sulla scheda una linea per freccia, in Tk un'immagine sola", len(t8.cv.find_withtag("rete")) == (len(t8._segmenti) if t8.gpu else 1)
+                 and len(t8._segmenti) == len(t8.legami_visti()) == 2))
+    casi.append(("la tela e' quella della scheda video, se pyglet c'e' e TAVOLO_TK non la spegne", t8.gpu == (TG.disponibile() and os.environ.get("TAVOLO_TK") != "1")))
+    rv = t8.rett(va); px_, py_ = (rv[0] + rv[2]) / 2, (rv[1] + rv[3]) / 2
+    t8.premi_tela(E8(px_, py_)); t8.trascina(E8(px_ + 50, py_ + 40))
+    casi.append(("trascinando le frecce ferme si nascondono TUTTE e diventano linee (nessuna traccia vecchia)",
+                 all(t8.cv.itemcget(i_, "state") == "hidden" for i_ in t8.cv.find_withtag("rete")) and len(t8.cv.find_withtag("rete_viva")) == 2))
+    t8.rilascia(E8(px_ + 50, py_ + 40)); root.update()
+    # rompere una connessione: la freccia si accende, la ✕ a meta' la toglie
+    sg = t8._segmenti[0]
+    mx_, my_ = (sg[2][0] + sg[3][0]) / 2, (sg[2][1] + sg[3][1]) / 2
+    t8.passa(E8(mx_ + 30, my_ + 200)); 
+    casi.append(("negativa: lontano dalla freccia niente ✕", not t8.cv.find_withtag("rete_x")))
+    t8.passa(E8(mx_, my_ + 2))
+    casi.append(("sopra la freccia compare la ✕", bool(t8.cv.find_withtag("rete_x"))))
+    n_prima = len(t8.rete.figli)
+    bx8 = t8.cv.bbox("rete_x"); xx_, xy8 = (bx8[0] + bx8[2]) / 2, (bx8[1] + bx8[3]) / 2
+    t8.premi_tela(E8(xx_, xy8)); t8.rilascia(E8(xx_, xy8)); root.update()
+    casi.append(("il clic sulla ✕ toglie la connessione", len(t8.rete.figli) == n_prima - 1 and "unlinked" in t8.aiuto.cget("text") and t8.drag is None))
+    sg = t8._segmenti[0]
+    mx_, my_ = (sg[2][0] + sg[3][0]) / 2, (sg[2][1] + sg[3][1]) / 2
+    t8.destro(E8(mx_ + 1, my_)); root.update()
+    casi.append(("e anche il tasto destro sulla freccia", len(t8.rete.figli) == n_prima - 2))
+    # il ⇄: sostituisce la carta con una della collezione, alle stesse copie fino al limite, nello stesso posto
+    tv_ = t8.vid_nome("Vanilla")
+    casi.append(("sotto le carte intere il pulsante ⇄", bool(t8.cv.find_withtag(f"s{tv_}"))))
+    t8.nomi_ricerca = lambda: ["Grizzly Bears", "Grizzled Outrider", "Vanilla", "Anthem"]
+    trov = t8.scambia_trova("griz", "Vanilla")
+    casi.append(("la ricerca del ⇄: le carte che contengono il testo, non quella da sostituire", [n for n, _q in trov] == ["Grizzly Bears", "Grizzled Outrider"]
+                 or set(n for n, _q in trov) == {"Grizzly Bears", "Grizzled Outrider"}))
+    posto = (t8.pila_di(tv_)["x"], t8.pila_di(tv_)["y"])
+    bs = t8.cv.bbox(f"s{tv_}")
+    t8.premi_tela(E8((bs[0] + bs[2]) / 2, (bs[1] + bs[3]) / 2))
+    aperto = t8._scambio is not None
+    t8.scambia_chiudi()
+    for k_ in (("Token Maker", "Vanilla"), ("Vanilla", "Anthem")):     # Vanilla figlia di una e padre dell'altra: le connessioni passano alla carta nuova
+        if k_ not in t8.rete.figli:
+            t8.rete.lega(k_[0], k_[1], dbr)
+    t8.scambia(tv_, "Grizzly Bears"); root.update()
+    gb = t8.vid_nome("Grizzly Bears")
+    casi.append(("il ⇄ apre la ricerca, e la carta nuova prende il posto e le copie della vecchia", aperto and gb is not None and t8.voci[gb]["q"] == 4
+                 and (t8.pila_di(gb)["x"], t8.pila_di(gb)["y"]) == posto and t8.vid_nome("Vanilla") is None))
+    salvate = RS.carica(t8.rete.f or RS.FILE).get(t8.rete.chiave, {}).get("figli", [])
+    casi.append(("sostituita, la carta tiene le connessioni: padre resta padre, figlio resta figlio, anche nel file e a video",
+                 ("Token Maker", "Grizzly Bears") in t8.rete.figli and ("Grizzly Bears", "Anthem") in t8.rete.figli
+                 and not any("Vanilla" in k_ for k_ in t8.rete.figli) and ["Token Maker", "Grizzly Bears"] in [x[:2] for x in salvate]
+                 and any({t8.voci[a_]["nome"], t8.voci[b_]["nome"]} == {"Grizzly Bears", "Anthem"} for a_, b_, _p, _c in t8._segmenti) and "links kept" in t8.aiuto.cget("text")))
+    fig_anthem = {k_ for k_ in t8.rete.figli if "Anthem" in k_}
+    t8.scambia(t8.vid_nome("Anthem"), "Grizzly Bears"); root.update()
+    casi.append(("negativa: oltre il limite del formato non sostituisce, e le connessioni restano dove sono", t8.vid_nome("Anthem") is not None
+                 and t8.voci[t8.vid_nome("Grizzly Bears")]["q"] == 4 and {k_ for k_ in t8.rete.figli if "Anthem" in k_} == fig_anthem))
+    if ("Token Maker", "Anthem") not in t8.rete.figli:       # la connessione che la prova dell'imparato cerca in un altro mazzo
+        t8.rete.lega("Token Maker", "Anthem", dbr)
+    t8.chiudi()
+    t9 = nuovo_t("build:altro")
+    t9.apri_pila(vid_di(t9, "Token Maker")); root.update()
+    va = vid_di(t9, "Token Maker")
+    bb = t9.cv.bbox(f"n{va}")
+    t9.nodo_inizio(type("E", (), dict(x=bb[0], y=bb[1], state=0))(), va)
+    casi.append(("l'imparato: in un altro mazzo, i figli che Token Maker ha avuto", t9.tira["imparati"] == ["Anthem"]))
+    t9.tira = None
+    t9.chiudi()
+    # le linee (9 nov 2026): di partenza grigio perlato e sottili; la tavolozza sulla freccia sceglie colore e importanza, e restano
+    tA = nuovo_t("build:stile")
+    for k_ in (("Token Maker", "Anthem"), ("Vanilla", "Anthem")):
+        if k_ not in tA.rete.figli:
+            tA.rete.lega(k_[0], k_[1], dbr)
+    tA.disegna(); root.update()
+    EA = lambda x, y, st=0: type("E", (), dict(x=x - tA.cv.canvasx(0), y=y - tA.cv.canvasy(0), state=st))()
+    casi.append(("di partenza le linee sono grigio perlato e sottili", len(tA._segmenti) == 2
+                 and all(tA.stile_px(a_, b_)[:2] == (RS.PERLA, RS.SPESSORI[1]) for a_, b_, _p, _c in tA._segmenti)
+                 and (not tA.gpu or all(tA.cv.itemcget(i_, "fill") == RS.PERLA for i_ in tA.cv.find_withtag("rete")))))
+    tA.pila_di(vid_di(tA, "Anthem"))["x"] += 900; tA.disegna(); root.update()       # la freccia attraversa il foglio vuoto
+    sgA = next(x for x in tA._segmenti if tA.voci[x[0]]["nome"] == "Token Maker")
+    vuoto = None        # un punto della freccia fuori dalle carte: li' il clic apre la tavolozza
+    for k_ in range(5, 96):
+        px_ = sgA[2][0] + (sgA[3][0] - sgA[2][0]) * k_ / 100; py_ = sgA[2][1] + (sgA[3][1] - sgA[2][1]) * k_ / 100
+        if tA.pezzo_a(px_, py_)[0] is None:
+            vuoto = (px_, py_); break
+    if vuoto:
+        tA.premi_tela(EA(*vuoto)); tA.rilascia(EA(*vuoto))
+        subito_ = tA._stile_pop is None         # aspetta un attimo: se arriva il doppio clic, la linea prende un dot
+        fine_ = _t.time() + 0.4
+        while _t.time() < fine_:
+            root.update(); _t.sleep(0.01)
+    casi.append(("il clic sulla freccia (fuori dalle carte) apre la tavolozza, dopo un attimo", vuoto is not None and subito_ and tA._stile_pop is not None and tA.drag is None
+                 and tA._stile_pop.stile["coppia"] == ("Token Maker", "Anthem")))
+    tA.stile_chiudi()
+    mxA, myA = (sgA[2][0] + sgA[3][0]) / 2, (sgA[2][1] + sgA[3][1]) / 2
+    tA.passa(EA(mxA, myA))
+    bsA = tA.cv.bbox("rete_s")
+    if bsA:
+        tA.premi_tela(EA((bsA[0] + bsA[2]) / 2, (bsA[1] + bsA[3]) / 2))
+    casi.append(("sulla freccia accesa, accanto alla ✕, il tondo dei colori apre la tavolozza anche sopra una carta", bsA is not None and tA._stile_pop is not None))
+    popA = tA._stile_pop
+    popA.stile["imposta"](colore="#d9534f"); popA.stile["imposta"](peso=3); root.update()
+    rossa = [i_ for i_ in tA.cv.find_withtag("rete") if tA.cv.itemcget(i_, "fill") == "#d9534f"] if tA.gpu else ["tk"]
+    casi.append(("la tavolozza cambia subito colore e importanza della linea", tA.rete.stile("Token Maker", "Anthem") == ("#d9534f", 3) and len(rossa) == 1
+                 and (not tA.gpu or float(tA.cv.itemcget(rossa[0], "width")) == RS.SPESSORI[3]) and tA.rete.stile("Vanilla", "Anthem") == (RS.PERLA, 1)))
+    sliders_ = [popA.stile["slider"]] if "slider" in popA.stile else []
+    if sliders_:
+        sliders_[0](5.0)
+        fine_ = _t.time() + 0.3
+        while _t.time() < fine_:
+            root.update(); _t.sleep(0.01)
+    linee_ = [i_ for i_ in tA.cv.find_withtag("rete") if tA.cv.itemcget(i_, "fill") == "#d9534f"] if tA.gpu else ["tk"]
+    casi.append(("nella tavolozza lo slider dello spessore: la linea cambia mentre lo tiri", len(sliders_) == 1
+                 and tA.rete.colore_spessore("Token Maker", "Anthem") == ("#d9534f", 5.0)
+                 and (not tA.gpu or (len(linee_) == 1 and float(tA.cv.itemcget(linee_[0], "width")) == 5.0))
+                 and not any(isinstance(w_, tk.Label) and w_.cget("text") == "IMPORTANCE" for w_ in tutti_widget(popA))))
+    tA.stile_chiudi()
+    tA.chiudi()
+    tA2 = nuovo_t("build:stile")
+    casi.append(("riaperto, la linea ha il suo colore e il suo spessore", tA2.rete.colore_spessore("Token Maker", "Anthem") == ("#d9534f", 5.0)))
+    tA2.chiudi()
+    # i dot delle linee, come in Nuke (9 nov 2026): il doppio clic spezza la linea, il dot si trascina, da un dot partono altre linee dello stesso padre
+    tD = nuovo_t("build:dot")
+    for k_ in (("Token Maker", "Anthem"), ("Vanilla", "Anthem")):
+        if k_ not in tD.rete.figli:
+            tD.rete.lega(k_[0], k_[1], dbr)
+    tD.pila_di(vid_di(tD, "Anthem"))["x"] += 900; tD.disegna(); root.update()
+    ED = lambda x, y, st=0: type("E", (), dict(x=x - tD.cv.canvasx(0), y=y - tD.cv.canvasy(0), state=st))()
+    sgD = next(x for x in tD._segmenti if tD.voci[x[0]]["nome"] == "Token Maker")
+    vuotoD = next(((sgD[2][0] + (sgD[3][0] - sgD[2][0]) * k_ / 100, sgD[2][1] + (sgD[3][1] - sgD[2][1]) * k_ / 100) for k_ in range(30, 71)
+                   if tD.pezzo_a(sgD[2][0] + (sgD[3][0] - sgD[2][0]) * k_ / 100, sgD[2][1] + (sgD[3][1] - sgD[2][1]) * k_ / 100)[0] is None), None)
+    lontano = (vuotoD[0], vuotoD[1] + 300) if vuotoD else (0, 0)
+    tD.doppio(ED(*lontano))
+    casi.append(("negativa: il doppio clic nel vuoto lontano dalle linee non mette un dot", not tD.punti))
+    tD.doppio(ED(*vuotoD)) if vuotoD else None
+    q1 = next(iter(tD.punti), None)
+    casi.append(("il doppio clic su una linea la spezza con un dot: tronco dal padre al dot, punta dal dot al figlio", q1 is not None
+                 and tD.vie.get(("Token Maker", "Anthem")) == q1 and len(tD._tronchi) == 1 and len(tD._segmenti) == 2 and bool(tD.cv.find_withtag(f"p{q1}"))
+                 and (not tD.gpu or len(tD.cv.find_withtag("rete")) == 3)))
+    if q1 is not None:
+        x1_, y1_, _r = tD.punto_xy(q1)
+        tD.premi_tela(ED(x1_, y1_))
+        for k_ in range(1, 5):
+            tD.trascina(ED(x1_ + 20 * k_, y1_ + 15 * k_))
+        vive_d = len([1 for _it, pz in tD.drag["vive"]]) if tD.drag else 0
+        tD.rilascia(ED(x1_ + 80, y1_ + 60)); root.update()
+        x2_, y2_, _r = tD.punto_xy(q1)
+        casi.append(("il dot si trascina, e i due pezzi di linea che ci passano lo seguono", vive_d == 2 and abs(x2_ - x1_ - 80) < 1 and abs(y2_ - y1_ - 60) < 1
+                     and abs(tD._tronchi[0][2][0] - x2_) < R_PUNTO + 4))
+        rp = tD.rett(vid_di(tD, "Plains"))
+        tD.premi_tela(ED(x2_, y2_, st=0x1)); tD.trascina(ED((rp[0] + rp[2]) / 2, (rp[1] + rp[3]) / 2)); tD.rilascia(ED((rp[0] + rp[2]) / 2, (rp[1] + rp[3]) / 2))
+        root.update()
+        casi.append(("Maiuscolo+trascina dal dot su una carta: una connessione nuova dello stesso padre, che passa dal dot", ("Token Maker", "Plains") in tD.rete.figli
+                     and tD.vie.get(("Token Maker", "Plains")) == q1 and len(tD._tronchi) == 1 and len(tD._segmenti) == 3))
+        tD.premi_tela(ED(x2_, y2_, st=0x1)); tD.trascina(ED(x2_ + 150, y2_ + 120)); tD.rilascia(ED(x2_ + 150, y2_ + 120)); root.update()
+        q2 = max(tD.punti)
+        casi.append(("Maiuscolo+trascina dal dot nel vuoto: un dot nuovo in catena", q2 != q1 and tD.punti[q2]["ingressi"] == [["p", q1]] and tD.fonti(q2) == {"Token Maker"}))
+        tD.chiudi()
+        tD = nuovo_t("build:dot")
+        casi.append(("riaperto, i dot e le strade delle linee ci sono", set(tD.punti) == {q1, q2} and tD.vie.get(("Token Maker", "Anthem")) == q1
+                     and tD.vie.get(("Token Maker", "Plains")) == q1))
+        ED = lambda x, y, st=0: type("E", (), dict(x=x - tD.cv.canvasx(0), y=y - tD.cv.canvasy(0), state=st))()
+        x2_, y2_, _r = tD.punto_xy(q1)
+        tD.destro(ED(x2_, y2_)); root.update()
+        casi.append(("il tasto destro sul dot lo toglie: le linee vanno dritte, il dot dopo prende i suoi ingressi", q1 not in tD.punti and not tD.vie
+                     and tD.punti.get(q2, {}).get("ingressi") == [["c", "Token Maker"]] and ("Token Maker", "Anthem") in tD.rete.figli))
+        tD.togli_punto(q2)
+        tD.doppio(ED(*(lambda s_: ((s_[2][0] + s_[3][0]) / 2, (s_[2][1] + s_[3][1]) / 2))(next(x for x in tD._segmenti
+                     if (tD.voci[x[0]]["nome"], tD.voci[x[1]]["nome"]) == ("Token Maker", "Plains")))))
+        q3 = tD.vie.get(("Token Maker", "Plains"))
+        sgP = next(x for x in tD._segmenti if (tD.voci[x[0]]["nome"], tD.voci[x[1]]["nome"]) == ("Token Maker", "Plains"))
+        tD.togli_arco(sgP)
+        casi.append(("tolta la connessione col ✕, il suo dot che non serve piu' sparisce", q3 is not None and q3 not in tD.punti and ("Token Maker", "Plains") not in tD.rete.figli))
+    tD.chiudi()
+    # il chiodo sulla freccia accesa mette il dot; il dot fa partire linee dal suo pallino d'oro e ne riceve (Autore, 10 nov 2026)
+    tE = nuovo_t("build:dot2")
+    if ("Token Maker", "Anthem") not in tE.rete.figli:
+        tE.rete.lega("Token Maker", "Anthem", dbr)
+    tE.rete.imposta_stile("Token Maker", "Anthem", colore="#d9534f", peso=2)
+    tE.pila_di(vid_di(tE, "Anthem"))["x"] += 900; tE.disegna(); root.update()
+    EE = lambda x, y, st=0: type("E", (), dict(x=x - tE.cv.canvasx(0), y=y - tE.cv.canvasy(0), state=st))()
+    sgE = next(x for x in tE._segmenti if tE.voci[x[0]]["nome"] == "Token Maker")
+    vuotoE = next(((sgE[2][0] + (sgE[3][0] - sgE[2][0]) * k_ / 100, sgE[2][1] + (sgE[3][1] - sgE[2][1]) * k_ / 100) for k_ in range(30, 71)
+                   if tE.pezzo_a(sgE[2][0] + (sgE[3][0] - sgE[2][0]) * k_ / 100, sgE[2][1] + (sgE[3][1] - sgE[2][1]) * k_ / 100)[0] is None), None)
+    if vuotoE:
+        tE.passa(EE(*vuotoE))
+    bc = tE.cv.bbox("rete_c")
+    if bc:
+        kc = ((bc[0] + bc[2]) / 2, (bc[1] + bc[3]) / 2)
+        tE.premi_tela(EE(*kc)); tE.rilascia(EE(*kc)); root.update()
+    qE = tE.vie.get(("Token Maker", "Anthem"))
+    mE = ((sgE[2][0] + sgE[3][0]) / 2, (sgE[2][1] + sgE[3][1]) / 2)
+    casi.append(("sulla freccia accesa il chiodo mette un dot a meta' della linea", bc is not None and qE in tE.punti
+                 and abs(tE.punto_xy(qE)[0] - mE[0]) < 1 and abs(tE.punto_xy(qE)[1] - mE[1]) < 1))
+    if qE in tE.punti:
+        ox_, oy_ = tE.uscita_xy(qE)
+        rp = tE.rett(vid_di(tE, "Plains"))
+        tE.premi_tela(EE(ox_, oy_)); tE.trascina(EE((rp[0] + rp[2]) / 2, (rp[1] + rp[3]) / 2)); tE.rilascia(EE((rp[0] + rp[2]) / 2, (rp[1] + rp[3]) / 2)); root.update()
+        casi.append(("dal pallino d'oro del dot parte una linea nuova (senza Maiuscolo), dello stesso padre", tE.vie.get(("Token Maker", "Plains")) == qE
+                     and ("Token Maker", "Plains") in tE.rete.figli and tE.punti[qE]["x"] == tE.punti[qE]["x"]))
+        vV = vid_di(tE, "Vanilla")
+        bn = tE.cv.bbox(f"n{vV}")
+        dx_, dy_, _r = tE.punto_xy(qE)
+        tE.premi_tela(EE((bn[0] + bn[2]) / 2, (bn[1] + bn[3]) / 2)); tE.trascina(EE(dx_, dy_)); tE.rilascia(EE(dx_, dy_)); root.update()
+        casi.append(("il dot riceve piu' frecce: Vanilla entra accanto a Token Maker, quello che esce vale per tutti e due, col suo colore",
+                     tE.punti[qE]["ingressi"] == [["c", "Token Maker"], ["c", "Vanilla"]] and tE.vie.get(("Vanilla", "Anthem")) == qE
+                     and tE.vie.get(("Vanilla", "Plains")) == qE and tE.vie.get(("Token Maker", "Anthem")) == qE and ("Token Maker", "Plains") in tE.rete.figli
+                     and tE.rete.stile("Vanilla", "Anthem") == ("#d9534f", 2) and len(tE._tronchi) == 2
+                     and len([x for x in tE._segmenti if tE.voci[x[1]]["nome"] == "Anthem"]) == 1))
+        tE.premi_tela(EE((bn[0] + bn[2]) / 2, (bn[1] + bn[3]) / 2)); tE.trascina(EE(dx_ + 9, dy_ + 9)); tE.trascina(EE(dx_, dy_)); tE.rilascia(EE(dx_, dy_)); root.update()
+        casi.append(("negativa: la stessa carta non entra due volte nello stesso dot", len(tE.punti[qE]["ingressi"]) == 2))
+        prima_v = dict(tE.vie)
+        ox_, oy_ = tE.uscita_xy(qE)
+        tE.premi_tela(EE(ox_, oy_)); tE.trascina(EE(dx_ + 20, dy_ + 20)); tE.trascina(EE(dx_, dy_)); tE.rilascia(EE(dx_, dy_)); root.update()
+        nego1 = tE.vie == prima_v and len(tE.punti[qE]["ingressi"]) == 2
+        tE.premi_tela(EE(ox_, oy_, st=0x1)); tE.trascina(EE(dx_ + 160, dy_ + 140)); tE.rilascia(EE(dx_ + 160, dy_ + 140)); root.update()
+        q2E = max(tE.punti)
+        o2x, o2y = tE.uscita_xy(q2E)
+        dx_, dy_, _r = tE.punto_xy(qE)
+        tE.premi_tela(EE(o2x, o2y)); tE.trascina(EE(o2x + 30, o2y - 30)); tE.trascina(EE(dx_, dy_)); tE.rilascia(EE(dx_, dy_)); root.update()
+        casi.append(("negativa: un dot non riceve da se stesso ne' da un dot dopo di lui (giro chiuso)", nego1 and q2E != qE and len(tE.punti[qE]["ingressi"]) == 2
+                     and tE.punti[q2E]["ingressi"] == [["p", qE]]))
+        # la tavolozza e la ✕ su un'uscita del dot valgono per tutte le connessioni che ci passano; la ✕ su un ingresso toglie solo quello
+        sgO = next(x for x in tE._segmenti if tE.voci[x[1]]["nome"] == "Anthem")
+        popO = tE.stile_apri(sgO); popO.stile["imposta"](colore="#24baff"); tE.stile_chiudi()
+        casi.append(("la tavolozza su un'uscita del dot colora le connessioni di tutti i suoi ingressi", tE.rete.stile("Token Maker", "Anthem")[0] == "#24baff"
+                     and tE.rete.stile("Vanilla", "Anthem")[0] == "#24baff"))
+        trV = next((x for x in tE._tronchi if x[3] == ("c", "Vanilla")), None)
+        vuotoV = next(((trV[1][0] + (trV[2][0] - trV[1][0]) * k_ / 100, trV[1][1] + (trV[2][1] - trV[1][1]) * k_ / 100) for k_ in range(25, 76)
+                       if tE.pezzo_a(trV[1][0] + (trV[2][0] - trV[1][0]) * k_ / 100, trV[1][1] + (trV[2][1] - trV[1][1]) * k_ / 100)[0] is None), None) if trV else None
+        if vuotoV:
+            tE.passa(EE(*vuotoV))
+        bx_t = tE.cv.bbox("rete_xt")
+        if bx_t:
+            tE.premi_tela(EE((bx_t[0] + bx_t[2]) / 2, (bx_t[1] + bx_t[3]) / 2)); tE.rilascia(EE((bx_t[0] + bx_t[2]) / 2, (bx_t[1] + bx_t[3]) / 2)); root.update()
+        casi.append(("la ✕ su un ingresso del dot toglie quell'ingresso e le sue connessioni, le altre restano", bx_t is not None
+                     and tE.punti[qE]["ingressi"] == [["c", "Token Maker"]] and ("Vanilla", "Anthem") not in tE.rete.figli and ("Vanilla", "Plains") not in tE.rete.figli
+                     and tE.vie.get(("Token Maker", "Anthem")) == qE and ("Token Maker", "Plains") in tE.rete.figli))
+        sgO = next(x for x in tE._segmenti if tE.voci[x[1]]["nome"] == "Anthem")
+        tE.togli_arco(sgO)
+        casi.append(("la ✕ su un'uscita del dot toglie quella connessione, il dot resta per le altre", ("Token Maker", "Anthem") not in tE.rete.figli
+                     and qE in tE.punti and tE.vie.get(("Token Maker", "Plains")) == qE))
+    tE.chiudi()
+    # una linea corta: i pulsantini ci sono tutti, uno accanto all'altro, fuori dai pallini; la linea resta accesa mentre il mouse va verso di loro
+    tC = nuovo_t("build:corta")
+    if ("Vanilla", "Anthem") not in tC.rete.figli:
+        tC.rete.lega("Vanilla", "Anthem", dbr)
+    p_v_, p_an_ = tC.pila_di(vid_di(tC, "Vanilla")), tC.pila_di(vid_di(tC, "Anthem"))
+    p_an_["x"], p_an_["y"] = p_v_["x"] + 70, p_an_["y"] + tC.posizioni(p_v_)[-1] - tC.posizioni(p_an_)[-1]      # accanto, con la base alla stessa altezza
+    tC.disegna(); root.update()
+    EC = lambda x, y, st=0: type("E", (), dict(x=x - tC.cv.canvasx(0), y=y - tC.cv.canvasy(0), state=st))()
+    sgC = next(x for x in tC._segmenti if tC.voci[x[0]]["nome"] == "Vanilla")
+    lungC = ((sgC[3][0] - sgC[2][0]) ** 2 + (sgC[3][1] - sgC[2][1]) ** 2) ** 0.5
+    mC = ((sgC[2][0] + sgC[3][0]) / 2, (sgC[2][1] + sgC[3][1]) / 2)
+    tC.passa(EC(*mC))
+    bxs = {g_: tC.cv.bbox(g_) for g_ in ("rete_c", "rete_x", "rete_s")}
+    tocca = lambda a_, b_: a_[0] < b_[2] and b_[0] < a_[2] and a_[1] < b_[3] and b_[1] < a_[3]
+    nodi_ = [tC.cv.bbox(f"n{v_}") for v_ in (sgC[0], sgC[1]) if tC.cv.bbox(f"n{v_}")]
+    casi.append(("su una linea corta i pulsantini ci sono tutti, separati, fuori dai pallini", lungC < 90 and all(bxs.values())
+                 and not any(tocca(bxs[a_], bxs[b_]) for a_, b_ in (("rete_c", "rete_x"), ("rete_x", "rete_s"), ("rete_c", "rete_s")))
+                 and not any(tocca(b_, n_) for b_ in bxs.values() for n_ in nodi_)))
+    cs_ = ((bxs["rete_s"][0] + bxs["rete_s"][2]) / 2, (bxs["rete_s"][1] + bxs["rete_s"][3]) / 2) if bxs["rete_s"] else mC
+    accesa_ = True
+    for k_ in range(1, 7):
+        tC.passa(EC(mC[0] + (cs_[0] - mC[0]) * k_ / 6, mC[1] + (cs_[1] - mC[1]) * k_ / 6))
+        accesa_ = accesa_ and bool(tC.cv.find_withtag("rete_s"))
+    casi.append(("andando verso la barretta la linea resta accesa, fino al pulsante dei colori", accesa_))
+    tC.passa(EC(mC[0] + 400, mC[1] + 400))
+    casi.append(("negativa: lontano dalla linea e dalla barretta si spegne", not tC.cv.find_withtag("rete_s")))
+    # un dot che cade sopra una carta (il centro di una linea fra le basi di padre e figlio) sta sopra la carta e si prende col clic
+    qC = tC.inserisci_punto(*mC)
+    rvC = tC.rett(vid_di(tC, "Vanilla"))
+    tC.punti[qC]["x"], tC.punti[qC]["y"] = ((rvC[0] + rvC[2]) / 2) / tC.zoom, ((rvC[1] + rvC[3]) / 2 - tC.oy("main")) / tC.zoom
+    tC.disegna(); root.update()
+    tutti_C = tC.cv.find_all()
+    ptC = tC.punto_xy(qC)
+    casi.append(("un dot sopra una carta sta sopra la carta e si prende col clic; le linee restano sotto", tutti_C.index(tC.cv.find_withtag(f"p{qC}")[0]) >
+                 max(tutti_C.index(i_) for i_ in tC.cv.find_withtag("carta")) and tC.pezzo_a(ptC[0], ptC[1]) == ("punto", qC)
+                 and all(tutti_C.index(i_) < min(tutti_C.index(j_) for j_ in tC.cv.find_withtag("carta")) for i_ in tC.cv.find_withtag("rete"))))
+    tC.chiudi()
+    # Grid snap: libero mentre trascini, sulla griglia quando lasci; la spunta lo spegne, e si ricorda
+    tG = nuovo_t("build:griglia", griglia=True)
+    EG = lambda x, y, st=0: type("E", (), dict(x=x - tG.cv.canvasx(0), y=y - tG.cv.canvasy(0), state=st))()
+    va_ = vid_di(tG, "Vanilla")
+    rv_ = tG.rett(va_)
+    cxv, cyv = (rv_[0] + rv_[2]) / 2, (rv_[1] + rv_[3]) / 2
+    b0_ = tG.cv.bbox(f"c{va_}")
+    tG.premi_tela(EG(cxv, cyv)); tG.trascina(EG(cxv + 37, cyv + 11)); tG.trascina(EG(cxv + 337, cyv + 211))
+    b1_ = tG.cv.bbox(f"c{va_}")
+    tG.rilascia(EG(cxv + 337, cyv + 211)); root.update()
+    plv = tG.pila_di(va_)
+    sulla = lambda x_, y_: abs(((x_ - MARGINE) / PASSO_X) - round((x_ - MARGINE) / PASSO_X)) < 1e-6 and abs(y_ / PASSO_Y - round(y_ / PASSO_Y)) < 1e-6
+    casi.append(("Grid snap: mentre trascini la carta segue il mouse al pixel, lasciata va sulla griglia", b1_[0] - b0_[0] == 337 and b1_[1] - b0_[1] == 211
+                 and sulla(plv["x"], plv["y"])))
+    p_tm, p_an = tG.pila_di(vid_di(tG, "Token Maker")), tG.pila_di(vid_di(tG, "Anthem"))
+    if p_tm is plv:
+        p_tm = tG.pila_di(vid_di(tG, "Plains"))
+    tG.sel = [p_tm, p_an]
+    rel = (p_an["x"] - p_tm["x"], p_an["y"] - p_tm["y"])
+    ra_ = tG.rett(vid_di(tG, "Anthem")); cxa_, cya_ = (ra_[0] + ra_[2]) / 2, (ra_[1] + ra_[3]) / 2
+    tG.premi_tela(EG(cxa_, cya_)); tG.trascina(EG(cxa_ + 100, cya_ + 50)); tG.trascina(EG(cxa_ + 213, cya_ + 97)); tG.rilascia(EG(cxa_ + 213, cya_ + 97)); root.update()
+    casi.append(("Grid snap: un gruppo lasciato tiene le sue distanze, col primo sulla griglia", (p_an["x"] - p_tm["x"], p_an["y"] - p_tm["y"]) == rel
+                 and sulla(*(lambda q_: (q_["x"], q_["y"]))(tG.sel[0] if tG.sel else p_tm))))
+    tG.vuota_sel()
+    # una carta lasciata accanto a una pila (non sopra): la cella piu' vicina e' quella della pila, quindi va nella libera accanto, non sopra
+    pan_ = max((q_ for q_ in tG.pile if q_["zona"] == "main" and q_["carte"] and va_ not in q_["carte"]), key=lambda q_: q_["x"])     # la pila piu' a destra
+    rp_ = tG.ingombro_px(pan_)
+    plv = tG.pila_di(va_); rv_ = tG.rett(va_)
+    cxv, cyv = rv_[2] - 4, (rv_[1] + rv_[3]) / 2        # la carta presa dal bordo destro
+    destx = rp_[0] + 70 * tG.zoom + (cxv - rv_[0])      # lasciata col bordo sinistro 70 pixel dentro la colonna della pila: il puntatore e' fuori dalla pila,
+    desty = rp_[1] + (cyv - rv_[1]) + 5                 # ma la cella piu' vicina e' quella della pila
+    tG.premi_tela(EG(cxv, cyv)); tG.trascina(EG((cxv + destx) / 2, (cyv + desty) / 2)); tG.trascina(EG(destx, desty)); tG.rilascia(EG(destx, desty)); root.update()
+    plv = tG.pila_di(va_)
+    tocca_ = lambda a_, b_: a_[0] < b_[2] - 1 and b_[0] < a_[2] - 1 and a_[1] < b_[3] - 1 and b_[1] < a_[3] - 1
+    casi.append(("Grid snap: lasciata accanto a una pila, la carta va nella cella libera piu' vicina, non sopra la pila", plv is not pan_ and len(plv["carte"]) == 1
+                 and not any(tocca_(tG.ingombro(plv), tG.ingombro(q_)) for q_ in tG.pile if q_ is not plv and q_["zona"] == "main" and q_["carte"])
+                 and sulla(plv["x"], plv["y"]) and abs(plv["x"] - pan_["x"]) >= PASSO_X))
+    occ_ = [q_ for q_ in tG.pile if q_["zona"] == "main" and q_["carte"]]
+    lib_x, lib_y = tG.cella_libera("main", -2000, -2000, 1)
+    casi.append(("negativa: dove non c'e' niente la cella e' quella piu' vicina, senza spostamenti", (lib_x, lib_y) == a_griglia(-2000, -2000) and occ_))
+    legata_ = bool(tG.b_griglia.bind("<Button-1>"))        # la finestra di prova non e' mappata: si chiama quello che il clic chiama
+    tG.cambia_griglia(); root.update()
+    plv = tG.pila_di(va_); rv_ = tG.rett(va_); cxv, cyv = (rv_[0] + rv_[2]) / 2, (rv_[1] + rv_[3]) / 2
+    x_prima, y_prima = plv["x"], plv["y"]
+    tG.premi_tela(EG(cxv, cyv)); tG.trascina(EG(cxv + 50, cyv + 20)); tG.trascina(EG(cxv + 101, cyv + 43)); tG.rilascia(EG(cxv + 101, cyv + 43)); root.update()
+    plv = tG.pila_di(va_)
+    casi.append(("negativa: Grid snap spento, la carta resta dove la lasci", legata_ and tG.griglia is False and abs(plv["x"] - x_prima - 101) <= 1
+                 and abs(plv["y"] - y_prima - 43) <= 1 and not sulla(plv["x"], plv["y"])))
+    # la carta in cima tirata di poco fuori dalla sua pila (il mouse resta sopra la pila): se ne stacca, esattamente dove la lasci (Autore, 10 nov 2026:
+    # «quando sposto delle carte in un punto senza il grid snap scattano spostandosi in un punto leggermente differente»: tornava sulla pila)
+    multi_ = [q_ for q_ in tG.pile if q_["zona"] == "main" and len(q_["carte"]) >= 2]
+    if not multi_:
+        q0_, q1_ = [q_ for q_ in tG.pile if q_["zona"] == "main" and q_["carte"]][:2]
+        q0_["carte"].extend(q1_["carte"]); tG.pile.remove(q1_); tG.disegna(); root.update()
+        multi_ = [q0_]
+    pm_ = multi_[0]; vc_ = pm_["carte"][-1]; rc_ = tG.rett(vc_)
+    px_, py_ = rc_[0] + 30, rc_[1] + 40
+    tG.premi_tela(EG(px_, py_)); tG.trascina(EG(px_ + 30, py_ + 10)); tG.trascina(EG(px_ + 61, py_ + 23))
+    vecchio_ = tG.bersaglio(px_ + 61, py_ + 23, dict(da=None, prese=[]))       # come lo vedeva il rilascio fino al 10 nov: il trascinamento gia' chiuso
+    tG.rilascia(EG(px_ + 61, py_ + 23)); root.update()
+    rd_ = tG.rett(vc_)
+    casi.append(("Grid snap spento: la carta in cima tirata di poco fuori dalla sua pila se ne stacca, al pixel dove la lasci", tG.pila_di(vc_) is not pm_
+                 and abs(rd_[0] - rc_[0] - 61) < 0.05 and abs(rd_[1] - rc_[1] - 23) < 0.05))
+    casi.append(("negativa: senza il trascinamento la pila di partenza sotto il mouse contava come bersaglio (la carta tornava indietro)", vecchio_ is pm_))
+    tG.chiudi()
+    tG2 = TavoloCarte(tk, F, root, "Rete", {"Vanilla": 4}, {}, carte_db=dbr, chiave="build:griglia2", file_tavoli=ft, file_mazzi=fm, file_rete=fr, fuori=True, limite=lim)
+    root.update()
+    casi.append(("la spunta si ricorda per tutti i mazzi", tG2.griglia is False))
+    tG2.cambia_griglia(True)
+    tG2.chiudi()
+    # il Board in sola lettura (aperto dalla finestra del mazzo): la disposizione di edit, niente strumenti, niente salvato
+    tS0 = nuovo_t("build:sola")
+    for k_ in (("Token Maker", "Anthem"),):
+        if k_ not in tS0.rete.figli:
+            tS0.rete.lega(k_[0], k_[1], dbr)
+    tS0.sel = [tS0.pila_di(vid_di(tS0, "Anthem"))]; tS0.crea_etichetta("Finisher")
+    tS0.disegna(); root.update()
+    strumenti = lambda t_: [g_ for g_ in ("nodo", "ctrl", "scambia", "label_x", "label_l", "label_m", "label_r") if t_.cv.find_withtag(g_)]
+    con_strumenti = strumenti(tS0)
+    tS0.chiudi()
+    prima_file = json.dumps(carica_tavoli(ft).get("build:sola"), sort_keys=True)
+    tS = TavoloCarte(tk, F, root, "Rete", {"Token Maker": 4, "Anthem": 2, "Vanilla": 4, "Plains": 10}, {"Side Anthem": 1}, carte_db=dbr, chiave="build:sola",
+                     file_tavoli=ft, file_mazzi=fm, file_rete=fr, fuori=True, limite=lim, modificabile=("build", "x"), sola_lettura=True)
+    root.update()
+    ES = lambda x, y, st=0: type("E", (), dict(x=x - tS.cv.canvasx(0), y=y - tS.cv.canvasy(0), state=st))()
+    casi.append(("sola lettura: la disposizione e le connessioni di edit ci sono, gli strumenti no", len(con_strumenti) >= 5 and not strumenti(tS)
+                 and len(tS.etichette) == 1 and len(tS._segmenti) == 1 and not tS.modifica and tS.b_griglia is None and "view only" in tS.aiuto.cget("text")))
+    pa_ = tS.pila_di(vid_di(tS, "Anthem")); xy_ = (pa_["x"], pa_["y"])
+    ra_ = tS.rett(vid_di(tS, "Anthem")); cxs, cys = (ra_[0] + ra_[2]) / 2, (ra_[1] + ra_[3]) / 2
+    prima_mazzi = open(fm, encoding="utf-8").read() if os.path.exists(fm) else ""
+    # in sola lettura le carte si spostano (Autore, 10 nov 2026: «le carte possono cmq essere spostate e trascinate in giro»), il resto no
+    tS.premi_tela(ES(cxs, cys)); tS.trascina(ES(cxs + 200, cys + 100)); tS.rilascia(ES(cxs + 200, cys + 100))
+    pa2 = tS.pila_di(vid_di(tS, "Anthem"))
+    casi.append(("sola lettura: la carta si trascina e resta nel mazzo", (pa2["x"], pa2["y"]) != xy_ and tS.voci[vid_di(tS, "Anthem")]["zona"] == "main"))
+    ra2 = tS.rett(vid_di(tS, "Anthem")); cx2, cy2 = (ra2[0] + ra2[2]) / 2, (ra2[1] + ra2[3]) / 2
+    xy2 = (pa2["x"], pa2["y"])
+    tS.premi_tela(ES(cx2, cy2)); tS.trascina(ES(cx2, tS.hs / 2)); tS.rilascia(ES(cx2, tS.hs / 2))
+    pa3 = tS.pila_di(vid_di(tS, "Anthem"))
+    casi.append(("sola lettura: lasciata nella sideboard torna al suo posto", tS.voci[vid_di(tS, "Anthem")]["zona"] == "main" and (pa3["x"], pa3["y"]) == xy2))
+    tS.premi_tela(ES(cxs - 900, cys)); tS.trascina(ES(cxs - 600, cys + 300)); tS.rilascia(ES(cxs - 600, cys + 300))
+    tS.doppio(ES(cx2, cy2)); tS.destro(ES(cx2, cy2)); root.update()
+    if tS.clic is not None:
+        tS.cv.after_cancel(tS.clic); tS.clic = None
+    casi.append(("negativa: in sola lettura il riquadro, il doppio clic e il tasto destro non cambiano niente", not tS.sel
+                 and tS.voci[vid_di(tS, "Anthem")]["zona"] == "main" and len(tS.rete.figli) == 1 and not tS.cambia_copie(vid_di(tS, "Anthem"), +1)))
+    tS.zoom_a(1.3); tS.chiudi()
+    dopo_ = carica_tavoli(ft).get("build:sola") or {}
+    casi.append(("sola lettura: si salva la posizione nuova, label e mazzo restano quelli di edit",
+                 any(["Anthem", 2] in pl_["carte"] and (pl_["x"], pl_["y"]) == xy2 for pl_ in dopo_.get("pile", []))
+                 and dopo_.get("etichette") == (json.loads(prima_file) or {}).get("etichette")
+                 and (open(fm, encoding="utf-8").read() if os.path.exists(fm) else "") == prima_mazzi))
+    tN = TavoloCarte(tk, F, root, "Rete", {"Token Maker": 4, "Anthem": 2, "Vanilla": 4, "Plains": 10}, {"Side Anthem": 1}, carte_db=dbr, chiave="build:sola",
+                     file_tavoli=ft, file_mazzi=fm, file_rete=fr, fuori=True, limite=lim, modificabile=("build", "x"), sola_lettura=True)
+    tN.sposta = False       # come con All accounts: niente si sposta
+    root.update()
+    EN = lambda x, y, st=0: type("E", (), dict(x=x - tN.cv.canvasx(0), y=y - tN.cv.canvasy(0), state=st))()
+    pn = tN.pila_di(vid_di(tN, "Anthem")); xyn = (pn["x"], pn["y"])
+    rn = tN.rett(vid_di(tN, "Anthem")); cxn, cyn = (rn[0] + rn[2]) / 2, (rn[1] + rn[3]) / 2
+    tN.premi_tela(EN(cxn, cyn)); tN.trascina(EN(cxn + 200, cyn + 100)); tN.rilascia(EN(cxn + 200, cyn + 100)); root.update()
+    if tN.clic is not None:
+        tN.cv.after_cancel(tN.clic); tN.clic = None
+    pn2 = tN.pila_di(vid_di(tN, "Anthem"))
+    casi.append(("negativa: senza il permesso di spostare (All accounts) la carta resta ferma", (pn2["x"], pn2["y"]) == xyn))
+    tN.chiudi()
+    # l'outliner, A e F, le carte nuove isolate, comandi e outliner che si chiudono (10 nov 2026)
+    tO = nuovo_t("build:outliner")
+    tO.cv.winfo_width = lambda: 1000; tO.cv.winfo_height = lambda: 700
+    tO.disegna(); root.update()
+    righe_o = list(tO._out_righe)
+    nomi_o = [tO.voci[v_]["nome"] for _a, _b, v_ in righe_o]
+    y_o = {tO.voci[v_]["nome"]: (a_, b_) for a_, b_, v_ in righe_o}
+    testi_o = [tO.out_cv.itemcget(i_, "text") for i_ in tO.out_cv.find_all() if tO.out_cv.type(i_) == "text"]
+    casi.append(("l'outliner: le carte sopra, le terre sotto, poi la sideboard, staccate da un piccolo spazio, con le copie", nomi_o[:3] == ["Token Maker", "Vanilla", "Anthem"]
+                 and nomi_o[3] == "Plains" and nomi_o[4] == "Side Anthem" and y_o["Plains"][0] - y_o["Anthem"][1] == 9 and y_o["Vanilla"][0] == y_o["Token Maker"][1]
+                 and "10" in testi_o and "SIDEBOARD" in testi_o))
+    EO = lambda y_: type("E", (), dict(x=20, y=y_, state=0))()
+    tO.scegli_outliner(EO((y_o["Anthem"][0] + y_o["Anthem"][1]) / 2))
+    van = vid_di(tO, "Anthem")
+    casi.append(("clic su una riga dell'outliner: la carta e' scelta, anche sul Board", tO.sel_carta == van and bool(tO.cv.find_withtag("sel_c"))))
+    tasto_ = lambda k_: tO.tasto(type("E", (), dict(keysym=k_))())
+    tasto_("f"); root.update()
+    ra_ = tO.ingombro_px(tO.pila_di(van))
+    centro_ = ((ra_[0] + ra_[2]) / 2, (ra_[1] + ra_[3]) / 2)
+    casi.append(("F: il Board porta sulla carta scelta, al centro", abs(centro_[0] - 4 - tO.cv.canvasx(500)) < 12 and abs(centro_[1] + 9 - tO.cv.canvasy(350)) < 12
+                 and tO.zoom > 1.0))
+    tasto_("a"); root.update()
+    dentro_v = all(tO.cv.canvasx(0) <= r_[0] and r_[2] <= tO.cv.canvasx(1000) and tO.cv.canvasy(0) <= r_[1] and r_[3] <= tO.cv.canvasy(700)
+                   for r_ in (tO.ingombro_px(pl_) for pl_ in tO.pile if pl_["zona"] == "main"))
+    casi.append(("A: tutta la rete nella finestra", dentro_v))
+    tO.vuota_sel(); z_ = tO.zoom
+    casi.append(("negativa: F senza niente scelto non muove niente, e lo dice", tasto_("f") is False and tO.zoom == z_ and "F frames" in tO.aiuto.cget("text")))
+    w_, h_, _o, _p = misure(1.0)
+    destra_ = max(pl_["x"] + w_ for pl_ in tO.pile if pl_["zona"] == "main")
+    tO.allinea({"Token Maker": 4, "Anthem": 2, "Vanilla": 4, "Plains": 10, "Nuova": 1}, {"Side Anthem": 1})
+    tO.allinea({"Token Maker": 4, "Anthem": 2, "Vanilla": 4, "Plains": 10, "Nuova": 1, "Altra": 2}, {"Side Anthem": 1})
+    pn_, pa2_ = tO.pila_di(vid_di(tO, "Nuova")), tO.pila_di(vid_di(tO, "Altra"))
+    casi.append(("le carte aggiunte (doppio clic, ricerca) in uno spazio isolato a destra, una sotto l'altra", pn_["carte"] == [vid_di(tO, "Nuova")]
+                 and pn_["x"] >= destra_ + PASSO_X - 1 and pa2_["x"] == pn_["x"] and pa2_["y"] > pn_["y"] and len(pa2_["carte"]) == 1))
+    v_x = tO.nuova_voce("Posata", "main", 1, xy=(100, 300))
+    casi.append(("negativa: una carta lasciata in un punto (trascinata dalla Collection) va li', non nello spazio isolato", tO.pila_di(v_x)["x"] == 100))
+    casi.append(("la lista dei comandi parte chiusa, con la testa azzurra", not tO.comandi_aperti and tO.f_comandi.winfo_manager() == ""
+                 and tO.aiuto.master.cget("bg") == C["accento"] and tO.b_comandi.cget("text") == "▸"))
+    tO.disegna()
+    curva_ = tO.curva()
+    testi_i = [tO.cv.itemcget(i_, "text") for i_ in tO.cv.find_withtag("hud") if tO.cv.type(i_) == "text"]
+    r_h = tO._hud_rect
+    casi.append(("l'HUD in alto a destra: il totale nella testa azzurra, la curva di mana", r_h is not None and r_h[2] == 1000 - 14 and r_h[1] == 12
+                 and curva_[2] == 8 and curva_[3] == 2 and curva_[0] == 4 and sum(curva_) == 14 and "DECK · 24 CARDS" in testi_i
+                 and any(t_.startswith("14 spells") for t_ in testi_i) and len(tO.cv.find_withtag("curva")) == 3 and not hasattr(tO, "l_conti")
+                 and any(tO.cv.itemcget(i_, "fill") == C["accento"] for i_ in tO.cv.find_withtag("hud_testa") if tO.cv.type(i_) == "rectangle")))
+    pil_f = DG._icona(("hud_fondo", INFO_L, INFO_H), lambda: None)
+    import tela_gpu as TG_
+    sorg_ = TG_.SORGENTI.get(str(pil_f))
+    casi.append(("lo sfondo dell'HUD e' semitrasparente", sorg_ is not None and 100 <= sorg_.getpixel((INFO_L // 2, INFO_H // 2))[3] < 230))
+    v0_ = (tO.cv.canvasx(0), tO.cv.canvasy(0))
+    tO.cv.scan_mark(0, 0); tO.cv.scan_dragto(-150, -90, gain=1)
+    fine_ = _t.time() + 0.3
+    while _t.time() < fine_:
+        root.update(); _t.sleep(0.01)
+    bb_t = tO.cv.bbox(tO.cv.find_withtag("hud_testa")[0])
+    vis_ = (bb_t[0] - (0 if tO.gpu else tO.cv.canvasx(0)), bb_t[1] - (0 if tO.gpu else tO.cv.canvasy(0)))
+    casi.append(("spostato il foglio, l'HUD resta nell'angolo della finestra", (tO.cv.canvasx(0), tO.cv.canvasy(0)) != v0_ and abs(vis_[0] - r_h[0]) < 1.5 and abs(vis_[1] - r_h[1]) < 1.5))
+    ET = lambda x_, y_: type("E", (), dict(x=x_, y=y_, state=0))()
+    n_sel = len(tO.sel)
+    tO.premi_tela(ET(r_h[0] + 40, r_h[1] + 8)); tO.rilascia(ET(r_h[0] + 40, r_h[1] + 8))
+    chiuso_ = not tO.info_aperto and not tO.cv.find_withtag("curva") and tO._hud_rect[3] - tO._hud_rect[1] == TESTA_HUD
+    tO.premi_tela(ET(r_h[0] + 40, r_h[1] + 8)); tO.rilascia(ET(r_h[0] + 40, r_h[1] + 8))
+    casi.append(("la testa dell'HUD lo chiude e lo riapre, come i comandi", chiuso_ and tO.info_aperto and len(tO.cv.find_withtag("curva")) == 3))
+    tO.premi_tela(ET(r_h[0] + 40, r_h[1] + 60)); tO.trascina(ET(r_h[0] - 200, r_h[1] + 260)); tO.rilascia(ET(r_h[0] - 200, r_h[1] + 260))
+    casi.append(("negativa: un clic sul corpo dell'HUD non arriva al foglio (niente riquadro, niente carta)", tO.banda is None and len(tO.sel) == n_sel and tO.drag is None))
+    tO.apri_comandi(True)
+    tO.apri_comandi(False); tO.apri_outliner(False); root.update()
+    chiusi_ = tO.f_comandi.winfo_manager() == "" and tO.out_corpo.winfo_manager() == "" and tO.b_out.cget("text") == "▶" and tO.b_comandi.cget("text") == "▸"
+    tO.chiudi()
+    tO2 = nuovo_t("build:outliner")
+    casi.append(("l'outliner chiuso resta chiuso alla riapertura; i comandi ripartono comunque chiusi", chiusi_ and not tO2.comandi_aperti and not tO2.outliner_aperto
+                 and tO2.out_corpo.winfo_manager() == ""))
+    tO2.fin.transient(""); tO2.fin.deiconify(); root.update()
+    on_ = tO2.tutta_pagina(); root.update()
+    pieno_ = tO2.fin.state() == "zoomed" and "Restore" in tO2.b_pagina.cget("text")
+    tO2.tutta_pagina(False); root.update()
+    casi.append(("Full page: il Board a tutto schermo e indietro", on_ and pieno_ and tO2.fin.state() == "normal" and "Full page" in tO2.b_pagina.cget("text")))
+    tO2.apri_comandi(True); tO2.apri_outliner(True); root.update()
+    casi.append(("e si riaprono", tO2.f_comandi.winfo_manager() == "grid" and tO2.out_corpo.winfo_manager() == "pack" and tO2.b_out.cget("text") == "◀"))
+    tO2.chiudi()
+    # Arrange network: la rete a livelli, i padri sopra i figli, i giri chiusi rotti, le carte senza connessioni sotto per costo
+    tR = nuovo_t("build:rete_ord")
+    pile_prima = [(q["x"], q["y"], list(q["carte"])) for q in tR.pile]
+    casi.append(("negativa: senza connessioni Arrange network non tocca niente, e lo dice", tR.disponi_rete() == 0
+                 and [(q["x"], q["y"], list(q["carte"])) for q in tR.pile] == pile_prima and "No connections" in tR.aiuto.cget("text")))
+    for k_ in (("Token Maker", "Anthem"), ("Anthem", "Plains"), ("Plains", "Token Maker")):
+        if k_ not in tR.rete.figli:
+            tR.rete.lega(k_[0], k_[1], dbr)
+    side_prima = [(q["x"], q["y"], list(q["carte"])) for q in tR.pile if q["zona"] != "main"]
+    n_r = tR.disponi_rete(); root.update()
+    yR = {n_: tR.pila_di(vid_di(tR, n_))["y"] for n_ in ("Token Maker", "Anthem", "Plains", "Vanilla")}
+    casi.append(("Arrange network: padri sopra i figli, una riga per livello, il giro chiuso rotto", n_r == 3 and yR["Token Maker"] < yR["Anthem"] < yR["Plains"]
+                 and all(len(tR.pila_di(vid_di(tR, n_))["carte"]) == 1 for n_ in ("Token Maker", "Anthem", "Plains"))))
+    casi.append(("le carte senza connessioni sotto la rete, sideboard ferma, connessioni intatte", yR["Vanilla"] > yR["Plains"]
+                 and [(q["x"], q["y"], list(q["carte"])) for q in tR.pile if q["zona"] != "main"] == side_prima
+                 and set(tR.rete.figli) == {("Token Maker", "Anthem"), ("Anthem", "Plains"), ("Plains", "Token Maker")}))
+    disp_ = sorted((q["x"], q["y"], tuple(tR.voci[c_]["nome"] for c_ in q["carte"])) for q in tR.pile)
+    tR.disponi_rete()
+    casi.append(("rifatto, da' la stessa disposizione", sorted((q["x"], q["y"], tuple(tR.voci[c_]["nome"] for c_ in q["carte"])) for q in tR.pile) == disp_))
+    tR.chiudi()
+    tR2 = nuovo_t("build:rete_ord")
+    casi.append(("riaperto, la rete riordinata resta", sorted((q["x"], q["y"], tuple(tR2.voci[c_]["nome"] for c_ in q["carte"])) for q in tR2.pile) == disp_))
+    tR2.chiudi()
+    # una disposizione col dot del primo giro (padre e da): si riprende con l'ingresso giusto
+    vecchia_d = carica_tavoli(ft).get("build:dot2")
+    if vecchia_d and vecchia_d.get("punti"):
+        q0 = vecchia_d["punti"][0]
+        vecchia_d = dict(vecchia_d, punti=[dict(id=q0["id"], x=q0["x"], y=q0["y"], padre="Token Maker", da=None)])
+        salva_tavolo("build:dot_vecchio", vecchia_d, ft)
+    tV = nuovo_t("build:dot_vecchio")
+    casi.append(("un dot salvato col formato di prima (padre, da) si riprende come dot con quell'ingresso", bool(vecchia_d)
+                 and tV.punti.get(q0["id"], {}).get("ingressi") == [["c", "Token Maker"]]))
+    tV.chiudi()
+    # la selezione a riquadro e lo spostamento di gruppo, con le connessioni che seguono; le label
+    tB = nuovo_t("build:sel")
+    for k_ in (("Token Maker", "Anthem"), ("Vanilla", "Anthem")):
+        if k_ not in tB.rete.figli:
+            tB.rete.lega(k_[0], k_[1], dbr)
+    tB.disegna(); root.update()
+    EB = lambda x, y, st=0: type("E", (), dict(x=x - tB.cv.canvasx(0), y=y - tB.cv.canvasy(0), state=st))()
+    p2, p3, pt = tB.pila_di(vid_di(tB, "Token Maker")), tB.pila_di(vid_di(tB, "Anthem")), tB.pila_di(vid_di(tB, "Plains"))
+    r2, r3 = tB.ingombro_px(p2), tB.ingombro_px(p3)
+    ax_, ay_ = min(r2[0], r3[0]) - 30, min(r2[1], r3[1]) - 12
+    bx_, by_ = max(r2[2], r3[2]) + 4, max(r2[3], r3[3]) + 4
+    tB.premi_tela(EB(ax_, ay_)); tB.trascina(EB((ax_ + bx_) / 2, (ay_ + by_) / 2)); tB.trascina(EB(bx_, by_)); tB.rilascia(EB(bx_, by_)); root.update()
+    contorni = [i_ for i_ in tB.cv.find_withtag("sel") if not ({"sel_cornice", "sel_menu"} & set(tB.cv.gettags(i_)))]
+    casi.append(("il riquadro sul vuoto seleziona le pile che tocca, e non le altre", len(tB.sel) == 2 and tB.in_sel(p2) and tB.in_sel(p3) and not tB.in_sel(pt)
+                 and len(contorni) == 2 and not tB.cv.find_withtag("banda")))
+    corB = tB.cornice_sel()
+    bm_ = tB.cv.bbox("sel_menu")
+    casi.append(("intorno alla selezione la cornice, e fuori, in alto a destra, le tre linee del menu", corB is not None and bool(tB.cv.find_withtag("sel_cornice"))
+                 and bm_ is not None and bm_[0] > corB[2] and abs(bm_[1] - corB[1]) < 2 and bm_[3] < (corB[1] + corB[3]) / 2))
+    # la finestrella dei comandi: solo in basso a destra (sopra il foglio sulla scheda video: controllato a mano sulla finestra vera, qui la radice e' nascosta)
+    pan_ = tB.pannello
+    righe_ = [w_.cget("text") for w_ in tutti_widget(tB.fin) if isinstance(w_, tk.Label)]
+    fuori_pan = [w_.cget("text") for w_ in tutti_widget(tB.fin) if isinstance(w_, tk.Label) and not str(w_).startswith(str(pan_))]
+    casi.append(("i comandi solo nella finestrella in basso a destra; fuori di li' nessuna riga di comandi", pan_.place_info().get("anchor") == "se"
+                 and any(r_ == "Middle-drag" for r_ in righe_) and not any(r_ in ("Middle-drag", "Wheel") or str(r_).startswith("Wheel zoom") for r_ in fuori_pan)
+                 and str(tB.aiuto).startswith(str(pan_))))
+    testi_tele = [x_.itemcget(i_, "text") for x_ in tutti_widget(tB.fin) if isinstance(x_, tk.Canvas) for i_ in x_.find_all() if x_.type(i_) == "text"]
+    casi.append(("nella testata niente By type, By cost, Label (lo zoom resta)", not {"By type", "By cost", "Label"} & set(testi_tele)
+                 and any(isinstance(x_, tk.Label) and x_.cget("text") == "ZOOM" for x_ in tutti_widget(tB.fin))))
+    tB.premi_tela(EB(*(lambda r: ((r[0] + r[2]) / 2, (r[1] + r[3]) / 2))(tB.rett(pt["carte"][-1])), st=0x4)); tB.rilascia(EB(0, 0))
+    con_ctrl = tB.in_sel(pt)
+    tB.premi_tela(EB(*(lambda r: ((r[0] + r[2]) / 2, (r[1] + r[3]) / 2))(tB.rett(pt["carte"][-1])), st=0x4)); tB.rilascia(EB(0, 0))
+    casi.append(("Ctrl+clic aggiunge e toglie una pila dalla selezione", con_ctrl and not tB.in_sel(pt) and len(tB.sel) == 2))
+    prima = {id(q): (q["x"], q["y"]) for q in (p2, p3, pt)}
+    seg_prima = list(tB._segmenti)
+    ra = tB.rett(vid_di(tB, "Anthem")); cxa, cya = (ra[0] + ra[2]) / 2, (ra[1] + ra[3]) / 2
+    tB.premi_tela(EB(cxa, cya))
+    for k_ in range(1, 6):
+        tB.trascina(EB(cxa + 40 * k_, cya + 30 * k_))
+    vive = len(tB.cv.find_withtag("rete_viva"))
+    spente = all(tB.cv.itemcget(i_, "state") == "hidden" for i_ in tB.cv.find_withtag("rete"))
+    tB.rilascia(EB(cxa + 200, cya + 150)); root.update()
+    d2 = (p2["x"] - prima[id(p2)][0], p2["y"] - prima[id(p2)][1]); d3 = (p3["x"] - prima[id(p3)][0], p3["y"] - prima[id(p3)][1])
+    casi.append(("trascinata una pila selezionata, si spostano tutte insieme dello stesso passo, le altre no", d2 == d3 and d2[0] > 100 and d2[1] > 80
+                 and (pt["x"], pt["y"]) == prima[id(pt)] and p2 in tB.pile and p3 in tB.pile))
+    casi.append(("e le connessioni seguono: le frecce vive durante, al posto nuovo dopo, nessuna vecchia accesa", vive == 2 and spente
+                 and set(tB.rete.figli) == {("Token Maker", "Anthem"), ("Vanilla", "Anthem")} and tB._segmenti != seg_prima and len(tB._segmenti) == 2))
+    corB = tB.cornice_sel()
+    angolo = next(((corB[0] + 3 + a_, corB[1] + 3 + a_) for a_ in range(0, 10) if tB.pezzo_a(corB[0] + 3 + a_, corB[1] + 3 + a_)[0] is None), None)
+    prima = {id(q): (q["x"], q["y"]) for q in (p2, p3, pt)}
+    if angolo:
+        tB.premi_tela(EB(*angolo))
+        for k_ in range(1, 4):
+            tB.trascina(EB(angolo[0] + 20 * k_, angolo[1] + 30 * k_))
+        tB.rilascia(EB(angolo[0] + 60, angolo[1] + 90)); root.update()
+    d2 = (p2["x"] - prima[id(p2)][0], p2["y"] - prima[id(p2)][1]); d3 = (p3["x"] - prima[id(p3)][0], p3["y"] - prima[id(p3)][1])
+    casi.append(("preso nel vuoto dentro la cornice, il gruppo si sposta tutto insieme", angolo is not None and d2 == d3 and d2[0] > 40 and d2[1] > 60
+                 and (pt["x"], pt["y"]) == prima[id(pt)] and len(tB.sel) == 2))
+    tB.premi_tela(EB(ax_ - 400, ay_ + 5)); tB.rilascia(EB(ax_ - 400, ay_ + 5))
+    casi.append(("un clic nel vuoto fuori dalla cornice scioglie la selezione", not tB.sel and not tB.cv.find_withtag("sel")))
+    tB.premi_tela(EB(*(lambda r: ((r[0] + r[2]) / 2, (r[1] + r[3]) / 2))(tB.rett(pt["carte"][-1])), st=0x4)); tB.rilascia(EB(0, 0))
+    corT = tB.cornice_sel()
+    angT = next(((corT[0] + 3 + a_, corT[1] + 3 + a_) for a_ in range(0, 10) if tB.pezzo_a(corT[0] + 3 + a_, corT[1] + 3 + a_)[0] is None), None) if corT else None
+    xt0 = (pt["x"], pt["y"])
+    if angT:
+        tB.premi_tela(EB(*angT)); tB.trascina(EB(angT[0] + 40, angT[1] + 30)); tB.trascina(EB(angT[0] + 80, angT[1] + 60)); tB.rilascia(EB(angT[0] + 80, angT[1] + 60))
+        root.update()
+    casi.append(("anche una pila sola selezionata si sposta dalla sua cornice", angT is not None and pt["x"] - xt0[0] > 40 and pt["y"] - xt0[1] > 30))
+    tB.esc()
+    casi.append(("Esc scioglie la selezione (e non chiude il tavolo)", not tB.sel and tB.fin.winfo_exists()))
+    tB.vuota_sel()
+    p2b = tB.pila_di(vid_di(tB, "Token Maker"))
+    tB.sel = [p2b]; tB.disegna_sel()
+    carte_p = list(p2b["carte"]); xy_p = (p2b["x"], p2b["y"])
+    rr_ = tB.rett(carte_p[0]); px_s, py_s = (rr_[0] + rr_[2]) / 2, (rr_[1] + rr_[3]) / 2
+    tB.premi_tela(EB(px_s, py_s)); tB.trascina(EB(px_s + 120, py_s + 80)); tB.trascina(EB(px_s + 240, py_s + 160)); tB.rilascia(EB(px_s + 240, py_s + 160)); root.update()
+    casi.append(("selezione: presa da una carta in mezzo alla pila, si sposta tutta la selezione, non la carta sola", len(carte_p) > 1 and p2b["carte"] == carte_p
+                 and p2b in tB.pile and (p2b["x"], p2b["y"]) != xy_p and all(tB.pila_di(c_) is p2b for c_ in carte_p)))
+    rr_ = tB.rett(carte_p[-1]); px_s, py_s = (rr_[0] + rr_[2]) / 2, (rr_[1] + rr_[3]) / 2
+    tB.premi_tela(EB(px_s, py_s, st=0x4)); tB.rilascia(EB(px_s, py_s, st=0x4))
+    casi.append(("negativa: Ctrl+clic dentro la selezione la toglie, non sposta niente", not tB.sel and tB.drag is None))
+    p2b["x"], p2b["y"] = xy_p; tB.disegna(); root.update()      # la pila torna dov'era: le prove dopo contano le posizioni di prima
+    casi.append(("negativa: senza selezione la label non nasce, e lo dice", tB.crea_etichetta("X") is None and not tB.etichette and "Select the cards" in tB.aiuto.cget("text")))
+    tB.sel = [p2, p3]; tB.disegna_sel()
+    bm_ = tB.cv.bbox("sel_menu")
+    tB.premi_tela(EB((bm_[0] + bm_[2]) / 2, (bm_[1] + bm_[3]) / 2)); tB.rilascia(EB((bm_[0] + bm_[2]) / 2, (bm_[1] + bm_[3]) / 2))
+    menu_ = tB._nome_pop
+    casi.append(("le tre linee aprono il menu della label: nome e colore", menu_ is not None and hasattr(menu_, "menu")))
+    if menu_ is not None:
+        menu_.menu["nome"].set("Finisher"); menu_.menu["colore"]("#d9534f"); menu_.menu["applica"](); root.update()
+    lb = tB.etichette[0] if tB.etichette else None
+    i2, i3 = tB.ingombro(p2), tB.ingombro(p3)
+    dentro_ = lambda r: lb["x"] <= r[0] and r[2] <= lb["x"] + lb["w"] and lb["y"] + TIT_L <= r[1] and r[3] <= lb["y"] + lb["h"]
+    tutti_B = tB.cv.find_all()
+    casi.append(("la label nasce intorno alle pile selezionate, col nome e il colore del menu, chiusa, sotto le carte", lb is not None and lb["nome"] == "Finisher"
+                 and lb.get("colore") == "#d9534f" and lb.get("lucchetto") is True and dentro_(i2) and dentro_(i3) and tB._nome_pop is None
+                 and not tB.sel and max(tutti_B.index(i_) for i_ in tB.cv.find_withtag("label")) < min(tutti_B.index(i_) for i_ in tB.cv.find_withtag("carta"))))
+    bt = tB.cv.bbox("lt0")
+    tx_, ty_ = bt[0] + 40, (bt[1] + bt[3]) / 2
+    pos_l = (lb["x"], lb["y"]); prima = {id(q): (q["x"], q["y"]) for q in (p2, p3, pt)}
+    tB.premi_tela(EB(tx_, ty_))
+    for k_ in range(1, 5):
+        tB.trascina(EB(tx_ + 30 * k_, ty_ + 25 * k_))
+    tB.rilascia(EB(tx_ + 120, ty_ + 100)); root.update()
+    dl = (lb["x"] - pos_l[0], lb["y"] - pos_l[1])
+    casi.append(("trascinata dal titolo, la label si porta dietro le sue pile, le altre restano", dl[0] > 50 and dl[1] > 40
+                 and (p2["x"] - prima[id(p2)][0], p2["y"] - prima[id(p2)][1]) == dl == (p3["x"] - prima[id(p3)][0], p3["y"] - prima[id(p3)][1])
+                 and (pt["x"], pt["y"]) == prima[id(pt)]))
+    tB.rinomina_etichetta(0, "Win cons")
+    tB.chiudi()
+    tB2 = nuovo_t("build:sel")
+    casi.append(("riaperto, la label c'e' col suo nome e al suo posto, con le pile dentro", len(tB2.etichette) == 1 and tB2.etichette[0]["nome"] == "Win cons"
+                 and (tB2.etichette[0]["x"], tB2.etichette[0]["y"]) == (lb["x"], lb["y"]) and len(tB2.membri(0)[0]) == 2))
+    EB2 = lambda x, y: type("E", (), dict(x=x - tB2.cv.canvasx(0), y=y - tB2.cv.canvasy(0), state=0))()
+    lb2 = tB2.etichette[0]
+    casi.append(("riaperto, la label ha il suo colore e il lucchetto chiuso", lb2.get("colore") == "#d9534f" and lb2.get("lucchetto") is True))
+    # il lucchetto: aperta, la label si sposta da sola (e prende dentro le carte su cui la lasci); chiusa, si porta dietro quello che ha dentro
+    bl_ = tB2.cv.bbox("ll0")
+    tB2.premi_tela(EB2((bl_[0] + bl_[2]) / 2, (bl_[1] + bl_[3]) / 2)); tB2.rilascia(EB2((bl_[0] + bl_[2]) / 2, (bl_[1] + bl_[3]) / 2)); root.update()
+    aperta_ = lb2.get("lucchetto") is False
+    pile_prima = {id(q): (q["x"], q["y"]) for q in tB2.pile}
+    l_prima = (lb2["x"], lb2["y"])
+
+    def tira_titolo(dx, dy):
+        bt_ = tB2.cv.bbox("lt0")
+        x_, y_ = bt_[0] + 40, (bt_[1] + bt_[3]) / 2
+        tB2.premi_tela(EB2(x_, y_))
+        for k_ in range(1, 5):
+            tB2.trascina(EB2(x_ + dx * k_ / 4, y_ + dy * k_ / 4))
+        tB2.rilascia(EB2(x_ + dx, y_ + dy)); root.update()
+    tira_titolo(0, 700)
+    casi.append(("negativa del lucchetto: aperta, la label si sposta da sola e le carte restano dove sono", aperta_ and lb2["y"] - l_prima[1] > 300
+                 and {id(q): (q["x"], q["y"]) for q in tB2.pile} == pile_prima and not tB2.membri(0)[0]))
+    tira_titolo(0, -700)
+    casi.append(("aperta e riportata sopra le carte, le prende dentro", len(tB2.membri(0)[0]) == 2))
+    bl_ = tB2.cv.bbox("ll0")
+    tB2.premi_tela(EB2((bl_[0] + bl_[2]) / 2, (bl_[1] + bl_[3]) / 2)); tB2.rilascia(EB2((bl_[0] + bl_[2]) / 2, (bl_[1] + bl_[3]) / 2)); root.update()
+    pile_prima = {id(q): (q["x"], q["y"]) for q in tB2.pile}
+    tira_titolo(200, 0)
+    mosse_ = [q for q in tB2.pile if (q["x"], q["y"]) != pile_prima[id(q)]]
+    casi.append(("richiusa, la label si porta dietro le sue carte", lb2.get("lucchetto") is True and len(mosse_) == 2))
+    bmL = tB2.cv.bbox("lm0")
+    tB2.premi_tela(EB2((bmL[0] + bmL[2]) / 2, (bmL[1] + bmL[3]) / 2)); tB2.rilascia(EB2((bmL[0] + bmL[2]) / 2, (bmL[1] + bmL[3]) / 2))
+    mL = tB2._nome_pop
+    if mL is not None:
+        mL.menu["colore"]("#24baff")
+        mL.menu["nome"].set("Closers"); mL.menu["applica"](); root.update()
+    casi.append(("le tre linee sul titolo aprono il menu della label: il colore cambia subito, il nome con Invio", mL is not None and lb2["colore"] == "#24baff"
+                 and lb2["nome"] == "Closers"))
+    bx0 = tB2.cv.bbox("lx0")
+    n_pile = len(tB2.pile)
+    tB2.premi_tela(EB2((bx0[0] + bx0[2]) / 2, (bx0[1] + bx0[3]) / 2)); tB2.rilascia(EB2((bx0[0] + bx0[2]) / 2, (bx0[1] + bx0[3]) / 2))
+    casi.append(("la ✕ della label la toglie, le carte restano", not tB2.etichette and len(tB2.pile) == n_pile))
+    tB2.chiudi()
+    # la barra della fascia non ruba il clic: una label col titolo proprio sulla barra si trascina dal titolo
+    tL = nuovo_t("build:barra")
+    tL.cv.winfo_width = lambda: 1000; tL.cv.winfo_height = lambda: 700
+    tL.sel = [tL.pila_di(vid_di(tL, "Anthem"))]; lbL = tL.crea_etichetta("Top")
+    thL = max(16, TIT_L * tL.zoom)
+    lbL["y"] = round((tL.hs - tL.oy("main") - thL / 2) / tL.zoom); tL.disegna(); root.update()
+    ELb = lambda x, y: type("E", (), dict(x=x - tL.cv.canvasx(0), y=y - tL.cv.canvasy(0), state=0))()
+    btL = tL.cv.bbox("lt0"); txL, tyL = btL[0] + 20, tL.hs
+    hs0, y0L = tL.hs, lbL["y"]
+    tL.premi_tela(ELb(txL, tyL)); tL.trascina(ELb(txL + 10, tyL + 60)); tL.trascina(ELb(txL + 20, tyL + 120)); tL.rilascia(ELb(txL + 20, tyL + 120)); root.update()
+    casi.append(("la label col titolo sulla barra si trascina dal titolo; la barra della fascia resta dov'era", tL.hs == hs0 and lbL["y"] > y0L and tL.separa is None))
+    tL.premi_tela(ELb(980, tL.hs))
+    casi.append(("negativa: nel vuoto la barra della fascia si prende ancora", tL.separa is not None))
+    tL.rilascia(ELb(980, tL.hs)); root.update()
+    tL.chiudi()
+    root.destroy()
+    ok = sum(1 for _n, v in casi if v)
+    for n, v in casi:
+        print(("ok    " if v else "ROSSO ") + n)
+    print(f"{ok}/{len(casi)}")
+    return ok == len(casi)
+
+
+if __name__ == "__main__":
+    if "--prova" in sys.argv:
+        sys.exit(0 if prova() else 1)
