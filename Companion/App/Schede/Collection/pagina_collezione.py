@@ -15,6 +15,31 @@ from pagina_base import Pagina, prepara_capsule
 from tema import CI as C, TEND
 from widget import Scelte, Tendina, pulsante_solido
 
+import account as _ACC
+OPZIONI = ""
+_ACC.lega(globals(), "OPZIONI", "collezione_opzioni.json")      # le scelte di come si vede la Collection (il retino), per l'account
+
+
+def leggi_opzioni():
+    import json
+    try:
+        with open(OPZIONI, encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def salva_opzioni(d):
+    import json
+    try:
+        os.makedirs(os.path.dirname(OPZIONI), exist_ok=True)
+        with open(OPZIONI + ".tmp", "w", encoding="utf-8") as f:
+            json.dump(d, f)
+        os.replace(OPZIONI + ".tmp", OPZIONI)
+    except OSError:
+        pass
+
 
 class PaginaCollezione(Pagina):
     """La collezione: in cima la ricerca, sotto le carte in una pagina sola che scorre. Dati da collezione_carte.py. Le carte si vedono a figura piena (Autore, 5 nov 2026:
@@ -64,6 +89,12 @@ class PaginaCollezione(Pagina):
         b = tk.Frame(corpo, bg=fondo); b.grid(row=0, column=0, sticky="n", padx=(0, 16))
         # due flag, non una tendina (Autore, 7 nov 2026: «owned e non owned devono essere semplicemente due flag fuori da quella tendina»): nessuno acceso o tutti e due vuol dire tutte le carte
         self.s_mostra = Scelte(tk, b, "Show", (("O", "Owned"), ("N", "Not owned")), F, self.chiedi, fondo, colonne=2); self.s_mostra.fr.pack(fill="x", pady=(0, 8))
+        # il retino sulle carte che non hai (Autore, 11 nov 2026: «con spunta in settings per attivare il retino su non owned»): acceso di partenza, si ricorda
+        # per l'account (OPZIONI); Clear all non lo tocca, e' come si vede, non un filtro
+        self.s_retino = Scelte(tk, b, "Not owned cards", (("R", "Pattern on not owned"),), F, self.cambia_retino, fondo, colonne=1); self.s_retino.fr.pack(fill="x", pady=(0, 8))
+        CAP.RETINO_ACCESO[0] = leggi_opzioni().get("retino", True)
+        if CAP.RETINO_ACCESO[0]:
+            self.s_retino.on = {"R"}; self.s_retino.disegna()
         r = tk.Frame(b, bg=fondo); r.pack(fill="x", pady=(0, 8))
         self.t_formato = Tendina(tk, r, "Format", F, larga=150, bg=fondo); self.t_formato.fr.pack(side="left")
         # tutti i formati di Arena (Autore, 9 nov 2026: «nella collection aggiungi il filtro per i formati standard historic ecc»); prima c'erano solo All e Standard
@@ -323,6 +354,12 @@ class PaginaCollezione(Pagina):
         n = self.attivi()
         self.v_sets.set(f"SETS · {len(self.sets_on)} SELECTED" if self.sets_on else "SETS")
         self.b_set.metti(f"\u2699  Settings · {n}" if n else "\u2699  Settings", self.aperto)
+
+    def cambia_retino(self):
+        """La spunta del retino: si salva e le carte a vista si rifanno."""
+        CAP.RETINO_ACCESO[0] = "R" in self.s_retino.on
+        d = leggi_opzioni(); d["retino"] = CAP.RETINO_ACCESO[0]; salva_opzioni(d)
+        self.cerca()
 
     def chiedi(self):
         """Si cerca poco dopo l'ultimo tasto: scrivendo non si ridisegna a ogni lettera."""

@@ -17,8 +17,9 @@ from widget import ARANCIO, pulsante_solido
 
 # (chiave, titolo, cosa fa, [(comando, effetto)]): una sezione per scheda, nell'ordine delle linguette
 SEZIONI = (
-    ("meta", "Meta", ("The most played decks of every format, built from the games players choose to share: coming soon. Meanwhile, Import any list in "
-                      "Your decks.") if PUBBLICA else "The most played decks of every format: Arena formats from Untapped, paper and MTGO formats from MTGGoldfish.",
+    ("meta", "Meta", ("The most played decks of every format. The starting data comes from Untapped.gg (Arena formats) and MTGGoldfish (paper and MTGO "
+                      "formats), 11 Nov 2026; from now on it grows from the games players choose to share.") if PUBBLICA
+     else "The most played decks of every format: Arena formats from Untapped, paper and MTGO formats from MTGGoldfish.",
      [("Format", "the format to show"), ("Sort by", "meta share, win rate, price, cards you own, name"),
       ("Click a deck", "opens its deck window, with the sideboard and the link to the original page")]),
     ("mazzi", "Your decks", "Your Arena decks, the decks Arena gave you, your wishlist and your deck building, grouped by format.",

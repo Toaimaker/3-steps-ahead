@@ -49,6 +49,10 @@ ROSSO_BAN = "#d9534f"     # il bordo e il testo di una carta bandita nel formato
 # le carte che non hai restano a colori (lo dice il testo sotto), e le copertine dei mazzi hanno sotto l'arte la riga con l'artista. L'app di Autore
 # resta com'era (uso personale).
 NON_TUA = "#f0ad4e"
+RETINO_ACCESO = [True]       # Collection > Settings > «Pattern on not owned» (11 nov 2026): la spunta la accende e la spegne, e la ricorda
+RETINO_FINO, RETINO_GRIGIO, RETINO_ALFA, RETINO_PIENO, RETINO_VUOTO = 0.905, (190, 190, 196), 40, 6, 6       # il retino delle carte che non hai:
+# fin dove scende, le strisce diagonali grigio chiaro trasparenti, pieno e vuoto in pixel (Autore, 11 nov 2026: «e se fossero delle strisce diagonali
+# grigie chiare trasparenti alternate? pieno vuoto», poi «la terza versione … più trasparente»; prima pallini grigi, «si vuole poter leggere il testo sotto»)
 FASCIA_ARTE = 16
 _IN_CORSO, _FALLITE = set(), set()
 _CTX = []
@@ -777,11 +781,8 @@ class Liste:
             c = carta_tela.CartaTela(padre, su[0] - LARGA_CARTA / 2, su[1], LARGA_CARTA, ALTA_CARTA + SOTTO_CARTA, su[2])
         else:
             c = self.tk.Canvas(padre, width=LARGA_CARTA, height=ALTA_CARTA + SOTTO_CARTA, bg=bg, highlightthickness=0, bd=0)
-        from account import ASPETTO_PUBBLICO as PUBBLICA
-        c.spenta, c.fondo_spenta = spenta, bg
-        if spenta and PUBBLICA:           # a colori pieni (le regole di Scryfall): che non ce l'hai lo dice il testo sotto
-            sotto = f"{sotto}  ·  NOT OWNED" if sotto else "NOT OWNED"
-        colore = ROSSO_BAN if bandita else (NON_TUA if PUBBLICA else "#6e6e74") if spenta else "#e6e6ea"
+        c.spenta, c.fondo_spenta = spenta, bg       # le carte che non hai: il retino sopra e «x0» grigio, nelle due app (11 nov 2026, metti_retino)
+        colore = ROSSO_BAN if bandita else "#6e6e74" if spenta else "#e6e6ea"
         c.create_text(LARGA_CARTA / 2, ALTA_CARTA + SOTTO_CARTA / 2, text=sotto, fill=colore, font=self.F(11, True),
                       tags="sotto")     # «x1 x2 ecc e piu' visibile», stesso giorno
         c.create_rectangle(1, 1, LARGA_CARTA - 1, ALTA_CARTA - 1, fill="#202024", outline="#3a3a42")
@@ -791,6 +792,7 @@ class Liste:
             self.da_mini(nome)
         if nome in self.piene:
             c.create_image(0, 0, image=self.immagine_tela(c, nome), anchor="nw")
+            self.metti_retino(c)
         else:
             attesa = self.attese.setdefault(nome, [])
             attesa.append(c)
@@ -802,27 +804,29 @@ class Liste:
         return c
 
     def immagine_tela(self, c, nome):
-        """L'immagine per la tela: quella vera, o la versione opaca se la carta non la hai (spenta). Nell'app pubblica sempre quella vera."""
-        from account import ASPETTO_PUBBLICO as PUBBLICA
-        if not getattr(c, "spenta", False) or PUBBLICA:
-            return self.piene[nome]
-        k = (nome, c.fondo_spenta)
-        if k not in self.spente:
-            from PIL import Image, ImageEnhance, ImageTk
-            try:
-                f = file_mini(nome)
-                src = Image.open(f) if os.path.exists(f) else Image.open(io.BytesIO(base64.b64decode(self.grezze[nome]) if isinstance(self.grezze.get(nome), str) else self.grezze[nome]))
-                im = src.convert("RGBA")
-                g = ImageEnhance.Color(im).enhance(0.25)        # quasi senza colore
-                rgb = tuple(int(c.fondo_spenta[i:i + 2], 16) for i in (1, 3, 5))
-                out = Image.blend(Image.new("RGBA", im.size, rgb + (255,)), g, 0.38)       # e velata dal fondo: si vede, ma si capisce che manca
-                out.putalpha(im.getchannel("A"))
-                if len(self.spente) > 4 * TETTO_IMMAGINI:     # solo() le sfoltisce scorrendo; questo e' il tetto per chi non chiama solo()
-                    self.spente.clear()
-                self.spente[k] = ImageTk.PhotoImage(out)
-            except Exception:
-                return self.piene[nome]
-        return self.spente[k]
+        """L'immagine per la tela: sempre quella vera, intatta. Le carte che non hai hanno sopra il retino (metti_retino), uno strato a parte."""
+        return self.piene[nome]
+
+    def metti_retino(self, c):
+        """Il retino sopra una carta che non hai (11 nov 2026, Autore: «si le voglio opache», «devono essere così anche sull'app pubblica», «possiamo metterci
+        sopra un retino»): uno strato a parte sopra l'immagine, che resta intatta, perche' le regole delle immagini di Scryfall (scryfall.com/docs/api, letto
+        l'11 nov 2026) vietano di «blur, sharpen, desaturate, or color-shift card images» e di coprire artista e copyright: il retino si ferma prima della
+        riga in fondo (RETINO_FINO, il 90,5% dell'altezza), che resta scoperta. Lo stesso nell'app pubblica e in quella di Autore. Fino a quel giorno
+        nell'app di Autore l'immagine si desaturava e si velava (opaca), in quella pubblica restava a colori con NOT OWNED. Strisce diagonali grigio
+        chiaro trasparenti, una piena e una vuota: il testo della carta si legge."""
+        if not getattr(c, "spenta", False) or not RETINO_ACCESO[0]:      # la spunta in Settings di Collection (Autore: «con spunta in settings»)
+            return
+        k = ("retino", RETINO_GRIGIO, RETINO_ALFA, RETINO_PIENO, RETINO_VUOTO)
+        if k not in self.fondi:
+            from PIL import Image, ImageDraw, ImageTk
+            h, S = round(ALTA_CARTA * RETINO_FINO), 4          # disegnate a 4 volte e ridotte: i bordi delle strisce senza scalini
+            L, A = LARGA_CARTA * S, h * S
+            r = Image.new("RGBA", (L, A), (0, 0, 0, 0)); d = ImageDraw.Draw(r)
+            passo = (RETINO_PIENO + RETINO_VUOTO) * S
+            for x0 in range(-A, L + passo, passo):         # una striscia piena a 45 gradi, poi una vuota
+                d.polygon([(x0, 0), (x0 + RETINO_PIENO * S, 0), (x0 + RETINO_PIENO * S + A, A), (x0 + A, A)], fill=RETINO_GRIGIO + (RETINO_ALFA,))
+            self.fondi[k] = ImageTk.PhotoImage(r.resize((LARGA_CARTA, h), Image.LANCZOS))
+        c.create_image(0, 0, image=self.fondi[k], anchor="nw", tags="retino")
 
     def da_mini(self, nome):
         from PIL import Image, ImageTk
@@ -878,6 +882,7 @@ class Liste:
             for c in self.attese.pop(nome, []) if nome in self.piene else ():
                 if c.winfo_exists():
                     c.create_image(0, 0, image=self.immagine_tela(c, nome), anchor="nw")
+                    self.metti_retino(c)
                     c.tag_raise("ban")      # il bordo rosso di una bandita resta sopra l'immagine
         if self.coda and (self.operaio is None or not self.operaio.is_alive()):     # una carta arrivata mentre l'operaio chiudeva
             self.operaio = threading.Thread(target=self.lavora, daemon=True)
@@ -1084,24 +1089,30 @@ def prova():
     casi.append(("la copertina di un mazzo", _I.open(f_b).size == (298, 168)))
     casi.append(("una copertina senza arte", os.path.exists(cover_mazzo(None, 298, 168))))
     # l'app pubblica e le regole delle immagini di Scryfall (11 nov 2026): la copertina ha sotto l'arte la riga dell'artista, la carta che non hai resta a colori
-    era = _acc.ASPETTO_PUBBLICO
+    era, era_p = _acc.ASPETTO_PUBBLICO, _acc.PUBBLICA
     try:
-        _acc.ASPETTO_PUBBLICO = True        # l'aspetto pubblico: dell'app pubblica e, dall'11 nov 2026, anche di quella di Autore
+        _acc.ASPETTO_PUBBLICO = _acc.PUBBLICA = True        # l'app pubblica
         f_p = cover_mazzo("Icy Reception", 298, 168)
         fascia = _I.open(f_p).convert("RGB").crop((0, 168 - FASCIA_ARTE, 298, 168))
         angolo = fascia.getpixel((297, FASCIA_ARTE - 1))           # il fondo della riga (jpg: qualche unita' di scarto)
         scritta = len(set(fascia.tobytes()[i:i + 3] for i in range(0, len(fascia.tobytes()), 3))) > 4 and all(abs(x - y) <= 4 for x, y in zip(angolo, (24, 24, 28)))
         casi.append(("pubblica: la copertina ha la riga dell'artista, un altro file", f_p != f_b and scritta and bool(artista("Icy Reception")) == bool(indirizzi())))
-        L.piene.clear(); L.da_mini("Icy Reception"); q_p = L.carta_piena(root, "Icy Reception", "x0", spenta=True)
-        testo_p = [q_p.itemcget(i, "text") for i in q_p.find_withtag("sotto")]
-        casi.append(("pubblica: la carta che non hai e' l'immagine vera, il testo lo dice", L.immagine_tela(q_p, "Icy Reception") is L.piene["Icy Reception"]
-                     and testo_p == ["x0  ·  NOT OWNED"]))
         casi.append(("l'app di Autore ha l'aspetto pubblico (11 nov 2026), a meno di MIO_ASPETTO=1", era is (os.environ.get("MIO_ASPETTO") != "1")))
-        _acc.ASPETTO_PUBBLICO = False
-        q_n = L.carta_piena(root, "Icy Reception", "x0", spenta=True)
-        casi.append(("negativa: con l'aspetto di prima la carta che non hai resta opaca", L.immagine_tela(q_n, "Icy Reception") is not L.piene["Icy Reception"]))
+        # le carte che non hai (11 nov 2026, «si le voglio opache», «anche sull'app pubblica», «un retino»): nelle due app l'immagine vera, intatta (le regole
+        # di Scryfall), il retino sopra come strato a parte che lascia scoperta la riga di artista e copyright, «x0» grigio sotto
+        for pub in (True, False):
+            _acc.PUBBLICA = pub
+            L.piene.clear(); L.da_mini("Icy Reception")
+            q_ = L.carta_piena(root, "Icy Reception", "x0", spenta=True)
+            ret = q_.find_withtag("retino")
+            alto_r = L.fondi[("retino", RETINO_GRIGIO, RETINO_ALFA, RETINO_PIENO, RETINO_VUOTO)].height() if ret else 0
+            casi.append((f"{'pubblica' if pub else 'Autore'}: la carta che non hai e' l'immagine vera col retino sopra, la riga in fondo scoperta, x0 sotto",
+                         L.immagine_tela(q_, "Icy Reception") is L.piene["Icy Reception"] and len(ret) == 1 and ret[0] > max(i for i in q_.find_all() if q_.type(i) == "image" and i != ret[0])
+                         and 0 < alto_r <= round(ALTA_CARTA * 0.91) and [q_.itemcget(i, "text") for i in q_.find_withtag("sotto")] == ["x0"]))
+        q_s = L.carta_piena(root, "Icy Reception", "x2")
+        casi.append(("negativa: una carta che hai non ha il retino", not q_s.find_withtag("retino") and any(q_s.type(i) == "image" for i in q_s.find_all())))
     finally:
-        _acc.ASPETTO_PUBBLICO = era
+        _acc.ASPETTO_PUBBLICO, _acc.PUBBLICA = era, era_p
     L.attese.update(A=[], B=[]); L.solo(["A"])
     casi.append(("scorrendo si aspetta solo chi e' a vista", "A" in L.attese and "B" not in L.attese))
     L.piene.update({f"finta {i}": None for i in range(201)}); L.solo(["finta 3"])

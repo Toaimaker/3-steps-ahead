@@ -1,6 +1,6 @@
 {
- "version": "0.1.18",
+ "version": "0.1.19",
  "date": "2026-11-11",
- "notes": "Maintenance release: same app and features as 0.1.17.",
+ "notes": "The Meta tab opens first, with starting data for every format; cards you do not own get a light striped pattern (Collection settings).",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

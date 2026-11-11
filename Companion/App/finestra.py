@@ -404,7 +404,7 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
         # un aggiornamento dell'app: un pallino sulla linguetta Help (10 nov 2026)
         self.pagine["help"].su_aggiornamento = lambda nuova: self.linguette["help"][0].configure(text="Help  ●" if nuova else "Help")
         self.pagine["help"].mostra_stato()
-        scheda0 = sys.argv[sys.argv.index("--scheda") + 1] if "--scheda" in sys.argv else "mazzi" if PUBBLICA else "meta"   # --scheda drafter|performance|limited|standard|risorse; si apre su Meta, la prima scheda (Autore,
+        scheda0 = sys.argv[sys.argv.index("--scheda") + 1] if "--scheda" in sys.argv else "meta"   # --scheda drafter|performance|limited|standard|risorse; si apre su Meta, la prima scheda (Autore,
         # 10 nov 2026: «il companion vedo che si apre sempre sulla scheda drafter invece che meta»): un draft o una partita che cominciano portano sul Drafter come prima
         if scheda0 in ("limited", "standard"):       # collaudo: Performance gia' sul modo chiesto
             self.perf.scegli(scheda0.capitalize())
