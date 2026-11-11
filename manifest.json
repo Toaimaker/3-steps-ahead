@@ -1,6 +1,6 @@
 {
- "version": "0.1.22",
- "date": "2026-11-11",
- "notes": "Meta: the league logos next to each rank in the Rank menu.",
+ "version": "0.1.23",
+ "date": "2026-11-12",
+ "notes": "Deck window: Matchups in Analysis, the decks you met recognized from the cards they showed, with record, play and draw.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

@@ -5,6 +5,7 @@ import threading
 
 import analisi_mazzo as AM
 import dati_mazzo as DM
+import matchup_log as MU
 
 from tema import CI as C
 
@@ -30,6 +31,11 @@ class VistaAnalisi:
                 if partenza:        # il filtro on the play / on the draw della finestra (10 nov 2026): le partite di cui il log non dice chi comincia restano fuori
                     pp = [p for p in pp if p.get("primo") is (partenza == "play")]
                 box["a"] = AM.analizza(pp, lista_mazzo, lambda n: DM.e_terra(n, carte_db))
+                # i matchup (12 nov 2026, «Matchup dai log»): gli archetipi che questo mazzo ha incontrato, riconosciuti dalle loro carte (matchup_log)
+                from dati_app import partite_dal_log
+                ids = {p["matchId"] for p in pp}
+                pl, _n = partite_dal_log()
+                box["a"]["matchup"] = MU.campo(MU.records([p for p in pl if p.get("matchId") in ids]))
             except Exception as e:      # noqa: BLE001 - la sezione dice cosa e' andato storto, la finestra resta
                 box["errore"] = str(e)
         threading.Thread(target=calcola, daemon=True).start()
@@ -118,6 +124,17 @@ class VistaAnalisi:
         if a["con_dati"] < AM.POCHE:
             tk.Label(padre, text="Few games: read these as hints, not data.", bg=C["scheda"], fg=C["arancio"], font=F(7, True), anchor="w").pack(fill="x")
         tk.Frame(padre, bg=C["scheda"], height=6).pack(fill="x")
+        mu = a.get("matchup") or []
+
+        def pd(x):
+            n, v = x
+            return self.cella(f"{v}-{n - v}" if n else "-", C["muto"] if not n else C["testo"])
+        blocco("matchup", "Matchups", f"their archetype from the cards you saw; under {MU.MIN_PARTITE} games it is a hint",
+               [("their deck", "w"), ("games", "e"), ("record", "e"), ("win rate", "e"), ("play", "e"), ("draw", "e")],
+               [[self.cella(corto(x["suo"], 34), C["muto"] if x["poche"] else C["titolo"], not x["poche"], lato="left"), self.cella(f"{x['partite']}"),
+                 self.cella(f"{x['vinte']}-{x['perse']}"), self.cella(f"{round(x['wr'])}%", C["muto"] if x["poche"] else wr_col(x["wr"] / 100), True),
+                 pd(x["play"]), pd(x["draw"])] for x in mu],
+               prima(mu, lambda x: f"{x['suo']} · {x['vinte']}-{x['perse']}"))
         blocco("migliori", "Best performers", "win rate in the games you cast it",
                [("card", "w"), ("cast", "e"), ("win rate", "e"), ("vs deck", "e")],
                [[nome(x["nome"]), self.cella(f"{x['n']}"), self.cella(pct(x["wr"]), wr_col(x["wr"]), True), scarto(x["delta"])] for x in a["migliori"]],

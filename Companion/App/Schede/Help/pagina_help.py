@@ -39,6 +39,7 @@ SEZIONI = (
     ("mazzi", "Your decks", "Your Arena decks, the decks Arena gave you, your wishlist and your deck building, grouped by format.",
      [("Group title", "opens or closes the group"), ("Show", "only the decks you own, or all"), ("Import", "a list copied from Arena, MTGO or a site goes to the Wishlist"),
       ("Trash", "on a Wishlist or Deck builder card: removes the deck at once"), ("Click a deck", "the deck window: list, data, starting hands, export"),
+      ("Analysis › Matchups", "the decks you met with this deck, recognized from the cards they showed: record, play and draw; under 5 games it is a hint"),
       ("Edit · Add to wishlist", "the orange buttons at the top of the deck window"), ("Board", "under the list: the deck as whole cards, to look at and move around"),
       ("Edit", "a Meta or Arena deck gets a copy in Deck builder; the builder opens over the Collection, where the Board can be customized")]),
     ("corso", "Drafter", "Your companion for limited: the event calendar, the pick advice, the three decks, the gate and the chat during the games.",
