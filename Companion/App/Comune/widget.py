@@ -475,3 +475,60 @@ def svuota(contenitore):
             smonta(x)
         except Exception:
             pass
+
+
+class PulsanteVista:
+    """Il pulsante che passa fra due viste (la Meta, 11 nov 2026, Autore: «la view da decks a charts non deve essere una tendina ma un pulsante da premere
+    che cambia forma da charts a grid e lo mettiamo sulla destra nello stesso spazio delle tendine»): dice la vista in cui porta, con la sua icona disegnata
+    (Charts con le barre, Grid coi riquadri). Come una Tendina per chi lo usa: .fr, get() (la vista di adesso), set(v), opzioni(viste, cb). Alto come il
+    campo di una Tendina, con lo spazio del nome sopra, cosi' sta in riga."""
+
+    def __init__(self, tk, padre, F, viste=("Decks", "Charts"), etichette=None, bg=None, larga=128):
+        self.F, self.viste, self.cb = F, list(viste), None
+        self.etichette = etichette or {"Decks": ("Charts", "barre"), "Charts": ("Grid", "griglia")}       # vista di adesso -> (cosa dice, icona)
+        bg = bg or C["fondo"]
+        self.fr = tk.Frame(padre, bg=bg)
+        tk.Label(self.fr, text="VIEW", bg=bg, fg=C["titolo"], font=F(7, True), pady=0).pack(anchor="w", pady=(0, 3))
+        self.c = tk.Canvas(self.fr, bg=C["accento"], highlightthickness=0, width=larga, height=32, bd=0, cursor="hand2")
+        self.c.pack(anchor="w")
+        self.v, self.sopra = self.viste[0], False
+        self.c.bind("<Button-1>", lambda e: self.premi())
+        self.c.bind("<Enter>", lambda e: self._sopra(True)); self.c.bind("<Leave>", lambda e: self._sopra(False))
+        self.c.bind("<Configure>", lambda e: self.disegna())
+        self.disegna()
+
+    def _sopra(self, v):
+        self.sopra = v
+        self.disegna()
+
+    def disegna(self):
+        import disegni as DG
+        c = self.c
+        c.delete("all")
+        w, h = max(c.winfo_width(), int(c.cget("width"))), int(c.cget("height"))
+        c.configure(bg="#2ba3ea" if self.sopra else "#0f86cc")
+        testo, icona = self.etichette.get(self.v, (self.v, "griglia"))
+        img = (DG.barre if icona == "barre" else DG.griglia)(16, "#ffffff")
+        c.img_ = img
+        larga_t = 8 + 16 + 8
+        c.create_image(w / 2 - larga_t / 2 - 10, h / 2, image=img)
+        c.create_text(w / 2 + 6, h / 2, text=testo, fill="#ffffff", font=self.F(9, True))
+        self.testo = testo
+
+    def opzioni(self, viste, cb):
+        self.viste, self.cb = list(viste), cb
+
+    def get(self):
+        return self.v
+
+    def set(self, v):
+        if v in self.viste:
+            self.v = v
+            self.disegna()
+
+    def premi(self):
+        """Passa all'altra vista e lo dice a chi ascolta."""
+        i = self.viste.index(self.v) if self.v in self.viste else 0
+        self.set(self.viste[(i + 1) % len(self.viste)])
+        if self.cb:
+            self.cb(self.v)

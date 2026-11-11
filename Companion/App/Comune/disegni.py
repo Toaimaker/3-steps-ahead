@@ -189,6 +189,33 @@ def piu(lato, colore, larghezza=2.0):
     return _icona(("piu", lato, colore, larghezza), fa)
 
 
+def barre(lato, colore):
+    """L'icona dei grafici: tre barre di altezze diverse su una linea di base (il pulsante View della Meta, 11 nov 2026)."""
+    def fa():
+        d = Disegno(lato, lato)
+        b = lato * 0.86
+        w = lato * 0.2
+        for i, h in enumerate((0.42, 0.72, 0.56)):
+            x0 = lato * 0.12 + i * lato * 0.29
+            d.rett(x0, b - lato * h, x0 + w, b, riempi=colore, raggio=lato * 0.04)
+        d.linea([(lato * 0.06, b + 0.5), (lato * 0.94, b + 0.5)], colore, 1.2)
+        return d
+    return _icona(("barre", lato, colore), fa)
+
+
+def griglia(lato, colore):
+    """L'icona della griglia: quattro riquadri (il pulsante View della Meta, 11 nov 2026)."""
+    def fa():
+        d = Disegno(lato, lato)
+        s = lato * 0.38
+        for i in (0, 1):
+            for j in (0, 1):
+                x0, y0 = lato * 0.08 + i * lato * 0.46, lato * 0.08 + j * lato * 0.46
+                d.rett(x0, y0, x0 + s, y0 + s, riempi=colore, raggio=lato * 0.06)
+        return d
+    return _icona(("griglia", lato, colore), fa)
+
+
 def cestino(lato, colore, fondo, bordo):
     """Il cestino sulla copertina di una scheda: il quadrato scuro, il coperchio col manico, il secchio a righe."""
     def fa():

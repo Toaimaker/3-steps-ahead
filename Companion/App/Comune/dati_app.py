@@ -441,7 +441,18 @@ def _json(p):
         return None
 
 
-RANGHI_META = ("bronze", "silver", "gold", "platinum")       # i ranghi che Untapped da' gratis (RankingClassScopeFilter BRONZE_TO_PLATINUM)
+RANGHI_META = ("bronze", "silver", "gold", "platinum", "mythic")       # i ranghi che Untapped da' gratis (RankingClassScopeFilter BRONZE_TO_PLATINUM) e, dall'11 nov
+# 2026, «mythic»: Diamond + Mythic insieme, per differenza col totale di tutti i ranghi (Motore/meta_formati.con_mythic; Autore: «manca mythic»)
+NOMI_RANGO = {"mythic": "Diamond + Mythic"}
+
+
+def nome_rango(r):
+    """Il nome di un rango nella tendina: «Gold», «Diamond + Mythic»."""
+    return NOMI_RANGO.get(r, r.capitalize())
+
+
+def rango_da_nome(t):
+    return next((r for r in RANGHI_META if nome_rango(r) == t), (t or "").lower())
 
 
 def al_rango(arch, rango, info):
@@ -471,7 +482,7 @@ def sotto_meta(d, quando):
     """Il sottotitolo del meta di Untapped: rango, periodo, partite, giorno dello scarico, e se il periodo nuovo ha ancora
     troppe poche partite (10 nov 2026: Star Trek aperto da poche ore, si legge Reality Fracture, e lo si dice)."""
     per = (d.get("periodo") or "").replace("Set Release - ", "")
-    pezzi = [f"{d.get('rango') or 'platinum'} rank"] + ([per] if per else [])
+    pezzi = [f"{nome_rango(d.get('rango') or 'platinum')} rank"] + ([per] if per else [])
     if d.get("partite_rango"):
         pezzi.append(f"{d['partite_rango']:,} games")
     pezzi.append(f"{quando:%d/%m}")
@@ -534,7 +545,7 @@ def _meta_formato(fmt, n=14, rango=None):
     if rango and rango in ranghi_meta(arch):
         arch, tot = al_rango(arch, rango, info)
         # nel sottotitolo le partite vere del rango, se lo scarico le ha: la somma sugli archetipi conta ogni partita due volte (un mazzo per parte)
-        info = dict(info, rango=rango, partite_rango=(info.get("partite_valide") or {}).get(rango) or tot)
+        info = dict(info, rango=rango, partite_rango=(info.get("partite_valide") or {}).get(rango) or tot // 2)      # (Diamond + Mythic non ha le partite vere)
     return sorted(arch, key=lambda x: -x.get("quota", 0))[:n], sotto_meta(info, quando)
 
 

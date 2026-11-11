@@ -1,6 +1,6 @@
 {
- "version": "0.1.20",
+ "version": "0.1.21",
  "date": "2026-11-11",
- "notes": "100% free, donations only. Meta history and limited charts at launch; your shared games start building our own data.",
+ "notes": "Meta: a View button to switch between grid and charts, and a Diamond + Mythic rank.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

@@ -7,7 +7,7 @@ import collezione_carte as CC
 import prezzi_carte as PZ
 
 from account import PUBBLICA
-from dati_app import RANGHI_META
+from dati_app import RANGHI_META, nome_rango, rango_da_nome
 from dati_meta import FORMATI_META, formati_con_dati, meta_mazzi, ranghi_formato
 from pagina_base import Pagina, prepara_capsule
 from pagina_mazzi import PaginaMazzi
@@ -15,7 +15,7 @@ import dati_grafici as DGR
 from icone import icona_set, nome_set
 from vista_grafici import VistaGrafici
 from tema import CI as C, PERSA, VINTA
-from widget import Tendina
+from widget import PulsanteVista, Tendina
 
 # la pagina senza dati: nell'app pubblica non c'e' il meta di terzi (Untapped e MTGGoldfish vietano di ridistribuirlo, Distribuzione/Business_Model.md
 # sezione 5, 11 nov 2026): arrivera' dalle partite che gli utenti condividono
@@ -40,15 +40,17 @@ class PaginaMeta(PaginaMazzi):
         # la tendina Rank (11 nov 2026, Autore: «in meta dobbiamo aggiungere una tendina che ci mostra il meta anche per rank della classifica», «cioe' quali
         # mazzi si giocano di piu' in quale fascia di rank e con quale win rate»): i ranghi che Untapped da' gratis, Bronze-Platinum; c'e' solo nei formati di Arena
         # che hanno le partite per rango, e la scelta resta cambiando formato
-        self.t_rango = Tendina(tk, self.barra_menu, "Rank", F, larga=130)
-        self.t_rango.opzioni([r.capitalize() for r in RANGHI_META], lambda o: self.cambia_formato()); self.t_rango.set("Platinum")
+        self.t_rango = Tendina(tk, self.barra_menu, "Rank", F, larga=170)
+        self.t_rango.opzioni([nome_rango(r) for r in RANGHI_META], lambda o: self.cambia_formato()); self.t_rango.set("Platinum")
         self.t_ord = Tendina(tk, self.barra_menu, "Sort by", F, larga=170); self.t_ord.fr.pack(side="left", padx=(10, 0))
         self.t_ord.opzioni(self.ORDINI, lambda o: self.riordina()); self.t_ord.set(self.ORDINI[0])
         # la vista Charts e il meta del limited (10 nov 2026, Autore: «una seconda sezione che non e' visualizzata a scacchiera ma a elenchi e ci fa vedere il
         # meta giocato per mazzo in termini di grafici», «includendo anche il meta del limited ovviamente»): View sceglie fra schede e grafici; nella tendina Format
         # in fondo Quick Draft e Premier Draft, coi set che hanno i dati (la tendina Set compare solo li'); il limited e' solo a grafici
-        self.t_vista = Tendina(tk, self.barra_menu, "View", F, larga=130); self.t_vista.fr.pack(side="left", padx=(10, 0))
-        self.t_vista.opzioni(self.VISTE, lambda o: self.cambia_formato()); self.t_vista.set(self.VISTE[0])
+        # dall'11 nov 2026 un pulsante, non una tendina, a destra sulla riga delle tendine: dice la vista in cui porta (Charts o Grid) e cambia forma
+        # (Autore: «la view da decks a charts non deve essere una tendina ma un pulsante da premere che cambia forma da charts a grid»)
+        self.t_vista = PulsanteVista(tk, self.barra_menu, F, self.VISTE); self.t_vista.fr.pack(side="right", padx=(10, 0))
+        self.t_vista.opzioni(self.VISTE, lambda o: self.cambia_formato())
         self.t_set = Tendina(tk, self.barra_menu, "Set", F, larga=220)
         self.formati_lim = [f for f, k in DGR.LIMITED if DGR.set_limited(k)]
         if self.formati_lim:
@@ -121,7 +123,7 @@ class PaginaMeta(PaginaMazzi):
         if not lim:
             self.t_set.fr.pack_forget()
             if not self.t_vista.fr.winfo_manager():
-                self.t_vista.fr.pack(side="left", padx=(10, 0))
+                self.t_vista.fr.pack(side="right", padx=(10, 0))
             return
         self.t_vista.fr.pack_forget()
         sets = DGR.set_limited(lim)
@@ -143,7 +145,7 @@ class PaginaMeta(PaginaMazzi):
 
     def rango(self):
         """Il rango scelto, se la tendina c'e' (formati di Arena con le partite per rango), se no None: il rango dello scarico."""
-        return self.t_rango.get().lower() if self.t_rango.fr.winfo_manager() else None
+        return rango_da_nome(self.t_rango.get()) if self.t_rango.fr.winfo_manager() else None
 
     def metti_rango(self):
         """La tendina Rank c'e' nella vista a schede dei formati di Arena che hanno le partite per rango; nei formati di carta, nel limited e nei grafici no."""
@@ -151,9 +153,9 @@ class PaginaMeta(PaginaMazzi):
         if not ranghi:
             self.t_rango.fr.pack_forget()
             return
-        voci = [r.capitalize() for r in ranghi]
+        voci = [nome_rango(r) for r in ranghi]
         if self.t_rango.get() not in voci:
-            self.t_rango.set(voci[-1])
+            self.t_rango.set("Platinum" if "Platinum" in voci else voci[-1])
         if not self.t_rango.fr.winfo_manager():
             self.t_rango.fr.pack(side="left", padx=(10, 0), after=self.t_fmt.fr)
 
