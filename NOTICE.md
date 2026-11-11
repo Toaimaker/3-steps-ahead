@@ -4,7 +4,7 @@
 
 3 Steps Ahead is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards.
 Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.
-Magic: The Gathering, MTG Arena, card names, card art, mana symbols and set symbols are property of Wizards of the Coast.
+Magic: The Gathering, MTG Arena, card names, card art, mana symbols, set symbols, wildcard and rank icons are property of Wizards of the Coast.
 
 The app is free. Optional support does not unlock anything.
 
@@ -19,7 +19,8 @@ The app is free. Optional support does not unlock anything.
 
 - Poppins font: SIL Open Font License 1.1.
 - Mana and set symbols (`Companion/Grafica/simboli/`, `Companion/Grafica/set/`): from Scryfall's symbol files; the symbols are property of Wizards of the Coast.
-- Rank, wildcard, gold, gem, pack and token icons (`Companion/Grafica/leghe/`, `jolly/`, `risorse/`): drawn for 3 Steps Ahead.
+- Gold, gem and pack icons (`Companion/Grafica/risorse/`): from MTGA Tool (github.com/mtgatool/mtgatool-desktop), licensed GPL-3.0 (https://www.gnu.org/licenses/gpl-3.0.html).
+- Wildcard, rank and draft token icons (`Companion/Grafica/jolly/`, `Companion/Grafica/leghe/`, `Companion/Grafica/risorse/token.png`): Wizards of the Coast imagery, used under the Fan Content Policy.
 
 ## Python packages (installed by Install.bat)
 
