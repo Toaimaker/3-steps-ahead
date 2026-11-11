@@ -10,6 +10,7 @@ import threading
 import webbrowser
 
 import aggiornamenti as AG
+from account import ASPETTO_PUBBLICO
 from ambiente import PRODOTTO, PUBBLICA, VERSIONE
 from tema import CI as C
 from widget import ARANCIO, pulsante_solido
@@ -94,7 +95,7 @@ class PaginaHelp:
         self.b_controlla = pulsante_solido(tk, F, riga, "Check now", False, self.controlla_ora, alto=30, bg=C["scheda"])
         self.b_controlla.configure(width=120); self.b_controlla.pack(side="right")
         self.l_note = tk.Label(upd, text="", bg=C["scheda"], fg=C["grigio"], font=F(9), anchor="w", justify="left", wraplength=900)
-        if PUBBLICA:        # l'app pubblica: la condivisione dei dati si cambia da qui (condividi.py; l'informativa lo promette), col codice da citare per i diritti
+        if ASPETTO_PUBBLICO:        # l'app pubblica (e quella di Autore, che la vede uguale: 11 nov 2026): la condivisione dei dati si cambia da qui (condividi.py; l'informativa lo promette), col codice da citare per i diritti
             self.riquadro_untapped()
             self.riquadro_condivisione()
         # i collegamenti alle sezioni

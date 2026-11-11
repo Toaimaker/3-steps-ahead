@@ -285,7 +285,7 @@ def cuoci(nome, sorgente=None):
 def file_cover(arte, L, H):
     """Dove sta la copertina cotta di un mazzo. Il nome dipende dall'arte: se arriva dopo, cambia."""
     c_e = bool(arte and os.path.exists(file_immagine(arte, True)))
-    from account import PUBBLICA
+    from account import ASPETTO_PUBBLICO as PUBBLICA       # l'aspetto pubblico vale anche nell'app di Autore (11 nov 2026)
     credito = "|artista" if PUBBLICA and c_e else ""          # la copertina con la riga dell'artista e' un'altra copertina
     return os.path.join(CARTE_IMG, "cover", f"{zlib.crc32(f'{arte if c_e else None}|{L}x{H}{credito}'.encode('utf-8')):08x}.jpg")
 
@@ -299,7 +299,7 @@ def cover_mazzo(arte, L, H):
     os.makedirs(os.path.dirname(f), exist_ok=True)
     im = Image.new("RGB", (L, H), "#202024")
     if arte and os.path.exists(file_immagine(arte, True)):
-        from account import PUBBLICA
+        from account import ASPETTO_PUBBLICO as PUBBLICA
         h = H - FASCIA_ARTE if PUBBLICA else H       # nell'app pubblica sotto l'arte la riga con l'artista e il copyright, fuori dall'illustrazione
         a = Image.open(file_immagine(arte, True)).convert("RGB")
         z = max(L / a.width, h / a.height)
@@ -777,7 +777,7 @@ class Liste:
             c = carta_tela.CartaTela(padre, su[0] - LARGA_CARTA / 2, su[1], LARGA_CARTA, ALTA_CARTA + SOTTO_CARTA, su[2])
         else:
             c = self.tk.Canvas(padre, width=LARGA_CARTA, height=ALTA_CARTA + SOTTO_CARTA, bg=bg, highlightthickness=0, bd=0)
-        from account import PUBBLICA
+        from account import ASPETTO_PUBBLICO as PUBBLICA
         c.spenta, c.fondo_spenta = spenta, bg
         if spenta and PUBBLICA:           # a colori pieni (le regole di Scryfall): che non ce l'hai lo dice il testo sotto
             sotto = f"{sotto}  ·  NOT OWNED" if sotto else "NOT OWNED"
@@ -803,7 +803,7 @@ class Liste:
 
     def immagine_tela(self, c, nome):
         """L'immagine per la tela: quella vera, o la versione opaca se la carta non la hai (spenta). Nell'app pubblica sempre quella vera."""
-        from account import PUBBLICA
+        from account import ASPETTO_PUBBLICO as PUBBLICA
         if not getattr(c, "spenta", False) or PUBBLICA:
             return self.piene[nome]
         k = (nome, c.fondo_spenta)
@@ -1076,14 +1076,17 @@ def prova():
     casi.append(("la cotta ha la misura della griglia", _I.open(file_mini("Icy Reception")).size == (LARGA_CARTA, ALTA_CARTA)))
     L.piene.clear(); t_ = time.perf_counter(); q_ = L.carta_piena(root, "Icy Reception", "x1"); t_ = time.perf_counter() - t_; q_.pack()
     casi.append(("una carta cotta compare subito, senza aspettare l'operaio", any(q_.type(i) == "image" for i in q_.find_all()) and not L.attese.get("Icy Reception") and t_ < 0.1))
+    import account as _acc
+    asp = _acc.ASPETTO_PUBBLICO
+    _acc.ASPETTO_PUBBLICO = False       # l'aspetto di prima (MIO_ASPETTO=1): senza la riga dell'artista
     f_b = cover_mazzo("Icy Reception", 298, 168)
+    _acc.ASPETTO_PUBBLICO = asp
     casi.append(("la copertina di un mazzo", _I.open(f_b).size == (298, 168)))
     casi.append(("una copertina senza arte", os.path.exists(cover_mazzo(None, 298, 168))))
     # l'app pubblica e le regole delle immagini di Scryfall (11 nov 2026): la copertina ha sotto l'arte la riga dell'artista, la carta che non hai resta a colori
-    import account as _acc
-    era = _acc.PUBBLICA
+    era = _acc.ASPETTO_PUBBLICO
     try:
-        _acc.PUBBLICA = True
+        _acc.ASPETTO_PUBBLICO = True        # l'aspetto pubblico: dell'app pubblica e, dall'11 nov 2026, anche di quella di Autore
         f_p = cover_mazzo("Icy Reception", 298, 168)
         fascia = _I.open(f_p).convert("RGB").crop((0, 168 - FASCIA_ARTE, 298, 168))
         angolo = fascia.getpixel((297, FASCIA_ARTE - 1))           # il fondo della riga (jpg: qualche unita' di scarto)
@@ -1093,10 +1096,12 @@ def prova():
         testo_p = [q_p.itemcget(i, "text") for i in q_p.find_withtag("sotto")]
         casi.append(("pubblica: la carta che non hai e' l'immagine vera, il testo lo dice", L.immagine_tela(q_p, "Icy Reception") is L.piene["Icy Reception"]
                      and testo_p == ["x0  ·  NOT OWNED"]))
+        casi.append(("l'app di Autore ha l'aspetto pubblico (11 nov 2026), a meno di MIO_ASPETTO=1", era is (os.environ.get("MIO_ASPETTO") != "1")))
+        _acc.ASPETTO_PUBBLICO = False
+        q_n = L.carta_piena(root, "Icy Reception", "x0", spenta=True)
+        casi.append(("negativa: con l'aspetto di prima la carta che non hai resta opaca", L.immagine_tela(q_n, "Icy Reception") is not L.piene["Icy Reception"]))
     finally:
-        _acc.PUBBLICA = era
-    q_n = L.carta_piena(root, "Icy Reception", "x0", spenta=True)
-    casi.append(("negativa: nell'app di Autore la carta che non hai resta opaca", L.immagine_tela(q_n, "Icy Reception") is not L.piene["Icy Reception"]))
+        _acc.ASPETTO_PUBBLICO = era
     L.attese.update(A=[], B=[]); L.solo(["A"])
     casi.append(("scorrendo si aspetta solo chi e' a vista", "A" in L.attese and "B" not in L.attese))
     L.piene.update({f"finta {i}": None for i in range(201)}); L.solo(["finta 3"])

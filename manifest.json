@@ -1,6 +1,6 @@
 {
- "version": "0.1.17",
+ "version": "0.1.18",
  "date": "2026-11-11",
- "notes": "Deck builder updates only what changes: adding or removing a card is up to three times faster (original icons kept from 0.1.16).",
+ "notes": "Maintenance release: same app and features as 0.1.17.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }
