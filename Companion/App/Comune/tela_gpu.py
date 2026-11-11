@@ -65,8 +65,15 @@ def registra_pil(nome, pil):
 
 
 def registra(foto, pil):
-    """La sorgente PIL di una PhotoImage, per la tela sulla scheda. Restituisce la PhotoImage."""
-    SORGENTI[str(foto)] = pil
+    """La sorgente PIL di una PhotoImage, per la tela sulla scheda. Restituisce la PhotoImage. La sorgente se ne va con la PhotoImage (11 nov 2026, sessione
+    Magic 13: ogni immagine di disegni.py, grafici compresi, restava qui per sempre: 60 finestre di un mazzo, +32 MB)."""
+    n = str(foto)
+    SORGENTI[n] = pil
+    try:
+        import weakref
+        weakref.finalize(foto, SORGENTI.pop, n, None)
+    except TypeError:       # un oggetto senza riferimenti deboli: resta finche' non lo si dimentica a mano
+        pass
     return foto
 
 

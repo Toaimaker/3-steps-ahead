@@ -173,7 +173,7 @@ class PaginaRisorse(Farmer, Roadmap, Roi, RoadmapCheck, Trend, Pagina):
         for k, n, voci in (("quick", self.n_quick, busta), ("premier", self.n_premier, draft), ("costruiti", self.n_costruiti, busta), ("buste", self.n_buste, solo_oro), ("mitiche", self.n_mitiche, solo_oro)):
             # i riquadri in colonna, col reset accanto (Autore, 6 nov 2026: «mettiamo in colonna i riquadri data entry del farmer e un pulsantino di reset accanto»); accanto anche come si paga, se no la colonna non entra
             n.col_reset(lambda k=k: self.azzera(k))
-            self.paga[k] = Spunte(tk, n.riga, voci, F, rifai, C["scheda"]); self.paga[k].fr.pack(side="left", padx=(6, 0))
+            self.paga[k] = Spunte(tk, n.fr, voci, F, rifai, C["scheda"]); n.accanto(self.paga[k].fr)
         self.g_voci = g
         self.b_nota = tk.Frame(self.f_voci, bg=C["scheda"]); self.b_nota.pack(fill="x")       # sotto le voci, perche' quella rotta
         self.b_esi = tk.Frame(self.f_esi, bg=C["scheda"]); self.b_esi.pack(fill="x")

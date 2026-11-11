@@ -219,34 +219,70 @@ class Scelte:
 
 
 class Numero:
-    """Un numero da scegliere: il nome sopra in maiuscolo bianco, il campo squadrato come la Tendina, − e + ai lati, si puo' anche scrivere."""
+    """Un numero da scegliere: il nome sopra in maiuscolo bianco, il campo squadrato come la Tendina, − e + ai lati, si puo' anche scrivere. Dall'11 nov 2026
+    (sessione Magic 13) una tela sola col titolo, il riquadro, − e +, il reset disegnati, e dentro la sola casella vera: prima 8 widget per numero. Quel che
+    sta accanto al riquadro (le spunte di come si paga) entra con accanto()."""
 
     def __init__(self, tk, padre, nome, F, cb, val=0, passo=1, massimo=999999, larga=126, bg=None):
+        from tkinter import font as tkfont
         self.passo, self.massimo, self.cb, self.bloccato = passo, massimo, cb, False
-        self.fr = tk.Frame(padre, bg=bg or C["fondo"])
-        tk.Label(self.fr, text=nome.upper(), bg=bg or C["fondo"], fg=C["titolo"], font=F(7, True), pady=0).pack(anchor="w", pady=(0, 3))
-        self.riga = tk.Frame(self.fr, bg=bg or C["fondo"]); self.riga.pack(anchor="w")        # il riquadro, e accanto quel che gli serve
         self.bg, self.F, self.tk = bg or C["fondo"], F, tk
-        self.l_reset = None
-        c = tk.Frame(self.riga, bg=TEND["campo"], highlightthickness=1, highlightbackground=TEND["bordo"], width=larga, height=32)
-        c.pack(side="left"); c.pack_propagate(False)
-        meno = tk.Label(c, text="−", bg=TEND["campo"], fg=TEND["testo"], font=F(11, True), width=2, cursor="hand2"); meno.pack(side="left", fill="y")
-        piu = tk.Label(c, text="+", bg=TEND["campo"], fg=TEND["testo"], font=F(11, True), width=2, cursor="hand2"); piu.pack(side="right", fill="y")
+        self.larga, self.reset, self.x_dopo = larga, None, larga
+        self.h_tit = tkfont.Font(font=F(7, True)).metrics("linespace")
+        self.y0 = self.h_tit + 3                    # il riquadro sotto il titolo
+        self.fr = cv = tk.Canvas(padre, bg=self.bg, highlightthickness=0, bd=0, width=larga, height=self.y0 + 32)
+        cv.create_text(0, 0, text=nome.upper(), anchor="nw", fill=C["titolo"], font=F(7, True))
+        cv.create_rectangle(0, self.y0, larga - 1, self.y0 + 31, fill=TEND["campo"], outline=TEND["bordo"])
+        self.lato = tkfont.Font(font=F(11, True)).measure("0") * 2 + 4      # quanto occupavano − e + (width=2)
+        self.t_meno = cv.create_text(1 + self.lato / 2, self.y0 + 16, text="−", fill=TEND["testo"], font=F(11, True))
+        self.t_piu = cv.create_text(larga - 1 - self.lato / 2, self.y0 + 16, text="+", fill=TEND["testo"], font=F(11, True))
         self.var = tk.StringVar(value=str(val))
-        self.e = tk.Entry(c, textvariable=self.var, bg=TEND["campo"], fg=TEND["testo"], insertbackground=TEND["testo"], font=F(9), justify="center", bd=0, highlightthickness=0)
-        self.e.pack(side="left", fill="both", expand=True)
-        self.tasti = (meno, piu)
-        meno.bind("<Button-1>", lambda e: None if self.bloccato else self.metti(self.get() - self.passo))
-        piu.bind("<Button-1>", lambda e: None if self.bloccato else self.metti(self.get() + self.passo))
+        self.e = tk.Entry(cv, textvariable=self.var, bg=TEND["campo"], fg=TEND["testo"], insertbackground=TEND["testo"], font=F(9), justify="center", bd=0, highlightthickness=0)
+        cv.create_window(1 + self.lato, self.y0 + 1, window=self.e, anchor="nw", width=larga - 2 - 2 * self.lato, height=30)
+        cv.bind("<ButtonPress-1>", lambda e: self.clic(e.x, e.y))
+        cv.bind("<Motion>", lambda e: cv.configure(cursor="hand2" if self.zona(e.x, e.y) else ""))
         self.e.bind("<Return>", lambda e: None if self.bloccato else self.metti(self.get()))
         self.e.bind("<KeyRelease>", lambda e: self.cb() if self.cb and not self.bloccato else None)       # il conto segue mentre scrivi: cliccare altrove non toglie il fuoco
         self.e.bind("<FocusOut>", lambda e: None if self.bloccato else self.metti(self.get()))
 
+    def zona(self, x, y):
+        """Il pulsante sotto il puntatore: «meno», «piu», «reset» o None (bloccato: nessuno)."""
+        if self.bloccato or not self.y0 <= y <= self.y0 + 31:
+            return None
+        if 0 <= x < 1 + self.lato:
+            return "meno"
+        if self.larga - 1 - self.lato <= x < self.larga:
+            return "piu"
+        if self.reset and self.reset[0] <= x < self.reset[1]:
+            return "reset"
+        return None
+
+    def clic(self, x, y):
+        z = self.zona(x, y)
+        if z == "meno":
+            self.metti(self.get() - self.passo)
+        elif z == "piu":
+            self.metti(self.get() + self.passo)
+        elif z == "reset":
+            self.reset[2]()
+
     def col_reset(self, azione):
         """Il pulsantino di reset accanto al riquadro."""
-        self.l_reset = self.tk.Label(self.riga, text="↺", bg=self.bg, fg=C["azzurro"], font=self.F(11, True), width=2, cursor="hand2")
-        self.l_reset.pack(side="left", padx=(2, 0))
-        self.l_reset.bind("<Button-1>", lambda e: None if self.bloccato else azione())
+        from tkinter import font as tkfont
+        L = tkfont.Font(font=self.F(11, True)).measure("0") * 2 + 4
+        x0 = self.x_dopo + 2
+        self.t_reset = self.fr.create_text(x0 + L / 2, self.y0 + 16, text="↺", fill=C["azzurro"], font=self.F(11, True))
+        self.reset = (x0, x0 + L, azione)
+        self.x_dopo = x0 + L
+        self.fr.configure(width=self.x_dopo)
+
+    def accanto(self, w, padx=6):
+        """Un widget accanto al riquadro, centrato in altezza (le spunte di come si paga): sulla tela, non in un'altra riga."""
+        w.update_idletasks()
+        x0 = self.x_dopo + padx
+        self.fr.create_window(x0, self.y0 + 16, window=w, anchor="w")
+        self.x_dopo = x0 + w.winfo_reqwidth()
+        self.fr.configure(width=self.x_dopo)
 
     def get(self):
         try:
@@ -263,10 +299,12 @@ class Numero:
         """Con un obiettivo il numero lo decide il farmer: si legge e non si scrive."""
         self.bloccato = si
         self.e.configure(state="disabled" if si else "normal", disabledbackground=TEND["campo"], disabledforeground=C["azzurro"])
-        for t in self.tasti:
-            t.configure(fg=TEND["campo"] if si else TEND["testo"], cursor="arrow" if si else "hand2")
-        if self.l_reset:
-            self.l_reset.configure(fg=self.bg if si else C["azzurro"], cursor="arrow" if si else "hand2")
+        for t in (self.t_meno, self.t_piu):
+            self.fr.itemconfigure(t, fill=TEND["campo"] if si else TEND["testo"])
+        if self.reset:
+            self.fr.itemconfigure(self.t_reset, fill=self.bg if si else C["azzurro"])
+        if si:
+            self.fr.configure(cursor="")
 
 
 class Spunte:

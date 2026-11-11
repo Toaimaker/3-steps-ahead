@@ -373,6 +373,37 @@ def cache_radice(tk):
     return _CACHE[id(r)]
 
 
+
+def sfumatura(ca, cb, A, spenta, L=64):
+    """La sfumatura di una capsula, L x A: piu' chiara in alto, il riflesso nella meta' alta, da ca a cb fra il 30% e il 70% della larghezza. Con numpy dall'11
+    nov 2026 (sessione Magic 13): era un doppio ciclo in Python, ~1 ms a coppia di colori; stesse operazioni nello stesso ordine, stessi pixel
+    (sfumatura_lenta, --prova)."""
+    import numpy as np
+    from PIL import Image
+    q = np.arange(A, dtype=np.float64) / (A - 1)
+    luce = 1.22 - 0.5 * q
+    velo = np.where(q < 0.46, (0.30 * (1 - q / 0.46) + 0.05) * (0.45 if spenta else 1), 0.0)
+    t = np.clip((np.arange(L, dtype=np.float64) / (L - 1) - 0.3) / 0.4, 0.0, 1.0)
+    u, v = np.array(ca, dtype=np.float64), np.array(cb, dtype=np.float64)
+    rgb = (u[None, None, :] + (v - u)[None, None, :] * t[None, :, None]) * luce[:, None, None] * (0.55 if spenta else 1)
+    c = np.minimum(255, rgb + (255 - rgb) * velo[:, None, None])
+    return Image.fromarray(c.astype(np.uint8), "RGB")
+
+
+def sfumatura_lenta(ca, cb, A, spenta, L=64):
+    """La sfumatura come si faceva prima, pixel per pixel: solo per la prova."""
+    from PIL import Image
+    base = Image.new("RGB", (L, A)); px = base.load()
+    for y in range(A):
+        q = y / (A - 1)
+        luce = 1.22 - 0.5 * q
+        velo = (0.30 * (1 - q / 0.46) + 0.05) * (0.45 if spenta else 1) if q < 0.46 else 0
+        for x in range(L):
+            t = max(0.0, min(1.0, (x / (L - 1) - 0.3) / 0.4))
+            rgb = [(u + (v - u) * t) * luce * (0.55 if spenta else 1) for u, v in zip(ca, cb)]
+            px[x, y] = tuple(int(min(255, c + (255 - c) * velo)) for c in rgb)
+    return base
+
 class Liste:
     def __init__(self, tk, F, alto=ALTO):
         self.tk, self.F = tk, F
@@ -417,17 +448,7 @@ class Liste:
             if kb not in self.fondi:
                 a, b = (colori[0], colori[-1]) if colori else ("C", "C")
                 ca, cb = (tuple(int(COLORI["C" if spenta else x][i:i + 2], 16) for i in (1, 3, 5)) for x in (a, b))
-                L, A = 64, self.alto * 2
-                base = Image.new("RGB", (L, A)); px = base.load()
-                for y in range(A):
-                    q = y / (A - 1)
-                    luce = 1.22 - 0.5 * q                      # piu' chiara in alto, piu' scura in basso
-                    velo = (0.30 * (1 - q / 0.46) + 0.05) * (0.45 if spenta else 1) if q < 0.46 else 0  # il riflesso
-                    for x in range(L):
-                        t = max(0.0, min(1.0, (x / (L - 1) - 0.3) / 0.4))
-                        rgb = [(u + (v - u) * t) * luce * (0.55 if spenta else 1) for u, v in zip(ca, cb)]
-                        px[x, y] = tuple(int(min(255, c + (255 - c) * velo)) for c in rgb)
-                self.fondi[kb] = base
+                self.fondi[kb] = sfumatura(ca, cb, self.alto * 2, spenta)
             im = self.fondi[kb]
             S = 3
             im = im.resize((w * S, self.alto * S), Image.BILINEAR).convert("RGBA")
@@ -1053,6 +1074,10 @@ def prova():
     casi.append(("le immagini in memoria hanno un tetto", list(L.piene) == ["finta 3"]))
     L.nuova_pagina()
     casi.append(("la pagina nuova svuota la coda", not L.coda and not L.attese))
+    rgb = [tuple(int(COLORI[k][i:i + 2], 16) for i in (1, 3, 5)) for k in COLORI]
+    casi.append(("la sfumatura con numpy ha gli stessi pixel di quella di prima", all(sfumatura(a, b, A, sp).tobytes() == sfumatura_lenta(a, b, A, sp).tobytes()
+                                                                                    for a in rgb for b in rgb for sp in (False, True) for A in (40, 52))))
+    casi.append(("negativa: un colore diverso da' pixel diversi", sfumatura(rgb[0], rgb[1], 40, False).tobytes() != sfumatura_lenta(rgb[0], rgb[2], 40, False).tobytes()))
     root.destroy()
     for nome, ok in casi:
         print(("  ok    " if ok else "  ROSSO ") + nome)

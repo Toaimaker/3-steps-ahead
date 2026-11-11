@@ -537,11 +537,30 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
         self.root.after(100, self.giro)
         self.root.after(60, self.fine_avvio)
 
-    def fine_avvio(self):
-        """La finestra e' a schermo: le pagine tornano a disegnarsi, e la scheda davanti si disegna adesso."""
-        Pagina.AVVIO = False
+    def fine_avvio(self, attesa=None):
+        """La finestra e' a schermo: le pagine tornano a disegnarsi, e la scheda davanti si disegna adesso. Se e' la Meta, i suoi dati (collezione, quaderni delle
+        carte, il meta del formato: ~0,7 s dal disco) si leggono prima in un filo, e la pagina si disegna quando sono pronti (11 nov 2026, sessione Magic 13: il
+        primo disegno teneva ferma la finestra mezzo secondo appena comparsa). Mai piu' di 4 s di attesa: poi si disegna comunque."""
         k = self.scelta["v"]
         pg = self.pagine.get(k)
+        if attesa is None and k == "meta" and pg is not None:
+            fatto = threading.Event()
+            fmt, rango = pg.t_fmt.get() or "Standard", pg.rango()       # da Tk, qui: il filo non tocca Tk
+
+            def leggi():
+                try:
+                    import dati_meta
+                    dati_meta.meta_mazzi(fmt, rango)
+                except Exception:       # noqa: BLE001 - e' solo un anticipo: il disegno rifa' il conto e mostra l'errore
+                    pass
+                finally:
+                    fatto.set()
+            threading.Thread(target=leggi, daemon=True).start()
+            attesa = (fatto, time.time())
+        if attesa is not None and not attesa[0].is_set() and time.time() - attesa[1] < 4:
+            self.root.after(30, lambda: self.fine_avvio(attesa))
+            return
+        Pagina.AVVIO = False
         if k != "corso" and pg is not None:
             try:
                 pg.fr.event_generate("<<Davanti>>")
@@ -729,8 +748,24 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
         return "-" if x is None else f"{x:.{d}f}"
 
 
+    def scalda(self):
+        """Quel che la prima finestra di un mazzo legge dal disco, letto in sottofondo dopo l'avvio (11 nov 2026, sessione Magic 13: la prima apertura bloccava
+        ~0,6 s, 0,25 di file: le 600 schede di Partite/, i prezzi e i formati di Scryfall, il pool dello Standard, numpy). Ogni cache si riempie una volta sola."""
+        import dati_mazzo
+        import mazzi_salvati
+        import prezzi_carte
+        time.sleep(3)
+        import importlib
+        for f in (dati_mazzo.schede, prezzi_carte.tutti, lambda: prezzi_carte.carta("Island"), mazzi_salvati.pool_standard,
+                  lambda: importlib.import_module("numpy")):      # numpy: le sfumature delle capsule (112 ms la prima volta)
+            try:
+                f()
+            except Exception as e:      # noqa: BLE001 - scaldare non e' necessario: la finestra li legge da se'
+                print("scalda:", f"{type(e).__name__}: {e}")
+
     def lavoro_dati(self):
         CAP._carte()        # i quaderni di tutti i set: qui, non al primo disegno
+        threading.Thread(target=self.scalda, daemon=True).start()
         while True:
             if "--log-limited" in sys.argv:      # collaudo: un log dato
                 self.coda.put(("limited", limited_dal_log(tuple(sys.argv[sys.argv.index("--log-limited") + 1].split(",")))))      # «adesso,prima»

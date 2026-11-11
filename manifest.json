@@ -1,6 +1,6 @@
 {
- "version": "0.1.11",
+ "version": "0.1.12",
  "date": "2026-11-11",
- "notes": "Smoother app: grids, lists, tables and the deck window drawn on single canvases, faster resizing and startup, a Rank filter in Meta.",
+ "notes": "Faster first deck window and startup, lighter Farmer controls, and a memory leak fixed when opening many decks.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

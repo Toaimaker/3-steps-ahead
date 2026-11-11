@@ -70,9 +70,16 @@ def mano(codice):
     return _M[codice]
 
 
+_TABELLA = {}
+
+
 def tabella_carte():
+    """{nome: carta} del database delle carte: lo stesso dizionario finche' il database e' lo stesso (11 nov 2026, sessione Magic 13: rifatto a ogni finestra di
+    un mazzo, 15.000 carte ogni volta). Non si modifica: chi aggiunge carte ne fa una copia (scheda_mazzo)."""
     d = CC.carica()
-    return {c["nome"]: c for c in (d or {}).get("carte") or []}
+    if _TABELLA.get("d") is not d:
+        _TABELLA.update(d=d, t={c["nome"]: c for c in (d or {}).get("carte") or []})
+    return _TABELLA["t"]
 
 
 def e_terra(nome, carte):

@@ -255,7 +255,8 @@ class DrafterEvento:
     def disegna_record(self):
         """Il record del draft: una coppa per ogni vinta, un teschio per ogni persa, i colori e il win rate, in un Canvas sopra l'arte."""
         L = self.tela_rec.winfo_width()
-        if L < 60:
+        # la tela si misura mentre la finestra si costruisce (dall'11 nov 2026 la finestra compare prima dei dati): record e mazzo arrivano dopo
+        if L < 60 or not hasattr(self, "rec") or not hasattr(self, "inviato"):
             return
         w, l = self.rec["w"], self.rec["l"]
         c = self.tela_rec
