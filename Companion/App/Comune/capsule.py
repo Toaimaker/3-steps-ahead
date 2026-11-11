@@ -675,25 +675,28 @@ class Liste:
     def elenco(self, padre, voci, bg="#18181c", passo=0):
         """Tutte le capsule di una lista su una tela sola, una riga per carta (11 nov 2026, sessione Magic 13, Note/Motore_Grafico_App.md): con una tela per
         capsula la finestra di un mazzo aveva 60-80 finestre di Windows solo per la lista. voci: [(nome, copie)]; passo: lo spazio fra le righe. Ogni riga e' una
-        CartaTela: la carta grande in hover e i suoi dati come prima. -> la tela, con .righe = [(riga, nome, copie)]."""
+        CartaTela: la carta grande in hover e i suoi dati come prima. Una voce puo' avere un terzo elemento, le opzioni di disegna_riga (spenta, copie, destra,
+        colonna, col_destra). -> la tela, con .righe = [(riga, nome, copie, opzioni)]."""
         import carta_tela
         alto = self.alto + passo
         c = self.tk.Canvas(padre, height=max(1, len(voci) * alto - passo), bg=bg, highlightthickness=0, bd=0)
         sm = carta_tela.Smistatore(c)
         c.righe = []
-        for i, (nome, q) in enumerate(voci):
+        for i, v in enumerate(voci):
+            nome, q = v[0], v[1]
+            opz = v[2] if len(v) > 2 else {}        # le opzioni di disegna_riga: spenta, copie, destra, colonna, col_destra
             r = carta_tela.CartaTela(c, 0, i * alto, 1, self.alto, sm)
             r.bind("<Enter>", lambda e, r=r, nome=nome: self.entra(r, nome)); r.bind("<Leave>", self.esci); r.bind("<Destroy>", self.esci, add=True)
-            c.righe.append((r, nome, q))
+            c.righe.append((r, nome, q, opz))
 
         def disegna(e=None):
             w = c.winfo_width()
             if w < 60 or w == getattr(c, "larga_fatta", None):
                 return
             c.larga_fatta = w
-            for r, nome, q in c.righe:
+            for r, nome, q, opz in c.righe:
                 r.larga = w
-                self.disegna_riga(r, w, nome, q)
+                self.disegna_riga(r, w, nome, q, **opz)
         c.bind("<Configure>", disegna)
         return c
 
@@ -885,11 +888,9 @@ class Liste:
         p.withdraw()
         p.overrideredirect(True)
         p.configure(bg="#101014")
-        self.tk.Label(p, image=img, bd=0, bg="#101014").pack()
-        if self.schede.get(nome):
-            self.tabella_carta(p, self.schede[nome])
-        if self.dati_hover:
-            self.tabella_draft(p, metadati(nome))
+        # l'immagine e i dati su una tela sola (11 nov 2026, sessione Magic 13): prima un'etichetta per l'immagine e una per ogni dato, 20-40 widget a ogni hover
+        cv = self.tk.Canvas(p, bg="#101014", highlightthickness=0, bd=0); cv.pack()
+        self.disegna_hover(cv, img, self.schede.get(nome), metadati(nome) if self.dati_hover else None)
         p.update_idletasks()
         # il mouse puo' essere gia' uscito mentre la scheda si costruiva: esci() l'ha distrutta (8 nov 2026, «bad window path name» nel registro della finestra)
         if not p.winfo_exists() or self.pop is not p or not c.winfo_exists():
@@ -908,30 +909,51 @@ class Liste:
         p.geometry(f"{w}x{h}+{x}+{y}")
         p.deiconify()
 
-    def tabella_carta(self, padre, voci):
-        """I dati della carta sotto l'immagine, una colonna per dato col titolo sopra (Autore, 7 nov 2026: «i minidati a sx delle carte li mettiamo sulla scheda della carta quando appare»)."""
-        fondo = "#18181c"
-        t = self.tk.Frame(padre, bg=fondo, padx=10, pady=6); t.pack(fill="x", pady=(6, 0))
+    def disegna_hover(self, cv, img, voci, righe):
+        """La carta grande e sotto i suoi dati, disegnati. voci: [(titolo, valore, colore)], una colonna per dato col titolo sopra (Autore, 7 nov 2026: «i
+        minidati a sx delle carte li mettiamo sulla scheda della carta quando appare»); righe: la tabella del draft, i nomi sopra con un colore ciascuno
+        (Autore, 5 nov 2026: «i titoletti piu' grandi e di colori differenti»), una riga per formato."""
+        import tabella_tela as TT
+        fondo, W = "#18181c", img.width()
+        cv.create_image(0, 0, image=img, anchor="nw")
+        y = img.height()
         tinte = ("#24baff", "#5cb85c", "#f0ad4e", "#c792ea", "#ffffff")
-        for i, (titolo, valore, col) in enumerate(voci):
-            t.columnconfigure(i, weight=1)
-            self.tk.Label(t, text=titolo, bg=fondo, fg=tinte[i % len(tinte)], font=self.F(9, True), pady=0).grid(row=0, column=i, sticky="w", padx=(0, 12))
-            self.tk.Label(t, text=valore, bg=fondo, fg=col or "#ffffff", font=self.F(10, True), pady=1).grid(row=1, column=i, sticky="w", padx=(0, 12))
-
-    def tabella_draft(self, padre, righe):
-        """La tabella sotto l'immagine: i nomi sopra in maiuscolo bianco, una riga per formato."""
-        if not righe:
-            return
-        fondo = "#18181c"
-        t = self.tk.Frame(padre, bg=fondo, padx=10, pady=6); t.pack(fill="x", pady=(6, 0))
-        t.columnconfigure(0, weight=1)
-        # titoli piu' grandi, uno per colore (Autore, 5 nov 2026: «i titoletti piu' grandi e di colori differenti»)
-        for i, (nome, col) in enumerate((("", "#ffffff"), ("GIH WR", "#24baff"), ("ALSA", "#5cb85c"), ("PLAYED", "#f0ad4e"), ("GAMES", "#c792ea"))):
-            self.tk.Label(t, text=nome, bg=fondo, fg=col, font=self.F(9, True), pady=0).grid(row=0, column=i, sticky="w" if i == 0 else "e", padx=(10 if i else 0, 0))
-        for r, riga in enumerate(righe, 1):
-            for i, v in enumerate(riga):
-                self.tk.Label(t, text=v, bg=fondo, fg="#ffffff", font=self.F(8 if i == 0 else 10, True), pady=1).grid(row=r, column=i, sticky="w" if i == 0 else "e", padx=(10 if i else 0, 0))
-
+        if voci:
+            _w, h1 = TT.misura(cv, self.F(9, True), "Ag"); _w, h2 = TT.misura(cv, self.F(10, True), "Ag")
+            y0 = y + 6
+            alto = 6 + h1 + h2 + 2 + 6
+            cv.create_rectangle(0, y0, W, y0 + alto, fill=fondo, width=0)
+            n = len(voci)
+            for i, (titolo, valore, col) in enumerate(voci):
+                x = 10 + i * (W - 20) / n
+                cv.create_text(x, y0 + 6, text=titolo, anchor="nw", fill=tinte[i % len(tinte)], font=self.F(9, True))
+                cv.create_text(x, y0 + 6 + h1 + 1, text=valore, anchor="nw", fill=col or "#ffffff", font=self.F(10, True))
+            y = y0 + alto
+        if righe:
+            testa = (("", "#ffffff"), ("GIH WR", "#24baff"), ("ALSA", "#5cb85c"), ("PLAYED", "#f0ad4e"), ("GAMES", "#c792ea"))
+            _w, h1 = TT.misura(cv, self.F(9, True), "Ag"); _w, h8 = TT.misura(cv, self.F(8, True), "Ag"); _w, h10 = TT.misura(cv, self.F(10, True), "Ag")
+            hr = max(h8, h10) + 2
+            y0 = y + 6
+            alto = 6 + h1 + hr * len(righe) + 6
+            cv.create_rectangle(0, y0, W, y0 + alto, fill=fondo, width=0)
+            larghe = [max([TT.misura(cv, self.F(9, True), testa[i][0])[0]] + [TT.misura(cv, self.F(8 if i == 0 else 10, True), str(r[i]))[0] for r in righe if i < len(r)])
+                      for i in range(len(testa))]
+            destra, xs = W - 10, {}
+            for i in range(len(testa) - 1, 0, -1):      # le colonne dei numeri allineate a destra, da destra; il nome del formato a sinistra
+                xs[i] = destra
+                destra -= larghe[i] + 10
+            for i, (t, col) in enumerate(testa):
+                if t:
+                    cv.create_text(xs[i], y0 + 6, text=t, anchor="ne", fill=col, font=self.F(9, True))
+            for r_, riga in enumerate(righe):
+                yr = y0 + 6 + h1 + r_ * hr + 1
+                for i, v in enumerate(riga):
+                    if i == 0:
+                        cv.create_text(10, yr, text=v, anchor="nw", fill="#ffffff", font=self.F(8, True))
+                    elif i in xs:
+                        cv.create_text(xs[i], yr, text=v, anchor="ne", fill="#ffffff", font=self.F(10, True))
+            y = y0 + alto
+        cv.configure(width=W, height=y)
 
 def prova():
     casi = [("costo e colori di una carta del set", info("Saheeli, Jewel of Avishkar")[:2] == (["2", "U", "R"], "UR")),

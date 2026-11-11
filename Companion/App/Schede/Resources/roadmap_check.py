@@ -6,7 +6,7 @@ import risorse as RS
 
 from dati_app import data_corta
 from tema import CI as C, PERSA, SFONDO_FASCIA, SFONDO_LINEA, TEND, VINTA, barra_scura
-from widget import a_riposo
+from widget import a_riposo, pronta_poi
 
 
 class RoadmapCheck:
@@ -27,7 +27,7 @@ class RoadmapCheck:
         if vecchia is not None and vecchia.winfo_exists():
             vecchia.destroy()
         padre = self.fr.winfo_toplevel()
-        f = self.fin_and = tk.Toplevel(padre, bg=C["fondo"])
+        f = self.fin_and = pronta_poi(tk.Toplevel(padre, bg=C["fondo"]))
         f.transient(padre)
         f.title("Roadmap check")
         barra_scura(f, C["fondo"], C["titolo"], C["filo"])

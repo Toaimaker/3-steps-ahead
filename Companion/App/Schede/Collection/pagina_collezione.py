@@ -448,9 +448,12 @@ class PaginaCollezione(Pagina):
             else:
                 sets_ = CC.RS.ordina_set([k for k in c["sets"] if not s or k in s])
                 bandita = self.legalita(c) == "banned"
-                w = self.lista.riga(cv, c["nome"], CC.copie_in(c, s), destra="BANNED" if bandita else f"{c['r']} {sets_[0]}",
-                                    col_destra=C["rosso"] if bandita else self.COL_RARITA.get(c["r"], C["testo"]), bg=C["scheda"], colonna="M WOE")
-                cv.create_window(x, y, anchor="nw", window=w, width=cella - 8)
+                # anche la lista sulla tela della griglia, una riga disegnata per carta (11 nov 2026): prima una tela di Tk per riga
+                larga = max(60, round(cella - 8))
+                w = carta_tela.CartaTela(cv, round(x), y, larga, CAP.ALTO, self.smista)
+                self.lista.disegna_riga(w, larga, c["nome"], CC.copie_in(c, s), destra="BANNED" if bandita else f"{c['r']} {sets_[0]}",
+                                        col_destra=C["rosso"] if bandita else self.COL_RARITA.get(c["r"], C["testo"]), colonna="M WOE")
+                w.bind("<Enter>", lambda e, w=w, n=c["nome"]: self.lista.entra(w, n)); w.bind("<Leave>", self.lista.esci); w.bind("<Destroy>", self.lista.esci, add=True)
             self.lega_trascina(w, c["nome"])
             self.viste[i] = w
         self.lista.solo(self.trovate[i]["nome"] for i in self.viste)

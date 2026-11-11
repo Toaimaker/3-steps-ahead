@@ -52,6 +52,11 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
     """La finestra grande del Companion: costruita in __init__, aggiornata dal giro. avvia() la crea e accende il ciclo di Tk."""
 
     def __init__(self):
+        # la finestra compare prima, i disegni pesanti dopo (11 nov 2026, sessione Magic 13): il database delle carte si legge in un filo da subito, e finche' la
+        # finestra si costruisce nessuna pagina si disegna (Pagina.AVVIO); la scheda davanti si disegna appena la finestra e' a schermo (fine_avvio). Prima la
+        # Meta si disegnava dentro la costruzione: 1,9 s senza finestra
+        CC.precarica()
+        Pagina.AVVIO = True
         self._costruisci_finestra()
         self._costruisci_chat()
         self._costruisci_colonna()
@@ -530,6 +535,20 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
         self.perf.segna(); self.pagine["risorse"].sporca = True      # si disegnano quando le apri
 
         self.root.after(100, self.giro)
+        self.root.after(60, self.fine_avvio)
+
+    def fine_avvio(self):
+        """La finestra e' a schermo: le pagine tornano a disegnarsi, e la scheda davanti si disegna adesso."""
+        Pagina.AVVIO = False
+        k = self.scelta["v"]
+        pg = self.pagine.get(k)
+        if k != "corso" and pg is not None:
+            try:
+                pg.fr.event_generate("<<Davanti>>")
+                if hasattr(pg, "se_sporca"):
+                    pg.se_sporca()
+            except Exception as e:      # noqa: BLE001 - una pagina che cade non ferma la finestra
+                print("fine_avvio:", e)
 
 
 
@@ -740,6 +759,9 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
                 sch["costruite"] = costruite()
                 try:
                     sch["premi"] = PE.raccogli()     # gemme, buste, rare e mitiche vinte, dai log di Arena
+                    if sch["premi"]:        # il farming si conta qui, nel filo dei dati: Performance lo ritrova pronto (dati_app.farming si ricorda; 11 nov 2026)
+                        import dati_app
+                        dati_app.farming(sch["premi"])
                 except Exception as e:
                     print("premi:", f"{type(e).__name__}: {e}"); sch["premi"] = None
                 sch["campo"] = campo(self.stato["set"])

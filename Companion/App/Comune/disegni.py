@@ -89,13 +89,17 @@ class Disegno:
         s = SCALA
         self.d.arc((x0 * s, y0 * s, x1 * s, y1 * s), inizio, fine, fill=_rgba(colore), width=max(1, round(larghezza * s)))
 
-    def immagine(self):
-        """L'immagine PIL alla misura vera, ridotta col filtro Lanczos."""
+    def immagine(self, veloce=False):
+        """L'immagine PIL alla misura vera, ridotta col filtro Lanczos. veloce: la media di ogni blocco SCALA x SCALA in alfa premoltiplicata (il
+        sovracampionamento puro, 4 volte piu' veloce: 16 ms contro 62 su un grafico di 1200 x 320; differenza media 1,2 su 255): per i grafici, che si rifanno
+        spesso e sono grandi (11 nov 2026, sessione Magic 13). Le icone, piccole e in cache, restano col Lanczos."""
+        if veloce:
+            return self.im.convert("RGBa").reduce(SCALA).convert("RGBA")
         return self.im.resize((self.l, self.h), Image.LANCZOS)
 
-    def foto(self):
+    def foto(self, veloce=False):
         from PIL import ImageTk
-        im = self.immagine()
+        im = self.immagine(veloce)
         f = ImageTk.PhotoImage(im)
         import tela_gpu         # la sorgente, per la tela sulla scheda video (Card view): non carica pyglet
         tela_gpu.registra(f, im)
@@ -241,7 +245,7 @@ def tratti(l, h, linee=(), punti=(), poligoni=()):
         d.linea(pts, colore, larghezza, tratteggio=tratteggio)
     for x, y, r, riempi, bordo, larghezza in punti:
         d.cerchio(x, y, r, riempi, bordo, larghezza)
-    return d.foto()
+    return d.foto(veloce=True)
 
 
 def prova():
@@ -258,6 +262,9 @@ def prova():
     casi.append(("dentro e' pieno", px[10, 10][3] == 255))
     bordo = [px[x, 10][3] for x in range(20)]
     casi.append(("il bordo del cerchio ha toni intermedi (antialias)", any(0 < a < 255 for a in bordo)))
+    pv = d.immagine(veloce=True).load()
+    casi.append(("anche la riduzione veloce: toni intermedi, e il colore del bordo non si scurisce", any(0 < pv[x, 10][3] < 255 for x in range(20))
+                 and all(pv[x, 10][3] == 0 or pv[x, 10][:3] == (0x24, 0xBA, 0xFF) or abs(pv[x, 10][2] - 255) <= 2 for x in range(20))))
     duro = Image.new("RGBA", (20, 20), (0, 0, 0, 0)); ImageDraw.Draw(duro).ellipse((2, 2, 18, 18), fill=(36, 186, 255, 255))
     casi.append(("senza la riduzione il bordo e' duro (prova negativa)", not any(0 < duro.load()[x, 10][3] < 255 for x in range(20))))
     casi.append(("i tratti continuano la fase da un segmento all'altro", len(_tratti([(0, 0), (10, 0), (20, 0)], 4, 2)) == 4))

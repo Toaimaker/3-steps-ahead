@@ -3,6 +3,7 @@ import capsule as CAP
 import dati_mazzo as DM
 
 from tema import CI as C, barra_scura
+from widget import pronta_poi
 
 
 class ManiMazzo:
@@ -17,7 +18,7 @@ class ManiMazzo:
         if vecchia is not None and vecchia.winfo_exists():
             vecchia.destroy()
         padre = self.fin if self.fin is not None and self.fin.winfo_exists() else self.fr.winfo_toplevel()
-        f = self.fin_mani = tk.Toplevel(padre, bg=C["fondo"])
+        f = self.fin_mani = pronta_poi(tk.Toplevel(padre, bg=C["fondo"]))
         f.transient(padre)
         f.title(f"Starting hand · {titolo}")
         barra_scura(f, C["fondo"], C["titolo"], C["filo"])

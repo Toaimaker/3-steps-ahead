@@ -14,6 +14,9 @@ from icone import icona_azione, icona_jolly
 from tema import CI as C, PERSA, VINTA
 
 
+_RADAR = {}       # (lato, assi) -> l'immagine del grafo dell'archetipo
+
+
 class SchedaMazzo:
     """Il contenuto della finestra del mazzo: testata, lista, dati, jolly, archetipo, mani, terre in mano, grafico."""
 
@@ -24,6 +27,15 @@ class SchedaMazzo:
         c = tk.Canvas(padre, width=L, height=A, bg=C["cap"], highlightthickness=0, bd=0)
         cx, cy, r = L / 2, A / 2, lato / 2 - 4
         dirs = {0: (0, -1), 1: (1, 0), 2: (0, 1), 3: (-1, 0)}
+        chiave = (id(padre._root()), lato, tuple(assi.items()))       # (la radice: un'immagine vale solo nella sua) lo stesso grafo si ridisegna uguale: l'immagine si ricorda (11 nov 2026: 58 ms ad apertura)
+        cache = _RADAR
+        if chiave in cache:
+            c.foto_ = cache[chiave]
+            c.create_image(0, 0, image=c.foto_, anchor="nw")
+            for i, (nome, val) in enumerate(assi.items()):
+                dx, dy = dirs[i]
+                c.create_text(cx + dx * (r + 4), cy + dy * (r + 4), text=f"{nome} {val}", anchor={0: "s", 1: "w", 2: "n", 3: "e"}[i], fill=C["testo"], font=F(7))
+            return c
         d = DG.Disegno(L, A)            # i rombi, gli assi e il poligono nitidi (disegni.py); i nomi degli assi restano testo di Tk
         for k in (1.0, 0.5):
             d.poligono([(cx + dirs[i][0] * r * k, cy + dirs[i][1] * r * k) for i in range(4)], bordo=C["filo"], larghezza=1)
@@ -35,6 +47,9 @@ class SchedaMazzo:
             punti.append((cx + dx * r * q, cy + dy * r * q))
         d.poligono(punti, riempi=C["azzurro_s"], bordo=C["accento"], larghezza=2)
         c.foto_ = d.foto()
+        if len(cache) > 60:
+            cache.clear()
+        cache[chiave] = c.foto_
         c.create_image(0, 0, image=c.foto_, anchor="nw")
         for i, (nome, val) in enumerate(assi.items()):
             dx, dy = dirs[i]

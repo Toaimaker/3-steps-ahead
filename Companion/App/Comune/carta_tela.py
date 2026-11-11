@@ -26,7 +26,7 @@ import itertools  # noqa: E402
 _NUMERO = itertools.count(1)
 # i nomi dello stesso evento: per Tk <Button-1> e <1> sono <ButtonPress-1>. Lo Smistatore manda <ButtonPress-1>: senza l'alias una scheda legata a <Button-1>
 # non riceveva il clic vero (11 nov 2026: le schede di Meta e Your decks, trovato dalla prova delle tabelle)
-_ALIAS = {"<Button-1>": "<ButtonPress-1>", "<1>": "<ButtonPress-1>", "<B1-ButtonRelease>": "<ButtonRelease-1>"}
+_ALIAS = {"<Button-1>": "<ButtonPress-1>", "<1>": "<ButtonPress-1>", "<B1-ButtonRelease>": "<ButtonRelease-1>", "<Button-3>": "<ButtonPress-3>", "<3>": "<ButtonPress-3>"}
 
 
 def _seq(s):
@@ -208,6 +208,12 @@ class Smistatore:
         cv.bind("<B1-Motion>", lambda e: self.presa.manda("<B1-Motion>", e) if self.presa else None, add="+")
         cv.bind("<ButtonRelease-1>", self.rilascia, add="+")
         cv.bind("<Double-Button-1>", self.doppio, add="+")
+        cv.bind("<ButtonPress-3>", self.destro, add="+")
+
+    def destro(self, e):
+        c = self.sotto(e)
+        if c is not None:
+            c.manda("<ButtonPress-3>", e)
 
     def doppio(self, e):
         c = self.sotto(e)
@@ -289,6 +295,9 @@ def prova():
     b.bind("<Button-1>", lambda e: clic.append("b"), add=True)        # legata col nome di Tk piu' comune: il clic vero arriva come <ButtonPress-1>
     sm.premi(E(250, 50)); sm.rilascia(E(250, 50))
     casi.append(("<Button-1> riceve la pressione vera dello smistatore", clic == ["b"]))
+    b.bind("<Button-3>", lambda e: clic.append("destro b"), add=True)
+    sm.destro(E(250, 50)); sm.destro(E(150, 50))
+    casi.append(("il tasto destro alla carta sotto, fra le carte niente", clic == ["b", "destro b"]))
     del visti[:]
     sm.premi(E(150, 50)); sm.rilascia(E(150, 50))
     casi.append(("negativa: fra le carte non si preme niente", "premi a" not in visti and "premi b" not in visti))

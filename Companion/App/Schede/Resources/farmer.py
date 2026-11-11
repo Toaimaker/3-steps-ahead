@@ -18,7 +18,7 @@ class MenuGoal:
     get() da' gli obiettivi accesi nell'ordine del menu, pesi() {obiettivo: percentuale} per Risorse.piano. Si trascina, o si clicca sulla barra; il piano si rifa' al rilascio."""
 
     PASSO = 5
-    LARGO, ALTO = 210, 18
+    LARGO, ALTO, TESTA = 210, 18, 15
 
     def __init__(self, tk, padre, voci, F, cb, bg):
         self.voci, self.cb, self.F, self.bg = voci, cb, F, bg
@@ -30,12 +30,11 @@ class MenuGoal:
         testa = tk.Frame(self.fr, bg=bg); testa.pack(fill="x", pady=(0, 4))
         tk.Label(testa, text="GOAL", bg=bg, fg=C["titolo"], font=F(7, True), pady=0).pack(side="left")
         self.l_tot = tk.Label(testa, text="", bg=bg, fg=C["muto"], font=F(7), pady=0); self.l_tot.pack(side="right")
+        # un goal e' una tela sola: il nome e la percentuale sopra, la barra sotto (11 nov 2026, sessione Magic 13: prima cinque widget per goal)
+        self.nomi = dict(voci)
         for k, nome in voci:
-            r = tk.Frame(self.fr, bg=bg); r.pack(fill="x", pady=(0, 5))
-            alto_ = tk.Frame(r, bg=bg); alto_.pack(fill="x")
-            l = tk.Label(alto_, text=nome, bg=bg, fg=C["testo"], font=F(8), pady=0); l.pack(side="left")
-            n = tk.Label(alto_, text="0%", bg=bg, fg=C["muto"], font=F(8, True), pady=0); n.pack(side="right")
-            c = tk.Canvas(r, width=self.LARGO, height=self.ALTO, bg=bg, highlightthickness=0, cursor="hand2"); c.pack(fill="x", pady=(1, 0))
+            c = tk.Canvas(self.fr, width=self.LARGO, height=self.TESTA + self.ALTO, bg=bg, highlightthickness=0, cursor="hand2"); c.pack(fill="x", pady=(0, 5))
+            l, n = "nome", "pc"
             c.bind("<Button-1>", lambda e, k=k: self.trascina(k, e.x))
             c.bind("<B1-Motion>", lambda e, k=k: self.trascina(k, e.x))
             c.bind("<ButtonRelease-1>", lambda e: self.rilascia())
@@ -133,6 +132,9 @@ class MenuGoal:
         c = self.cv[k]; c.delete("all")
         L = max(40, c.winfo_width() if c.winfo_width() > 1 else self.LARGO)
         x0, x1, y = 8, L - 8, self.ALTO // 2
+        v_ = self.v[k]      # sopra la barra il nome e la percentuale, disegnati
+        c.create_text(0, self.TESTA / 2, text=self.nomi[k], anchor="w", fill=C["titolo"] if v_ > 0 else C["testo"], font=self.F(8), tags="nome")
+        c.create_text(L, self.TESTA / 2, text=f"{round(v_)}%", anchor="e", fill=C["azzurro"] if v_ > 0 else C["muto"], font=self.F(8, True), tags="pc")
         pos = lambda pc: x0 + (x1 - x0) * pc / 100
         v = self.v[k]
         d = DG.Disegno(L, self.ALTO)          # la barra, la parte piena e il pomello in un'immagine nitida (disegni.py)
@@ -141,13 +143,10 @@ class MenuGoal:
             d.linea([(x0, y), (pos(v), y)], C["azzurro"], 4)
         d.cerchio(pos(v), y, 6.5, riempi=C["azzurro"], bordo=C["titolo"], larghezza=1.5)      # colorato anche a 0
         c.foto_ = d.foto()
-        c.create_image(0, 0, image=c.foto_, anchor="nw")
+        c.create_image(0, self.TESTA, image=c.foto_, anchor="nw")
 
     def disegna(self):
         for k in self.cv:
-            v = self.v[k]
-            self.num[k].configure(text=f"{round(v)}%", fg=C["azzurro"] if v > 0 else C["muto"])
-            self.lab[k].configure(fg=C["titolo"] if v > 0 else C["testo"])
             self.disegna_uno(k)
         tot = round(sum(self.v.values()))
         self.l_tot.configure(text="No goal" if not tot else f"{tot}% assigned", fg=C["azzurro"] if tot == 100 else C["muto"])

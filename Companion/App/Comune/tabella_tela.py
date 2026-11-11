@@ -31,13 +31,25 @@ import carta_tela  # noqa: E402
 _FONT = {}      # (radice, font) -> tkfont.Font: le misure dei testi
 
 
+_MISURE = {}    # (radice, font, testo) -> (larghezza, alto della riga): ogni misura e' una chiamata a Tk
+
+
 def misura(tk_w, font, testo):
     from tkinter import font as tkfont
-    k = (id(tk_w.winfo_toplevel()), repr(font))
-    f = _FONT.get(k)
-    if f is None:
-        f = _FONT[k] = tkfont.Font(root=tk_w, font=font)
-    return f.measure(testo), f.metrics("linespace")
+    r = id(tk_w.winfo_toplevel())
+    km = (r, repr(font), testo)
+    m = _MISURE.get(km)
+    if m is None:
+        k = (r, repr(font))
+        f = _FONT.get(k)
+        if f is None:
+            f = _FONT[k] = (tkfont.Font(root=tk_w, font=font), None)
+        if f[1] is None:
+            f = _FONT[k] = (f[0], f[0].metrics("linespace"))
+        if len(_MISURE) > 20000:
+            _MISURE.clear()
+        m = _MISURE[km] = (f[0].measure(testo), f[1])
+    return m
 
 
 class Cella:

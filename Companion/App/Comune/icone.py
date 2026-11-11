@@ -105,13 +105,13 @@ def icone_mana(lato=16):
     """I simboli veri di Scryfall (svg in Companion/finestra), resi in png con PyMuPDF."""
     out = {}
     try:
-        try:
-            import pymupdf as fitz
-        except ImportError:
-            import fitz
         for k in "WUBRG":
             png = os.path.join(ASSET, f"mana_{k}_{lato}.png")
             if not os.path.exists(png):
+                try:        # PyMuPDF solo se un png manca davvero: importarlo costava 0,1 s a ogni avvio (11 nov 2026)
+                    import pymupdf as fitz
+                except ImportError:
+                    import fitz
                 doc = fitz.open(os.path.join(ASSET, f"mana_{k}.svg"))
                 pg = doc[0]; z = lato / pg.rect.width
                 pg.get_pixmap(matrix=fitz.Matrix(z, z), alpha=True).save(png)

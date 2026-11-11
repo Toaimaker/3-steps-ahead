@@ -525,6 +525,29 @@ def farming(voci):
     di piu' in gemme (vinte meno spese). Un evento e' costruito se fra le partite costruite (partite_costruite) ce n'e' una."""
     if not voci:
         return []
+    # lo stesso conto si ricorda finche' i premi e i file delle partite non cambiano (11 nov 2026, sessione Magic 13): Performance lo rifaceva a ogni disegno,
+    # 0,4 s di partite_costruite nel filo della finestra
+    import account as _ACC
+    import partite_log as _PL
+
+    def data(f):
+        try:
+            return os.path.getmtime(f)
+        except OSError:
+            return None
+    chiave = (id(voci), len(voci), _ACC.attivo(), data(_ACC.percorso("untapped_partite_cache.json", autore=os.path.join(LOGDIR, "untapped_partite_cache.json"))),
+              data(_PL.CACHE), data(os.path.join(os.path.expandvars(r"%USERPROFILE%\AppData\LocalLow\Wizards Of The Coast\MTGA"), "Player.log")))
+    if _FARMING.get("chiave") == chiave:
+        return _FARMING["righe"]
+    _FARMING["righe"] = _farming(voci)
+    _FARMING["chiave"] = chiave
+    return _FARMING["righe"]
+
+
+_FARMING = {}
+
+
+def _farming(voci):
     costruiti, ultima = set(), {}       # dal 10 nov 2026 dalle stesse partite delle altre schede (il log, Untapped solo prima dei log)
     for x in partite_costruite(tutti=True) or []:
         if x["raw"]:

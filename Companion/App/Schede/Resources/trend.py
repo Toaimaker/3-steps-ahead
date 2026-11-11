@@ -66,19 +66,29 @@ class Trend:
 
     def disegna_opzioni(self):
         """Le opzioni sotto il grafico: si flaggano, il grafico si rifa' e loro restano."""
+        # su una tela sola (11 nov 2026, sessione Magic 13): prima tre widget per opzione, rifatti a ogni ridisegno del grafico
+        from tkinter import font as tkfont
         tk, F = self.tk, self.F
-        r = tk.Frame(self.b_gra, bg=C["scheda"]); r.pack(side="bottom", fill="x", pady=(6, 0))
         voci = (("entra", "Earned"), ("esce", "Spent"), ("saldo", "Balance"), ("cumula", "Cumulative"), ("media", "Average"))
         n = 3 if self.stretta else 5
+        f = tkfont.Font(font=F(8))
+        alto_r = max(13, f.metrics("linespace")) + 2
+        larghe = [0] * n
+        for i, (_k, nome) in enumerate(voci):
+            larghe[i % n] = max(larghe[i % n], 13 + 4 + f.measure(nome))
+        righe_ = (len(voci) + n - 1) // n
+        r = tk.Canvas(self.b_gra, bg=C["scheda"], highlightthickness=0, bd=0, height=righe_ * alto_r, cursor="hand2"); r.pack(side="bottom", fill="x", pady=(6, 0))
+        r.opzioni_trend = {}
         for i, (k, nome) in enumerate(voci):
             spento = (k == "saldo" and self.confronta) or (k == "media" and self.op["cumula"])       # in quella vista non si possono mostrare
-            f = tk.Frame(r, bg=C["scheda"], cursor="hand2"); f.grid(row=i // n, column=i % n, sticky="w", padx=(0, 12), pady=(0, 2))
             on = self.op[k] and not spento
-            c = tk.Canvas(f, width=13, height=13, bg=C["scheda"], highlightthickness=0, cursor="hand2"); c.pack(side="left", padx=(0, 4))
-            c.create_image(0, 0, image=DG.spunta(13, on, C["azzurro"], TEND["campo"], TEND["bordo"], C["fondo"]), anchor="nw")
-            l = tk.Label(f, text=nome, bg=C["scheda"], fg=C["muto"] if spento else C["testo"], font=F(8), pady=0, cursor="hand2"); l.pack(side="left")
-            for w in (f, c, l):
-                w.bind("<Button-1>", lambda e, k=k: self.scambia_op(k))
+            x = sum(larghe[j] + 12 for j in range(i % n)); y = (i // n) * alto_r
+            t = f"op_{k}"
+            r.create_rectangle(x, y, x + larghe[i % n], y + alto_r, fill=C["scheda"], width=0, tags=t)      # tutta la voce si clicca
+            r.create_image(x, y + (alto_r - 13) // 2, image=DG.spunta(13, on, C["azzurro"], TEND["campo"], TEND["bordo"], C["fondo"]), anchor="nw", tags=t)
+            r.create_text(x + 17, y + alto_r / 2, text=nome, anchor="w", fill=C["muto"] if spento else C["testo"], font=F(8), tags=t)
+            r.tag_bind(t, "<Button-1>", lambda e, k=k: self.scambia_op(k))
+            r.opzioni_trend[k] = on
 
     def scambia_op(self, k):
         self.op[k] = not self.op[k]

@@ -34,7 +34,7 @@ from pagina_base import prepara_capsule
 from pagina_collezione import PaginaCollezione
 from pagina_standard import PaginaStandard
 from tema import CI as C, barra_scura
-from widget import ARANCIO, Tendina, pulsante_solido
+from widget import ARANCIO, Tendina, pronta_poi, pulsante_solido
 
 DOVE = ("Deck", "Sideboard", "Commander")
 LARGA, ALTA = 1180, 900
@@ -77,7 +77,7 @@ class Costruttore:
         self.meta = {}
         self.t_nome = None
         madre = pagina.fr.winfo_toplevel()
-        w = self.w = tk.Toplevel(madre); w.transient(madre); w.title("Deck builder")
+        w = self.w = pronta_poi(tk.Toplevel(madre)); w.transient(madre); w.title("Deck builder")
         w.configure(bg=C["scheda"])
         barra_scura(w, C["fondo"], C["titolo"], C["filo"])
         madre.update_idletasks()
@@ -213,8 +213,18 @@ class Costruttore:
                 self.b["Mana base"] = casa["b"]
             else:
                 tk.Label(padre, text=f"{titolo} · {sum(carte.values())}", bg=C["scheda"], fg=C["titolo"], font=F(7, True), anchor="w").pack(fill="x", pady=(0, 3))
-            for n, q in CAP.ordina(list(carte.items())):
+            voci = CAP.ordina(list(carte.items()))
+            for n, q in voci:
                 self.lista_m.schede[n] = self.pg.dati_carta(n, sum(self.zone[k].get(n, 0) for k in self.zone), self.coll)
+            if not lands:       # magie, comandante e sideboard: una tela per la lista, non una per capsula (11 nov 2026); clic toglie una copia, destro ne aggiunge una
+                el = self.lista_m.elenco(padre, voci, bg=C["scheda"]); el.pack(fill="x")
+                for r, n, _q, _o in el.righe:
+                    r.cursore = "hand2"
+                    r.bind("<Button-1>", lambda e, n=n, z=zona: self.metti(n, -1, z), add=True)
+                    r.bind("<Button-3>", lambda e, n=n, z=zona: self.metti(n, 1, z), add=True)
+                tk.Frame(padre, bg=C["scheda"], height=8).pack(fill="x")
+                continue
+            for n, q in voci:
                 if lands:      # il lucchetto a sinistra della terra: chiuso = Fix mana base la tiene
                     fr = tk.Frame(padre, bg=C["scheda"]); fr.pack(fill="x")
                     self.lucchetto(fr, n).pack(side="left", padx=(0, 3))

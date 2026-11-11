@@ -64,9 +64,11 @@ class Pagina:
         self.fr.bind("<Map>", f, add="+")
         self.fr.bind("<<Davanti>>", f, add="+")
 
+    AVVIO = False       # la finestra si sta costruendo: nessuna pagina si disegna, si segnano e si disegnano quando la finestra e' a schermo (11 nov 2026)
+
     def davanti(self):
         """Vero se la pagina si vede: montata e non coperta da un'altra scheda."""
-        if not self.fr.winfo_viewable():
+        if Pagina.AVVIO or not self.fr.winfo_viewable():
             return False
         p = str(self.fr)
         return not any(p == d or p.startswith(d + ".") for d in Pagina.DIETRO)

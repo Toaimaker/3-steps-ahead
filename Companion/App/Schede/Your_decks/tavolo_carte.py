@@ -53,7 +53,7 @@ import rete_sinergie as RS
 import tela_gpu as TG
 
 from tema import CI as C, barra_scura
-from widget import pulsante_solido
+from widget import pronta_poi, pulsante_solido
 
 import account as _ACC  # noqa: E402
 FILE = _ACC.lega(globals(), "FILE", "tavoli_mazzi.json")     # Log_Arena/tavoli_mazzi.json; nell'app pubblica uno per account (10 nov 2026, Magic 12)
@@ -394,7 +394,7 @@ class TavoloCarte:
         self.pronte, self.attese = collections.deque(), set()
         self.lista = CAP.Liste(tk, F)
         # la finestra, sopra quella del mazzo (transient, mai topmost: non sta sopra Arena)
-        f = self.fin = tk.Toplevel(padre, bg=C["fondo"])
+        f = self.fin = pronta_poi(tk.Toplevel(padre, bg=C["fondo"]))       # nascosta finche' non e' riempita (11 nov 2026)
         f.transient(padre)
         f.title(f"Board · {self.nome}")
         barra_scura(f, C["fondo"], C["titolo"], C["filo"])

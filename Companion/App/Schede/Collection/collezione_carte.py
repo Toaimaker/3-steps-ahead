@@ -40,6 +40,13 @@ COPIE = ("Any", "1", "2", "3", "4+", "Under 4")
 MODI = ("Any of these", "Exactly these", "Only these")
 MOSTRA = ("All cards", "Owned", "Not owned")
 _CACHE = {"chiave": None, "d": None}
+import threading  # noqa: E402
+_LUCCHETTO = threading.Lock()      # carica() da due fili: il secondo aspetta il caricamento del primo, non lo rifa'
+
+
+def precarica():
+    """Legge il database delle carte in un filo (11 nov 2026, sessione Magic 13): all'avvio la Meta lo chiedeva prima di comparire, 0,9 s di finestra ferma."""
+    threading.Thread(target=carica, daemon=True).start()
 
 
 def simboli(costo):
@@ -127,9 +134,10 @@ def carica():
         chiave = tuple(os.path.getmtime(f) for f in (F_COLL, F_CARTE, F_LOC)) + ((st_["soglia"], len(st_["piu"])) if st_ else ())
     except OSError:
         return None
-    if chiave != _CACHE["chiave"]:
-        _CACHE.update(chiave=chiave, d=_leggi())
-    return _CACHE["d"]
+    with _LUCCHETTO:
+        if chiave != _CACHE["chiave"]:
+            _CACHE.update(chiave=chiave, d=_leggi())
+        return _CACHE["d"]
 
 
 def per_capsule(d):

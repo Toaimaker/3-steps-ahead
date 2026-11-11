@@ -1,6 +1,6 @@
 {
- "version": "0.1.10",
+ "version": "0.1.11",
  "date": "2026-11-11",
- "notes": "No third-party data or graphics in the package: card database read from your own Arena install, our own icons, card art credited, meta coming from shared games.",
+ "notes": "Smoother app: grids, lists, tables and the deck window drawn on single canvases, faster resizing and startup, a Rank filter in Meta.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

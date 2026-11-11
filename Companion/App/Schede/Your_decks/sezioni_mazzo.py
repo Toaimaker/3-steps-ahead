@@ -44,29 +44,34 @@ class SezioniMazzo:
         tk, F = self.tk, self.F
         fondo = C["scheda"] if mini else C["cap"]
         box = tk.Frame(padre, bg=C["scheda"]); box.pack(fill="x", pady=(0, 2 if mini else 8))
-        testa = tk.Frame(box, bg=fondo, padx=4 if mini else 8, pady=5 if mini else 6, cursor="hand2"); testa.pack(fill="x")
+        # la testata e' una tela sola (11 nov 2026, sessione Magic 13): il triangolo, il titolo, la spiegazione e a destra il riassunto, disegnati; prima 4-5 widget
+        from tkinter import font as tkfont
+        f_tit = F(8 if mini else 9, True)
+        px, py = (4, 5) if mini else (8, 6)
+        alto = tkfont.Font(font=f_tit).metrics("linespace") + 2 * py
+        testa = tk.Canvas(box, height=alto, bg=fondo, highlightthickness=0, bd=0, cursor="hand2"); testa.pack(fill="x")
+        testa.titolo = titolo.upper()
         if mini:
             tk.Frame(box, bg=C["filo"], height=1).pack(fill="x")
-        tri = tk.Label(testa, bg=fondo, cursor="hand2"); tri.pack(side="left", padx=(0, 6))
-        tk.Label(testa, text=titolo.upper(), bg=fondo, fg=C["titolo"], font=F(8 if mini else 9, True), cursor="hand2", pady=0).pack(side="left")
-        if spiega:
-            tk.Label(testa, text=spiega, bg=fondo, fg=C["grigio"], font=F(7), cursor="hand2", pady=0).pack(side="left", padx=(8, 0))
-        if riassunto:
-            tk.Label(testa, text=riassunto, bg=fondo, fg=C["grigio"], font=F(8), cursor="hand2", pady=0).pack(side="right")
         corpo = tk.Frame(box, bg=C["scheda"], pady=4 if mini else 6)
         st = {"aperta": stato().get(chiave, aperta)}
-        if mini:        # accesa sotto il puntatore: si vede che si apre
-            pezzi = [testa, *testa.winfo_children()]
 
-            def luce(on):
-                for w in pezzi:
-                    if w.winfo_exists():
-                        w.configure(bg=C["cap"] if on else fondo)
-            for w in pezzi:
-                w.bind("<Enter>", lambda e: luce(True)); w.bind("<Leave>", lambda e: luce(False))
+        def disegna_testa(e=None):
+            testa.delete("all")
+            W, ym = max(testa.winfo_width(), 200), alto / 2
+            lato = 10 if mini else 12
+            testa.create_image(px, ym, image=DG.triangolo(lato, st["aperta"], C["accento"] if st["aperta"] else C["grigio"]), anchor="w")
+            t = testa.create_text(px + lato + 6, ym, text=titolo.upper(), anchor="w", fill=C["titolo"], font=f_tit)
+            if spiega:
+                testa.create_text(testa.bbox(t)[2] + 8, ym, text=spiega, anchor="w", fill=C["grigio"], font=F(7))
+            if riassunto:
+                testa.create_text(W - px, ym, text=riassunto, anchor="e", fill=C["grigio"], font=F(8))
+        testa.bind("<Configure>", disegna_testa)
+        if mini:        # accesa sotto il puntatore: si vede che si apre
+            testa.bind("<Enter>", lambda e: testa.configure(bg=C["cap"])); testa.bind("<Leave>", lambda e: testa.configure(bg=fondo))
 
         def mostra():
-            tri.configure(image=DG.triangolo(10 if mini else 12, st["aperta"], C["accento"] if st["aperta"] else C["grigio"]))
+            disegna_testa()
             if st["aperta"]:
                 f, corpo.da_riempire = getattr(corpo, "da_riempire", None), None
                 if f is not None:       # il contenuto rimandato si fa alla prima apertura
@@ -89,8 +94,7 @@ class SezioniMazzo:
             mostra()
             if dopo:
                 dopo()
-        for w in [testa, *testa.winfo_children()]:
-            w.bind("<Button-1>", cambia)
+        testa.bind("<Button-1>", cambia)
         mostra()
         corpo.testa_sezione, corpo.cambia_sezione, corpo.aperta_sezione = testa, cambia, (lambda: st["aperta"])
         corpo.poi = poi

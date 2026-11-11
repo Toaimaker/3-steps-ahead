@@ -48,14 +48,22 @@ def url_profilo(v):
 def partite_di(user, player, n_set=2):
     """Le partite pubbliche degli ultimi n periodi di set. Un profilo privato o sparito solleva l'errore della richiesta."""
     from partite_untapped import CTX, ultimi_set      # qui e non in testa: all'import legge i certificati, 150 ms sull'avvio della finestra
-    visti, out = set(), []
+    visti, out, errori, letti = set(), [], [], 0
     for s in ultimi_set(n_set):
         u = f"https://api.mtga.untapped.gg/api/v1/games/users/{user}/players/{player}/?card_set={s}"
-        j = json.load(urllib.request.urlopen(urllib.request.Request(u, headers={"User-Agent": "CompanionMagicArena/1.0", "Accept": "application/json"}), timeout=30, context=CTX))
+        # un periodo che non risponde si salta (11 nov 2026: Untapped da' 403 sui periodi passati, risponde solo quello in corso); l'errore solo se non risponde nessuno
+        try:
+            j = json.load(urllib.request.urlopen(urllib.request.Request(u, headers={"User-Agent": "CompanionMagicArena/1.0", "Accept": "application/json"}), timeout=30, context=CTX))
+        except Exception as e:      # noqa: BLE001
+            errori.append(e)
+            continue
+        letti += 1
         for g in (j if isinstance(j, list) else j.get("results") or j.get("games") or []):
             k = g.get("short_id") or (g.get("match_start"), g.get("friendly_deck_id"))
             if k not in visti:
                 visti.add(k); out.append(g)
+    if not letti and errori:
+        raise errori[-1]
     return sorted(out, key=lambda g: g.get("match_start") or 0)
 
 

@@ -16,22 +16,46 @@ class Tendina:
         self.tk, self.F, self.var, self.voci, self.cb, self.menu = tk, F, tk.StringVar(value=""), [], None, None
         self.fr = tk.Frame(padre, bg=bg or C["fondo"])
         tk.Label(self.fr, text=nome.upper(), bg=bg or C["fondo"], fg=C["titolo"], font=F(7, True), pady=0).pack(anchor="w", pady=(0, 3))
-        self.campo = tk.Frame(self.fr, bg=TEND["campo"], highlightthickness=1, highlightbackground=TEND["bordo"], width=larga, height=32,
-                              cursor="hand2")
-        self.campo.pack(anchor="w"); self.campo.pack_propagate(False)
+        # il campo e' una tela sola (11 nov 2026, sessione Magic 13, Note/Motore_Grafico_App.md): il testo, l'icona e la freccia disegnati; prima una cornice,
+        # un'etichetta e una tela (le tendine sono una ventina nell'app). self.lab resta per chi mette l'icona (configure(image=, compound=))
+        self.larga, self._aperta, self._img = larga, False, None
+        self.campo = tk.Canvas(self.fr, bg=TEND["campo"], highlightthickness=1, highlightbackground=TEND["bordo"], width=larga - 2, height=30, bd=0, cursor="hand2")
+        self.campo.pack(anchor="w")
         self.vista_var = tk.StringVar(value="")     # quel che si legge nel campo (il nome); self.var tiene il valore (il codice)
-        self.lab = tk.Label(self.campo, textvariable=self.vista_var, bg=TEND["campo"], fg=TEND["testo"], font=F(9), anchor="w", padx=12, cursor="hand2")
-        self.lab.pack(side="left", fill="both", expand=True)
-        self.v = tk.Canvas(self.campo, width=26, height=30, bg=TEND["campo"], highlightthickness=0, cursor="hand2"); self.v.pack(side="right")
-        self.freccia(False)
-        for w in (self.campo, self.lab, self.v):
-            w.bind("<Button-1>", lambda e: self.apri())
+        self.vista_var.trace_add("write", lambda *a: self.disegna_campo())
+        self.lab = _Etichetta(self)
+        self.campo.bind("<Configure>", lambda e: self.disegna_campo())
+        self.campo.bind("<Button-1>", lambda e: self.apri())
         self.campo.bind("<Enter>", lambda e: self.campo.configure(highlightbackground=C["grigio"]))
         self.campo.bind("<Leave>", lambda e: self.campo.configure(highlightbackground=TEND["bordo"]))
+        self.disegna_campo()
+
+    def disegna_campo(self):
+        """Il campo: l'icona se c'e', il testo (tagliato con «…» se non entra), la V a destra."""
+        from tkinter import font as tkfont
+        c = self.campo
+        c.delete("all")
+        W = max(c.winfo_width(), int(c.cget("width")) + 2) - 2
+        H = int(c.cget("height"))
+        x = 12
+        if self._img:
+            c.create_image(x, H / 2, image=self._img, anchor="w")
+            x += self._img.width() + 6
+        t = self.vista_var.get().strip()
+        f = self.__dict__.get("_font")
+        if f is None:
+            f = self._font = tkfont.Font(font=self.F(9))
+        spazio = W - x - 28
+        if t and f.measure(t) > spazio:
+            while t and f.measure(t + "…") > spazio:
+                t = t[:-1]
+            t = t.rstrip() + "…"
+        c.create_text(x, H / 2, text=t, anchor="w", fill=TEND["testo"], font=self.F(9))
+        c.create_image(W - 26, (H - 30) / 2 + 2.5, image=DG.chevron(25, not self._aperta, TEND["muto"]), anchor="nw")      # la V capovolta a menu aperto
 
     def freccia(self, aperta):
-        self.v.delete("all")      # la V capovolta quando il menu e' aperto, come sul sito; disegnata nitida (disegni.py)
-        self.v.create_image(0, 2.5, image=DG.chevron(25, not aperta, TEND["muto"]), anchor="nw")
+        self._aperta = aperta
+        self.disegna_campo()
 
     def opzioni(self, voci, cb, icone=None, etichette=None):
         """icone: {voce: PhotoImage} da mettere accanto al nome (il simbolo dell'espansione, 18 ott 2026); etichette:
@@ -103,6 +127,17 @@ class Tendina:
         self.set(voce)        # set aggiorna anche il testo del campo e il simbolo (con var.set da solo restava la voce di prima)
         if self.cb:
             self.cb(voce)
+
+
+class _Etichetta:
+    """Al posto dell'etichetta del campo di prima: configure(image=, compound=) mette l'icona nel campo disegnato."""
+
+    def __init__(self, t):
+        self.t = t
+
+    def configure(self, image=None, compound=None, **k):
+        self.t._img = image or None
+        self.t.disegna_campo()
 
 
 class TendinaMulti(Tendina):
@@ -235,25 +270,38 @@ class Numero:
 
 
 class Spunte:
-    """Una scelta sola fra poche voci, come piccole spunte in fila: sotto ogni voce del calcolatore, come si paga."""
+    """Una scelta sola fra poche voci, come piccole spunte in fila: sotto ogni voce del calcolatore, come si paga. Dall'11 nov 2026 (sessione Magic 13) una tela
+    sola per tutte le voci, non tre widget per voce: il clic sceglie la voce sotto il puntatore. self.fr e' la tela."""
 
     def __init__(self, tk, padre, voci, F, cb, bg):
+        from tkinter import font as tkfont
         self.voci, self.cb, self.tk, self.val, self.bloccato = voci, cb, tk, voci[0][0], False
-        self.fr = tk.Frame(padre, bg=bg); self.cv = {}
+        self.F, self.bg = F, bg
+        f = tkfont.Font(font=F(7))
+        self.alto = max(13, f.metrics("linespace"))
+        self.zone, x = [], 0
         for k, nome in voci:
-            r = tk.Frame(self.fr, bg=bg, cursor="hand2"); r.pack(side="left", padx=(0, 1))
-            c = tk.Canvas(r, width=11, height=11, bg=bg, highlightthickness=0, cursor="hand2"); c.pack(side="left", padx=(0, 1))
-            l = tk.Label(r, text=nome, bg=bg, fg=C["testo"], font=F(7), pady=0, cursor="hand2"); l.pack(side="left")
-            self.cv[k] = c
-            for w in (r, c, l):
-                w.bind("<Button-1>", lambda e, k=k: self.scegli(k))
+            L = 11 + 1 + f.measure(nome) + 2
+            self.zone.append((x, x + L, k, nome))
+            x += L + 1
+        self.fr = tk.Canvas(padre, width=max(1, x - 1), height=self.alto, bg=bg, highlightthickness=0, cursor="hand2")
+        self.fr.bind("<Button-1>", lambda e: self.clic(e.x))
+        self.cv = {k: None for k, _n in voci}       # le voci che ci sono (metti lo legge)
         self.disegna()
 
+    def clic(self, x):
+        for x0, x1, k, _n in self.zone:
+            if x0 <= x < x1:
+                self.scegli(k)
+                return
+
     def disegna(self):
-        for k, c in self.cv.items():
+        c, H = self.fr, self.alto
+        c.delete("all")
+        for x0, _x1, k, nome in self.zone:
             on = k == self.val
-            c.delete("all")
-            c.create_image(0, 0, image=DG.spunta(11, on, C["azzurro"], TEND["campo"], TEND["bordo"], C["fondo"], raggio=1.5), anchor="nw")
+            c.create_image(x0, (H - 11) // 2, image=DG.spunta(11, on, C["azzurro"], TEND["campo"], TEND["bordo"], C["fondo"], raggio=1.5), anchor="nw")
+            c.create_text(x0 + 12, H / 2, text=nome, anchor="w", fill=C["testo"], font=self.F(7))
 
     def get(self):
         return self.val
@@ -272,6 +320,22 @@ class Spunte:
 
 
 ARANCIO = ("#c8741f", "#e08a33", "#9a5816")     # normale, sotto il mouse, premuto: le azioni principali di un mazzo (Edit, Add to wishlist; 10 nov 2026)
+
+
+def pronta_poi(f):
+    """Una finestra nuova nascosta finche' chi la crea non l'ha riempita: si mostra al primo momento libero del ciclo di Tk, a contenuto fatto, e non compare
+    vuota per poi riempirsi a pezzi (11 nov 2026, sessione Magic 13). Si chiama subito dopo il Toplevel."""
+    f.withdraw()
+
+    def mostra():
+        try:
+            if f.winfo_exists():
+                f.update_idletasks()
+                f.deiconify()
+        except Exception:
+            pass
+    f.after_idle(mostra)
+    return f
 
 
 def a_riposo(w, f, ms=100):

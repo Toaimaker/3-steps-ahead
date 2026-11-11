@@ -44,6 +44,8 @@ class FinestraMazzo:
         if self.fin is None or not self.fin.winfo_exists():
             top = self.fr.winfo_toplevel()
             f = self.fin = tk.Toplevel(top, bg=C["fondo"])
+            f.withdraw()        # nascosta finche' il contenuto non e' pronto: non compare vuota e poi a pezzi (11 nov 2026); la mostra disegna_dettaglio
+            f.nuova = True
             f.transient(top)
             top.update_idletasks()
             L, H = max(1000, min(1320, top.winfo_width() - 60)), max(640, min(1000, top.winfo_height() - 40, f.winfo_screenheight() - 90))
@@ -75,6 +77,10 @@ class FinestraMazzo:
         am = self.mazzo_arena(chi_) if tipo_ == "mio" else None
         self.finestra_mazzo(am["nome"] if am else chi_ if tipo_ == "mio" else chi_.get("nome", "Deck"))
         self.scheda_mazzo()
+        if getattr(self.fin, "nuova", False):       # la prima volta: a contenuto fatto, poi si mostra
+            self.fin.nuova = False
+            self.fin.update_idletasks()
+            self.fin.deiconify()
         self.fin.lift(); self.fin.focus_set()
 
     def formato_mazzo(self, tipo, chi):

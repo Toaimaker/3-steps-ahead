@@ -142,8 +142,8 @@ class DrafterMazzi:
         for _c, q, n in self.mazzo_inviato(d):
             copie[n] = copie.get(n, 0) + q
         cv_l, griglia, lega = self.area_scorrevole(self.scorri_m, self.b_m)
-        for n, q in CAP.ordina(list(copie.items())):
-            self.liste.riga(griglia, n, q, bg=CI["scheda"]).pack(fill="x", pady=1)
+        # una tela per la lista, non una per capsula (11 nov 2026, sessione Magic 13)
+        self.liste.elenco(griglia, CAP.ordina(list(copie.items())), bg=CI["scheda"], passo=2).pack(fill="x", pady=1)
         lega(cv_l)
 
 
@@ -225,8 +225,7 @@ class DrafterMazzi:
             self.testata_mazzo(dentro, voci, m.get("coppia", ""), "", m.get("carte", 0), d.get("magie", 23), CI["cap"]).pack(fill="x")
             self.due_valori(dentro, ("CHANCE", "-" if m.get("pct") is None else f"{m['pct']}%"), None)
             tk.Frame(dentro, bg=CI["filo"], height=1).pack(fill="x", pady=(6, 4))
-            for n, q in CAP.ordina([(n, q) for _c, carte in m.get("costi") or [] for q, n in carte]):
-                self.liste.riga(dentro, n, q, bg=CI["cap"]).pack(fill="x", pady=1)
+            self.liste.elenco(dentro, CAP.ordina([(n, q) for _c, carte in m.get("costi") or [] for q, n in carte]), bg=CI["cap"], passo=2).pack(fill="x", pady=1)
         lega(cv_l)
 
 
@@ -250,8 +249,8 @@ class DrafterMazzi:
             self.testata_mazzo(dentro, voci, m.get("coppia", ""), m.get("splash", ""), sum(q for q, _ in voci), 40, CI["cap"]).pack(fill="x", pady=(0, 6))
             self.liste.dati(dentro, m.get("tier", "?"), COL_TIER.get(m.get("tier"), CI["muto"]), "EXPECTED WINS", self.num_it(m.get("vittorie")), bg=CI["cap"]).pack(fill="x")
             tk.Frame(dentro, bg=CI["filo"], height=1).pack(fill="x", pady=(6, 4))
-            for n, q in CAP.ordina([(n, q) for _c, carte in m.get("costi") or [] for q, n in carte] + [(n, q) for q, n in m.get("terre") or []]):
-                self.liste.riga(dentro, n, q, bg=CI["cap"]).pack(fill="x", pady=1)
+            self.liste.elenco(dentro, CAP.ordina([(n, q) for _c, carte in m.get("costi") or [] for q, n in carte] + [(n, q) for q, n in m.get("terre") or []]),
+                              bg=CI["cap"], passo=2).pack(fill="x", pady=1)
             # i nomi lunghi vanno a capo sulla larghezza vera della colonna (con un numero fisso uscivano tagliati)
             dentro.bind("<Configure>", lambda e, d_=dentro: [w.configure(wraplength=max(e.width - 2, 40)) for w in d_.winfo_children()
                                                             if isinstance(w, tk.Label) and int(str(w.cget("wraplength")) or 0)])
@@ -307,11 +306,13 @@ class DrafterMazzi:
         # l'elenco scorre con la rotella: 15-20 righe non stanno sotto le altre schede. La posizione resta a ogni ridisegno
         cv_l, griglia, lega = self.area_scorrevole(self.scorri_l)
         copie = {n: (rim, q, pc) for _c, q, n, rim, pc in righe}
+        voci = []
         for n, _q in CAP.ordina([(n, q) for n, (_r, q, _p) in copie.items()]):
             rim, q, pc = copie[n]
             vista = in_gioco and rim == 0              # gia' vista o pescata: spenta, 0%
-            self.liste.riga(griglia, n, q, spenta=vista, copie=(f"{rim}/{q}" if in_gioco and q > 1 else None), colonna="100%" if in_gioco else "",
-                       destra="" if pc is None else ("0%" if vista else (f"{pc:.0f}%" if pc >= 1 else "<1%"))).pack(fill="x", pady=1)
+            voci.append((n, q, dict(spenta=vista, copie=(f"{rim}/{q}" if in_gioco and q > 1 else None), colonna="100%" if in_gioco else "",
+                                    destra="" if pc is None else ("0%" if vista else (f"{pc:.0f}%" if pc >= 1 else "<1%")))))
+        self.liste.elenco(griglia, voci, bg=CI["scheda"], passo=2).pack(fill="x", pady=1)      # una tela per la lista (11 nov 2026)
         lega(cv_l)
 
 
