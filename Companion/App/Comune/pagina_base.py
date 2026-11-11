@@ -6,10 +6,11 @@ import capsule as CAP
 import collezione_carte as CC
 import disegni as DG
 import risorse as RS
+import tabella_tela as TT
 
 from icone import emoji_png, icona_set, logo_lega, nome_set
 from tema import CI as C, COL_LEGA, PERSA, SFONDO_FASCIA, SFONDO_LINEA, VINTA
-from widget import Tendina
+from widget import Tendina, a_riposo
 
 
 def prepara_capsule(d):
@@ -160,30 +161,66 @@ class Pagina:
         """I tuoi numeri: un riquadro per dato, tutti uguali e allineati, col nome sopra in maiuscolo bianco e il dato sotto.
         voci: [(nome, valore, colore)]; un valore intero sono coppe (i trofei). Sotto, una nota piccola se serve.
         grande: la misura del dato (piu' piccola dove la colonna e' stretta, come nella scheda di un mazzo); icona: un'immagine
-        accanto a ogni dato."""
+        accanto a ogni dato. Dall'11 nov 2026 (sessione Magic 13, Note/Motore_Grafico_App.md) i riquadri sono disegnati su una tela sola, non 5-6 widget
+        ciascuno: la tela ha .voci_ (le voci) e .testi() (i testi in ordine). -> la tela."""
         tk, F = self.tk, self.F
         self.svuota(padre)
-        g = tk.Frame(padre, bg=C["scheda"]); g.pack(fill="x")
-        for j in range(colonne):
-            g.columnconfigure(j, weight=1, uniform="num")
-        for i, voce in enumerate(voci):
-            et, val, col = voce[:3]
-            c = tk.Frame(g, bg=C["cap"], padx=6 if stretta else 10, pady=4 if stretta else 6)
-            c.grid(row=i // colonne, column=i % colonne, sticky="nsew", padx=(0, 6 if i % colonne < colonne - 1 else 0), pady=(0, 6))
-            self.etichetta(c, et, C["cap"]).pack(anchor="w")
-            if isinstance(val, int) and not isinstance(val, bool):
-                self.coppe(c, val, 20, bg=C["cap"]).pack(anchor="w", pady=(4, 0))
-            else:
-                r_ = tk.Frame(c, bg=C["cap"]); r_.pack(anchor="w")
-                ic = voce[4] if len(voce) > 4 else icona      # una voce puo' avere l'icona sua: il ROI e' in gemme anche sull'oro
-                if ic:
-                    tk.Label(r_, image=ic, bg=C["cap"], pady=0).pack(side="left", padx=(0, 6))
-                tk.Label(r_, text=val, bg=C["cap"], fg=col or C["titolo"], font=F(grande if len(str(val)) <= 11 else min(grande, 11), True), pady=0,
-                         wraplength=130, justify="left").pack(side="left")
-                if len(voce) > 3 and voce[3]:      # una riga piccola sotto il dato: il suo valore in gemme, nelle Risorse
-                    tk.Label(c, text=voce[3], bg=C["cap"], fg=C["azzurro"], font=F(7), pady=0).pack(anchor="w")
+        voci = list(voci)
+        px, py = (6, 4) if stretta else (10, 6)
+        g = tk.Canvas(padre, bg=C["scheda"], highlightthickness=0, bd=0, height=1); g.pack(fill="x")
+        g.voci_ = voci
+        g.testi = lambda: [g.itemcget(i, "text") for i in g.find_all() if g.type(i) == "text"]
+
+        def disegna(e=None):
+            W = g.winfo_width()
+            if W < 50:          # non ancora a vista: la larghezza del contenitore, se no una di ripiego; si rifa' quando arriva la vera
+                W = padre.winfo_width() if padre.winfo_width() >= 50 else 600
+            if W == getattr(g, "fatta", None):
+                return
+            g.fatta = W
+            g.delete("all")
+            lw = (W - 6 * (colonne - 1)) / colonne
+            y = 0
+            for r0 in range(0, len(voci), colonne):
+                fondi, basso = [], y
+                for k, voce in enumerate(voci[r0:r0 + colonne]):
+                    et, val, col = voce[:3]
+                    x0 = round(k * (lw + 6)); x = x0 + px
+                    fondi.append(g.create_rectangle(x0, y, x0 + round(lw) - 1, y + 1, fill=C["cap"], outline=""))
+                    a = g.create_text(x, y + py, text=et.upper(), anchor="nw", fill=C["titolo"], font=F(7, True))
+                    yb = g.bbox(a)[3]
+                    if isinstance(val, int) and not isinstance(val, bool):       # le coppe: «coppa × N», a zero solo il numero grigio
+                        img = self.coppa.get(20)
+                        yb += 4
+                        if img and val:
+                            g.create_image(x, yb, image=img, anchor="nw")
+                            t = g.create_text(x + img.width() + 4, yb + img.height() / 2, text=f"× {val}", anchor="w", fill=C["titolo"], font=F(16, True))
+                            fine = max(g.bbox(t)[3], yb + img.height())
+                        else:
+                            t = g.create_text(x, yb, text=str(val), anchor="nw", fill=C["titolo"] if val else C["muto"], font=F(9, True))
+                            fine = g.bbox(t)[3]
+                    else:
+                        ic = voce[4] if len(voce) > 4 else icona      # una voce puo' avere l'icona sua: il ROI e' in gemme anche sull'oro
+                        xt = x + (ic.width() + 6 if ic else 0)
+                        t = g.create_text(xt, yb, text=val, anchor="nw", fill=col or C["titolo"], font=F(grande if len(str(val)) <= 11 else min(grande, 11), True),
+                                          width=130)
+                        b = g.bbox(t)
+                        if ic:
+                            g.create_image(x, (b[1] + b[3]) / 2, image=ic, anchor="w")
+                        fine = max(b[3], (b[1] + b[3]) / 2 + (ic.height() / 2 if ic else 0))
+                        if len(voce) > 3 and voce[3]:      # una riga piccola sotto il dato: il suo valore in gemme, nelle Risorse
+                            fine = g.bbox(g.create_text(x, fine, text=voce[3], anchor="nw", fill=C["azzurro"], font=F(7)))[3]
+                    basso = max(basso, fine + py)
+                for f in fondi:         # una riga di riquadri e' alta come il piu' alto
+                    x0, y0, x1, _y1 = g.coords(f)
+                    g.coords(f, x0, y0, x1, basso)
+                y = basso + 6
+            g.configure(height=max(1, y - 6))
+        g.bind("<Configure>", disegna)
+        disegna()
         if nota:
             tk.Label(padre, text=nota, bg=C["scheda"], fg=C["muto"], font=F(7), anchor="w", justify="left", wraplength=largo_nota).pack(fill="x")
+        return g
 
     def logo_rango(self, rango, tipo="constructed", alto=26):
         """Il logo della lega di un rango («Silver 3»), una volta sola, per il riquadro Rank (Autore, 6 nov 2026: «nel pannellino che indica la lega di appartenenza mettici il logo»). None se non c'e'."""
@@ -212,6 +249,9 @@ class Pagina:
         l'occhio segua la riga. intestazioni: [(testo, allineamento "w" o "e")]; righe: liste di celle, ognuna una funzione
         che riceve il riquadro della cella (il suo colore e' quello della riga: c["bg"]) e ci disegna dentro. La colonna
         «allarga» prende lo spazio in piu'; le righe in «evidenzia» hanno il fondo azzurro scuro. -> le righe (liste di riquadri)."""
+        if righe and all(isinstance(c, TT.Cella) for r in righe for c in r):
+            # tutte le celle dichiarate: la tabella su una tela sola (11 nov 2026, sessione Magic 13; tabella_tela.py); le righe sono RigaTela
+            return TT.TabellaTela(self.ctx(), padre, intestazioni, righe, allarga=allarga, evidenzia=evidenzia, padx=padx).righe
         tk, F = self.tk, self.F
         g = tk.Frame(padre, bg=C["scheda"]); g.pack(fill="x")
         g.columnconfigure(allarga, weight=1)
@@ -228,13 +268,38 @@ class Pagina:
             out.append(riga)
         return out
 
+    def ctx(self):
+        """Quello che le celle dichiarate di tabella_tela usano della pagina: tk, F, i colori, i simboli di mana."""
+        k = self.__dict__.get("_ctx")
+        if k is None:
+            class Ctx:
+                pass
+            k = self._ctx = Ctx()
+            k.tk, k.F, k.C, k.mana, k.VINTA, k.PERSA = self.tk, self.F, C, self.mana, VINTA, PERSA
+            k.barra_wr, k.mana_label = self.barra_wr, self.mana_label
+        return k
+
     def cella(self, testo, col=None, forte=False, grande=9, lato="right"):
-        tk, F = self.tk, self.F
-        return lambda c: tk.Label(c, text=testo, bg=c["bg"], fg=col or C["testo"], font=F(grande, forte), pady=0).pack(side=lato)
+        """Una cella di testo (dichiarata: resta anche una funzione che disegna nella cornice di una tabella di prima)."""
+        return TT.Testo(self.ctx(), testo, col, forte, grande, lato)
 
     def cella_wr(self, w, n):
         """La cella del win rate: la barra da 0 a 100 con la tacca al 50% e il numero."""
-        return lambda c: self.barra_wr(c, w, n)
+        return TT.WR(self.ctx(), w, n)
+
+    def cella_mana(self, colori, testo="", numero=None, col=None, grande=9, forte=False):
+        """I simboli di mana dei colori e un testo accanto (un mazzo, un archetipo, i colori dell'avversario)."""
+        return TT.Mana(self.ctx(), colori, testo, numero, col, grande, forte)
+
+    def cella_righe(self, righe, lato="left"):
+        """Piu' righe di testo una sotto l'altra: [(testo, colore, forte, grande)]."""
+        return TT.Righe(self.ctx(), righe, lato)
+
+    def cella_barra(self, q, colore):
+        return TT.Barra(self.ctx(), q, colore)
+
+    def cella_img(self, immagine=None, testo="", col=None, grande=7, forte=True):
+        return TT.Immagine(self.ctx(), immagine, testo, col, grande, forte)
 
     def barra_wr(self, padre, w, n):
         """Il win rate come barra da 0 a 100 con la tacca al 50%: azzurra sopra il 50, rossa sotto; il numero accanto."""
@@ -361,5 +426,5 @@ class Pagina:
             cv.create_line(x, geo["su"], x, H - 20, fill=C["grigio"], tags="cursore")
             cv.create_image(x, y, image=DG.punto(10, C["titolo"], C["scheda"], 2), tags="cursore")
             v_info.set(f"{et} · win rate {v:.0f}%")
-        cv.bind("<Configure>", disegna); cv.bind("<Motion>", sopra)
+        cv.bind("<Configure>", a_riposo(cv, disegna)); cv.bind("<Motion>", sopra)      # trascinando il bordo: una volta, a misura ferma
         cv.bind("<Leave>", lambda e: (cv.delete("cursore"), v_info.set(riposo)))

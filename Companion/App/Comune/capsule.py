@@ -43,6 +43,12 @@ LARGO_IMG = 440       # Autore, 5 nov 2026: «possiamo aumentare la dimensione d
 LARGA_CARTA, ALTA_CARTA = 200, 279
 SOTTO_CARTA = 24      # la riga sotto la carta intera
 ROSSO_BAN = "#d9534f"     # il bordo e il testo di una carta bandita nel formato scelto (il rosso della finestra)
+# Le regole delle immagini di Scryfall (scryfall.com/docs/api/images, lette l'11 nov 2026, Distribuzione/Business_Model.md sezione 5): niente immagini
+# desaturate o col colore cambiato, e con l'arte ritagliata (art_crop) l'artista e il copyright scritti altrove nella stessa schermata. Nell'app pubblica:
+# le carte che non hai restano a colori (lo dice il testo sotto), e le copertine dei mazzi hanno sotto l'arte la riga con l'artista. L'app di Autore
+# resta com'era (uso personale).
+NON_TUA = "#f0ad4e"
+FASCIA_ARTE = 16
 _IN_CORSO, _FALLITE = set(), set()
 _CTX = []
 
@@ -207,6 +213,7 @@ def area_schermo(x, y):
 
 
 _INDIRIZZI, _CHIAVE = None, threading.Lock()
+_ARTISTI = {}
 _PAUSA = [0.0]
 
 
@@ -225,6 +232,10 @@ def indirizzi():
                         if u and d.get("layout") not in ("art_series", "token", "double_faced_token", "emblem"):      # hanno lo stesso nome della carta e sono solo l'illustrazione
                             m[d["name"]] = u
                             m.setdefault(d["name"].split(" // ")[0], u)
+                            a = d.get("artist") or (d.get("card_faces") or [{}])[0].get("artist")
+                            if a:
+                                _ARTISTI[d["name"]] = a
+                                _ARTISTI.setdefault(d["name"].split(" // ")[0], a)
             except (IndexError, OSError, ValueError):
                 pass
             _INDIRIZZI = m
@@ -237,6 +248,13 @@ def indirizzo(nome, arte=False):
     testa = nome.split(" // ")[0].strip()
     u = m.get(nome) or m.get(testa) or (m.get(testa[2:]) if testa.startswith("A-") else None)
     return u.replace("/normal/", "/art_crop/", 1) if u and arte else u
+
+
+def artista(nome):
+    """L'artista dell'illustrazione dal bulk di Scryfall (la stessa stampa dell'immagine), o None."""
+    indirizzi()
+    testa = nome.split(" // ")[0].strip()
+    return _ARTISTI.get(nome) or _ARTISTI.get(testa) or (_ARTISTI.get(testa[2:]) if testa.startswith("A-") else None)
 
 
 def file_immagine(nome, arte=False):
@@ -266,7 +284,9 @@ def cuoci(nome, sorgente=None):
 def file_cover(arte, L, H):
     """Dove sta la copertina cotta di un mazzo. Il nome dipende dall'arte: se arriva dopo, cambia."""
     c_e = bool(arte and os.path.exists(file_immagine(arte, True)))
-    return os.path.join(CARTE_IMG, "cover", f"{zlib.crc32(f'{arte if c_e else None}|{L}x{H}'.encode('utf-8')):08x}.jpg")
+    from account import PUBBLICA
+    credito = "|artista" if PUBBLICA and c_e else ""          # la copertina con la riga dell'artista e' un'altra copertina
+    return os.path.join(CARTE_IMG, "cover", f"{zlib.crc32(f'{arte if c_e else None}|{L}x{H}{credito}'.encode('utf-8')):08x}.jpg")
 
 
 def cover_mazzo(arte, L, H):
@@ -278,11 +298,26 @@ def cover_mazzo(arte, L, H):
     os.makedirs(os.path.dirname(f), exist_ok=True)
     im = Image.new("RGB", (L, H), "#202024")
     if arte and os.path.exists(file_immagine(arte, True)):
+        from account import PUBBLICA
+        h = H - FASCIA_ARTE if PUBBLICA else H       # nell'app pubblica sotto l'arte la riga con l'artista e il copyright, fuori dall'illustrazione
         a = Image.open(file_immagine(arte, True)).convert("RGB")
-        z = max(L / a.width, H / a.height)
+        z = max(L / a.width, h / a.height)
         a = a.resize((int(a.width * z) + 1, int(a.height * z) + 1), Image.LANCZOS)
-        x, y = (a.width - L) // 2, (a.height - H) // 3
-        im = a.crop((x, y, x + L, y + H))
+        x, y = (a.width - L) // 2, (a.height - h) // 3
+        im.paste(a.crop((x, y, x + L, y + h)), (0, 0))
+        if PUBBLICA:
+            from PIL import ImageDraw, ImageFont
+            d = ImageDraw.Draw(im)
+            d.rectangle((0, h, L, H), fill="#18181c")
+            chi = artista(arte)
+            testo = (f"Art: {chi} · " if chi else "") + "© Wizards of the Coast"
+            try:
+                font = ImageFont.truetype(os.path.join(ROOT, "Companion", "Grafica", "Poppins-Regular.ttf"), 9)
+            except OSError:
+                font = ImageFont.load_default()
+            while d.textlength(testo, font=font) > L - 12 and len(testo) > 10:
+                testo = testo[:-2].rstrip() + "…"
+            d.text((6, h + (FASCIA_ARTE - 11) // 2), testo, fill="#8a8a90", font=font)
     tmp = f"{f}.{threading.get_ident()}.tmp"
     im.save(tmp, "JPEG", quality=92)
     os.replace(tmp, f)
@@ -325,14 +360,30 @@ def file_simbolo(tok):
     return os.path.join(CARTELLA, tok.replace("/", "") + ".svg")
 
 
+_CACHE = {}       # id della radice di Tk -> (radice, simboli, sfumature, misure dei testi): condivise fra tutte le liste della stessa finestra
+
+
+def cache_radice(tk):
+    """Le cache delle immagini e delle misure, una per radice di Tk (11 nov 2026, sessione Magic 13): la finestra di un mazzo fa una lista nuova a ogni apertura
+    e ricalcolava le sfumature di tutte le capsule e la misura di ogni nome (57 e 30 ms ad apertura). La radice resta nel valore: il suo id non si riusa
+    finche' la cache c'e' (le prove aprono e chiudono piu' radici: le immagini di una radice chiusa non valgono nell'altra)."""
+    r = getattr(tk, "_default_root", None)
+    if id(r) not in _CACHE:
+        _CACHE[id(r)] = (r, {}, {}, {})
+    return _CACHE[id(r)]
+
+
 class Liste:
     def __init__(self, tk, F, alto=ALTO):
-        self.tk, self.F, self.foto, self.fondi = tk, F, {}, {}
+        self.tk, self.F = tk, F
+        _r, self.foto, self.fondi, self.misure = cache_radice(tk)
         self.alto = alto      # alta 20 nella finestra del mazzo (Autore, 7 nov 2026: «tutto piu' piccolo e meglio organizzato»)
         from tkinter import font as tkfont
         self.misura = tkfont.Font(font=F(8, True))
         self.misura_t = tkfont.Font(font=F(11, True))
         self.misura_c = tkfont.Font(font=F(8))
+        for f_, d_ in ((self.misura, F(8, True)), (self.misura_t, F(11, True)), (self.misura_c, F(8))):
+            f_.chiave = repr(d_)        # la chiave della cache delle misure: il font, non l'oggetto
         self.carte, self.pop, self.sopra, self.timer = {}, None, None, None
         self.dati_hover = True        # la tabella del draft sotto l'immagine in hover
         self.schede = {}              # {nome: [(titolo, valore, colore)]}: i dati della carta sotto l'immagine in hover (la finestra del mazzo: rarita', copie che hai, prezzo)
@@ -359,7 +410,7 @@ class Liste:
 
     def fondo(self, w, colori, spenta):
         """La capsula larga w: sfumatura dall'alto al basso, riflesso nella meta' alta, due colori da sinistra a destra, angoli tondi."""
-        k = (w, colori, spenta)
+        k = (w, colori, spenta, self.alto)
         if k not in self.fondi:
             from PIL import Image, ImageDraw
             kb = ("base", colori, spenta, self.alto)       # la sfumatura 64 x alto non dipende dalla larghezza: una volta per colori (7 nov 2026: era il 60% dell'apertura di un mazzo)
@@ -397,7 +448,7 @@ class Liste:
 
     def scatola(self):
         """La scatola scura delle copie: la capsula la copre a destra."""
-        if "scatola" not in self.fondi:
+        if ("scatola", self.alto) not in self.fondi:
             from PIL import Image, ImageDraw
             S = 3
             L, H = LARGA_COPIE * S, self.alto * S
@@ -412,8 +463,8 @@ class Liste:
             ImageDraw.Draw(im).rounded_rectangle((0, 0, L + 30, H - 1), radius=6 * S, outline=(120, 120, 130, 255), width=S)
             im = im.resize((LARGA_COPIE, self.alto), Image.LANCZOS)
             buf = io.BytesIO(); im.save(buf, "PNG")
-            self.fondi["scatola"] = self.tk.PhotoImage(data=base64.b64encode(buf.getvalue()))
-        return self.fondi["scatola"]
+            self.fondi[("scatola", self.alto)] = self.tk.PhotoImage(data=base64.b64encode(buf.getvalue()))
+        return self.fondi[("scatola", self.alto)]        # la chiave porta l'altezza: la cache e' condivisa fra liste alte 20 e alte di serie
 
     def cornice(self, colore, lato=50):
         """La cornice del tier: bordo di metallo nel colore del tier, dentro scuro e lucido."""
@@ -565,51 +616,85 @@ class Liste:
         c.bind("<Configure>", disegna)
         return c
 
-    def taglia(self, testo, largo, misura=None):
+    def misura_di(self, testo, misura=None):
+        """La larghezza di un testo in un font, ricordata (ogni misura e' una chiamata a Tk)."""
         misura = misura or self.misura
-        if misura.measure(testo) <= largo:
+        k = (getattr(misura, "chiave", None) or str(misura), testo)
+        if k not in self.misure:
+            self.misure[k] = misura.measure(testo)
+        return self.misure[k]
+
+    def taglia(self, testo, largo, misura=None):
+        if self.misura_di(testo, misura) <= largo:
             return testo
-        while testo and misura.measure(testo + "…") > largo:
+        while testo and self.misura_di(testo + "…", misura) > largo:
             testo = testo[:-1]
         return testo.rstrip() + "…"
+
+    def disegna_riga(self, c, w, nome, quante=1, destra="", spenta=False, col_destra="#ffffff", copie=None, colonna=""):
+        """Il disegno di una capsula larga w sulla tela c (la sua, o la riga di un elenco: CartaTela)."""
+        toks, colori, _m = info(nome)
+        testo_c = copie if copie is not None else f"{quante}x"
+        font = self.F(8, True)
+        c.delete("all")
+        fuori = max(self.misura_di(colonna), self.misura_di(destra)) + 8 if (destra or colonna) else 1
+        larga = max(40, w - INIZIO - fuori)
+        c.larga = larga
+        c.create_image(0, 0, image=self.scatola(), anchor="nw")
+        # il numero delle copie si deve leggere subito (Autore, 5 nov 2026: «il numero copie a sx un po' piu' leggibile»)
+        c.create_text(16, self.alto / 2 + 1, text=testo_c, fill="#000000", font=self.F(10 if self.alto >= ALTO else 8, True))
+        c.create_text(15, self.alto / 2, text=testo_c, fill="#8a8a90" if spenta else "#ffffff", font=self.F(10 if self.alto >= ALTO else 8, True))
+        c.create_image(INIZIO, 0, image=self.fondo(larga, colori, spenta), anchor="nw")
+        x = INIZIO + larga - 9
+        for t in reversed(toks):
+            img = self.simbolo(t, 15 if self.alto >= ALTO else 14)
+            if img is not None:
+                c.create_image(x, self.alto / 2, image=img, anchor="e"); x -= 16
+        t = self.taglia(nome, x - INIZIO - 14)
+        tx = INIZIO + 11
+        # lieve grassetto e ombretta sotto (Autore, 5 nov 2026: «i testi sulle carte con un lieve grassetto e ombretta sotto per vederli meglio»)
+        for dx, dy in ((1, 2), (1, 1), (0, 1)):
+            c.create_text(tx + dx, self.alto / 2 + dy, text=t, anchor="w", fill="#0a0c12", font=font)
+        c.create_text(tx, self.alto / 2, text=t, anchor="w", fill="#a7a9ad" if spenta else "#ffffff", font=font)
+        if destra:
+            c.create_text(w - 1, self.alto / 2, text=destra, anchor="e", fill="#707074" if spenta else col_destra, font=self.F(8, True))
 
     def riga(self, padre, nome, quante=1, destra="", spenta=False, bg="#18181c", col_destra="#ffffff", copie=None, colonna=""):
         """Una capsula. quante: le copie, nella scatola a sinistra come «3x»; copie: un testo al suo posto (2/3 durante la partita); destra: un testo fuori, a destra.
         colonna: il testo piu' largo che quella colonna puo' avere: le capsule di una lista finiscono tutte allo stesso punto, anche quelle senza testo a destra (Autore, 6 nov 2026: «le capsule dei mazzi devono avere tutte la stessa lunghezza»)."""
-        tk = self.tk
-        c = tk.Canvas(padre, height=self.alto, bg=bg, highlightthickness=0, bd=0)
-        toks, colori, _m = info(nome)
-        testo_c = copie if copie is not None else f"{quante}x"
-        font = self.F(8, True)
+        c = self.tk.Canvas(padre, height=self.alto, bg=bg, highlightthickness=0, bd=0)
 
         def disegna(e=None):
             w = c.winfo_width()
-            if w < 60:
-                return
-            c.delete("all")
-            fuori = max(self.misura.measure(colonna), self.misura.measure(destra)) + 8 if (destra or colonna) else 1
-            larga = max(40, w - INIZIO - fuori)
-            c.larga = larga
-            c.create_image(0, 0, image=self.scatola(), anchor="nw")
-            # il numero delle copie si deve leggere subito (Autore, 5 nov 2026: «il numero copie a sx un po' piu' leggibile»)
-            c.create_text(16, self.alto / 2 + 1, text=testo_c, fill="#000000", font=self.F(10 if self.alto >= ALTO else 8, True))
-            c.create_text(15, self.alto / 2, text=testo_c, fill="#8a8a90" if spenta else "#ffffff", font=self.F(10 if self.alto >= ALTO else 8, True))
-            c.create_image(INIZIO, 0, image=self.fondo(larga, colori, spenta), anchor="nw")
-            x = INIZIO + larga - 9
-            for t in reversed(toks):
-                img = self.simbolo(t, 15 if self.alto >= ALTO else 14)
-                if img is not None:
-                    c.create_image(x, self.alto / 2, image=img, anchor="e"); x -= 16
-            t = self.taglia(nome, x - INIZIO - 14)
-            tx = INIZIO + 11
-            # lieve grassetto e ombretta sotto (Autore, 5 nov 2026: «i testi sulle carte con un lieve grassetto e ombretta sotto per vederli meglio»)
-            for dx, dy in ((1, 2), (1, 1), (0, 1)):
-                c.create_text(tx + dx, self.alto / 2 + dy, text=t, anchor="w", fill="#0a0c12", font=font)
-            c.create_text(tx, self.alto / 2, text=t, anchor="w", fill="#a7a9ad" if spenta else "#ffffff", font=font)
-            if destra:
-                c.create_text(w - 1, self.alto / 2, text=destra, anchor="e", fill="#707074" if spenta else col_destra, font=self.F(8, True))
+            if w >= 60:
+                self.disegna_riga(c, w, nome, quante, destra, spenta, col_destra, copie, colonna)
         c.bind("<Configure>", disegna)
         c.bind("<Enter>", lambda e: self.entra(c, nome)); c.bind("<Leave>", self.esci); c.bind("<Destroy>", self.esci, add="+")
+        return c
+
+    def elenco(self, padre, voci, bg="#18181c", passo=0):
+        """Tutte le capsule di una lista su una tela sola, una riga per carta (11 nov 2026, sessione Magic 13, Note/Motore_Grafico_App.md): con una tela per
+        capsula la finestra di un mazzo aveva 60-80 finestre di Windows solo per la lista. voci: [(nome, copie)]; passo: lo spazio fra le righe. Ogni riga e' una
+        CartaTela: la carta grande in hover e i suoi dati come prima. -> la tela, con .righe = [(riga, nome, copie)]."""
+        import carta_tela
+        alto = self.alto + passo
+        c = self.tk.Canvas(padre, height=max(1, len(voci) * alto - passo), bg=bg, highlightthickness=0, bd=0)
+        sm = carta_tela.Smistatore(c)
+        c.righe = []
+        for i, (nome, q) in enumerate(voci):
+            r = carta_tela.CartaTela(c, 0, i * alto, 1, self.alto, sm)
+            r.bind("<Enter>", lambda e, r=r, nome=nome: self.entra(r, nome)); r.bind("<Leave>", self.esci); r.bind("<Destroy>", self.esci, add=True)
+            c.righe.append((r, nome, q))
+
+        def disegna(e=None):
+            w = c.winfo_width()
+            if w < 60 or w == getattr(c, "larga_fatta", None):
+                return
+            c.larga_fatta = w
+            for r, nome, q in c.righe:
+                r.larga = w
+                self.disegna_riga(r, w, nome, q)
+        c.bind("<Configure>", disegna)
         return c
 
     # ------------------------------------------------ le carte a figura piena
@@ -639,8 +724,12 @@ class Liste:
             c = carta_tela.CartaTela(padre, su[0] - LARGA_CARTA / 2, su[1], LARGA_CARTA, ALTA_CARTA + SOTTO_CARTA, su[2])
         else:
             c = self.tk.Canvas(padre, width=LARGA_CARTA, height=ALTA_CARTA + SOTTO_CARTA, bg=bg, highlightthickness=0, bd=0)
+        from account import PUBBLICA
         c.spenta, c.fondo_spenta = spenta, bg
-        c.create_text(LARGA_CARTA / 2, ALTA_CARTA + SOTTO_CARTA / 2, text=sotto, fill=ROSSO_BAN if bandita else "#6e6e74" if spenta else "#e6e6ea", font=self.F(11, True),
+        if spenta and PUBBLICA:           # a colori pieni (le regole di Scryfall): che non ce l'hai lo dice il testo sotto
+            sotto = f"{sotto}  ·  NOT OWNED" if sotto else "NOT OWNED"
+        colore = ROSSO_BAN if bandita else (NON_TUA if PUBBLICA else "#6e6e74") if spenta else "#e6e6ea"
+        c.create_text(LARGA_CARTA / 2, ALTA_CARTA + SOTTO_CARTA / 2, text=sotto, fill=colore, font=self.F(11, True),
                       tags="sotto")     # «x1 x2 ecc e piu' visibile», stesso giorno
         c.create_rectangle(1, 1, LARGA_CARTA - 1, ALTA_CARTA - 1, fill="#202024", outline="#3a3a42")
         c.create_text(LARGA_CARTA / 2, ALTA_CARTA / 2, text=nome, width=LARGA_CARTA - 30, fill="#a7a9ad", font=self.F(9, True), justify="center")
@@ -660,8 +749,9 @@ class Liste:
         return c
 
     def immagine_tela(self, c, nome):
-        """L'immagine per la tela: quella vera, o la versione opaca se la carta non la hai (spenta)."""
-        if not getattr(c, "spenta", False):
+        """L'immagine per la tela: quella vera, o la versione opaca se la carta non la hai (spenta). Nell'app pubblica sempre quella vera."""
+        from account import PUBBLICA
+        if not getattr(c, "spenta", False) or PUBBLICA:
             return self.piene[nome]
         k = (nome, c.fondo_spenta)
         if k not in self.spente:
@@ -917,6 +1007,24 @@ def prova():
     f_b = cover_mazzo("Icy Reception", 298, 168)
     casi.append(("la copertina di un mazzo", _I.open(f_b).size == (298, 168)))
     casi.append(("una copertina senza arte", os.path.exists(cover_mazzo(None, 298, 168))))
+    # l'app pubblica e le regole delle immagini di Scryfall (11 nov 2026): la copertina ha sotto l'arte la riga dell'artista, la carta che non hai resta a colori
+    import account as _acc
+    era = _acc.PUBBLICA
+    try:
+        _acc.PUBBLICA = True
+        f_p = cover_mazzo("Icy Reception", 298, 168)
+        fascia = _I.open(f_p).convert("RGB").crop((0, 168 - FASCIA_ARTE, 298, 168))
+        angolo = fascia.getpixel((297, FASCIA_ARTE - 1))           # il fondo della riga (jpg: qualche unita' di scarto)
+        scritta = len(set(fascia.tobytes()[i:i + 3] for i in range(0, len(fascia.tobytes()), 3))) > 4 and all(abs(x - y) <= 4 for x, y in zip(angolo, (24, 24, 28)))
+        casi.append(("pubblica: la copertina ha la riga dell'artista, un altro file", f_p != f_b and scritta and bool(artista("Icy Reception")) == bool(indirizzi())))
+        L.piene.clear(); L.da_mini("Icy Reception"); q_p = L.carta_piena(root, "Icy Reception", "x0", spenta=True)
+        testo_p = [q_p.itemcget(i, "text") for i in q_p.find_withtag("sotto")]
+        casi.append(("pubblica: la carta che non hai e' l'immagine vera, il testo lo dice", L.immagine_tela(q_p, "Icy Reception") is L.piene["Icy Reception"]
+                     and testo_p == ["x0  ·  NOT OWNED"]))
+    finally:
+        _acc.PUBBLICA = era
+    q_n = L.carta_piena(root, "Icy Reception", "x0", spenta=True)
+    casi.append(("negativa: nell'app di Autore la carta che non hai resta opaca", L.immagine_tela(q_n, "Icy Reception") is not L.piene["Icy Reception"]))
     L.attese.update(A=[], B=[]); L.solo(["A"])
     casi.append(("scorrendo si aspetta solo chi e' a vista", "A" in L.attese and "B" not in L.attese))
     L.piene.update({f"finta {i}": None for i in range(201)}); L.solo(["finta 3"])

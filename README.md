@@ -1,8 +1,8 @@
-# 3 Steps Ahead · free MTG Arena deck tracker and deck builder (alpha 0.1.9)
+# 3 Steps Ahead · free MTG Arena deck tracker and deck builder (alpha 0.1.10)
 
 A free desktop companion for MTG Arena on Windows. It reads your own Arena log (Player.log) and shows your decks with their real record,
 on the play and on the draw, a card-by-card analysis of why they win and lose, a deck builder over your collection with a mana base calculator,
-a board to lay out synergies, the meta of every format, your collection with format legality, your ranked history and a plan for gold and gems.
+a board to lay out synergies, your collection with format legality, your ranked history and a plan for gold and gems.
 
 Unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. See NOTICE.md.
 

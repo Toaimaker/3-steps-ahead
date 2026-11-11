@@ -600,6 +600,11 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
         Mai durante una partita limited: un disegno ferma la finestra fino a un secondo e la chat dei consigli non aspetta. Con Arena aperta si' (la si usa
         accanto ad Arena, e il Player.log cambia di continuo)."""
         try:
+            # le schede dietro restano ferme alla loro misura (ferma): all'avvio non lo erano mai, perche' la prima scheda si mostra prima che le pagine abbiano una
+            # larghezza, e fino al primo cambio di scheda ogni ridimensionamento le rifaceva tutte (11 nov 2026: trascinando il bordo della Meta 1,2 s fermi)
+            for k, pg in self.pagine.items():
+                if k not in ("corso", self.scelta["v"]):
+                    self.ferma(pg)
             if time.time() - self.ultimo_input >= 2.0 and not self.pescate.in_partita:
                 ora = time.time()
                 riposo = self.__dict__.setdefault("riposo_dietro", {})       # una scheda rimasta segnata dopo un tentativo (senza dati, per esempio) riposa un minuto

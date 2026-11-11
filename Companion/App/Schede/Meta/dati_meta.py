@@ -25,6 +25,19 @@ def file_meta(fmt):
     return os.path.join(ROOT, "Note", f"meta_untapped_{fmt.lower().replace(' ', '_')}.json")
 
 
+def ranghi_formato(fmt):
+    """I ranghi della tendina Rank per un formato: quelli che il suo meta di Untapped ha (bronze ... platinum); [] per i formati di carta e per un file di prima."""
+    if dict(FORMATI_META).get(fmt) != "arena":
+        return []
+    p = file_meta(fmt)
+    try:
+        with open(p, encoding="utf-8") as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return []
+    return dati_app.ranghi_meta(d if isinstance(d, list) else d.get("archetipi") if isinstance(d, dict) else [])
+
+
 def formati_con_dati():
     """I formati della tendina Format: solo quelli che hanno il file del meta (tutti se non ne ha nessuno, e la pagina lo dice). Dal 10 nov 2026 l'app
     pubblica non porta piu' il meta di Untapped (i loro termini vietano di ridistribuirlo, Autore: «Sì, toglili»): li' restano i formati di carta e MTGO;
@@ -33,12 +46,12 @@ def formati_con_dati():
     return ci or [f for f, _ in FORMATI_META]
 
 
-def meta_mazzi(fmt):
+def meta_mazzi(fmt, rango=None):
     """I mazzi del meta di un formato, per la pagina Meta: (mazzi per quota, sottotitolo). I formati di Arena da Untapped (meta_formato), quelli di carta e
     di MTGO da MTGGoldfish (Note/meta_goldfish_<formato>.json, Motore/meta_goldfish_formati.py). Ogni mazzo ha lista, sideboard se c'e', prezzo e tix."""
     coll, _ = collezione()
     if dict(FORMATI_META).get(fmt) == "arena":
-        mm, sotto = _meta_formato(fmt, 10 ** 6)
+        mm, sotto = _meta_formato(fmt, 10 ** 6, rango)        # rango: la tendina Rank (11 nov 2026); None e' il rango dello scarico, platinum
         # solo gli archetipi con una lista: senza, la scheda e' vuota (niente copertina, View deck senza carte). 10 nov 2026, Autore: «la pagina meta
         # non mostra i dati corretti»: col periodo di Star Trek appena aperto 28 archetipi su 32 non avevano la lista
         mm = [x for x in mm if x.get("lista")][:QUANTI_META]

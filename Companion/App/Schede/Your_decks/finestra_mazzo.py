@@ -5,6 +5,22 @@ from pagina_base import Pagina
 from tema import CI as C, barra_scura
 
 
+def smonta(w, quanti=25):
+    """Distrugge w un pezzo alla volta, quando la finestra e' libera: i figli a gruppi di quanti, poi w. Un widget gia' distrutto si salta."""
+    try:
+        if not w.winfo_exists():
+            return
+        figli = w.winfo_children()
+    except Exception:
+        return
+    if not figli:
+        w.destroy()
+        return
+    for x in figli[:quanti]:
+        x.destroy()
+    w.after(15, lambda: smonta(w, quanti))
+
+
 class FinestraMazzo:
     """La finestra di un mazzo, sopra il Companion: si apre col clic su un mazzo di Your decks, del Meta o di Performance, coi pulsanti delle azioni."""
     IN_VISTA = None     # la pagina che ha la finestra del mazzo aperta: una per volta in tutto il Companion
@@ -39,8 +55,12 @@ class FinestraMazzo:
             barra_scura(f, C["fondo"], C["titolo"], C["filo"])
             self.det = tk.Frame(f, bg=C["scheda"]); self.det.pack(fill="both", expand=True)
         self.fin.title(titolo)
-        for w in self.det.winfo_children():
-            w.destroy()
+        # il contenuto di prima si stacca subito e si distrugge dopo, a pezzi (11 nov 2026, sessione Magic 13): distruggere ~200 widget costava 150 ms prima che il
+        # mazzo nuovo potesse comparire
+        vecchio = self.det
+        self.det = tk.Frame(self.fin, bg=C["scheda"]); self.det.pack(fill="both", expand=True)
+        vecchio.pack_forget()
+        smonta(vecchio)
         return self.fin
 
     def disegna_dettaglio(self):
@@ -117,6 +137,9 @@ class FinestraMazzo:
 
     def cliccabile(self, riga, chi):
         """Un clic su una riga apre il mazzo a sinistra (un secondo clic sullo stesso lo chiude)."""
+        if hasattr(riga, "cliccabile"):       # una riga della tabella su tela (tabella_tela.RigaTela)
+            riga.cliccabile(lambda: self.apri(None if self.aperto == chi else chi), accesa=False)
+            return
         for c in riga:
             for w in [c] + list(c.winfo_children()):
                 w.configure(cursor="hand2")

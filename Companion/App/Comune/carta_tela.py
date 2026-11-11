@@ -6,8 +6,10 @@ rotella Windows spostava e ridipingeva una finestra per carta, una alla volta. M
 il ciclo fermo fino a 192 ms; con le carte disegnate sulla tela sola un quadro pulito per scatto e 52 ms.
 
 CartaTela fa la parte della tela di una carta che il resto del codice usa (capsule.Liste.carta_piena, l'immagine che arriva dopo in raccogli, la carta grande in
-hover, il trascinamento verso il builder, le prove): create_text, create_rectangle, create_image, find_all, find_withtag, type, itemcget, tag_raise, bind,
-winfo_* e after. Gli elementi stanno sulla tela grande, spostati di (x, y), con un tag per carta; un tag interno («ban», «sotto») diventa «<carta>:ban».
+hover, il trascinamento verso il builder, le prove): create_text, create_rectangle, create_line, create_image, delete, bbox, find_all, find_withtag, type,
+itemcget, itemconfigure, tag_raise, bind, winfo_* e after. Fa anche le schede dei mazzi di Your decks e Meta (stessa storia: una tela di Tk per scheda):
+sposta (la griglia la mette al suo posto), grid_info (riga e colonna, come la griglia di Tk), il cursore sotto il puntatore, gli eventi coi x e y della
+scheda. Distrutta, non disegna piu' niente (una copertina cotta dopo arriva su una scheda che non c'e' piu'). Gli elementi stanno sulla tela grande, spostati di (x, y), con un tag per carta; un tag interno («ban», «sotto») diventa «<carta>:ban».
 Smistatore lega gli eventi alla tela grande e li passa alla carta sotto il puntatore, con <Enter> e <Leave> quando cambia carta; i tasti premuti restano della
 carta dove la pressione e' cominciata, come la presa implicita di Tk.
 
@@ -22,6 +24,13 @@ import percorsi  # noqa: E402,F401
 import itertools  # noqa: E402
 
 _NUMERO = itertools.count(1)
+# i nomi dello stesso evento: per Tk <Button-1> e <1> sono <ButtonPress-1>. Lo Smistatore manda <ButtonPress-1>: senza l'alias una scheda legata a <Button-1>
+# non riceveva il clic vero (11 nov 2026: le schede di Meta e Your decks, trovato dalla prova delle tabelle)
+_ALIAS = {"<Button-1>": "<ButtonPress-1>", "<1>": "<ButtonPress-1>", "<B1-ButtonRelease>": "<ButtonRelease-1>"}
+
+
+def _seq(s):
+    return _ALIAS.get(s, s)
 
 
 class Evento:
@@ -32,10 +41,11 @@ class Evento:
 class CartaTela:
     """Una carta sulla tela grande cv, con l'angolo in alto a sinistra in (x, y) di coordinate della tela e la misura (larga, alta)."""
 
-    def __init__(self, cv, x, y, larga, alta, smistatore=None):
+    def __init__(self, cv, x, y, larga, alta, smistatore=None, cursore=""):
         self.cv, self.x, self.y, self.larga, self.alta = cv, x, y, larga, alta
         self.tag = f"ct{next(_NUMERO)}"
         self.legami = {}
+        self.cursore, self.morta, self.cella = cursore, False, {}
         self.sm = smistatore
         if smistatore is not None:
             smistatore.carte[self.tag] = self
@@ -47,13 +57,42 @@ class CartaTela:
         return (self.tag, "cartatela") + tuple(f"{self.tag}:{t}" for t in tags or ())
 
     def create_text(self, x, y, tags=(), **k):
+        if self.morta:
+            return None
         return self.cv.create_text(self.x + x, self.y + y, tags=self._tags(tags), **k)
 
     def create_image(self, x, y, tags=(), **k):
+        if self.morta:
+            return None
         return self.cv.create_image(self.x + x, self.y + y, tags=self._tags(tags), **k)
 
     def create_rectangle(self, x0, y0, x1, y1, tags=(), **k):
+        if self.morta:
+            return None
         return self.cv.create_rectangle(self.x + x0, self.y + y0, self.x + x1, self.y + y1, tags=self._tags(tags), **k)
+
+    def create_line(self, *c, tags=(), **k):
+        if self.morta:
+            return None
+        c = c[0] if len(c) == 1 else c
+        return self.cv.create_line(*[v + (self.x if i % 2 == 0 else self.y) for i, v in enumerate(c)], tags=self._tags(tags), **k)
+
+    def delete(self, t):
+        """«all»: tutti gli elementi della carta (la carta resta viva e si ridisegna); un tag interno o un id: quelli."""
+        self.cv.delete(self.tag if t == "all" else f"{self.tag}:{t}" if isinstance(t, str) else t)
+
+    def bbox(self, i):
+        b = self.cv.bbox(i)
+        return None if b is None else (b[0] - self.x, b[1] - self.y, b[2] - self.x, b[3] - self.y)
+
+    def sposta(self, x, y):
+        """La carta al suo posto sulla tela (la griglia la mette li')."""
+        if (x, y) != (self.x, self.y):
+            self.cv.move(self.tag, x - self.x, y - self.y)
+            self.x, self.y = x, y
+
+    def grid_info(self):
+        return dict(self.cella)
 
     def find_all(self):
         return self.cv.find_withtag(self.tag)
@@ -67,6 +106,8 @@ class CartaTela:
         return self.cv.type(i)
 
     def itemcget(self, i, k):
+        if isinstance(i, str):
+            i = (self.find_withtag(i) or (None,))[0]
         return self.cv.itemcget(i, k)
 
     def itemconfigure(self, i, **k):
@@ -109,6 +150,7 @@ class CartaTela:
 
     # ---- gli eventi: li manda lo Smistatore
     def bind(self, seq, f=None, add=None):
+        seq = _seq(seq)
         if f is None:
             return self.legami.get(seq)
         if add:
@@ -118,18 +160,33 @@ class CartaTela:
         return seq
 
     def manda(self, seq, e=None):
-        for f in list(self.legami.get(seq, ())):
-            f(e if e is not None else Evento(widget=self, x=0, y=0, x_root=self.winfo_rootx(), y_root=self.winfo_rooty()))
+        """L'evento coi x e y della carta, come lo darebbe la sua tela."""
+        if e is None:
+            e = Evento(widget=self, x=0, y=0, x_root=self.winfo_rootx(), y_root=self.winfo_rooty())
+        elif getattr(e, "widget", None) is not self:
+            try:
+                cx, cy = self.cv.canvasx(e.x), self.cv.canvasy(e.y)
+            except Exception:
+                cx, cy = self.x, self.y
+            e = Evento(widget=self, x=cx - self.x, y=cy - self.y, x_root=getattr(e, "x_root", 0), y_root=getattr(e, "y_root", 0),
+                       state=getattr(e, "state", 0), delta=getattr(e, "delta", 0))
+        for f in list(self.legami.get(_seq(seq), ())):
+            f(e)
 
     def event_generate(self, seq, **kw):
         """Per le prove e i metri: come generare l'evento sulla tela della carta."""
         self.manda(seq, Evento(widget=self, x=kw.get("x", 0), y=kw.get("y", 0), x_root=self.winfo_rootx() + kw.get("x", 0), y_root=self.winfo_rooty() + kw.get("y", 0)))
 
     def destroy(self):
+        self.morta = True
         if self.sm is not None:
             self.sm.carte.pop(self.tag, None)
             if self.sm.sopra is self:
                 self.sm.sopra = None
+                try:
+                    self.cv.configure(cursor="")      # tolta sotto il puntatore: il cursore della carta non resta
+                except Exception:
+                    pass
             if self.sm.presa is self:
                 self.sm.presa = None
         try:
@@ -172,11 +229,18 @@ class Smistatore:
         vecchia, self.sopra = self.sopra, c
         if vecchia is not None:
             vecchia.manda("<Leave>", e)
+        try:
+            self.cv.configure(cursor=c.cursore if c is not None else "")
+        except Exception:
+            pass
         if c is not None:
             c.manda("<Enter>", e)
 
     def muovi(self, e):
-        self.cambia(self.sotto(e), e)
+        c = self.sotto(e)
+        self.cambia(c, e)
+        if c is not None and "<Motion>" in c.legami:
+            c.manda("<Motion>", e)
 
     def premi(self, e):
         self.presa = self.sotto(e)
@@ -221,6 +285,10 @@ def prova():
     del visti[:]
     sm.premi(E(50, 50)); sm.rilascia(E(250, 50))       # col tasto premuto Tk manda <B1-Motion>, non <Motion>: la carta sotto non cambia fino al rilascio
     casi.append(("la presa resta della carta dove comincia", visti[:2] == ["premi a", "lascia a"]))
+    clic = []
+    b.bind("<Button-1>", lambda e: clic.append("b"), add=True)        # legata col nome di Tk piu' comune: il clic vero arriva come <ButtonPress-1>
+    sm.premi(E(250, 50)); sm.rilascia(E(250, 50))
+    casi.append(("<Button-1> riceve la pressione vera dello smistatore", clic == ["b"]))
     del visti[:]
     sm.premi(E(150, 50)); sm.rilascia(E(150, 50))
     casi.append(("negativa: fra le carte non si preme niente", "premi a" not in visti and "premi b" not in visti))
@@ -231,6 +299,21 @@ def prova():
     a.destroy()
     casi.append(("distrutta: niente elementi, non esiste, ha avvisato", not cv.find_withtag(a.tag) and not a.winfo_exists() and via == [1] and a.tag not in sm.carte))
     casi.append(("negativa: l'altra carta resta", b.winfo_exists() and len(b.find_all()) == 3))
+    d = CartaTela(cv, 400, 200, 100, 140, sm, cursore="hand2")
+    il = d.create_line(0, 10, 100, 10, fill="#ffffff"); d.create_rectangle(0, 0, 99, 139, fill="#101014", tags="corpo")
+    locali = []
+    d.bind("<Motion>", lambda e: locali.append((round(e.x), round(e.y))))
+    d.sposta(300, 100)
+    casi.append(("sposta porta con se' tutti gli elementi", cv.coords(il) == [300.0, 110.0, 400.0, 110.0]))
+    sm.muovi(E(320, 130))
+    casi.append(("gli eventi arrivano coi x e y della carta, col cursore della carta", locali == [(20, 30)] and cv.cget("cursor") == "hand2"))
+    casi.append(("itemcget per tag interno", d.itemcget("corpo", "fill") == "#101014"))
+    d.delete("all"); d.create_rectangle(0, 0, 10, 10)
+    casi.append(("delete all e ridisegno: la carta resta viva", d.winfo_exists() and len(d.find_all()) == 1))
+    d.destroy(); d.create_rectangle(0, 0, 10, 10)
+    casi.append(("negativa: distrutta non disegna piu' niente", not cv.find_withtag(d.tag)))
+    sm.muovi(E(590, 390))
+    casi.append(("fuori dalle carte il cursore torna normale", cv.cget("cursor") == ""))
     sm.svuota()
     casi.append(("svuota le toglie tutte", not cv.find_withtag("cartatela") and not sm.carte))
     root.destroy()

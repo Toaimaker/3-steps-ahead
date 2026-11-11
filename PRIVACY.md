@@ -12,8 +12,8 @@ Everything the app reads and computes stays in its own folder on your PC (`Log_A
 
 ## Data downloaded by the app
 
-On first start and then about once a week the app downloads public card data: Scryfall bulk data (`api.scryfall.com`) and
-Arena's public card database (`mtgajson.untapped.gg`). If you link your public Untapped.gg profile, it also downloads your
+On first start and then about once a week the app downloads public card data: Scryfall bulk data (`api.scryfall.com`). The Arena
+card database is read from the MTG Arena client installed on your PC, nothing is downloaded for it. If you link your public Untapped.gg profile, it also downloads your
 collection and your games from Untapped.gg. These requests go from your PC to those services, under their own privacy terms.
 
 ## Sharing game data (off by default)

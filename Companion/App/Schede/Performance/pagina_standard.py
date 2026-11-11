@@ -140,15 +140,11 @@ class PaginaStandard(FinestraMazzo, SchedaMazzo, SezioniMazzo, VistaAnalisi, Man
                 return
             pt = lambda x: f"{x:,}"
 
-            def nome_farm(c, r):
-                self.mana_label(c, r["colori"], c["bg"]).pack(side="left")
-                tk.Label(c, text=r["nome"] if len(r["nome"]) <= 22 else r["nome"][:21] + "…", bg=c["bg"], fg=C["titolo"], font=F(9),
-                         anchor="w", pady=0).pack(side="left", padx=(6, 0))
             ev = [i for i, r in enumerate(self.farm) if self.aperto and self.aperto[0] == "farm" and self.aperto[1]["nome"] == r["nome"]]
             righe = []
             for r in self.farm:
                 netto = r["gemme_vinte"] - r["gemme_spese"]
-                righe.append([lambda c, r=r: nome_farm(c, r), self.cella(str(r["eventi"])),
+                righe.append([self.cella_mana(r["colori"], r["nome"] if len(r["nome"]) <= 22 else r["nome"][:21] + "…"), self.cella(str(r["eventi"])),
                               self.cella(f"{'+' if netto >= 0 else ''}{pt(netto)}", VINTA if netto >= 0 else PERSA, True), self.cella(str(r["buste"]))])
             tab = self.tabella(self.b_maz, [("deck", "w"), ("events", "e"), ("gem balance", "e"), ("packs", "e")], righe, evidenzia=ev)
             for riga, r in zip(tab, self.farm):
@@ -165,13 +161,10 @@ class PaginaStandard(FinestraMazzo, SchedaMazzo, SezioniMazzo, VistaAnalisi, Man
             quante = sum(r[0] for r in g.values())
             ord_ = sorted(g.items(), key=lambda t: -t[1][0])[:14]
 
-            def nome_avv(c, col):
-                if col == "?":
-                    tk.Label(c, text="unknown", bg=c["bg"], fg=C["grigio"], font=F(9), pady=0).pack(side="left")
-                else:
-                    self.mana_label(c, col, c["bg"]).pack(side="left")
+            def nome_avv(col):
+                return self.cella("unknown", C["grigio"], lato="left") if col == "?" else self.cella_mana(col)
             self.tabella(self.b_maz, [("opponent colors", "w"), ("share", "e"), ("record", "e"), ("win rate", "e")],
-                         [[lambda c, col=col: nome_avv(c, col), self.cella(f"{100 * r[0] / quante:.0f}%"), self.cella(f"{r[1]}-{r[0] - r[1]}"), self.cella_wr(r[1], r[0])] for col, r in ord_])
+                         [[nome_avv(col), self.cella(f"{100 * r[0] / quante:.0f}%"), self.cella(f"{r[1]}-{r[0] - r[1]}"), self.cella_wr(r[1], r[0])] for col, r in ord_])
             return
         if self.mostra.get() == "Meta":
             if self.ev is not None and self.ev.get() not in (EVENTI_BASE, "Ranked", "Play"):
@@ -186,16 +179,15 @@ class PaginaStandard(FinestraMazzo, SchedaMazzo, SezioniMazzo, VistaAnalisi, Man
             self.v_maz.set(sotto)
             con_wr = all(m.get("wr") is not None for m in meta)
 
-            def nome_arch(c, m):
-                self.mana_label(c, m.get("colori", ""), c["bg"]).pack(side="left")
+            def nome_arch(m):
                 lim = 26 - 3 * len(m.get("colori", ""))      # accanto a molti simboli di mana il nome si accorcia
                 nm = m["nome"] if len(m["nome"]) <= lim else m["nome"][:lim - 1] + "…"
-                tk.Label(c, text=nm, bg=c["bg"], fg=C["titolo"], font=F(8), pady=0).pack(side="left", padx=(6, 0))
+                return self.cella_mana(m.get("colori", ""), nm, grande=8)
             righe = []
             for m in meta:
                 pos, tot = m.get("possedute"), m.get("carte")
                 wr = m.get("wr") or 0
-                righe.append([lambda c, m=m: nome_arch(c, m), self.cella(f"{m.get('quota', 0):.1f}%"),
+                righe.append([nome_arch(m), self.cella(f"{m.get('quota', 0):.1f}%"),
                               self.cella(f"{wr:.1f}%", C["titolo"], True) if con_wr else
                               self.cella(f"{m['forza']}°" if m.get("forza") else "-", C["titolo"] if m.get("forza") else C["grigio"], True),
                               self.cella(f"{pos}/{tot}" if pos is not None else "-", C["verde_t"] if pos is not None and tot and pos >= tot - 2 else C["grigio"]),
@@ -203,6 +195,15 @@ class PaginaStandard(FinestraMazzo, SchedaMazzo, SezioniMazzo, VistaAnalisi, Man
             if righe:
                 ev = [i for i, m in enumerate(meta) if self.aperto and self.aperto[0] == "meta" and self.aperto[1].get("nome") == m["nome"]]
                 for riga, m in zip(self.tabella(self.b_maz, [("archetype", "w"), ("share", "e"), ("win rate" if con_wr else "strength", "e"), ("cards owned", "e"), ("source", "e")], righe, evidenzia=ev), meta):
+                    if hasattr(riga, "cliccabile"):       # la riga su tela: la freccia (l'ultima colonna) apre la pagina originale, il resto la scheda
+                        def clic(e, riga=riga, m=m):
+                            if m.get("url") and riga.cella_a(e.x) == len(riga.tab.colonne_x) - 1:
+                                webbrowser.open(m["url"])
+                            else:
+                                self.apri(None if self.aperto == ("meta", m) else ("meta", m))
+                        riga.cursore = "hand2"
+                        riga.bind("<Button-1>", clic)
+                        continue
                     self.cliccabile(riga, ("meta", m))
                     if m.get("url"):      # la freccia apre la pagina originale su Untapped, il resto della riga apre la scheda
                         for w in [riga[-1]] + list(riga[-1].winfo_children()):
@@ -218,13 +219,9 @@ class PaginaStandard(FinestraMazzo, SchedaMazzo, SezioniMazzo, VistaAnalisi, Man
             tk.Label(self.b_maz, text=f"No games recognized in {fmt}", bg=C["scheda"], fg=C["grigio"], font=F(9), anchor="w").pack(fill="x")
             return
         if righe:
-            def nome_mazzo(c, nome, col):
-                self.mana_label(c, col, c["bg"]).pack(side="left")
-                tk.Label(c, text=nome if len(nome) <= 22 else nome[:21] + "…", bg=c["bg"], fg=C["titolo"], font=F(9),
-                         anchor="w", pady=0).pack(side="left", padx=(6, 0))
             ev = [i for i, r in enumerate(righe) if self.aperto == ("mio", r[0])]
             tab = self.tabella(self.b_maz, [("deck", "w"), ("last", "e"), ("record", "e"), ("win rate", "e")],
-                               [[lambda c, nome=nome, col=col: nome_mazzo(c, nome, col), self.cella(f"{ultima:%d/%m}", C["grigio"], grande=8),
+                               [[self.cella_mana(col, nome if len(nome) <= 22 else nome[:21] + "…"), self.cella(f"{ultima:%d/%m}", C["grigio"], grande=8),
                                  self.cella(f"{w}-{n - w}"), self.cella_wr(w, n)] for nome, col, n, w, ultima in righe], evidenzia=ev)
             for riga, r in zip(tab, righe):
                 self.cliccabile(riga, ("mio", r[0]))

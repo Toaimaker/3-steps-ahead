@@ -61,20 +61,35 @@ class VistaAnalisi:
         def corto(n, k=30):
             return n if len(n) <= k else n[:k - 1].rstrip() + "…"
 
+        # le celle dichiarate (tabella_tela, 11 nov 2026): la tabella si disegna su una tela; la carta grande in hover la mette la riga (carte_in_hover)
         def nome(n):
-            def f(c):
-                l_ = tk.Label(c, text=corto(n), bg=c["bg"], fg=C["titolo"], font=F(8, True), anchor="w", pady=0, cursor="hand2"); l_.pack(side="left")
-                if lista is not None:
-                    l_.bind("<Enter>", lambda e: lista.entra(l_, n)); l_.bind("<Leave>", lista.esci); l_.bind("<Destroy>", lista.esci, add="+")
-            return f
+            c_ = self.cella_righe([(corto(n), C["titolo"], True, 8)])
+            c_.carte = [n]
+            return c_
 
         def coppia(cc):
-            def f(c):
-                for n in cc:
-                    nome(n)(tk.Frame(c, bg=c["bg"]))
-                for w, n in zip(c.winfo_children(), cc):
-                    w.pack(fill="x")
-            return f
+            c_ = self.cella_righe([(corto(n), C["titolo"], True, 8) for n in cc])
+            c_.carte = list(cc)
+            return c_
+
+        def carte_in_hover(righe_t, righe_c):
+            """Sopra una riga, la carta grande della carta su cui sta il puntatore (in una coppia: la riga di sopra o quella di sotto)."""
+            if lista is None:
+                return
+            for r, celle in zip(righe_t, righe_c):
+                carte = getattr(celle[0], "carte", None)
+                if not carte or not hasattr(r, "cliccabile"):
+                    continue
+
+                def sopra(e, r=r, carte=carte):
+                    n = carte[min(len(carte) - 1, int(e.y / max(r.alta, 1) * len(carte)))]
+                    if getattr(r, "in_hover", None) != n:
+                        r.in_hover = n
+                        lista.entra(r, n)
+                r.cursore = "hand2"
+                r.bind("<Motion>", sopra)
+                r.bind("<Leave>", lambda e, r=r: (setattr(r, "in_hover", None), lista.esci()))
+                r.bind("<Destroy>", lista.esci, add=True)
 
         def scarto(d):
             return self.cella(f"{'+' if d >= 0 else ''}{round(100 * d)}", C["verde_t"] if d > 0.005 else C["rosso_t"] if d < -0.005 else C["testo"], True)
@@ -85,8 +100,8 @@ class VistaAnalisi:
         def blocco(chiave, titolo, spiega, intest, righe, primo, vuoto="Nothing stands out yet"):
             """Una categoria: la mini tendina, chiusa la prima volta; nella testata il primo della lista, o «none»."""
             corpo = self.sezione_tendina(padre, "analisi_" + chiave, titolo, corto(primo, 34) if righe else "none", aperta=False, dopo=dopo, mini=True, spiega=spiega)
-            if righe:
-                self.tabella(corpo, intest, righe, allarga=0)
+            if righe:        # la tabella si fa alla prima apertura della mini tendina (partono chiuse)
+                corpo.poi(lambda: carte_in_hover(self.tabella(corpo, intest, righe, allarga=0), righe))
             else:
                 tk.Label(corpo, text=vuoto, bg=C["scheda"], fg=C["muto"], font=F(8), anchor="w", pady=2).pack(fill="x")
 

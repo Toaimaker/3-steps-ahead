@@ -7,6 +7,7 @@ grande, sotto una riga grigia; a sinistra un filo del colore del dato (verde sop
 import json
 import os
 
+import carta_tela
 import disegni as DG
 
 from ambiente import LOGDIR
@@ -67,9 +68,20 @@ class SezioniMazzo:
         def mostra():
             tri.configure(image=DG.triangolo(10 if mini else 12, st["aperta"], C["accento"] if st["aperta"] else C["grigio"]))
             if st["aperta"]:
+                f, corpo.da_riempire = getattr(corpo, "da_riempire", None), None
+                if f is not None:       # il contenuto rimandato si fa alla prima apertura
+                    f()
                 corpo.pack(fill="x")
             else:
                 corpo.pack_forget()
+
+        def poi(f):
+            """Il contenuto della sezione si fa adesso se e' aperta, se no alla prima apertura (11 nov 2026, sessione Magic 13: le categorie dell'analisi partono
+            chiuse e le loro tabelle costavano widget a ogni finestra del mazzo)."""
+            if st["aperta"]:
+                f()
+            else:
+                corpo.da_riempire = f
 
         def cambia(e=None):
             st["aperta"] = not st["aperta"]
@@ -81,45 +93,64 @@ class SezioniMazzo:
             w.bind("<Button-1>", cambia)
         mostra()
         corpo.testa_sezione, corpo.cambia_sezione, corpo.aperta_sezione = testa, cambia, (lambda: st["aperta"])
+        corpo.poi = poi
         return corpo
 
     def tessere(self, padre, voci, colonne=4, clic=None, scelta=None):
         """I dati come tessere: voci [(nome, valore, colore, riga sotto)]; tutte della stessa misura su una griglia, il filo a sinistra del colore del dato.
         clic: {nome: funzione}, le tessere che si premono (puntatore a mano, accese sotto il puntatore); scelta: il nome della tessera premuta, col fondo e il bordo
-        azzurri (on the play e on the draw: Autore, 10 nov 2026, «sulle schede del mazzo fai che i dati di analytics varino in base al premere on the draw on the play»)."""
+        azzurri (on the play e on the draw: Autore, 10 nov 2026, «sulle schede del mazzo fai che i dati di analytics varino in base al premere on the draw on the play»).
+        Dall'11 nov 2026 (sessione Magic 13, Note/Motore_Grafico_App.md) le tessere sono disegnate su una tela per gruppo, non 6 widget ciascuna: una finestra
+        del mazzo ne aveva ~130 solo per le tessere. -> la tela, con .tessere_ = {nome: la tessera (carta_tela.CartaTela, .accesa)}."""
         tk, F = self.tk, self.F
         clic = clic or {}
-        g = tk.Frame(padre, bg=C["scheda"]); g.pack(fill="x")
+        voci = list(voci)
+        g = tk.Canvas(padre, bg=C["scheda"], highlightthickness=0, bd=0, height=1); g.pack(fill="x")
+        sm = carta_tela.Smistatore(g)
         g.tessere_ = {}
-        for j in range(colonne):
-            g.columnconfigure(j, weight=1, uniform="tessere")
-        for i, voce in enumerate(voci):
-            et, val, col = voce[:3]
-            sotto = voce[3] if len(voce) > 3 else ""
-            accesa = et == scelta
-            fondo = C["sel"] if accesa else C["cap"]
-            t = tk.Frame(g, bg=fondo, highlightthickness=1 if accesa else 0, highlightbackground=C["accento"])
-            t.grid(row=i // colonne, column=i % colonne, sticky="nsew", padx=(0, 6 if i % colonne < colonne - 1 else 0), pady=(0, 6))
-            tk.Frame(t, bg=C["accento"] if accesa else col or C["filo"], width=3).pack(side="left", fill="y")
-            d = tk.Frame(t, bg=fondo, padx=9, pady=6); d.pack(side="left", fill="both", expand=True)
-            tk.Label(d, text=et.upper(), bg=fondo, fg=C["accento"] if accesa else C["muto"], font=F(6, True), pady=0, anchor="w").pack(fill="x")
-            v = str(val)
-            tk.Label(d, text=v, bg=fondo, fg=col or C["titolo"], font=F(13 if len(v) <= 9 else 10 if len(v) <= 16 else 8, True), pady=0, anchor="w", justify="left",
-                     wraplength=150).pack(fill="x")
-            if et in clic:
-                sotto = (sotto + " · " if sotto else "") + ("click: all games" if accesa else "click: only these")
-            tk.Label(d, text=sotto or " ", bg=fondo, fg=C["grigio"], font=F(7), pady=0, anchor="w", justify="left", wraplength=150).pack(fill="x")
-            g.tessere_[et] = t
-            if et in clic:
-                pezzi = [t, d, *d.winfo_children()]
 
-                def luce(on, pezzi=pezzi, fondo=fondo):
-                    for w in pezzi:
-                        if w.winfo_exists():
-                            w.configure(bg=C["sel"] if on else fondo)
-                for w in pezzi:
-                    w.configure(cursor="hand2")
-                    w.bind("<Button-1>", lambda e, f=clic[et]: f())
-                    w.bind("<Enter>", lambda e, luce=luce: luce(True))
-                    w.bind("<Leave>", lambda e, luce=luce: luce(False))
+        def disegna(e=None):
+            W = g.winfo_width()
+            if W < 50:          # non ancora a vista (una sezione chiusa): la larghezza del contenitore, se no una di ripiego; si rifa' quando arriva la vera
+                W = padre.winfo_width() if padre.winfo_width() >= 50 else 640
+            if W == getattr(g, "fatta", None):
+                return
+            g.fatta = W
+            sm.svuota(); g.delete("all"); g.tessere_.clear()
+            lw = (W - 6 * (colonne - 1)) / colonne
+            y = 0
+            for r0 in range(0, len(voci), colonne):
+                fatte = []
+                for k, voce in enumerate(voci[r0:r0 + colonne]):
+                    et, val, col = voce[:3]
+                    sotto = voce[3] if len(voce) > 3 else ""
+                    accesa = et == scelta
+                    fondo = C["sel"] if accesa else C["cap"]
+                    t = carta_tela.CartaTela(g, round(k * (lw + 6)), y, round(lw), 1, sm, cursore="hand2" if et in clic else "")
+                    t.accesa = accesa
+                    t.create_rectangle(0, 0, round(lw) - 1, 1, fill=fondo, outline=C["accento"] if accesa else "", tags="fondo")
+                    t.create_rectangle(0, 0, 3, 1, fill=C["accento"] if accesa else col or C["filo"], outline="", tags="filo")
+                    a = t.create_text(12, 6, text=et.upper(), anchor="nw", fill=C["accento"] if accesa else C["muto"], font=F(6, True))
+                    v = str(val)
+                    b = t.create_text(12, t.bbox(a)[3] + 1, text=v, anchor="nw", fill=col or C["titolo"], font=F(13 if len(v) <= 9 else 10 if len(v) <= 16 else 8, True),
+                                      width=round(lw) - 21)
+                    if et in clic:
+                        sotto = (sotto + " · " if sotto else "") + ("click: all games" if accesa else "click: only these")
+                    c_ = t.create_text(12, t.bbox(b)[3] + 1, text=sotto or " ", anchor="nw", fill=C["grigio"], font=F(7), width=round(lw) - 21)
+                    fatte.append((t, t.bbox(c_)[3] + 6, fondo))
+                    g.tessere_[et] = t
+                    if et in clic:
+                        t.bind("<Button-1>", lambda e, f=clic[et]: f())
+                        t.bind("<Enter>", lambda e, t=t: t.itemconfigure("fondo", fill=C["sel"]))
+                        t.bind("<Leave>", lambda e, t=t, fondo=fondo: t.itemconfigure("fondo", fill=fondo))
+                h = max(alto for _t, alto, _f in fatte)
+                for t, _a, _f in fatte:         # una riga di tessere e' alta come la piu' alta
+                    t.alta = h
+                    for tg in ("fondo", "filo"):
+                        x0, y0, x1, _y1 = g.coords(t.find_withtag(tg)[0])
+                        g.coords(t.find_withtag(tg)[0], x0, y0, x1, y0 + h - 1)
+                y += h + 6
+            g.configure(height=max(1, y - 6))
+        g.bind("<Configure>", disegna)
+        disegna()       # subito: i numeri ci sono anche in una sezione chiusa (e chi legge tessere_ li trova)
         return g

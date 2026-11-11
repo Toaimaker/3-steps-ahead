@@ -117,8 +117,15 @@ def jolly():
             _JOLLY["pub"] = (firma, (dict(zip("CURM", foto[-1]["wc"])), datetime.datetime.fromisoformat(foto[-1]["t"])) if foto else (None, None))
         return _JOLLY["pub"][1]
     vivo = os.path.join(os.path.expandvars(r"%USERPROFILE%\AppData\LocalLow\Wizards Of The Coast\MTGA"), "Player.log")
-    arch = sorted((os.path.join(LOGDIR, n) for n in os.listdir(LOGDIR) if "Player" in n and n.endswith(".log")),
-                  key=os.path.getmtime, reverse=True) if os.path.isdir(LOGDIR) else []
+    # l'elenco dei log archiviati, per data: rifatto solo quando la cartella cambia (11 nov 2026: ~280 log, 280 letture del disco a ogni finestra di un mazzo)
+    try:
+        k_dir = os.path.getmtime(LOGDIR)
+    except OSError:
+        k_dir = None
+    if _JOLLY.get("elenco", (object(),))[0] != k_dir:
+        _JOLLY["elenco"] = (k_dir, sorted((os.path.join(LOGDIR, n) for n in os.listdir(LOGDIR) if "Player" in n and n.endswith(".log")),
+                                         key=os.path.getmtime, reverse=True) if os.path.isdir(LOGDIR) else [])
+    arch = _JOLLY["elenco"][1]
     for f in [vivo] + arch[:6]:
         try:
             chiave = (os.path.getmtime(f), os.path.getsize(f))
@@ -415,6 +422,32 @@ def _json(p):
         return None
 
 
+RANGHI_META = ("bronze", "silver", "gold", "platinum")       # i ranghi che Untapped da' gratis (RankingClassScopeFilter BRONZE_TO_PLATINUM)
+
+
+def al_rango(arch, rango, info):
+    """Gli archetipi del meta rifatti su un rango (11 nov 2026, la tendina Rank della Meta; Autore: «quali mazzi si giocano di piu' in quale fascia di rank e
+    con quale win rate»): la quota sulle partite di quel rango, il win rate di quel rango dove c'e' (Standard), le partite. La «forza» e' la tier list del
+    platinum: fuori dal platinum non vale e non c'e'. Un archetipo sotto 20 partite nel rango non entra (lo stesso minimo di Untapped). -> (archetipi, partite del rango)"""
+    tot = (info.get("partite_ranghi") or {}).get(rango) or sum((x.get("partite_tutti") or {}).get(rango, 0) for x in arch)
+    out = []
+    for x in arch:
+        n = (x.get("partite_tutti") or {}).get(rango, 0)
+        if n < 20 or not tot:
+            continue
+        y = dict(x, quota=n / tot * 100, partite=n, rango_meta=rango)
+        y["wr"] = (x.get("wr_tutti") or {}).get(rango)
+        if rango != (info.get("rango") or "platinum"):
+            y["forza"] = None
+        out.append(y)
+    return out, tot
+
+
+def ranghi_meta(arch):
+    """I ranghi che il meta ha, nell'ordine della ladder: [] se il file e' di prima (senza le partite per rango) o di carta."""
+    return [r for r in RANGHI_META if any((x.get("partite_tutti") or {}).get(r) for x in arch or ())]
+
+
 def sotto_meta(d, quando):
     """Il sottotitolo del meta di Untapped: rango, periodo, partite, giorno dello scarico, e se il periodo nuovo ha ancora
     troppe poche partite (10 nov 2026: Star Trek aperto da poche ore, si legge Reality Fracture, e lo si dice)."""
@@ -461,17 +494,29 @@ def meta_formato(fmt, n=14):
     return m, sotto
 
 
-def _meta_formato(fmt, n=14):
+def _meta_formato(fmt, n=14, rango=None):
     """Il meta di un formato: (archetipi per quota, sottotitolo). Standard dal suo file (col win rate), gli altri da
     Note/meta_untapped_<formato>.json (con la «forza» al posto del win rate). ([], "") se il formato non ha meta."""
     if fmt == "Standard":
-        return meta_standard(n)
-    p = os.path.join(ROOT, "Note", f"meta_untapped_{fmt.lower().replace(' ', '_')}.json")
-    d = _json(p)
-    if not isinstance(d, dict):
-        return [], ""
+        if not rango:
+            return meta_standard(n)
+        d = _json(META_STD)
+        if not isinstance(d, list):
+            return [], ""
+        info = _json(os.path.join(ROOT, "Note", "meta_untapped_periodo.json"))
+        info, arch, p = info if isinstance(info, dict) else {}, d, META_STD
+    else:
+        p = os.path.join(ROOT, "Note", f"meta_untapped_{fmt.lower().replace(' ', '_')}.json")
+        d = _json(p)
+        if not isinstance(d, dict):
+            return [], ""
+        info, arch = d, d.get("archetipi") or []
     quando = datetime.datetime.fromtimestamp(os.path.getmtime(p))
-    return sorted(d.get("archetipi") or [], key=lambda x: -x.get("quota", 0))[:n], sotto_meta(d, quando)
+    if rango and rango in ranghi_meta(arch):
+        arch, tot = al_rango(arch, rango, info)
+        # nel sottotitolo le partite vere del rango, se lo scarico le ha: la somma sugli archetipi conta ogni partita due volte (un mazzo per parte)
+        info = dict(info, rango=rango, partite_rango=(info.get("partite_valide") or {}).get(rango) or tot)
+    return sorted(arch, key=lambda x: -x.get("quota", 0))[:n], sotto_meta(info, quando)
 
 
 def farming(voci):

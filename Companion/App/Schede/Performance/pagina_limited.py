@@ -154,19 +154,13 @@ class PaginaLimited(Pagina):
                 cp = []
             self.v_fonte.set(f"updated {fonte[:5]}" if fonte and cp else "")
 
-            def barra_meta(c, wr, mio):
-                cv = tk.Canvas(c, height=8, bg=c["bg"], highlightthickness=0); cv.pack(fill="x", expand=True, pady=4)
-                q = max(0.0, min(1.0, (wr - 50) / 6))
-                cv.bind("<Configure>", lambda e, cv=cv, q=q: (cv.delete("all"), cv.create_rectangle(0, 1, e.width, 7, fill=C["traccia"], width=0),
-                                                             cv.create_rectangle(0, 1, e.width * q, 7, fill=C["accento"] if mio else C["acciaio"], width=0)))
             righe, ev = [], []
             for i, (cop, wr, tr) in enumerate(cp):
                 mio = set(cop) == set(st["colori"]) and len(st["colori"]) == 2
                 if mio:
                     ev.append(i)
-                celle = [lambda c, i=i, cop=cop: (tk.Label(c, text=str(i + 1), width=2, anchor="w", bg=c["bg"], fg=C["grigio"], font=F(8), pady=0).pack(side="left"),
-                                                  self.mana_label(c, cop, c["bg"]).pack(side="left")),
-                         lambda c, wr=wr, mio=mio: barra_meta(c, wr, mio),
+                celle = [self.cella_mana(cop, numero=i + 1),
+                         self.cella_barra((wr - 50) / 6, C["accento"] if mio else C["acciaio"]),
                          self.cella(f"{wr:.1f}%", C["titolo"], True)]
                 if self.formato != "premier":
                     celle.append(self.cella(str(tr) if tr else "-", C["testo"] if tr else C["muto"]))
@@ -191,21 +185,21 @@ class PaginaLimited(Pagina):
             tk.Label(self.lista, text="No drafts", bg=C["scheda"], fg=C["grigio"], font=F(8)).pack(anchor="w")
             return
 
-        def esito(c, d):
+        def esito(d):
             if d["w"] >= 7:     # una riga e' un draft: o e' trofeo o no, la coppa da sola (Autore, 18 ott 2026: niente «× 1»)
-                if self.coppa.get(16):
-                    tk.Label(c, image=self.coppa[16], bg=c["bg"]).pack(side="left")
-                else:
-                    tk.Label(c, text="TROPHY", bg=c["bg"], fg=C["arancio"], font=F(7, True), pady=0).pack(side="left")
-            elif d["w"] < 7 and d["l"] < 3:
-                tk.Label(c, text="IN PROGRESS", bg=c["bg"], fg=C["azzurro"], font=F(7, True), pady=0).pack(side="left")
-        righe = [[lambda c, i=i, d=d: (tk.Label(c, text=str(i + 1), width=2, anchor="w", bg=c["bg"], fg=C["grigio"], font=F(8), pady=0).pack(side="left"),
-                                        self.mana_label(c, d["colori"], c["bg"]).pack(side="left")),
+                return self.cella_img(self.coppa[16]) if self.coppa.get(16) else self.cella_img(None, "TROPHY", C["arancio"])
+            if d["l"] < 3:
+                return self.cella_img(None, "IN PROGRESS", C["azzurro"])
+            return self.cella_img(None, "")
+        righe = [[self.cella_mana(d["colori"], numero=i + 1),
                   self.cella(f"{d['w']}-{d['l']}", C["titolo"], True, lato="left"),
-                  lambda c, d=d: esito(c, d),
+                  esito(d),
                   self.cella(f"{d['quando']:%d/%m}  ↗", C["grigio"], grande=8)] for i, d in enumerate(mie)]
         for riga, d in zip(self.tabella(self.lista, [("colors", "w"), ("record", "w"), ("", "w"), ("date", "e")], righe, allarga=2), mie):
             url = ambiente.DECK_URL.format(id=d["id"], set=d["set"])
+            if hasattr(riga, "cliccabile"):       # la riga su tela (11 nov 2026)
+                riga.cliccabile(lambda u=url: webbrowser.open(u), accesa=False)
+                continue
             for c in riga:
                 for w in [c] + list(c.winfo_children()):
                     w.configure(cursor="hand2"); w.bind("<Button-1>", lambda e, u=url: webbrowser.open(u))

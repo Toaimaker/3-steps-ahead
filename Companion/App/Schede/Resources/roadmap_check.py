@@ -6,6 +6,7 @@ import risorse as RS
 
 from dati_app import data_corta
 from tema import CI as C, PERSA, SFONDO_FASCIA, SFONDO_LINEA, TEND, VINTA, barra_scura
+from widget import a_riposo
 
 
 class RoadmapCheck:
@@ -213,6 +214,6 @@ class RoadmapCheck:
             cv.create_line(geo["X"](i), geo["su"], geo["X"](i), geo["H"] - 20, fill=C["grigio"], tags="cursore")
             parti = [f"{nome} {fmt(vs[i])}" for nome, vs, _, _ in serie if i < len(vs) and vs[i] is not None]
             v_info.set(f"{data_corta(date[i])}  ·  " + ("  ·  ".join(parti) if parti else "no reading yet"))
-        cv.bind("<Configure>", disegna); cv.bind("<Motion>", sopra)
+        cv.bind("<Configure>", a_riposo(cv, disegna)); cv.bind("<Motion>", sopra)      # trascinando il bordo: una volta, a misura ferma
         cv.bind("<Leave>", lambda e: (cv.delete("cursore"), v_info.set("")))
         return cv

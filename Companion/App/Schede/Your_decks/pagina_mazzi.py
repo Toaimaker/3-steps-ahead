@@ -5,6 +5,7 @@ import os
 import threading
 
 import capsule as CAP
+import carta_tela
 import collezione_carte as CC
 import disegni as DG
 import mazzi_salvati as MS
@@ -156,13 +157,16 @@ class PaginaMazzi(PaginaStandard):
         self.cv = cv = tk.Canvas(b, bg=C["scheda"], highlightthickness=0, yscrollcommand=segna); cv.pack(side="left", fill="both", expand=True)
         # un margine fra il bordo della scheda e le schede dei mazzi in alto (Autore, 7 nov 2026: «in decks dai piu' margine tra il frame e le schede dei mazzi in alto»)
         su = self.MARGINE_SU
+        # le schede dei mazzi si disegnano su questa tela, non una tela ciascuna (11 nov 2026, sessione Magic 13, Note/Motore_Grafico_App.md): griglia_b resta per
+        # i testi e la vista Charts della Meta
         self.griglia_b = tk.Frame(cv, bg=C["scheda"]); id_g = cv.create_window(0, su, anchor="nw", window=self.griglia_b)
-        self.griglia_b.bind("<Configure>", lambda e: cv.configure(scrollregion=(0, 0, 0, self.griglia_b.winfo_reqheight() + su)))
+        self.smista, self.alto_carte = carta_tela.Smistatore(cv), 0
+        self.griglia_b.bind("<Configure>", lambda e: self.regione())
         cv.bind("<Configure>", lambda e: (cv.itemconfigure(id_g, width=e.width), self.disponi(e.width)))
         barra.bind("<Button-1>", lambda e: cv.yview_moveto(e.y / max(barra.winfo_height(), 1))); barra.bind("<B1-Motion>", lambda e: cv.yview_moveto(e.y / max(barra.winfo_height(), 1)))
 
         def rotella(e):
-            if str(e.widget).startswith(str(cv)) and self.griglia_b.winfo_reqheight() + self.MARGINE_SU > cv.winfo_height():
+            if str(e.widget).startswith(str(cv)) and self.alto_regione() > cv.winfo_height():
                 cv.yview_scroll(-3 if e.delta > 0 else 3, "units")
         cv.bind_all("<MouseWheel>", rotella, add="+")
         self.al_davanti(lambda e: self.disegna() if self.sporco else None)
@@ -279,6 +283,7 @@ class PaginaMazzi(PaginaStandard):
             return
         self.sporco = False
         self.versione = MS.VERSIONE[0]
+        self.smista.svuota(); self.cv.delete("gruppo")
         self.svuota(self.griglia_b)
         self.scatole = []
         if len(self.foto) > 150:         # le copertine di prima: le tele sono appena state distrutte, oltre 150 (30 MB) si liberano
@@ -301,27 +306,25 @@ class PaginaMazzi(PaginaStandard):
             self.tk.Label(self.griglia_b, text="No decks yet", bg=C["scheda"], fg=C["grigio"], font=self.F(9)).pack(anchor="w")
         # i gruppi a tendina, uno per formato, col titolo grande (Autore, 7 nov 2026: «my decks > menu espandibile a tendine espandibili con titolo grande che gruppano i deck per ogni formato
         # e anche la wishlist li dentro»)
-        self.box = {}
+        self.box, self.quanti_g = {}, {}
         gruppi = {}
         for m in self.mazzi:
             m["_gruppo"] = ("Wishlist" if m.get("_sez") == "wish" else self.GRUPPO_BUILD if m.get("_sez") == "build" else None if m.get("piu")
                             else self.GRUPPO_ARENA if m.get("precon") else nome_formato(m.get("formato")))
             gruppi.setdefault(m["_gruppo"], []).append(m)
         if None in gruppi:
-            self.box[None] = tk_ = self.tk.Frame(self.griglia_b, bg=C["scheda"]); tk_.pack(fill="x")
-        for g in sorted((g for g in gruppi if g is not None), key=ordine_formato):
-            self.box[g] = self.gruppo(g, sum(1 for m in gruppi[g] if not m.get("piu")))
+            self.box[None] = None
+        for g in sorted((g for g in gruppi if g is not None), key=ordine_formato):      # i gruppi in ordine; i titoli li disegna disponi sulla tela
+            self.box[g] = g
+            self.quanti_g[g] = sum(1 for m in gruppi[g] if not m.get("piu"))
         self.piu_m, self.piu_c = [], []      # le schede «+» stanno fuori dall'elenco dei mazzi: non si contano e non si ordinano
         for m in self.mazzi:
-            self.padre_scatole = self.box[m["_gruppo"]]
             if m.get("piu"):
                 self.piu_m.append(m); self.piu_c.append(self.scatola_piu(m))
             else:
                 self.scatole.append(self.scatola_lista(m) if (self.sezione == "build" or m.get("_sez")) else self.scatola(m))      # i mazzi di Arena hanno partite: la scheda di My decks
-        self.padre_scatole = None
         self.mazzi = [m for m in self.mazzi if not m.get("piu")]
-        self.colonne = 0
-        self.disponi(self.cv.winfo_width())
+        self.disponi(self.cv.winfo_width(), forza=True)
         if self.aperto:
             self.disegna_dettaglio()
 
@@ -329,7 +332,7 @@ class PaginaMazzi(PaginaStandard):
         """Una scheda: un riquadro col filo sottile, la copertina, poi i testi. Al passaggio del mouse si illumina (Autore, 6 nov 2026: «le schede devono illuminarsi in hover»)."""
         tk, F = self.tk, self.F
         L, H = self.LARGA, self.ALTA
-        c = tk.Canvas(getattr(self, "padre_scatole", None) or self.griglia_b, width=L, height=H, bg=C["scheda"], highlightthickness=0, bd=0, cursor="hand2")
+        c = self.nuova_scatola()
 
         def disegna():
             c.delete("all")
@@ -397,7 +400,7 @@ class PaginaMazzi(PaginaStandard):
         """La scheda vuota col «+»: apre il builder (Add deck in wishlist, New build)."""
         tk, F = self.tk, self.F
         L, H = self.LARGA, self.ALTA
-        c = tk.Canvas(getattr(self, "padre_scatole", None) or self.griglia_b, width=L, height=H, bg=C["scheda"], highlightthickness=0, bd=0, cursor="hand2")
+        c = self.nuova_scatola()
         c.create_rectangle(0, 0, L - 1, H - 1, fill=C["fondo"], outline=C["filo"], dash=(4, 3), tags="corpo")
         cx, cy = L / 2, H / 2 - 32       # un simbolo si disegna, non si scrive: un carattere di testo non sta mai al centro del cerchio (Autore, 7 nov 2026: «i simboli delle varie grafiche non devono essere disordinati»)
         c.create_image(cx, cy, image=DG.piu(61, C["accento"]))
@@ -412,7 +415,7 @@ class PaginaMazzi(PaginaStandard):
         """Una scheda di un mazzo senza partite (Arena decks, Wishlist, Build): copertina, colori, nome, formato, carte che hai, jolly che mancano; in fondo il prezzo."""
         tk, F = self.tk, self.F
         L, H = self.LARGA, self.ALTA
-        c = tk.Canvas(getattr(self, "padre_scatole", None) or self.griglia_b, width=L, height=H, bg=C["scheda"], highlightthickness=0, bd=0, cursor="hand2")
+        c = self.nuova_scatola()
 
         def disegna():
             c.delete("all")
@@ -546,59 +549,70 @@ class PaginaMazzi(PaginaStandard):
         """Le schede ci sono gia': cambia solo il posto. La scheda «+» resta in testa."""
         coppie = sorted(zip(self.mazzi, self.scatole), key=lambda x: self.chiave(x[0]))
         self.mazzi, self.scatole = [x[0] for x in coppie], [x[1] for x in coppie]
-        self.colonne = 0
-        self.disponi(self.cv.winfo_width())
+        self.disponi(self.cv.winfo_width(), forza=True)
         self.cv.yview_moveto(0)
 
-    def disponi(self, larga):
-        n = max(1, larga // (self.LARGA + 14))
+    def nuova_scatola(self):
+        """Una scheda di mazzo sulla tela della griglia (carta_tela.CartaTela), non una tela sua: disponi la mette al suo posto."""
+        return carta_tela.CartaTela(self.cv, -10000, -10000, self.LARGA, self.ALTA, self.smista, cursore="hand2")
+
+    def alto_regione(self):
+        return max(self.griglia_b.winfo_reqheight() + self.MARGINE_SU if self.griglia_b.winfo_children() else 0, self.alto_carte)
+
+    def regione(self):
+        self.cv.configure(scrollregion=(0, 0, 0, self.alto_regione()))
+
+    def disponi(self, larga, forza=False):
+        """La griglia sulla tela sola (11 nov 2026): i titoli dei gruppi disegnati, le schede al loro posto, centrate in colonne uguali come faceva la griglia di
+        Tk. Si rifa' quando cambiano la larghezza, l'ordine o un gruppo; le schede di un gruppo chiuso stanno fuori dalla tela."""
         piu = list(zip(getattr(self, "piu_m", []), getattr(self, "piu_c", [])))
-        if n == self.colonne or not (self.scatole or piu):
+        coppie = piu + list(zip(self.mazzi, self.scatole))      # la scheda «+» in testa al suo gruppo
+        n = max(1, larga // (self.LARGA + 14))
+        if not forza and n == self.colonne and larga == getattr(self, "larga_disposta", None):
             return
-        self.colonne = n
-        box = getattr(self, "box", None)
-        if not box:       # la pagina Meta: una griglia sola
-            box = {None: self.griglia_b}
-        conto = {}
-        for corpo in box.values():
-            for j in range(12):
-                corpo.columnconfigure(j, weight=1 if j < n else 0, uniform="box" if j < n else "")
-        for m, c in piu + list(zip(self.mazzi, self.scatole)):      # la scheda «+» in testa al suo gruppo
-            g = m.get("_gruppo") if getattr(self, "box", None) else None
-            i = conto.get(g, 0); conto[g] = i + 1
-            c.grid(row=i // n, column=i % n, pady=(0, 12))
+        self.colonne, self.larga_disposta = n, larga
+        self.cv.delete("gruppo")
+        box = getattr(self, "box", None) or {None: None}        # la pagina Meta: una griglia sola, senza gruppi
+        cw = larga / n
+        y = self.MARGINE_SU
+        for g in box:
+            membri = [c for m, c in coppie if (m.get("_gruppo") if getattr(self, "box", None) else None) == g]
+            aperto = True
+            if g is not None:
+                chiave = f"{self.sezione}:{g}"
+                aperto = chiave not in GRUPPI_CHIUSI
+                y = self.testa_gruppo(g, chiave, self.quanti_g.get(g, 0), y, larga, aperto)
+            for i, c in enumerate(membri):
+                r, k = divmod(i, n)
+                c.cella = dict(row=r, column=k)
+                c.sposta(round(k * cw + (cw - self.LARGA) / 2), y + r * (self.ALTA + 12)) if aperto else c.sposta(-10000, -10000)
+            if aperto and membri:
+                y += (len(membri) + n - 1) // n * (self.ALTA + 12) + 6
+        self.alto_carte = y if coppie else 0
+        self.regione()
 
-    def gruppo(self, nome, quanti):
-        """Un gruppo a tendina: il titolo grande col numero dei mazzi e la freccia, sotto le sue schede. Si apre e si chiude col clic; la scelta resta (Log_Arena/mazzi_gruppi.json)."""
-        tk, F = self.tk, self.F
-        chiave = f"{self.sezione}:{nome}"
-        testa = tk.Frame(self.griglia_b, bg=C["scheda"], cursor="hand2"); testa.pack(fill="x", pady=(6, 6))
-        freccia = tk.Canvas(testa, width=22, height=22, bg=C["scheda"], highlightthickness=0, cursor="hand2"); freccia.pack(side="left", padx=(4, 6))
-        tit = tk.Label(testa, text=nome.upper(), bg=C["scheda"], fg=C["titolo"], font=F(16, True), cursor="hand2"); tit.pack(side="left")
-        num = tk.Label(testa, text=f"{quanti} deck{'s' if quanti != 1 else ''}", bg=C["scheda"], fg=C["grigio"], font=F(10, True), cursor="hand2"); num.pack(side="left", padx=(12, 0), pady=(6, 0))
-        tk.Frame(self.griglia_b, bg=C["filo"], height=1).pack(fill="x", pady=(0, 20))      # aria fra il filo del gruppo e le schede (7 nov 2026)
-        corpo = tk.Frame(self.griglia_b, bg=C["scheda"])
-        ordine = self.griglia_b.pack_slaves()
+    def testa_gruppo(self, nome, chiave, quanti, y, larga, aperto):
+        """Il titolo di un gruppo a tendina, disegnato sulla tela: la freccia, il nome grande, quanti mazzi, il filo sotto. Un clic lo apre o lo chiude e la scelta
+        resta (Log_Arena/mazzi_gruppi.json). -> la y dove cominciano le sue schede."""
+        cv, F = self.cv, self.F
+        t, tit_t = ("gruppo", f"gruppo:{chiave}"), f"titolo:{chiave}"
+        y0 = y + 6
+        cv.create_rectangle(0, y0, larga, y0 + 34, fill=C["scheda"], outline="", tags=t)        # tutta la riga si clicca, non solo le lettere
+        # il triangolo disegnato, centrato: giu' aperto, a destra chiuso (un simbolo si disegna, non si scrive: Autore, 7 nov 2026)
+        cv.create_image(4, y0 + 6, image=DG.triangolo(22, aperto, C["accento"]), anchor="nw", tags=t)
+        tit = cv.create_text(32, y0 + 17, text=nome.upper(), anchor="w", fill=C["titolo"], font=F(16, True), tags=t + (tit_t,))
+        cv.create_text(cv.bbox(tit)[2] + 12, y0 + 20, text=f"{quanti} deck{'s' if quanti != 1 else ''}", anchor="w", fill=C["grigio"], font=F(10, True), tags=t)
+        yl = y0 + 40
+        cv.create_line(0, yl, larga, yl, fill=C["filo"], tags="gruppo")
+        cv.tag_bind(t[1], "<Button-1>", lambda e: self.cambia_gruppo(chiave))
+        cv.tag_bind(t[1], "<Enter>", lambda e: (cv.itemconfigure(tit_t, fill=C["accento"]), cv.configure(cursor="hand2")))
+        cv.tag_bind(t[1], "<Leave>", lambda e: (cv.itemconfigure(tit_t, fill=C["titolo"]), cv.configure(cursor="")))
+        return yl + 20      # aria fra il filo del gruppo e le schede (7 nov 2026)
 
-        def metti():
-            freccia.delete("all")      # il triangolo disegnato, centrato: giu' aperto, a destra chiuso
-            freccia.create_image(0, 0, image=DG.triangolo(22, chiave not in GRUPPI_CHIUSI, C["accento"]), anchor="nw")
-            if chiave in GRUPPI_CHIUSI:
-                corpo.pack_forget()
-            else:
-                corpo.pack(fill="x", after=ordine[-1], pady=(0, 6))
-
-        def cambia(e=None):
-            GRUPPI_CHIUSI.symmetric_difference_update({chiave})
-            salva_gruppi()
-            metti()
-        for w_ in (testa, freccia, tit, num):
-            w_.bind("<Button-1>", cambia)
-            w_.bind("<Enter>", lambda e: tit.configure(fg=C["accento"]))
-            w_.bind("<Leave>", lambda e: tit.configure(fg=C["titolo"]))
-        metti()
-        corpo.testa = testa
-        return corpo
+    def cambia_gruppo(self, chiave):
+        GRUPPI_CHIUSI.symmetric_difference_update({chiave})
+        salva_gruppi()
+        self.disponi(self.cv.winfo_width(), forza=True)
 
     def disegna_mazzi(self):
         pass

@@ -16,7 +16,8 @@ from widget import ARANCIO, pulsante_solido
 
 # (chiave, titolo, cosa fa, [(comando, effetto)]): una sezione per scheda, nell'ordine delle linguette
 SEZIONI = (
-    ("meta", "Meta", "The most played decks of every format: Arena formats from Untapped, paper and MTGO formats from MTGGoldfish.",
+    ("meta", "Meta", ("The most played decks of every format, built from the games players choose to share: coming soon. Meanwhile, Import any list in "
+                      "Your decks.") if PUBBLICA else "The most played decks of every format: Arena formats from Untapped, paper and MTGO formats from MTGGoldfish.",
      [("Format", "the format to show"), ("Sort by", "meta share, win rate, price, cards you own, name"),
       ("Click a deck", "opens its deck window, with the sideboard and the link to the original page")]),
     ("mazzi", "Your decks", "Your Arena decks, the decks Arena gave you, your wishlist and your deck building, grouped by format.",
@@ -102,24 +103,27 @@ class PaginaHelp:
             l = tk.Label(link, text=titolo, bg=C["fondo"], fg=C["accento"], font=F(9, True), cursor="hand2", padx=8)
             l.pack(side="left")
             l.bind("<Button-1>", lambda e, k=k: self.vai(k))
-        # le sezioni, in una colonna che scorre
-        cv = self.cv = tk.Canvas(self.fr, bg=C["fondo"], highlightthickness=0, bd=0); cv.pack(fill="both", expand=True, padx=(16, 4), pady=(0, 10))
-        dentro = self.dentro = tk.Frame(cv, bg=C["fondo"])
-        win = cv.create_window(0, 0, window=dentro, anchor="nw")
-        dentro.bind("<Configure>", lambda e: cv.configure(scrollregion=(0, 0, 0, dentro.winfo_reqheight())))
-        cv.bind("<Configure>", lambda e: cv.itemconfigure(win, width=e.width - 12))
-        for k, titolo, descr, comandi in SEZIONI:
-            self.sezione(dentro, k, titolo, descr, comandi if comandi is not None else comandi_board())
-
-        def rotella(e):
-            if dentro.winfo_reqheight() > cv.winfo_height():
-                cv.yview_scroll(int(-e.delta / 120) * 3, "units")
-
-        def lega(w):
-            w.bind("<MouseWheel>", rotella, add="+")
-            for x in w.winfo_children():
-                lega(x)
-        cv.after(100, lambda: lega(cv))
+        # le sezioni, in un testo solo che scorre (11 nov 2026, sessione Magic 13, Note/Motore_Grafico_App.md): erano ~155 widget dentro una tela, e su Windows
+        # ogni widget e' una finestra che lo scorrimento sposta una per una. Il testo ha i suoi stili (titolo, descrizione, comando, effetto), scorre da solo
+        # con la rotella e si puo' selezionare e copiare
+        from tkinter import font as tkfont
+        t = self.cv = tk.Text(self.fr, bg=C["fondo"], fg=C["testo"], relief="flat", bd=0, highlightthickness=0, wrap="word", cursor="arrow", padx=0, pady=0,
+                              selectbackground=C["sel"], inactiveselectbackground=C["sel"], exportselection=True)
+        t.pack(fill="both", expand=True, padx=(16, 4), pady=(0, 10))
+        tutti = [(k, titolo, descr, comandi if comandi is not None else comandi_board()) for k, titolo, descr, comandi in SEZIONI]
+        f_cmd = tkfont.Font(font=F(9, True))
+        tab = 12 + max((f_cmd.measure(c) for _k, _t, _d, cc in tutti for c, _e in cc), default=180) + 18      # la colonna dei comandi, come la griglia di prima
+        blocco = dict(background=C["scheda"], lmargincolor=C["scheda"], rmargincolor=C["scheda"], rmargin=12)
+        t.tag_configure("titolo", font=F(12, True), foreground=C["titolo"], lmargin1=12, lmargin2=12, spacing1=10, spacing3=2, **blocco)
+        t.tag_configure("descr", font=F(9), foreground=C["grigio"], lmargin1=12, lmargin2=12, spacing3=6, **blocco)
+        t.tag_configure("cmd", font=F(9, True), foreground=C["accento"])
+        t.tag_configure("eff", font=F(9), foreground=C["testo"])
+        t.tag_configure("riga", lmargin1=12, lmargin2=tab, tabs=(tab,), spacing1=1, spacing3=1, **blocco)
+        t.tag_configure("fine", font=F(5), lmargin1=12, **blocco)
+        t.tag_configure("spazio", font=F(5), background=C["fondo"])
+        for k, titolo, descr, comandi in tutti:
+            self.sezione(t, k, titolo, descr, comandi)
+        t.configure(state="disabled")
 
     def riquadro_untapped(self):
         """YOUR COLLECTION: il link del profilo pubblico di Untapped (account.collega_untapped). Il log di Arena non scrive la collezione intera: senza, Your decks e
@@ -189,27 +193,39 @@ class PaginaHelp:
         condividi.imposta_consenso(condividi.consenso() is not True)
         self.mostra_condivisione()
 
-    def sezione(self, padre, k, titolo, descr, comandi):
-        tk, F = self.tk, self.F
-        box = tk.Frame(padre, bg=C["filo"], padx=1, pady=1); box.pack(fill="x", pady=(0, 10))
-        s = tk.Frame(box, bg=C["scheda"]); s.pack(fill="x")
-        self.ancore[k] = box
-        tk.Label(s, text=titolo, bg=C["scheda"], fg=C["titolo"], font=F(12, True), anchor="w").pack(fill="x", padx=12, pady=(10, 2))
-        tk.Label(s, text=descr, bg=C["scheda"], fg=C["grigio"], font=F(9), anchor="w", justify="left", wraplength=1000).pack(fill="x", padx=12, pady=(0, 6))
-        g = tk.Frame(s, bg=C["scheda"]); g.pack(fill="x", padx=12, pady=(0, 10))
-        g.columnconfigure(1, weight=1)
-        for i, (com, eff) in enumerate(comandi):
-            tk.Label(g, text=com, bg=C["scheda"], fg=C["accento"], font=F(9, True), anchor="w").grid(row=i, column=0, sticky="w", padx=(0, 18), pady=1)
-            tk.Label(g, text=eff, bg=C["scheda"], fg=C["testo"], font=F(9), anchor="w", justify="left").grid(row=i, column=1, sticky="w", pady=1)
+    def sezione(self, t, k, titolo, descr, comandi):
+        """Una sezione nel testo: il titolo, cosa fa, i comandi in due colonne (il comando in azzurro, l'effetto accanto), su un blocco col fondo della scheda."""
+        segno = f"sez_{k}"
+        t.mark_set(segno, "end-1c"); t.mark_gravity(segno, "left")
+        self.ancore[k] = segno
+        t.insert("end", titolo + "\n", ("titolo",))
+        t.insert("end", descr + "\n", ("descr",))
+        for com, eff in comandi:
+            t.insert("end", com, ("cmd", "riga"))
+            t.insert("end", "\t" + eff + "\n", ("eff", "riga"))
+        t.insert("end", "\n", ("fine",))
+        t.insert("end", "\n", ("spazio",))
+
+    def testi(self):
+        """I testi della pagina, per le prove: le etichette e, del testo delle sezioni, ogni titolo, descrizione, comando ed effetto."""
+        out = []
+
+        def giu(w):
+            for x in w.winfo_children():
+                if isinstance(x, self.tk.Label):
+                    out.append(x.cget("text"))
+                giu(x)
+        giu(self.fr)
+        for riga in self.cv.get("1.0", "end").split("\n"):
+            out.extend(p_ for p_ in riga.split("\t") if p_)
+        return out
 
     def vai(self, k):
         """Un collegamento in alto: la sezione in cima alla colonna."""
-        box = self.ancore.get(k)
-        if box is None:
+        segno = self.ancore.get(k)
+        if segno is None:
             return
-        self.dentro.update_idletasks()
-        alto = max(1, self.dentro.winfo_reqheight())
-        self.cv.yview_moveto(box.winfo_y() / alto)
+        self.cv.yview(segno)
 
     # ------------------------------------------------ gli aggiornamenti
     def mostra_stato(self):

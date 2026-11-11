@@ -4,6 +4,7 @@ import tkinter.font as tkfont
 import disegni as DG
 
 from tema import CI as C, PERSA, SALDO, SFONDO_FASCIA, SFONDO_LINEA, TEND, VINTA
+from widget import a_riposo
 
 
 class Trend:
@@ -202,5 +203,5 @@ class Trend:
             v_info.set(f"{righe[i][0]} · " + " · ".join(f"{nome} {pt(vals[i])}" for nome, vals, _, stile in serie if stile != "media"))
             if compatto and r_leg is not None:
                 r_leg.pack_forget()
-        cv.bind("<Configure>", disegna); cv.bind("<Motion>", sopra)
+        cv.bind("<Configure>", a_riposo(cv, disegna)); cv.bind("<Motion>", sopra)      # trascinando il bordo: una volta, a misura ferma
         cv.bind("<Leave>", lambda e: (cv.delete("cursore"), v_info.set(riposo), r_leg.pack(side="right") if compatto and r_leg is not None else None))

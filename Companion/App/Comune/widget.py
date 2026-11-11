@@ -274,6 +274,30 @@ class Spunte:
 ARANCIO = ("#c8741f", "#e08a33", "#9a5816")     # normale, sotto il mouse, premuto: le azioni principali di un mazzo (Edit, Add to wishlist; 10 nov 2026)
 
 
+def a_riposo(w, f, ms=100):
+    """Il gestore di <Configure> di un disegno pesante (i grafici, con l'antialias di PIL): la prima volta subito, poi una volta sola quando la misura smette di
+    cambiare da ms (11 nov 2026, sessione Magic 13): trascinando il bordo della finestra Windows manda decine di <Configure> al secondo e ognuno rifaceva il
+    grafico, 0,1-0,2 s l'uno. Note/Motore_Grafico_App.md."""
+    stato = {"id": None, "fatto": False}
+
+    def poi():
+        stato["id"] = None
+        f(None)
+
+    def gestore(e=None):
+        if not stato["fatto"]:
+            stato["fatto"] = True
+            f(e)
+            return
+        if stato["id"] is not None:
+            try:
+                w.after_cancel(stato["id"])
+            except Exception:
+                pass
+        stato["id"] = w.after(ms, poi)
+    return gestore
+
+
 def pulsante_solido(tk, F, padre, testo, premuto, azione, alto=40, bg="#18181c", colori=None):
     """Un pulsante azzurro pieno, senza sfumature, che si schiarisce al passaggio del mouse (Autore, 6 nov 2026: «i pulsanti non facciamogli la sfumatura ma facciamoli pieni con light hover»;
     dal 5 nov erano sfumati con riflesso). Premuto e' piu' scuro. c.metti(testo, premuto) lo cambia."""

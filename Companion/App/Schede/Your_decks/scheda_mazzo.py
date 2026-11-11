@@ -73,16 +73,15 @@ class SchedaMazzo:
             return self.cella(f"{v}-{n - v}", C["verde_t"] if 2 * v > n else C["rosso_t"] if 2 * v < n else C["testo"], True)
 
         def nomi_cella(nomi):
-            def f(c):
-                for n in nomi:
-                    tk.Label(c, text=corto(n), bg=c["bg"], fg=C["titolo"], font=F(8, True), anchor="w", pady=0).pack(fill="x")
-            return f
+            return self.cella_righe([(corto(n), C["titolo"], True, 8) for n in nomi])
 
-        def freccia(c):
-            tk.Label(c, text="›", bg=c["bg"], fg=C["acciaio"], font=F(12, True), pady=0).pack(side="right")
+        freccia = self.cella("›", C["acciaio"], True, 12)
 
         def cliccabile(riga, azione):
             """Tutta la riga apre la mano; accesa finche' il puntatore sta su uno dei suoi pezzi (passare da una cella all'altra non la spegne)."""
+            if hasattr(riga, "cliccabile"):       # una riga della tabella su tela (11 nov 2026)
+                riga.cliccabile(azione)
+                return
             pezzi = [w for c in riga for w in [c, *c.winfo_children()]]
             fondo = {w: w["bg"] for w in pezzi}
 
@@ -123,14 +122,8 @@ class SchedaMazzo:
                 return (-c.get("cmc", 0), n)
 
             def magie_cella(x):
-                def f(c):
-                    d = sorted(dict.fromkeys(x["magie"]), key=chiave)       # le piu' care in testa: sono le minacce della mano
-                    for i, n in enumerate(d[:2]):
-                        r_ = tk.Frame(c, bg=c["bg"]); r_.pack(fill="x")
-                        tk.Label(r_, text=corto(n, 26), bg=c["bg"], fg=C["titolo"], font=F(8, True), anchor="w", pady=0).pack(side="left")
-                        if i == 1 and len(d) > 2:
-                            tk.Label(r_, text=f"+{len(d) - 2}", bg=c["bg"], fg=C["grigio"], font=F(7), pady=0).pack(side="left", padx=(4, 0))
-                return f
+                d = sorted(dict.fromkeys(x["magie"]), key=chiave)       # le piu' care in testa: sono le minacce della mano
+                return self.cella_righe([(corto(n, 26) + (f"  +{len(d) - 2}" if i == 1 and len(d) > 2 else ""), C["titolo"], True, 8) for i, n in enumerate(d[:2])])
             righe = self.tabella(dx, [("turn", "w"), ("start", "w"), ("lands", "e"), ("hand", "w"), ("", "e")],
                                  [[self.cella(f"T{x['turno']}", C["verde_t"], True, 11, "left"), self.cella("play" if x["primo"] else "draw", lato="left"),
                                    self.cella(str(x["terre"])), magie_cella(x), freccia] for x in an["veloci"]], allarga=3)
@@ -323,9 +316,10 @@ class SchedaMazzo:
             """Una sottolista col suo titolo. Le capsule come in Arena, per costo dall'alto in basso. Rarita', copie che hai e prezzo stanno
             sulla scheda della carta in hover, non piu' accanto alla capsula (Autore, 7 nov 2026)."""
             tk.Label(padre, text=f"{titolo} · {sum(carte.values())}", bg=C["scheda"], fg=C["titolo"], font=F(7, True), anchor="w").pack(fill="x", pady=(0, 3))
-            for n_, q in CAP.ordina(list(carte.items())):
+            voci_ = CAP.ordina(list(carte.items()))
+            for n_, q in voci_:
                 lista.schede[n_] = self.dati_carta(n_, tutte.get(n_, q), coll)     # le copie di tutte le zone: la sideboard non riscrive quelle del mazzo
-                lista.riga(padre, n_, q, bg=C["scheda"]).pack(fill="x", pady=0)
+            lista.elenco(padre, voci_, bg=C["scheda"]).pack(fill="x", pady=0)      # una tela per sottolista, non una per carta (11 nov 2026)
             tk.Frame(padre, bg=C["scheda"], height=8).pack(fill="x")
         if main:
             voci_m = [(q, n) for n, q in main.items()]

@@ -6,7 +6,9 @@ import capsule as CAP
 import collezione_carte as CC
 import prezzi_carte as PZ
 
-from dati_meta import FORMATI_META, formati_con_dati, meta_mazzi
+from account import PUBBLICA
+from dati_app import RANGHI_META
+from dati_meta import FORMATI_META, formati_con_dati, meta_mazzi, ranghi_formato
 from pagina_base import Pagina, prepara_capsule
 from pagina_mazzi import PaginaMazzi
 import dati_grafici as DGR
@@ -14,6 +16,10 @@ from icone import icona_set, nome_set
 from vista_grafici import VistaGrafici
 from tema import CI as C, PERSA, VINTA
 from widget import Tendina
+
+# la pagina senza dati: nell'app pubblica non c'e' il meta di terzi (Untapped e MTGGoldfish vietano di ridistribuirlo, Distribuzione/Business_Model.md
+# sezione 5, 11 nov 2026): arrivera' dalle partite che gli utenti condividono
+VUOTO = "The meta built from the games 3 Steps Ahead players share is coming soon" if PUBBLICA else "No meta data for this format yet"
 
 
 class PaginaMeta(PaginaMazzi):
@@ -31,6 +37,11 @@ class PaginaMeta(PaginaMazzi):
         self.t_fmt = Tendina(tk, self.barra_menu, "Format", F, larga=170); self.t_fmt.fr.pack(side="left")
         formati = formati_con_dati()
         self.t_fmt.opzioni(formati, lambda o: self.cambia_formato()); self.t_fmt.set("Standard" if "Standard" in formati else formati[0])
+        # la tendina Rank (11 nov 2026, Autore: «in meta dobbiamo aggiungere una tendina che ci mostra il meta anche per rank della classifica», «cioe' quali
+        # mazzi si giocano di piu' in quale fascia di rank e con quale win rate»): i ranghi che Untapped da' gratis, Bronze-Platinum; c'e' solo nei formati di Arena
+        # che hanno le partite per rango, e la scelta resta cambiando formato
+        self.t_rango = Tendina(tk, self.barra_menu, "Rank", F, larga=130)
+        self.t_rango.opzioni([r.capitalize() for r in RANGHI_META], lambda o: self.cambia_formato()); self.t_rango.set("Platinum")
         self.t_ord = Tendina(tk, self.barra_menu, "Sort by", F, larga=170); self.t_ord.fr.pack(side="left", padx=(10, 0))
         self.t_ord.opzioni(self.ORDINI, lambda o: self.riordina()); self.t_ord.set(self.ORDINI[0])
         # la vista Charts e il meta del limited (10 nov 2026, Autore: «una seconda sezione che non e' visualizzata a scacchiera ma a elenchi e ci fa vedere il
@@ -130,6 +141,22 @@ class PaginaMeta(PaginaMazzi):
         if not self.t_set.fr.winfo_manager():
             self.t_set.fr.pack(side="left", padx=(10, 0), after=self.t_fmt.fr)
 
+    def rango(self):
+        """Il rango scelto, se la tendina c'e' (formati di Arena con le partite per rango), se no None: il rango dello scarico."""
+        return self.t_rango.get().lower() if self.t_rango.fr.winfo_manager() else None
+
+    def metti_rango(self):
+        """La tendina Rank c'e' nella vista a schede dei formati di Arena che hanno le partite per rango; nei formati di carta, nel limited e nei grafici no."""
+        ranghi = [] if self.grafici() else ranghi_formato(self.t_fmt.get())
+        if not ranghi:
+            self.t_rango.fr.pack_forget()
+            return
+        voci = [r.capitalize() for r in ranghi]
+        if self.t_rango.get() not in voci:
+            self.t_rango.set(voci[-1])
+        if not self.t_rango.fr.winfo_manager():
+            self.t_rango.fr.pack(side="left", padx=(10, 0), after=self.t_fmt.fr)
+
     @staticmethod
     def set_iniziale(sets):
         """Il set del drafter (percorsi.set_attivo: l'evento in corso, se no FRA) se ha i dati, se no il piu' nuovo."""
@@ -169,21 +196,21 @@ class PaginaMeta(PaginaMazzi):
         self.titolo.configure(text=f"{(fmt + (' ' + self.t_set.get() if lim else '')).upper()} META · {len(righe)} DECKS"
                               + (f" · {self.sotto.upper()}" if self.sotto else ""))
         if not righe:
-            self.tk.Label(self.griglia_b, text="No meta data for this format yet", bg=C["scheda"], fg=C["grigio"], font=self.F(9)).pack(anchor="w")
+            self.tk.Label(self.griglia_b, text=VUOTO, bg=C["scheda"], fg=C["grigio"], font=self.F(9)).pack(anchor="w")
             self.vista_g = None
             return
         self.larga_g = self.cv.winfo_width()
         self.vista_g = VistaGrafici(self, righe, not lim, st, self.larga_g)
         self.vista_g.disegna()
 
-    def disponi(self, larga):
+    def disponi(self, larga, forza=False):
         """In vista Charts i grafici si rifanno quando la larghezza cambia di molto; nelle schede la griglia di sempre."""
         if self.vista_g is not None:
             if abs(larga - self.larga_g) > 40:
                 self.sporco = True
                 self.cv.after_idle(self.disegna)
             return
-        PaginaMazzi.disponi(self, larga)
+        PaginaMazzi.disponi(self, larga, forza)
 
     def riordina(self):
         if self.grafici():
@@ -200,6 +227,7 @@ class PaginaMeta(PaginaMazzi):
         if not self.sporco and self.scatole:
             return
         self.sporco = False
+        self.smista.svuota(); self.cv.delete("gruppo")
         self.svuota(self.griglia_b)
         self.scatole = []
         if len(self.foto) > 150:         # le copertine di prima: le tele sono appena state distrutte, oltre 150 (30 MB) si liberano
@@ -207,18 +235,18 @@ class PaginaMeta(PaginaMazzi):
         prepara_capsule(CC.carica())
         fmt = self.t_fmt.get()
         self.metti_set()
+        self.metti_rango()
         if self.grafici():
             return self.disegna_grafici()
         self.vista_g = None
-        mm, self.sotto = meta_mazzi(fmt)
+        mm, self.sotto = meta_mazzi(fmt, self.rango())
         self.mazzi = sorted(mm, key=self.chiave)
         self.titolo.configure(text=f"{fmt.upper()} META · {len(self.mazzi)} DECKS" + (f" · {self.sotto.upper()}" if self.sotto else ""))
         if not self.mazzi:
-            self.tk.Label(self.griglia_b, text="No meta data for this format yet", bg=C["scheda"], fg=C["grigio"], font=self.F(9)).pack(anchor="w")
+            self.tk.Label(self.griglia_b, text=VUOTO, bg=C["scheda"], fg=C["grigio"], font=self.F(9)).pack(anchor="w")
         for m in self.mazzi:
             self.scatole.append(self.scatola(m))
-        self.colonne = 0
-        self.disponi(self.cv.winfo_width())
+        self.disponi(self.cv.winfo_width(), forza=True)
         if self.aperto:
             self.disegna_dettaglio()
 
@@ -238,7 +266,7 @@ class PaginaMeta(PaginaMazzi):
         """Una scheda del meta, come quelle di Your decks: copertina, colori e posto, nome, tre dati sotto un filo, in fondo le carte che hai e il pulsante."""
         tk, F = self.tk, self.F
         L, H = self.LARGA, self.ALTA
-        c = tk.Canvas(getattr(self, "padre_scatole", None) or self.griglia_b, width=L, height=H, bg=C["scheda"], highlightthickness=0, bd=0, cursor="hand2")
+        c = self.nuova_scatola()
         carta = dict(FORMATI_META).get(self.t_fmt.get()) == "carta"
 
         def disegna():
@@ -273,6 +301,8 @@ class PaginaMeta(PaginaMazzi):
                 secondo = ("WIN RATE", f"{m['wr']:.1f}%", VINTA if m["wr"] >= 50 else PERSA)
             elif m.get("forza"):
                 secondo = ("STRENGTH", f"{m['forza']}°", C["testo"])
+            elif m.get("rango_meta"):        # un rango scelto, fuori dallo Standard: le partite in quel rango
+                secondo = ("GAMES", f"{m['partite']:,}", C["testo"])
             else:
                 secondo = ("DECKS", f"{m['mazzi']:,}" if m.get("mazzi") else "-", C["testo"])
             # niente jolly e niente «x/60 owned» (o «on Arena») sulle schede del Meta (Autore, 10 nov 2026: «sulle schede di anteprima togliamo: wc necessarie /
