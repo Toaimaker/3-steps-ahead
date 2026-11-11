@@ -1,6 +1,6 @@
-# 3 Steps Ahead · free MTG Arena deck tracker and deck builder (alpha 0.1.13)
+# 3 Steps Ahead · free MTG Arena deck tracker and deck builder (alpha 0.1.14)
 
-A free desktop companion for MTG Arena on Windows. It reads your own Arena log (Player.log) and shows your decks with their real record,
+A free desktop companion for MTG Arena on Windows (Mac: experimental, see below). It reads your own Arena log (Player.log) and shows your decks with their real record,
 on the play and on the draw, a card-by-card analysis of why they win and lose, a deck builder over your collection with a mana base calculator,
 a board to lay out synergies, your collection with format legality, your ranked history and a plan for gold and gems.
 
@@ -16,6 +16,16 @@ Unofficial Fan Content permitted under the Fan Content Policy. Not approved/endo
 To uninstall: Windows Settings → Apps. Your decks and boards stay in the app folder's Log_Arena unless you delete it.
 
 From source (developers): unzip the release zip, install Python 3.11, run `Install.bat` once, then `3 Steps Ahead.bat`.
+
+## Mac (experimental, not tested on a real Mac yet)
+
+1. Install Python 3.11 or newer from [python.org](https://www.python.org/downloads/macos/) (it includes Tk).
+2. Download the release zip, unzip it, open the folder. Right-click **Install.command** → *Open* (the first time macOS asks because the file is not signed), wait for "Done".
+3. In Arena: *Options → Account → Detailed Logs (Plugin Support)* on.
+4. Right-click **3 Steps Ahead.command** → *Open*. The first start downloads about 125 MB of public card data.
+
+On Mac the Board is drawn without the graphics card, and the deck-building overlay over Arena is Windows only.
+If something does not work, tell us on Discord with your macOS version: the Mac build is new.
 
 ## What's in the alpha
 

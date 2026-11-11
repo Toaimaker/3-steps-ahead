@@ -3,6 +3,8 @@ import datetime
 import json
 import os
 import subprocess
+
+import piattaforma  # (Windows e Mac: flag dei processi, Python)
 import sys
 import threading
 import time
@@ -200,7 +202,7 @@ class DrafterEvento:
             cmd += ["--log", sys.argv[sys.argv.index("--log-limited") + 1]]
         try:            # il giro dura minuti: va da solo, a priorita' bassa, e resta anche se la finestra si chiude
             subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.DEVNULL, stderr=open(os.path.join(LOGDIR, "chiudi_draft_errori.txt"), "a", encoding="utf-8"),
-                             creationflags=0x00004000 | 0x00000008)        # BELOW_NORMAL, DETACHED_PROCESS
+                             **piattaforma.flag("sotto", "staccato"))
         except OSError as e:
             print("closed session:", e); self.b_chiudi.metti("Closed session", False); self.l_chiudi.configure(text="Did not start", fg=CI["rosso"])
 
@@ -220,7 +222,7 @@ class DrafterEvento:
             if not percorso:
                 self.play["stato"] = "errore"; return
             subprocess.run([PY_MUTO, "-I", "-X", "utf8", percorsi.programma("pronto_limited.py"), "--diario", percorso], cwd=ROOT, stdout=subprocess.DEVNULL,
-                           stderr=open(os.path.join(LOGDIR, "pronto_limited_errori.txt"), "a", encoding="utf-8"), creationflags=0x00004000, timeout=900)
+                           stderr=open(os.path.join(LOGDIR, "pronto_limited_errori.txt"), "a", encoding="utf-8"), timeout=900, **piattaforma.flag("sotto"))
         except (OSError, subprocess.SubprocessError) as e:
             print("launch:", e); self.play["stato"] = "errore"
 
@@ -237,8 +239,8 @@ class DrafterEvento:
         if a:
             return a["diario"]
         t0 = time.strftime("%H:%M:%S")
-        subprocess.Popen([os.path.join(os.path.dirname(PY_MUTO), "python.exe"), "-I", "-X", "utf8", percorsi.programma("companion.py")], cwd=ROOT,
-                         env=dict(os.environ, PYTHONIOENCODING="utf-8"), creationflags=0x00000010)        # CREATE_NEW_CONSOLE
+        subprocess.Popen([piattaforma.python_console(), "-I", "-X", "utf8", percorsi.programma("companion.py")], cwd=ROOT,
+                         env=dict(os.environ, PYTHONIOENCODING="utf-8"), **piattaforma.flag("console"))
         for _ in range(240):
             time.sleep(0.5)
             a = vivo()

@@ -114,6 +114,10 @@ class _Tutti:
 
 
 def disponibile():
+    """La scheda video si usa solo su Windows: la tela di pyglet si incastra nella finestra di Tk con SetParent e le finestre di Windows (_view_hwnd). Su Mac
+    il Board resta sulla tela di Tk, con le stesse prove (TAVOLO_TK=1)."""
+    if sys.platform != "win32":
+        return False
     try:
         _pyglet()
         return True

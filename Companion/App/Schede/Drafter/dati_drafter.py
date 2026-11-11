@@ -3,6 +3,7 @@ import collections
 import datetime
 import json
 import os
+import piattaforma  # noqa: E402  (i percorsi di Arena su Windows e su Mac)
 import re
 import time
 
@@ -17,7 +18,7 @@ from ambiente import LOGDIR, ROOT
 RX_CORSO = re.compile(r'"CourseId":"([^"]+)","InternalEventName":"([^"]*(?:Draft|Sealed|Cube)[^"]*)","CurrentModule":"([^"]*)"')
 RX_VINTE, RX_PERSE = re.compile(r'"CurrentWins":(\d+)'), re.compile(r'"CurrentLosses":(\d+)')
 MODULI_APERTI = ("BotDraft", "Draft", "DeckSelect", "CreateMatch", "WaitingForMatch", "Match", "MatchResults")
-LOG_ARENA = (os.path.expandvars(r"%USERPROFILE%\AppData\LocalLow\Wizards Of The Coast\MTGA\Player.log"), os.path.expandvars(r"%USERPROFILE%\AppData\LocalLow\Wizards Of The Coast\MTGA\Player-prev.log"))
+LOG_ARENA = (piattaforma.player_log(), piattaforma.player_prev_log())
 
 
 def limited_dal_log(files=LOG_ARENA):

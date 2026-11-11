@@ -1,5 +1,6 @@
 """Il contenuto della finestra di un mazzo."""
 import threading
+import piattaforma  # (la rotella su Windows e su Mac)
 import webbrowser
 
 import capsule as CAP
@@ -277,7 +278,7 @@ class SchedaMazzo:
 
         def rotella_d(e):
             if col.winfo_reqheight() > cv_d.winfo_height():
-                cv_d.yview_scroll(int(-e.delta / 120) * 2, "units")
+                cv_d.yview_scroll(piattaforma.scatti(e.delta) * 2, "units")
 
         def rilega(w=None):
             """La rotella su tutta la colonna, anche sui pezzi nati dopo (una sezione aperta, l'analisi arrivata)."""
@@ -359,7 +360,7 @@ class SchedaMazzo:
 
         def rotella(e):
             if dentro_l.winfo_reqheight() > cv.winfo_height():
-                cv.yview_scroll(int(-e.delta / 120) * 2, "units")
+                cv.yview_scroll(piattaforma.scatti(e.delta) * 2, "units")
 
         def lega(w):
             w.bind("<MouseWheel>", rotella)

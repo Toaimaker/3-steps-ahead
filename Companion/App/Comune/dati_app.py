@@ -3,6 +3,7 @@ import collections
 import datetime
 import json
 import os
+import piattaforma  # noqa: E402  (i percorsi di Arena su Windows e su Mac)
 import re
 
 import progetto as PR
@@ -116,7 +117,7 @@ def jolly():
                 foto = []
             _JOLLY["pub"] = (firma, (dict(zip("CURM", foto[-1]["wc"])), datetime.datetime.fromisoformat(foto[-1]["t"])) if foto else (None, None))
         return _JOLLY["pub"][1]
-    vivo = os.path.join(os.path.expandvars(r"%USERPROFILE%\AppData\LocalLow\Wizards Of The Coast\MTGA"), "Player.log")
+    vivo = os.path.join(piattaforma.cartella_arena(), "Player.log")
     # l'elenco dei log archiviati, per data: rifatto solo quando la cartella cambia (11 nov 2026: ~280 log, 280 letture del disco a ogni finestra di un mazzo)
     try:
         k_dir = os.path.getmtime(LOGDIR)
@@ -555,7 +556,7 @@ def farming(voci):
             return None
     def chiave():
         return (id(voci), len(voci), _ACC.attivo(), data(_ACC.percorso("untapped_partite_cache.json", autore=os.path.join(LOGDIR, "untapped_partite_cache.json"))),
-                data(_PL.CACHE), data(os.path.join(os.path.expandvars(r"%USERPROFILE%\AppData\LocalLow\Wizards Of The Coast\MTGA"), "Player.log")))
+                data(_PL.CACHE), data(os.path.join(piattaforma.cartella_arena(), "Player.log")))
     if _FARMING.get("chiave") == chiave():
         return _FARMING["righe"]
     _FARMING["righe"] = _farming(voci)

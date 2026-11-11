@@ -3,6 +3,8 @@ import datetime
 import json
 import os
 import subprocess
+
+import piattaforma  # (Windows e Mac: flag dei processi, Python)
 import tkinter as tk
 import types
 
@@ -34,7 +36,7 @@ class DeckSheet:
             self.motore["lanciato"] = k
             try:
                 subprocess.Popen([PY_MUTO, "-I", "-X", "utf8", os.path.join(ROOT, "Motore_Partita", "turni_chiusura.py")], cwd=ROOT, stdout=subprocess.DEVNULL,
-                                 stderr=open(os.path.join(LOGDIR, "turni_chiusura_errori.txt"), "a", encoding="utf-8"), creationflags=0x00004000 | 0x08000000)    # BELOW_NORMAL, CREATE_NO_WINDOW
+                                 stderr=open(os.path.join(LOGDIR, "turni_chiusura_errori.txt"), "a", encoding="utf-8"), **piattaforma.flag("sotto", "muto"))
             except OSError as e:
                 print("turni del motore:", e)
         return r

@@ -39,10 +39,8 @@ TEND = dict(campo="#101014", bordo="#3a3a40", sopra="#1c1f26", testo=CI["testo"]
 def carica_font():
     """Poppins per questo processo soltanto (niente installazione nel sistema)."""
     try:
-        import ctypes
-        for f in ("Poppins-Regular.ttf", "Poppins-Medium.ttf"):
-            ctypes.windll.gdi32.AddFontResourceExW(os.path.join(ASSET, f), 0x10, 0)
-        return True
+        import piattaforma      # Windows: AddFontResourceExW; Mac: CoreText, per il solo processo (11 nov 2026)
+        return piattaforma.font_del_processo([os.path.join(ASSET, f) for f in ("Poppins-Regular.ttf", "Poppins-Medium.ttf")]) > 0
     except Exception:
         return False
 

@@ -10,6 +10,7 @@ while not os.path.isfile(os.path.join(_casa, "percorsi.py")):
 if _casa not in sys.path:
     sys.path.insert(0, _casa)
 import percorsi  # noqa: E402
+import piattaforma  # noqa: E402  (Windows e Mac: flag dei processi, Python, percorsi)
 import json  # noqa: E402
 import threading  # noqa: E402
 import webbrowser  # noqa: E402
@@ -105,7 +106,7 @@ def manutenzione(ogni=1800):
             for prog, arg in (("archivia_log.py", []), ("archivio_partite.py", [])):
                 try:
                     subprocess.run([sys.executable, "-I", "-X", "utf8", percorsi.programma(prog), *arg], cwd=percorsi.ROOT, timeout=1800,
-                                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0),
+                                   **piattaforma.flag("sotto", "muto"),
                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 except Exception:       # noqa: BLE001 - la manutenzione non ferma mai l'app
                     pass

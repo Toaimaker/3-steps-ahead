@@ -9,10 +9,11 @@ while not os.path.isfile(os.path.join(_casa, "percorsi.py")):
 if _casa not in sys.path:
     sys.path.insert(0, _casa)
 import percorsi  # noqa: E402
+import piattaforma  # noqa: E402  (i percorsi di Arena su Windows e su Mac)
 import shutil, hashlib, datetime, glob
 ROOT = percorsi.ROOT
 DEST = os.path.join(ROOT, "Log_Arena"); os.makedirs(DEST, exist_ok=True)
-SRC = os.path.expandvars(r"%USERPROFILE%\AppData\LocalLow\Wizards Of The Coast\MTGA")
+SRC = piattaforma.cartella_arena()
 noti = {os.path.basename(p).split("_")[-1].replace(".log", "") for p in glob.glob(os.path.join(DEST, "*.log"))}
 for nome in ("Player.log", "Player-prev.log"):
     p = os.path.join(SRC, nome)

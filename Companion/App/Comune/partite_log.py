@@ -34,6 +34,7 @@ while not os.path.isfile(os.path.join(_casa, "percorsi.py")):
 if _casa not in sys.path:
     sys.path.insert(0, _casa)
 import percorsi  # noqa: E402
+import piattaforma  # noqa: E402  (i percorsi di Arena su Windows e su Mac)
 import datetime  # noqa: E402
 import glob  # noqa: E402
 import json  # noqa: E402
@@ -41,7 +42,7 @@ import re  # noqa: E402
 import threading  # noqa: E402
 
 LOGDIR = os.path.join(percorsi.ROOT, "Log_Arena")
-ARENA = os.path.expandvars(r"%USERPROFILE%\AppData\LocalLow\Wizards Of The Coast\MTGA")
+ARENA = piattaforma.cartella_arena()
 CACHE = os.path.join(LOGDIR, "partite_log.json")
 import account as _ACC  # noqa: E402
 IO = tuple(x for x in (_ACC.account()["id"], _ACC.account()["nome"]) if x)      # l'account di Arena e il nome in gioco (account.py: Autore, o chi usa l'app pubblica):

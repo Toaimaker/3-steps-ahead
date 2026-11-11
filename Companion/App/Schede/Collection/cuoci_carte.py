@@ -14,7 +14,8 @@ while not os.path.isfile(os.path.join(_casa, "percorsi.py")):
 if _casa not in sys.path:
     sys.path.insert(0, _casa)
 import percorsi  # noqa: E402
-import ctypes, datetime, io, msvcrt, subprocess, time, urllib.error, urllib.request
+import datetime, io, time, urllib.error, urllib.request
+import piattaforma  # noqa: E402  (Windows e Mac)
 from concurrent.futures import ThreadPoolExecutor
 import capsule as CAP
 import collezione_carte as CC
@@ -31,8 +32,7 @@ def scrivi(testo):
 
 
 def arena_aperta():
-    r = subprocess.run(["tasklist", "/FI", "IMAGENAME eq MTGA.exe", "/NH"], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)     # in byte: Windows risponde nella sua codifica
-    return b"mtga.exe" in r.stdout.lower()
+    return piattaforma.arena_aperta()
 
 
 def ordine(d):
@@ -66,11 +66,9 @@ def fai(nome):
 def main():
     os.makedirs(CAP.MINI, exist_ok=True)
     blocco = open(BLOCCO, "w")
-    try:
-        msvcrt.locking(blocco.fileno(), msvcrt.LK_NBLCK, 1)
-    except OSError:
+    if not piattaforma.blocca(blocco):
         return 0        # ce n'e' gia' uno
-    ctypes.windll.kernel32.SetPriorityClass(ctypes.windll.kernel32.GetCurrentProcess(), 0x4000)     # sotto la norma
+    piattaforma.priorita_bassa()
     d = CC.carica()
     if not d:
         return 1

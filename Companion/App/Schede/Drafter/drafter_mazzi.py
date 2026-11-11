@@ -2,6 +2,8 @@
 import json
 import os
 import subprocess
+
+import piattaforma  # (Windows e Mac: flag dei processi, Python)
 import sys
 import threading
 import time
@@ -43,7 +45,7 @@ class DrafterMazzi:
             extra = ["--log", sys.argv[sys.argv.index("--draft-log") + 1]] if "--draft-log" in sys.argv else []
             try:
                 p = self.calcolo["p"] = subprocess.Popen([PY_MUTO, "-I", "-X", "utf8", percorsi.programma("mazzi_in_corsa.py"), "--servo", "--file", PICK_JSON] + extra,
-                                                    cwd=ROOT, env=env, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, text=True, encoding="utf-8", creationflags=0x00004000,  # BELOW_NORMAL_PRIORITY_CLASS
+                                                    cwd=ROOT, env=env, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, text=True, encoding="utf-8", **piattaforma.flag("sotto"),
                                                     stderr=open(os.path.join(LOGDIR, "mazzi_pick_errori.txt"), "a", encoding="utf-8"))
             except OSError as e:
                 print("mazzi del pick:", e); return
@@ -76,7 +78,10 @@ class DrafterMazzi:
 
 
     def lancia_overlay(self, argomenti):
-        """L'overlay sopra Arena. Chi lo apre prima chiude quello di prima (Companion/App/Overlay/overlay.py, una_sola). -> True se e' partito."""
+        """L'overlay sopra Arena. Chi lo apre prima chiude quello di prima (Companion/App/Overlay/overlay.py, una_sola). -> True se e' partito.
+        Solo su Windows: legge lo schermo con l'OCR di Windows e disegna con una finestra a strati di Windows (Distribuzione/Mac.md)."""
+        if not piattaforma.WINDOWS:
+            return False
         try:
             att = json.load(open(os.path.join(LOGDIR, "companion_attivo.json"), encoding="utf-8"))
         except (OSError, ValueError):
@@ -114,8 +119,8 @@ class DrafterMazzi:
         def lavoro():
             d = None
             try:
-                subprocess.run([sys.executable.replace("pythonw.exe", "python.exe"), "-I", "-X", "utf8", percorsi.programma("correggi.py")], cwd=ROOT, stdout=subprocess.DEVNULL,
-                               stderr=subprocess.DEVNULL, timeout=300, creationflags=subprocess.BELOW_NORMAL_PRIORITY_CLASS | subprocess.CREATE_NO_WINDOW, env=dict(os.environ, PYTHONIOENCODING="utf-8"))
+                subprocess.run([piattaforma.python_console(), "-I", "-X", "utf8", percorsi.programma("correggi.py")], cwd=ROOT, stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL, timeout=300, **piattaforma.flag("sotto", "muto"), env=dict(os.environ, PYTHONIOENCODING="utf-8"))
                 d = json.load(open(FIX_JSON, encoding="utf-8"))
             except (OSError, ValueError, subprocess.SubprocessError) as e:
                 print("fix:", e)

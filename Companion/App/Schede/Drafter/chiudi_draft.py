@@ -21,18 +21,19 @@ while not os.path.isfile(os.path.join(_casa, "percorsi.py")):
 if _casa not in sys.path:
     sys.path.insert(0, _casa)
 import percorsi  # noqa: E402
+import piattaforma  # noqa: E402  (i percorsi di Arena su Windows e su Mac)
 import datetime, json, re, subprocess, tempfile
 
 ROOT = percorsi.ROOT
 LOGDIR = os.path.join(ROOT, "Log_Arena")
 FILE = os.environ.get("CHIUDI_DRAFT_FILE") or os.path.join(LOGDIR, "draft_chiusi.json")     # la variabile solo per i collaudi
 LUCCHETTO = os.path.join(LOGDIR, "chiudi_draft.lock")
-PY = sys.executable.replace("pythonw.exe", "python.exe")
+PY = piattaforma.python_console()
 # il log di adesso e quello della sessione prima, come finestra_companion.limited_dal_log: appena Arena riparte il Player.log
 # non ha ancora i corsi, e il draft lasciato aperto sta in Player-prev.log (8 nov 2026: due clic su Closed session non hanno
 # segnato niente, perche' qui si leggeva solo il Player.log, e la finestra riapriva il draft dal log di prima)
-LOG_ARENA = (os.path.expandvars(r"%USERPROFILE%\AppData\LocalLow\Wizards Of The Coast\MTGA\Player.log"),
-             os.path.expandvars(r"%USERPROFILE%\AppData\LocalLow\Wizards Of The Coast\MTGA\Player-prev.log"))
+LOG_ARENA = (piattaforma.player_log(),
+             piattaforma.player_prev_log())
 RX_CORSO = re.compile(r'"CourseId":"([^"]+)","InternalEventName":"([^"]*(?:Draft|Sealed|Cube)[^"]*)","CurrentModule":"([^"]*)"')
 RX_VINTE, RX_PERSE = re.compile(r'"CurrentWins":(\d+)'), re.compile(r'"CurrentLosses":(\d+)')
 MODULI_APERTI = ("BotDraft", "Draft", "DeckSelect", "CreateMatch", "WaitingForMatch", "Match", "MatchResults")
@@ -133,7 +134,7 @@ def lancia(nome, argomenti, prefisso, filtro, diario):
     try:
         p = subprocess.Popen([PY, "-I", "-X", "utf8", percorsi.programma(nome)] + argomenti, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, cwd=ROOT,
                              env=dict(os.environ, PYTHONIOENCODING="utf-8"), text=True, encoding="utf-8", errors="replace", bufsize=1,
-                             creationflags=getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0) | getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                             **piattaforma.flag("sotto", "muto"))
     except OSError as e:
         scrivi(f"COMPANION: {nome} did not start: {e}", diario); return 1
     for r in p.stdout:
@@ -147,13 +148,8 @@ def libero():
     """Un giro alla volta: il lucchetto col pid, che non vale piu' se quel processo e' morto."""
     try:
         pid = int(open(LUCCHETTO).read().strip())
-        import ctypes
-        h = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)
-        if h:
-            codice = ctypes.c_ulong()
-            ctypes.windll.kernel32.GetExitCodeProcess(h, ctypes.byref(codice)); ctypes.windll.kernel32.CloseHandle(h)
-            if codice.value == 259:     # STILL_ACTIVE
-                return False
+        if piattaforma.processo_vivo(pid):      # Windows e Mac
+            return False
     except (OSError, ValueError):
         pass
     return True

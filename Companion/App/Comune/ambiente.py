@@ -10,7 +10,7 @@ LOGDIR = os.path.join(ROOT, "Log_Arena")
 # --diario FILE (collaudo, 17 ott 2026): la finestra legge quel diario invece di quello di oggi, per esempio il diario di un
 # replay (Log_Arena/companion_replay_AAAAMMGG.txt); le ore delle righe valgono come ore di oggi
 DIARIO_FISSO = sys.argv[sys.argv.index("--diario") + 1] if "--diario" in sys.argv else None
-PRODOTTO, VERSIONE = "3 Steps Ahead", "0.1.13"      # in fondo a destra in ogni scheda (Autore, 4 nov 2026); si alza a ogni rilascio. Dal 10 nov 2026 il nome
+PRODOTTO, VERSIONE = "3 Steps Ahead", "0.1.14"      # in fondo a destra in ogni scheda (Autore, 4 nov 2026); si alza a ogni rilascio. Dal 10 nov 2026 il nome
 # dell'app, anche questa di Autore: «3 Steps Ahead» (fino a quel giorno «Companion Magic Arena»)
 ASSET = percorsi.GRAFICA      # font, icone, simboli, loghi: Companion/Grafica
 import account as _ACC     # chi usa l'app: Autore, o nell'app pubblica chi l'ha scaricata (account.py, 10 nov 2026)
@@ -33,6 +33,7 @@ INVIATO_JSON = os.path.join(LOGDIR, "mazzo_inviato.json")
 FIX_JSON = os.path.join(LOGDIR, "mazzo_fix.json")
 MAZZI_JSON = os.path.join(LOGDIR, "mazzi_costruzione.json")   # i 3 mazzi proposti (rating_mazzi)
 PICK_JSON = sys.argv[sys.argv.index("--pick-json") + 1] if "--pick-json" in sys.argv else os.path.join(LOGDIR, "mazzi_pick.json")   # i 3 mazzi durante i pick (mazzi_in_corsa)
-PY_MUTO = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")    # senza console: i lavori a parte della finestra
+import piattaforma  # noqa: E402
+PY_MUTO = piattaforma.python_grafico()      # senza console: i lavori a parte della finestra (pythonw.exe su Windows, sys.executable su Mac)
 POS_JSON = os.path.join(LOGDIR, "finestra_pos.json")     # dove sta la finestra (Autore, 5 nov 2026: «smettila di ricaricare il drafter sullo schermo 1, fallo sul 2»)
 FUORI_SCHERMO = "--fuori-schermo" in sys.argv            # collaudo: una finestra di prova non si apre mai davanti a Autore

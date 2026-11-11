@@ -22,16 +22,9 @@ def evento_partita(t):
 
 
 def processo_vivo(pid):
-    """Il processo pid e' ancora acceso? (Windows: OpenProcess e GetExitCodeProcess, 259 = ancora attivo)"""
-    import ctypes
-    k = ctypes.windll.kernel32
-    h = k.OpenProcess(0x1000, False, int(pid))
-    if not h:
-        return False
-    c = ctypes.c_ulong()
-    k.GetExitCodeProcess(h, ctypes.byref(c))
-    k.CloseHandle(h)
-    return c.value == 259
+    """Il processo pid e' ancora acceso? (piattaforma: Windows e Mac)"""
+    import piattaforma
+    return piattaforma.processo_vivo(pid)
 
 
 class Diario:

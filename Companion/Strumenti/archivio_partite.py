@@ -24,6 +24,7 @@ while not os.path.isfile(os.path.join(_casa, "percorsi.py")):
 if _casa not in sys.path:
     sys.path.insert(0, _casa)
 import percorsi  # noqa: E402
+import piattaforma  # noqa: E402  (i percorsi di Arena su Windows e su Mac)
 import datetime
 import glob
 import json
@@ -35,7 +36,7 @@ import tavolo  # noqa: E402
 ROOT = Path(percorsi.ROOT)
 DEST = ROOT / "Partite"
 DEST.mkdir(exist_ok=True)
-SRC = Path(os.path.expandvars(r"%USERPROFILE%\AppData\LocalLow\Wizards Of The Coast\MTGA"))
+SRC = Path(piattaforma.cartella_arena())
 TS = re.compile(r'"timestamp": "(\d{13})"')
 
 

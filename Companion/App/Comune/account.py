@@ -27,6 +27,7 @@ while not os.path.isfile(os.path.join(_casa, "percorsi.py")):
 if _casa not in sys.path:
     sys.path.insert(0, _casa)
 import percorsi  # noqa: E402
+import piattaforma  # noqa: E402  (i percorsi di Arena su Windows e su Mac)
 import json  # noqa: E402
 import re  # noqa: E402
 import shutil  # noqa: E402
@@ -37,7 +38,7 @@ PUBBLICA = os.path.exists(os.path.join(ROOT, "PUBBLICA.txt"))
 LOGDIR = os.path.join(ROOT, "Log_Arena")
 FILE = [os.path.join(LOGDIR, "utente.json")]
 CONTI = [os.path.join(LOGDIR, "conti")]
-ARENA = os.path.expandvars(r"%USERPROFILE%\AppData\LocalLow\Wizards Of The Coast\MTGA")
+ARENA = piattaforma.cartella_arena()
 VIVI = [os.path.join(ARENA, "Player.log"), os.path.join(ARENA, "Player-prev.log")]
 AUTORE = dict(id=None, nome=None, untapped_user=None, untapped_player=None)      # l'app pubblica: mai usato (PUBBLICA)
 RX_AUTH = re.compile(rb'"authenticateResponse": \{ "clientId": "([A-Z0-9]+)"[^}]*?"screenName":"([^"]+)"')

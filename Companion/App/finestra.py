@@ -6,6 +6,7 @@ while not os.path.isfile(os.path.join(_casa, "percorsi.py")):
 if _casa not in sys.path:
     sys.path.insert(0, _casa)
 import percorsi  # noqa: E402,F401
+import piattaforma  # noqa: E402  (Windows e Mac: flag dei processi, Python, percorsi)
 import datetime
 import json
 import queue
@@ -82,7 +83,7 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
             pos_salvata = json.load(open(POS_JSON, encoding="utf-8"))
         except (OSError, ValueError):
             pos_salvata = None
-        self.geo0, ingrandita = posizione_iniziale(monitor(), pos_salvata)
+        self.geo0, ingrandita = posizione_iniziale(monitor(self.root), pos_salvata)
         self.root.geometry("900x960+5000+20" if FUORI_SCHERMO else self.geo0)
         if ingrandita and not FUORI_SCHERMO:
             self.root.update_idletasks(); self.root.state("zoomed")
@@ -150,7 +151,7 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
         self.corpo = tk.Frame(self.root, bg=CI["fondo"]); self.corpo.pack(fill="both", expand=True, padx=12, pady=(12, 4))
 
         if "--fuori-schermo" not in sys.argv:       # le carte di Collection si cuociono in sottofondo: finito il lavoro esce subito, e con Arena aperto aspetta
-            self.root.after(8000, lambda: subprocess.Popen([PY_MUTO, "-I", "-X", "utf8", percorsi.programma("cuoci_carte.py")], cwd=percorsi.ROOT, creationflags=subprocess.BELOW_NORMAL_PRIORITY_CLASS))
+            self.root.after(8000, lambda: subprocess.Popen([PY_MUTO, "-I", "-X", "utf8", percorsi.programma("cuoci_carte.py")], cwd=percorsi.ROOT, **piattaforma.flag("sotto")))
         self.corpo.columnconfigure(0, weight=11, uniform="c"); self.corpo.columnconfigure(1, weight=10, uniform="c"); self.corpo.rowconfigure(0, weight=1)
 
 
@@ -236,7 +237,7 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
         self.barra.bind("<Configure>", lambda e: self.barra_disegna())
         self.barra.bind("<Enter>", lambda e: (self.scorri.update(sopra=True), self.barra_disegna()))
         self.barra.bind("<Leave>", lambda e: (self.scorri.update(sopra=False), self.barra_disegna()))
-        self.barra.bind("<MouseWheel>", lambda e: self.chat.yview_scroll(int(-e.delta / 120) * 3, "units"))
+        self.barra.bind("<MouseWheel>", lambda e: self.chat.yview_scroll(piattaforma.scatti(e.delta) * 3, "units"))
         self.chat.tag_configure("sep_tu", foreground=C["verde_t"], font=self.F(8, True), spacing1=10)
         self.chat.tag_configure("sep_lui", foreground=C["rosso_t"], font=self.F(8, True), spacing1=10)
         self.chat.tag_configure("sep_info", foreground=C["arancio"], font=self.F(8, True), spacing1=10)
@@ -755,7 +756,7 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
 
         def rotella(e):
             if dentro.winfo_reqheight() > cv_l.winfo_height():
-                cv_l.yview_scroll(int(-e.delta / 120) * 2, "units"); scorri["y"] = cv_l.yview()[0]
+                cv_l.yview_scroll(piattaforma.scatti(e.delta) * 2, "units"); scorri["y"] = cv_l.yview()[0]
 
         def lega(w):
             w.bind("<MouseWheel>", rotella)
@@ -1033,8 +1034,14 @@ def avvia():
     Finestra().root.mainloop()
 
 
-def monitor():
-    """-> [(sinistra, alto, destra, basso, primario)] degli schermi di Windows."""
+def monitor(root=None):
+    """-> [(sinistra, alto, destra, basso, primario)] degli schermi di Windows. Fuori da Windows (Mac) lo schermo principale che Tk conosce, se c'e' una
+    finestra a cui chiederlo; se no nessuno, e la finestra si apre in alto a sinistra (posizione_iniziale)."""
+    if sys.platform != "win32":
+        try:
+            return [(0, 0, root.winfo_screenwidth(), root.winfo_screenheight(), True)] if root is not None else []
+        except Exception:       # noqa: BLE001 - senza schermi si apre comunque
+            return []
     import ctypes, ctypes.wintypes as W
     u, out = ctypes.windll.user32, []
 

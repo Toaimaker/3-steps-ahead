@@ -23,6 +23,7 @@ while not os.path.isfile(os.path.join(_casa, "percorsi.py")):
 if _casa not in sys.path:
     sys.path.insert(0, _casa)
 import percorsi  # noqa: E402
+import piattaforma  # noqa: E402  (i percorsi di Arena su Windows e su Mac)
 import glob  # noqa: E402
 import json  # noqa: E402
 import urllib.request  # noqa: E402
@@ -64,9 +65,12 @@ def arena_db(c):
 
 # --- il database delle carte dal client di Arena (Raw_CardDatabase_*.mtga, SQLite, letto in sola lettura) ---
 
-ARENA_LOG = os.path.expandvars(r"%USERPROFILE%\AppData\LocalLow\Wizards Of The Coast\MTGA")
+ARENA_LOG = piattaforma.cartella_arena()
 ARENA_DIRS = [r"C:\Program Files\Wizards of the Coast\MTGA\MTGA_Data", r"C:\Program Files (x86)\Wizards of the Coast\MTGA\MTGA_Data",
               r"C:\Program Files\Epic Games\MagicTheGathering\MTGA_Data", r"C:\Program Files (x86)\Steam\steamapps\common\MTGA\MTGA_Data"]
+# Mac (11 nov 2026, non provato su un Mac vero: Distribuzione/Mac.md): la cartella dei dati di Unity dentro l'app e quella dei dati dell'utente che le fonti
+# indicano per Arena (~/Library/Application Support/com.wizards.mtga). Dove stia di preciso il Raw_CardDatabase su Mac nessuna fonte lo dice: si cerca.
+ARENA_DIRS_MAC = ["/Applications/MTGA.app/Contents/Resources/Data", os.path.expanduser("~/Library/Application Support/com.wizards.mtga")]
 
 
 def db_locale(log_dir=None, altre=None):
@@ -81,13 +85,18 @@ def db_locale(log_dir=None, altre=None):
                     m = re.search(r"([A-Za-z]:[\\/][^\"'\n]*?MTGA_Data)", r)
                     if m:
                         dirs.append(m.group(1)); break
+                    m = None if piattaforma.WINDOWS else re.search(r"Mono path\[0\] = '(/[^'\n]*?)/Managed'", r)      # Mac: .../MTGA.app/Contents/Resources/Data
+                    if m:
+                        dirs.append(m.group(1)); break
                     if i > 3000:
                         break
         except OSError:
             pass
-    dirs += ARENA_DIRS if altre is None else altre
+    dirs += (ARENA_DIRS if piattaforma.WINDOWS else ARENA_DIRS_MAC) if altre is None else altre
     for d in dirs:
         f = sorted(glob.glob(os.path.join(d, "Downloads", "Raw", "Raw_CardDatabase_*.mtga")), key=os.path.getmtime)
+        if not f and not piattaforma.WINDOWS:       # su Mac la cartella esatta non e' nota: si cerca sotto (la cartella dei dati di Arena)
+            f = sorted(glob.glob(os.path.join(d, "**", "Raw_CardDatabase_*.mtga"), recursive=True), key=os.path.getmtime)
         if f:
             return f[-1]
     return None
@@ -408,7 +417,8 @@ def prova_db(d):
             ("ibridi {2/X} a 2 (202.3f), la faccia secondaria, le facce collegate", carte.get(95700, {}).get("cmc") == 6
              and carte[95700].get("isSecondaryCard") is True and carte[95700].get("linkedFaces") == [95701, 95702]),
             ("i testi senza la formattazione", testi == {2929: "Crash of Rhinos", 3000: "Tre ibridi"}),
-            ("il Player.log dice dove sta Arena", db_locale_finto(d, db))]
+            ("il Player.log dice dove sta Arena", db_locale_finto(d, db)),
+            ("Mac: il database si trova anche in una sottocartella della cartella dei dati", db_locale_mac(d, db))]
     nuovo = db_nuovo(c, db)
     os.utime(db, (time.time() + 60, time.time() + 60))           # Arena scarica un database nuovo
     casi.append(("negativa: lo stesso database non si riesporta, uno piu' nuovo si'", not nuovo and db_nuovo(c, db)))
@@ -420,6 +430,28 @@ def prova_db(d):
         rifiuta = True
     casi.append(("negativa: un database senza la tabella Cards non scrive niente", rifiuta))
     return casi
+
+
+def db_locale_mac(d, db):
+    """Su Mac la cartella esatta del Raw_CardDatabase non e' nota: db_locale lo cerca sotto la cartella dei dati di Arena. La riga «Mono path» del Player.log
+    del Mac (senza lettera di unita') si riconosce. Negativa: su Windows la ricerca nelle sottocartelle non si fa."""
+    import re
+    import shutil
+    casa = os.path.join(d, "mac", "com.wizards.mtga", "Qualcosa", "Raw")
+    os.makedirs(casa, exist_ok=True)
+    shutil.copy2(db, casa)
+    era = piattaforma.WINDOWS
+    try:
+        piattaforma.WINDOWS = False
+        trovato = db_locale(os.path.join(d, "niente"), altre=[os.path.join(d, "mac", "com.wizards.mtga")])
+        piattaforma.WINDOWS = True
+        a_windows = db_locale(os.path.join(d, "niente"), altre=[os.path.join(d, "mac", "com.wizards.mtga")])
+    finally:
+        piattaforma.WINDOWS = era
+    riga = "Mono path[0] = '/Applications/MTGA.app/Contents/Resources/Data/Managed'"
+    m = re.search(r"Mono path\[0\] = '(/[^'\n]*?)/Managed'", riga)
+    return (trovato is not None and os.path.basename(trovato) == os.path.basename(db) and a_windows is None
+            and m is not None and m.group(1) == "/Applications/MTGA.app/Contents/Resources/Data")
 
 
 def db_locale_finto(d, db):

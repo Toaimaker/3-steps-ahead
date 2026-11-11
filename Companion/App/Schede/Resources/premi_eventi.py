@@ -25,6 +25,7 @@ while not os.path.isfile(os.path.join(_casa, "percorsi.py")):
 if _casa not in sys.path:
     sys.path.insert(0, _casa)
 import percorsi  # noqa: E402
+import piattaforma  # noqa: E402  (i percorsi di Arena su Windows e su Mac)
 import re, json, collections
 import account as _ACC
 
@@ -32,7 +33,7 @@ ROOT = percorsi.ROOT
 LOGDIR = os.path.join(ROOT, "Log_Arena")
 CACHE = os.path.join(LOGDIR, "premi_eventi_cache.json")
 CARTE = os.path.join(ROOT, "Collezione", "arena_cards_cache.json")
-VIVI = [os.path.join(os.path.expandvars(r"%USERPROFILE%\AppData\LocalLow\Wizards Of The Coast\MTGA"), n)
+VIVI = [os.path.join(piattaforma.cartella_arena(), n)
         for n in ("Player-prev.log", "Player.log")]
 FONTI = ("EventPayEntry", "EventReward", "EventGrantCardPool")
 RX_ACCESSO = re.compile(r'"authenticateResponse": \{ "clientId": "([A-Z0-9]+)"')

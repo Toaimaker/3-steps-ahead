@@ -1,6 +1,6 @@
 {
- "version": "0.1.13",
+ "version": "0.1.14",
  "date": "2026-11-11",
- "notes": "Much lighter on memory: about 250 MB instead of 900 on many-core PCs, faster card database loading, smoother long sessions.",
+ "notes": "First experimental Mac package (Install.command and the app launcher, not yet tested on a real Mac); same app on Windows.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

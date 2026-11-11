@@ -22,13 +22,14 @@ while not os.path.isfile(os.path.join(_casa, "percorsi.py")):
 if _casa not in sys.path:
     sys.path.insert(0, _casa)
 import percorsi  # noqa: E402
+import piattaforma  # noqa: E402  (i percorsi di Arena su Windows e su Mac)
 import datetime
 import json
 import re
 
 QUI = os.path.dirname(os.path.abspath(__file__))
 RADICE = percorsi.ROOT
-LOG = os.path.expandvars(r"%USERPROFILE%\AppData\LocalLow\Wizards Of The Coast\MTGA\Player.log")
+LOG = piattaforma.player_log()
 import account as _ACC  # noqa: E402
 CACHE = _ACC.lega(globals(), "CACHE", "mazzi_arena.json")       # Log_Arena/mazzi_arena.json, nell'app pubblica nella cartella dell'account
 F_CARTE = os.path.join(RADICE, "Dati", "untapped", "arena_cards", "cards.json")
