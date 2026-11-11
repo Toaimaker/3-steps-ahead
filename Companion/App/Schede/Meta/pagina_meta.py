@@ -41,7 +41,7 @@ class PaginaMeta(PaginaMazzi):
         # mazzi si giocano di piu' in quale fascia di rank e con quale win rate»): i ranghi che Untapped da' gratis, Bronze-Platinum; c'e' solo nei formati di Arena
         # che hanno le partite per rango, e la scelta resta cambiando formato
         self.t_rango = Tendina(tk, self.barra_menu, "Rank", F, larga=170)
-        self.t_rango.opzioni([nome_rango(r) for r in RANGHI_META], lambda o: self.cambia_formato()); self.t_rango.set("Platinum")
+        self.t_rango.opzioni([nome_rango(r) for r in RANGHI_META], lambda o: self.cambia_formato(), icone=self.loghi_ranghi()); self.t_rango.set("Platinum")
         self.t_ord = Tendina(tk, self.barra_menu, "Sort by", F, larga=170); self.t_ord.fr.pack(side="left", padx=(10, 0))
         self.t_ord.opzioni(self.ORDINI, lambda o: self.riordina()); self.t_ord.set(self.ORDINI[0])
         # la vista Charts e il meta del limited (10 nov 2026, Autore: «una seconda sezione che non e' visualizzata a scacchiera ma a elenchi e ci fa vedere il
@@ -142,6 +142,25 @@ class PaginaMeta(PaginaMazzi):
             self.t_set.set(self.set_iniziale(sets))
         if not self.t_set.fr.winfo_manager():
             self.t_set.fr.pack(side="left", padx=(10, 0), after=self.t_fmt.fr)
+
+    def loghi_ranghi(self, alto=18):
+        """I loghi delle leghe di Arena accanto ai ranghi della tendina (Autore, 11 nov 2026: «sulle leghe anche se in tendina mettiamo i loro loghi»);
+        Diamond + Mythic coi due loghi affiancati. Un logo che manca lascia la voce senza."""
+        from PIL import Image, ImageTk
+        from icone import logo_lega
+        out = {}
+        for r in RANGHI_META:
+            leghe = ("Diamond", "Mythic") if r == "mythic" else (r.capitalize(),)
+            imm = [Image.open(f).convert("RGBA") for f in (logo_lega("constructed", lg, alto) for lg in leghe) if f]
+            if not imm:
+                continue
+            tela = Image.new("RGBA", (sum(i.width for i in imm) + 2 * (len(imm) - 1), alto), (0, 0, 0, 0))
+            x = 0
+            for i in imm:
+                tela.alpha_composite(i, (x, (alto - i.height) // 2)); x += i.width + 2
+            out[nome_rango(r)] = ImageTk.PhotoImage(tela)
+        self._loghi_ranghi = out       # le PhotoImage vivono finche' la pagina le tiene
+        return out
 
     def rango(self):
         """Il rango scelto, se la tendina c'e' (formati di Arena con le partite per rango), se no None: il rango dello scarico."""

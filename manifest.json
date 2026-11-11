@@ -1,6 +1,6 @@
 {
- "version": "0.1.21",
+ "version": "0.1.22",
  "date": "2026-11-11",
- "notes": "Meta: a View button to switch between grid and charts, and a Diamond + Mythic rank.",
+ "notes": "Meta: the league logos next to each rank in the Rank menu.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }
