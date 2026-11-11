@@ -1,6 +1,6 @@
 {
  "version": "0.1.16",
  "date": "2026-11-11",
- "notes": "The original rank, wildcard, gold, gem, pack and token icons are back.",
+ "notes": "Deck builder updates only what changes: adding or removing a card is up to three times faster.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

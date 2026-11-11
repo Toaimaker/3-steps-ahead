@@ -181,6 +181,7 @@ class Pagina:
                 return
             g.fatta = W
             g.delete("all")
+            voci = g.voci_
             lw = (W - 6 * (colonne - 1)) / colonne
             y = 0
             for r0 in range(0, len(voci), colonne):
@@ -219,6 +220,12 @@ class Pagina:
                 y = basso + 6
             g.configure(height=max(1, y - 6))
         g.bind("<Configure>", disegna)
+
+        def aggiorna(voci_nuove):
+            """Altri numeri sulla stessa tela (il builder a ogni carta, 11 nov 2026): niente tela nuova."""
+            g.voci_ = list(voci_nuove); g.fatta = None
+            disegna()
+        g.aggiorna = aggiorna
         disegna()
         if nota:
             tk.Label(padre, text=nota, bg=C["scheda"], fg=C["muto"], font=F(7), anchor="w", justify="left", wraplength=largo_nota).pack(fill="x")

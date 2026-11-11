@@ -46,7 +46,37 @@ def formati_con_dati():
     return ci or [f for f, _ in FORMATI_META]
 
 
+_MEMO = {}
+
+
 def meta_mazzi(fmt, rango=None):
+    """meta_mazzi ricordato per 30 s (11 nov 2026: il builder lo chiede a ogni carta per il mazzo del meta piu' vicino, 7,5 ms l'uno; i file del meta cambiano
+    ogni 6 ore). Ogni chiamata riceve una copia sua (marshal: un terzo del tempo del json), perche' chi la usa la cambia."""
+    import marshal
+    import time
+    def firma(f):       # il file del meta di quel formato (e quello di Standard, che le prove cambiano): un file riscritto non vale piu' la memoria
+        try:
+            st = os.stat(f)
+            return (f, st.st_mtime_ns, st.st_size)
+        except OSError:
+            return (f, None)
+    k = (fmt, rango, collezione()[1], jolly()[1], firma(dati_app.META_STD), firma(os.path.join(ROOT, "Note", f"meta_untapped_{fmt.lower().replace(' ', '_')}.json")),
+         firma(os.path.join(ROOT, "Note", f"meta_goldfish_{fmt.lower()}.json")))
+    v = _MEMO.get(k)
+    if v is not None and time.monotonic() - v[0] < 30:
+        return marshal.loads(v[1])
+    r = _meta_mazzi(fmt, rango)
+    try:
+        b = marshal.dumps(r)
+    except ValueError:      # un valore che marshal non sa copiare: niente memoria, il risultato com'e'
+        return r
+    if len(_MEMO) > 16:
+        _MEMO.clear()
+    _MEMO[k] = (time.monotonic(), b)
+    return marshal.loads(b)
+
+
+def _meta_mazzi(fmt, rango=None):
     """I mazzi del meta di un formato, per la pagina Meta: (mazzi per quota, sottotitolo). I formati di Arena da Untapped (meta_formato), quelli di carta e
     di MTGO da MTGGoldfish (Note/meta_goldfish_<formato>.json, Motore/meta_goldfish_formati.py). Ogni mazzo ha lista, sideboard se c'e', prezzo e tix."""
     coll, _ = collezione()

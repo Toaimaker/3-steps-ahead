@@ -48,9 +48,11 @@ PRINCIPALI = ("Edit", "Add to wishlist")
 class EsportaMazzo:
     """Export: la lista per Arena e per MTGO, negli appunti o in un file."""
 
-    def esportazione(self, padre, nome, main, side, comandante, compagno, azioni=()):
+    def esportazione(self, padre, nome, main, side, comandante, compagno, azioni=(), fonte=None):
         """Le uscite della lista: copiarla per Arena o per MTGO, o salvarla in un file. Arena importa dal testo copiato (Decks › Import),
-        MTGO da un file (Import Deck nella collezione): il .txt di MTGO va bene anche per Moxfield, MTGGoldfish, Archidekt."""
+        MTGO da un file (Import Deck nella collezione): il .txt di MTGO va bene anche per Moxfield, MTGGoldfish, Archidekt.
+        fonte: una funzione che da' (nome, main, side, comandante, compagno) al momento del clic (il builder, 11 nov 2026: i pulsanti si fanno una volta
+        e copiano il mazzo di adesso, non quello di quando sono nati)."""
         tk, F = self.tk, self.F
         self._problemi = getattr(self, "_problemi", [])
         # Edit e Add to wishlist in testa a tutti i pulsanti, in arancio (Autore, 10 nov 2026: «nei menu deck wishlist e edit devono essere in testa agli altri
@@ -63,18 +65,25 @@ class EsportaMazzo:
         g = tk.Frame(padre, bg=C["scheda"]); g.pack(fill="x")
         for j in range(2):
             g.columnconfigure(j, weight=1, uniform="esp")
-        testi = dict(arena=lista_arena(main, side, comandante, compagno), mtgo=lista_mtgo(main, side, comandante, compagno))
-        file_ = re.sub(r'[\\/:*?"<>|]+', " ", nome or "Deck").strip() or "Deck"
+        def testi_di(n_, m_, s_, c_, k_):
+            return (dict(arena=lista_arena(m_, s_, c_, k_), mtgo=lista_mtgo(m_, s_, c_, k_)),
+                    re.sub(r'[\\/:*?"<>|]+', " ", n_ or "Deck").strip() or "Deck")
+        fissi = None if fonte else testi_di(nome, main, side, comandante, compagno)       # la lista fissa: i testi una volta sola
+
+        def testi_ora():
+            return testi_di(*fonte()) if fonte else fissi
 
         def avvisa(b, testo, dopo):
             b.metti(testo, False); b.after(2500, lambda: b.winfo_exists() and b.metti(dopo, False))
 
         def copia(b, chi, dopo):
+            testi, _f = testi_ora()
             b.clipboard_clear(); b.clipboard_append(testi[chi]); b.update()
             avvisa(b, "Copied: Arena › Decks › Import" if chi == "arena" else "Copied", dopo)
 
         def salva(b, chi, dopo):
             from tkinter import filedialog
+            testi, file_ = testi_ora()
             f = filedialog.asksaveasfilename(parent=b.winfo_toplevel(), title="Save the deck list", defaultextension=".txt",
                                              initialfile=f"{file_}{' (MTGO)' if chi == 'mtgo' else ''}.txt", filetypes=[("Text", "*.txt")])
             if f:

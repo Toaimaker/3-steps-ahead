@@ -685,11 +685,19 @@ class Liste:
         """Una capsula. quante: le copie, nella scatola a sinistra come «3x»; copie: un testo al suo posto (2/3 durante la partita); destra: un testo fuori, a destra.
         colonna: il testo piu' largo che quella colonna puo' avere: le capsule di una lista finiscono tutte allo stesso punto, anche quelle senza testo a destra (Autore, 6 nov 2026: «le capsule dei mazzi devono avere tutte la stessa lunghezza»)."""
         c = self.tk.Canvas(padre, height=self.alto, bg=bg, highlightthickness=0, bd=0)
+        st = {"q": quante}
 
         def disegna(e=None):
             w = c.winfo_width()
             if w >= 60:
-                self.disegna_riga(c, w, nome, quante, destra, spenta, col_destra, copie, colonna)
+                self.disegna_riga(c, w, nome, st["q"], destra, spenta, col_destra, copie, colonna)
+
+        def metti_q(q):
+            """Le copie cambiate: si ridisegna solo questa capsula (il builder, 11 nov 2026)."""
+            if q != st["q"]:
+                st["q"] = q
+                disegna()
+        c.metti_q = metti_q
         c.bind("<Configure>", disegna)
         c.bind("<Enter>", lambda e: self.entra(c, nome)); c.bind("<Leave>", self.esci); c.bind("<Destroy>", self.esci, add="+")
         return c

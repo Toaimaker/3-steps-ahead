@@ -94,6 +94,7 @@ class Costruttore:
         self.b = {}
         self.rapporto_terre = None
         self.aree = []
+        self._blocchi, self.rifatti = {}, []      # i pezzi della pagina che si rifanno solo se cambiano (blocco)
         # la testata, come nella scheda del mazzo: i colori e il nome (qui si scrive), a destra il formato e dove vanno le carte
         cap = tk.Frame(w, bg=C["cap"]); cap.pack(fill="x")
         self.f_colori = tk.Frame(cap, bg=C["cap"]); self.f_colori.pack(side="left", padx=(12, 8), pady=10)
@@ -171,73 +172,138 @@ class Costruttore:
             col.t_formato.set(voluto); col.chiedi()
 
     # ------------------------------------------------------------ il mazzo
+    def blocco(self, padre, nome, chiave, fa, agg=None):
+        """Un pezzo della pagina che si rifa' solo quando cambia la sua chiave (11 nov 2026, Autore: «il passo successivo sarebbe aggiornare solo la riga che
+        cambia lo facciamo»): ogni pezzo ha un contenitore suo, nato una volta nell'ordine della pagina; al cambio il contenuto vecchio si stacca e si
+        distrugge dopo (widget.svuota) e fa(contenitore) rifa' quello nuovo. Una chiave None lascia il contenitore vuoto. agg(contenitore): aggiorna sul posto
+        il pezzo gia' fatto (la stessa tela con altri numeri), e se dice False si rifa'. -> True se si e' rifatto o aggiornato."""
+        k = (str(padre), nome)
+        b = self._blocchi.get(k)
+        if b is None:
+            fr = self.tk.Frame(padre, bg=padre["bg"]); fr.pack(fill="x")
+            b = self._blocchi[k] = {"fr": fr, "k": ("nuovo",)}
+        if b["k"] == chiave:
+            return False
+        if agg is not None and chiave is not None and b["k"] not in (None, ("nuovo",)) and agg(b["fr"]):
+            b["k"] = chiave
+            self.rifatti.append(nome + " (sul posto)")
+            return True
+        svuota(b["fr"])
+        if chiave is not None:
+            fa(b["fr"])
+        b["k"] = chiave
+        self.rifatti.append(nome)
+        return True
+
     def disegna_mazzo(self):
         tk, F = self.tk, self.F
         self.t_nome = None
-        svuota(self.dentro_m)
         main = self.zone["Deck"]
         voci = [(q, n) for n, q in {**self.zone["Commander"], **main}.items()]
         tinte = [k for k in "WUBRG" if k in {k for _q, n in voci for k in CAP.info(n)[1]}]
-        svuota(self.f_colori)
-        self.pg.mana_label(self.f_colori, "".join(tinte), C["cap"]).pack(side="left")
-        if voci:
-            self.lista_m.testata(self.dentro_m, self.v_nome.get() or "Deck", sum(main.values()) + sum(self.zone["Commander"].values()),
-                                 100 if self.t_fmt.get() == "Brawl" else 60, CAP.curva(voci), CAP.copertina(voci), tinte, bg=C["scheda"]).pack(fill="x", pady=(0, 6))
-        else:
-            tk.Label(self.dentro_m, text="Empty: drag cards from the Collection, or Import a list you copied", bg=C["scheda"], fg=C["grigio"], font=F(9),
-                     anchor="w").pack(fill="x", pady=10)
-        colonne = tk.Frame(self.dentro_m, bg=C["scheda"]); colonne.pack(fill="x")
-        colonne.columnconfigure(0, weight=1, uniform="lista"); colonne.columnconfigure(1, weight=1, uniform="lista")
-        c_magie = tk.Frame(colonne, bg=C["scheda"]); c_magie.grid(row=0, column=0, sticky="new", padx=(0, 8))
-        c_resto = tk.Frame(colonne, bg=C["scheda"]); c_resto.grid(row=0, column=1, sticky="new")
+
+        def colori(fr):
+            self.pg.mana_label(fr, "".join(tinte), C["cap"]).pack(side="left")
+        self.blocco(self.f_colori, "colori", tuple(tinte), colori)
+        nome = self.v_nome.get() or "Deck"
+        tot = sum(main.values()) + sum(self.zone["Commander"].values())
+        totale = 100 if self.t_fmt.get() == "Brawl" else 60
+
+        def testata(fr):
+            if voci:
+                self.lista_m.testata(fr, nome, tot, totale, CAP.curva(voci), CAP.copertina(voci), tinte, bg=C["scheda"]).pack(fill="x", pady=(0, 6))
+            else:
+                tk.Label(fr, text="Empty: drag cards from the Collection, or Import a list you copied", bg=C["scheda"], fg=C["grigio"], font=F(9),
+                         anchor="w").pack(fill="x", pady=10)
+        self.blocco(self.dentro_m, "testata", (nome, tot, totale, tuple(sorted(voci, key=lambda x: x[1])), tuple(tinte)) if voci else "vuoto", testata)
+        if getattr(self, "colonne_m", None) is None:        # le due colonne della lista: nate una volta, i pezzi dentro si rifanno da soli
+            colonne = tk.Frame(self.dentro_m, bg=C["scheda"]); colonne.pack(fill="x")
+            colonne.columnconfigure(0, weight=1, uniform="lista"); colonne.columnconfigure(1, weight=1, uniform="lista")
+            c_magie = tk.Frame(colonne, bg=C["scheda"]); c_magie.grid(row=0, column=0, sticky="new", padx=(0, 8))
+            c_resto = tk.Frame(colonne, bg=C["scheda"]); c_resto.grid(row=0, column=1, sticky="new")
+            self.colonne_m = (c_magie, c_resto)
+        c_magie, c_resto = self.colonne_m
         terre = {n: q for n, q in main.items() if MS.e_terra(n, self.carte_db)}
         magie = any(n not in terre for n in main) or bool(self.zone["Commander"])
         parti = [(c_magie, "COMMANDER", "Commander", self.zone["Commander"]), (c_magie, "SPELLS", "Deck", {n: q for n, q in main.items() if n not in terre}),
                  (c_resto, "LANDS", "Deck", terre), (c_resto, "SIDEBOARD", "Sideboard", self.zone["Sideboard"])]
+        totali = {n: sum(self.zone[k].get(n, 0) for k in self.zone) for z in self.zone.values() for n in z}
         for padre, titolo, zona, carte in parti:
             lands = titolo == "LANDS"
-            if not carte and not (lands and magie):
+            voci_ = CAP.ordina(list(carte.items()))
+            for n, q in voci_:      # la scheda della carta in hover (le copie di tutte le zone): sempre aggiornata, costa poco
+                self.lista_m.schede[n] = self.pg.dati_carta(n, totali.get(n, q), self.coll)
+            c_ = None
+            if carte or (lands and magie):      # (le carte in ordine, il pulsante e i lucchetti delle terre, le copie)
+                c_ = (tuple(n for n, _q in voci_), (self.base_fatta, tuple(sorted(self.lucchetti & set(carte)))) if lands else None, tuple(q for _n, q in voci_))
+            b_ = self._blocchi.get((str(padre), titolo))
+            if c_ is not None and b_ is not None and b_["k"] is not None and b_["k"][:2] == c_[:2] and b_["k"] != c_ and self.aggiorna_sezione(b_["fr"], titolo, carte):
+                b_["k"] = c_       # le stesse carte, solo le copie cambiate: si ridisegnano le capsule cambiate e il titolo, non la sezione
+                self.rifatti.append(titolo + " (righe)")
                 continue
-            if lands:
-                # la sezione delle terre ha il suo pulsante (Autore, 8 nov 2026: «il pulsante manabase spostalo e mettilo nella sezione lands dell'editor, quando lo si
-                # preme genera la mana base, se il giocatore fa modifiche puo' mettere un lucchettino alle terre da tenere e sopra le terre ci sara' il pulsante fix
-                # manabase che corregge dopo i cambiamenti del giocatore tenendo pero' le terre con il lucchettino»)
-                h = tk.Frame(padre, bg=C["scheda"]); h.pack(fill="x", pady=(0, 3))
-                tk.Label(h, text=f"{titolo} · {sum(carte.values())}", bg=C["scheda"], fg=C["titolo"], font=F(7, True), anchor="w").pack(side="left")
-                casa = {}
-                casa["b"] = pulsante_solido(tk, F, h, "Fix mana base" if self.base_fatta else "Mana base", False, lambda casa=casa: self.terre_fix(casa["b"]),
-                                               alto=22, bg=C["scheda"])
-                casa["b"].configure(width=120); casa["b"].pack(side="right")
-                self.b["Mana base"] = casa["b"]
-            else:
-                tk.Label(padre, text=f"{titolo} · {sum(carte.values())}", bg=C["scheda"], fg=C["titolo"], font=F(7, True), anchor="w").pack(fill="x", pady=(0, 3))
-            voci = CAP.ordina(list(carte.items()))
-            for n, q in voci:
-                self.lista_m.schede[n] = self.pg.dati_carta(n, sum(self.zone[k].get(n, 0) for k in self.zone), self.coll)
-            if not lands:       # magie, comandante e sideboard: una tela per la lista, non una per capsula (11 nov 2026); clic toglie una copia, destro ne aggiunge una
-                el = self.lista_m.elenco(padre, voci, bg=C["scheda"]); el.pack(fill="x")
-                for r, n, _q, _o in el.righe:
-                    r.cursore = "hand2"
-                    r.bind("<Button-1>", lambda e, n=n, z=zona: self.metti(n, -1, z), add=True)
-                    r.bind("<Button-3>", lambda e, n=n, z=zona: self.metti(n, 1, z), add=True)
-                tk.Frame(padre, bg=C["scheda"], height=8).pack(fill="x")
-                continue
-            for n, q in voci:
-                if lands:      # il lucchetto a sinistra della terra: chiuso = Fix mana base la tiene
-                    fr = tk.Frame(padre, bg=C["scheda"]); fr.pack(fill="x")
-                    self.lucchetto(fr, n).pack(side="left", padx=(0, 3))
-                    r = self.lista_m.riga(fr, n, q, bg=C["scheda"])
-                    r.pack(side="left", fill="x", expand=True)
-                else:
-                    r = self.lista_m.riga(padre, n, q, bg=C["scheda"])
-                    r.pack(fill="x")
-                r.bind("<Button-1>", lambda e, n=n, z=zona: self.metti(n, -1, z), add="+")
-                r.bind("<Button-3>", lambda e, n=n, z=zona: self.metti(n, 1, z), add="+")
+            self.blocco(padre, titolo, c_, lambda fr, titolo=titolo, zona=zona, carte=carte, voci_=voci_, lands=lands: self.sezione_lista(fr, titolo, zona, carte, voci_, lands))
+
+        def esporta(fr):        # l'esportazione sotto la lista, piu' le azioni del builder: nata una volta, copia il mazzo di adesso (fonte)
+            PaginaStandard.esportazione(self.pg, fr, nome, dict(main), dict(self.zone["Sideboard"]), dict(self.zone["Commander"]), dict(self.compagno),
+                                        [("Import", self.importa, False), ("Clear", self.svuota_ora, True), ("Save", lambda: self.salva() and "Saved", False)],
+                                        fonte=lambda: (self.v_nome.get() or "Deck", dict(self.zone["Deck"]), dict(self.zone["Sideboard"]), dict(self.zone["Commander"]),
+                                                       dict(self.compagno)))
+        self.blocco(self.f_esporta, "export", "fatto", esporta)
+
+    def aggiorna_sezione(self, fr, titolo, carte):
+        """Le copie cambiate in una sezione con le stesse carte: il titolo e solo le capsule che cambiano. -> False se la sezione non si sa aggiornare (si rifa')."""
+        lab, el, terre = getattr(fr, "titolo_lab", None), getattr(fr, "el", None), getattr(fr, "terre", None)
+        if lab is None or not lab.winfo_exists() or (el is None and terre is None):
+            return False
+        lab.configure(text=f"{titolo} · {sum(carte.values())}")
+        if el is not None:
+            for i, (r, n, q, opz) in enumerate(el.righe):
+                nq = carte.get(n, 0)
+                if nq != q:
+                    el.righe[i] = (r, n, nq, opz)
+                    if getattr(r, "larga", None):       # gia' disegnata: solo questa riga; se no la disegna la tela con le copie nuove
+                        self.lista_m.disegna_riga(r, r.larga, n, nq, **opz)
+        else:
+            for n, c in terre.items():
+                c.metti_q(carte.get(n, 0))
+        return True
+
+    def sezione_lista(self, padre, titolo, zona, carte, voci, lands):
+        """Una sezione della lista (comandante, magie, terre, sideboard): il titolo e le carte. Clic toglie una copia, tasto destro ne aggiunge una."""
+        tk, F = self.tk, self.F
+        padre.el, padre.terre = None, None
+        if lands:
+            # la sezione delle terre ha il suo pulsante (Autore, 8 nov 2026: «il pulsante manabase spostalo e mettilo nella sezione lands dell'editor, quando lo si
+            # preme genera la mana base, se il giocatore fa modifiche puo' mettere un lucchettino alle terre da tenere e sopra le terre ci sara' il pulsante fix
+            # manabase che corregge dopo i cambiamenti del giocatore tenendo pero' le terre con il lucchettino»)
+            h = tk.Frame(padre, bg=C["scheda"]); h.pack(fill="x", pady=(0, 3))
+            padre.titolo_lab = tk.Label(h, text=f"{titolo} · {sum(carte.values())}", bg=C["scheda"], fg=C["titolo"], font=F(7, True), anchor="w")
+            padre.titolo_lab.pack(side="left")
+            casa = {}
+            casa["b"] = pulsante_solido(tk, F, h, "Fix mana base" if self.base_fatta else "Mana base", False, lambda casa=casa: self.terre_fix(casa["b"]),
+                                           alto=22, bg=C["scheda"])
+            casa["b"].configure(width=120); casa["b"].pack(side="right")
+            self.b["Mana base"] = casa["b"]
+        else:
+            padre.titolo_lab = tk.Label(padre, text=f"{titolo} · {sum(carte.values())}", bg=C["scheda"], fg=C["titolo"], font=F(7, True), anchor="w")
+            padre.titolo_lab.pack(fill="x", pady=(0, 3))
+        if not lands:       # magie, comandante e sideboard: una tela per la lista, non una per capsula (11 nov 2026); clic toglie una copia, destro ne aggiunge una
+            el = padre.el = self.lista_m.elenco(padre, voci, bg=C["scheda"]); el.pack(fill="x")
+            for r, n, _q, _o in el.righe:
+                r.cursore = "hand2"
+                r.bind("<Button-1>", lambda e, n=n, z=zona: self.metti(n, -1, z), add=True)
+                r.bind("<Button-3>", lambda e, n=n, z=zona: self.metti(n, 1, z), add=True)
             tk.Frame(padre, bg=C["scheda"], height=8).pack(fill="x")
-        # l'esportazione sotto la lista, la stessa della scheda del mazzo, piu' le azioni del builder
-        svuota(self.f_esporta)
-        PaginaStandard.esportazione(self.pg, self.f_esporta, self.v_nome.get() or "Deck", dict(main), dict(self.zone["Sideboard"]), dict(self.zone["Commander"]),
-                                       dict(self.compagno), [("Import", self.importa, False), ("Clear", self.svuota_ora, True), ("Save", lambda: self.salva() and "Saved", False)])
+            return
+        padre.terre = {}
+        for n, q in voci:       # il lucchetto a sinistra della terra: chiuso = Fix mana base la tiene
+            fr = tk.Frame(padre, bg=C["scheda"]); fr.pack(fill="x")
+            self.lucchetto(fr, n).pack(side="left", padx=(0, 3))
+            r = padre.terre[n] = self.lista_m.riga(fr, n, q, bg=C["scheda"])
+            r.pack(side="left", fill="x", expand=True)
+            r.bind("<Button-1>", lambda e, n=n, z=zona: self.metti(n, -1, z), add="+")
+            r.bind("<Button-3>", lambda e, n=n, z=zona: self.metti(n, 1, z), add="+")
+        tk.Frame(padre, bg=C["scheda"], height=8).pack(fill="x")
 
     def lucchetto(self, padre, nome):
         """Il lucchetto disegnato (i simboli si disegnano, non si scrivono, 7 nov 2026): chiuso e azzurro, o aperto e grigio. Clic = cambia."""
@@ -281,9 +347,9 @@ class Costruttore:
         self.w.after(3000, lambda: self.msg.winfo_exists() and self.msg.cget("text") == t and self.msg.configure(text=""))
 
     def disegna_dati(self):
+        """I dati a destra e i jolly sopra la lista: ogni pezzo si rifa' solo se i suoi numeri sono cambiati (blocco, 11 nov 2026)."""
         tk, F = self.tk, self.F
         d = self.dentro_d
-        svuota(d)
         fmt = self.t_fmt.get()
         main, side, com = self.zone["Deck"], self.zone["Sideboard"], self.zone["Commander"]
         tutte = dict(main)
@@ -291,25 +357,37 @@ class Costruttore:
             for n, q in z.items():
                 tutte[n] = tutte.get(n, 0) + q
         manca, si = craft(tutte, self.coll, self.jl)
-        svuota(self.barra_jolly)
-        self.pg.riquadro_jolly(self.barra_jolly, manca, si, self.jl)
+        self.blocco(self.barra_jolly, "jolly", (tuple(sorted(manca.items())), si, tuple(sorted((self.jl or {}).items()))),
+                    lambda fr: self.pg.riquadro_jolly(fr, manca, si, self.jl))
         magie = [(n, q) for n, q in main.items() if not MS.e_terra(n, self.carte_db)]
         mn = MS.mana({**com, **main}, self.carte_db)
         # i numeri: la stessa griglia della scheda di una build (PaginaStandard.voci_build), coi prezzi in fondo
         eur, usd, senza = PZ.totale(tutte)
         tix = sum(q * ((PZ.prezzo(n) or {}).get("tix") or 0) for n, q in tutte.items())
         voci = PaginaStandard.voci_build(self.pg, dict(formato=fmt), main, side, com, self.compagno, self.coll, self.carte_db)
-        problemi = self.pg._problemi
+        problemi = list(self.pg._problemi)
         voci += [("paper price", PZ.euro(eur) if tutte and len(senza) < len(tutte) else "-", None,
                   ((f"${usd:,.0f}" if usd >= 100 else f"${usd:.2f}") if tutte else "") + (f" · {sum(tutte[n] for n in senza)} digital only" if senza else "")),
                  ("mtgo price", f"{tix:,.1f} tix" if tix else "-", None)]
-        self.pg.griglia(d, voci, colonne=4, grande=11, stretta=True)
-        if problemi:      # i problemi di legalita', uno per riga, sotto i numeri
-            tk.Label(d, text="\n".join(problemi[:6]) + (f"\n+{len(problemi) - 6} more" if len(problemi) > 6 else ""), bg=C["scheda"], fg=C["rosso_t"],
+        def numeri(fr):
+            fr.g = self.pg.griglia(fr, voci, colonne=4, grande=11, stretta=True)
+
+        def numeri_agg(fr):
+            g = getattr(fr, "g", None)
+            if g is None or not g.winfo_exists() or len(g.voci_) != len(voci):
+                return False
+            g.aggiorna(voci)
+            return True
+        self.blocco(d, "numeri", tuple(tuple(v) for v in voci), numeri, numeri_agg)
+
+        def fa_problemi(fr):      # i problemi di legalita', uno per riga, sotto i numeri
+            tk.Label(fr, text="\n".join(problemi[:6]) + (f"\n+{len(problemi) - 6} more" if len(problemi) > 6 else ""), bg=C["scheda"], fg=C["rosso_t"],
                      font=F(8), anchor="w", justify="left").pack(fill="x", pady=(0, 6))
+        self.blocco(d, "problemi", tuple(problemi) if problemi else None, fa_problemi)
         r = self.rapporto_terre
-        if r:
-            lf = tk.Frame(d, bg=C["cap"], padx=8, pady=6); lf.pack(fill="x", pady=(0, 8))
+
+        def fa_base(fr):
+            lf = tk.Frame(fr, bg=C["cap"], padx=8, pady=6); lf.pack(fill="x", pady=(0, 8))
             self.pg.etichetta(lf, "mana base", C["cap"]).pack(anchor="w")
             agg = ", ".join(f"{q} {n}" for n, q in sorted(r["aggiungi"].items(), key=lambda x: (x[0] in ("Plains", "Island", "Swamp", "Mountain", "Forest"), x[0])))
             righe_r = []
@@ -319,41 +397,64 @@ class Costruttore:
                            ("To craft: " + ", ".join(f"{q} {n}" for n, q in r["mancano"].items()) if r["mancano"] else "You own all the lands added", C["rosso_t"] if r["mancano"] else C["verde_t"])):
                 l_ = tk.Label(lf, text=t, bg=C["cap"], fg=col, font=F(8), anchor="w", justify="left", wraplength=420); l_.pack(fill="x"); righe_r.append(l_)
             lf.bind("<Configure>", lambda e: [x.configure(wraplength=max(200, e.width - 20)) for x in righe_r if x.winfo_exists()])
+        self.blocco(d, "mana base", repr(r) if r else None, fa_base)
         # il grafo dell'archetipo, come nella scheda (quadro_mazzo: senza partite restano solo l'archetipo e il suo grafo)
-        media = tk.Frame(d, bg=C["scheda"]); media.pack(fill="x", pady=(0, 6))
-        PaginaStandard.quadro_mazzo(self.pg, media, None, DM.archetipo({**com, **main}, self.carte_db) if main else None)
-        self.pg.etichetta(d, "mana curve · spells", C["scheda"]).pack(anchor="w", pady=(10, 3))
+        arch = DM.archetipo({**com, **main}, self.carte_db) if main else None
+
+        def fa_arch(fr):
+            media = tk.Frame(fr, bg=C["scheda"]); media.pack(fill="x", pady=(0, 6))
+            PaginaStandard.quadro_mazzo(self.pg, media, None, arch)
+        self.blocco(d, "archetipo", (arch[0], tuple(arch[1].items())) if arch else "nessuno", fa_arch)
         conti = [0] * 8
         for n, q in magie:
             conti[min(7, int(CAP.info(n)[2] or 0))] += q
-        cv = tk.Canvas(d, height=104, bg=C["scheda"], highlightthickness=0); cv.pack(fill="x")
 
-        def curva(e=None):
-            cv.delete("all")
-            L = cv.winfo_width()
-            if L < 50:
-                return
-            alto, top = 70, max(conti) or 1
-            passo = L / 8
-            for i, q in enumerate(conti):
-                h = alto * q / top
-                x0 = i * passo + 6
-                cv.create_rectangle(x0, 16 + alto - h, x0 + passo - 12, 16 + alto, fill=C["accento"] if q else C["filo"], width=0)
-                if q:
-                    cv.create_text(x0 + (passo - 12) / 2, 16 + alto - h - 1, text=str(q), anchor="s", fill=C["testo"], font=F(7, True))
-                cv.create_text(x0 + (passo - 12) / 2, 16 + alto + 10, text="7+" if i == 7 else str(i), fill=C["grigio"], font=F(7))
-        cv.bind("<Configure>", curva)
+        def fa_curva(fr):
+            self.pg.etichetta(fr, "mana curve · spells", C["scheda"]).pack(anchor="w", pady=(10, 3))
+            cv = tk.Canvas(fr, height=104, bg=C["scheda"], highlightthickness=0); cv.pack(fill="x")
+            fr.dati = list(conti)
+
+            def curva(e=None):
+                cv.delete("all")
+                L = cv.winfo_width()
+                if L < 50:
+                    return
+                conti = fr.dati
+                alto, top = 70, max(conti) or 1
+                passo = L / 8
+                for i, q in enumerate(conti):
+                    h = alto * q / top
+                    x0 = i * passo + 6
+                    cv.create_rectangle(x0, 16 + alto - h, x0 + passo - 12, 16 + alto, fill=C["accento"] if q else C["filo"], width=0)
+                    if q:
+                        cv.create_text(x0 + (passo - 12) / 2, 16 + alto - h - 1, text=str(q), anchor="s", fill=C["testo"], font=F(7, True))
+                    cv.create_text(x0 + (passo - 12) / 2, 16 + alto + 10, text="7+" if i == 7 else str(i), fill=C["grigio"], font=F(7))
+            cv.bind("<Configure>", curva)
+            fr.ridisegna = curva
+
+        def agg_dati(nuovi):
+            def agg(fr):
+                if not hasattr(fr, "ridisegna"):
+                    return False
+                fr.dati[:] = nuovi
+                fr.ridisegna()
+                return True
+            return agg
+        self.blocco(d, "curva", tuple(conti), fa_curva, agg_dati(conti))
         # le terre nella mano iniziale: la probabilita' esatta di 0-7 terre nelle prime 7 carte (ipergeometrica, mazzi_salvati.mana)
-        if mn["carte"]:
-            self.pg.etichetta(d, "lands in opening hand · 7 cards", C["scheda"]).pack(anchor="w", pady=(10, 3))
-            cm = tk.Canvas(d, height=104, bg=C["scheda"], highlightthickness=0); cm.pack(fill="x")
-            prob = [mn["mano"].get(k, 0.0) for k in range(8)]
+        prob = [mn["mano"].get(k, 0.0) for k in range(8)] if mn["carte"] else None
+
+        def fa_mano(fr):
+            self.pg.etichetta(fr, "lands in opening hand · 7 cards", C["scheda"]).pack(anchor="w", pady=(10, 3))
+            cm = tk.Canvas(fr, height=104, bg=C["scheda"], highlightthickness=0); cm.pack(fill="x")
+            fr.dati = list(prob)
 
             def mano(e=None):
                 cm.delete("all")
                 L = cm.winfo_width()
                 if L < 50:
                     return
+                prob = fr.dati
                 alto, top = 70, max(prob) or 1
                 passo = L / 8
                 for i, p in enumerate(prob):
@@ -365,6 +466,8 @@ class Costruttore:
                         cm.create_text(x0 + (passo - 12) / 2, 16 + alto - h - 1, text=f"{round(100 * p)}%", anchor="s", fill=C["testo"], font=F(7, True))
                     cm.create_text(x0 + (passo - 12) / 2, 16 + alto + 10, text=str(i), fill=C["grigio"], font=F(7))
             cm.bind("<Configure>", mano)
+            fr.ridisegna = mano
+        self.blocco(d, "mano", tuple(round(p, 6) for p in prob) if prob else None, fa_mano, agg_dati(prob) if prob else None)
 
     # ------------------------------------------------------------ azioni
     def ridisegna(self):
