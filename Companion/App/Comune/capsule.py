@@ -526,21 +526,20 @@ class Liste:
             from PIL import Image, ImageDraw
             S = 2
             L, H = w * S, alto * S
-            im = Image.new("RGBA", (L, H)); d = ImageDraw.Draw(im)
-            for y in range(H):
-                g = 44 - int(26 * y / (H - 1))
-                d.line((0, y, L, y), fill=(g, g, g + 8, 255))
+            # (11 nov 2026: 20-40 ms per testata, rifatta a ogni mazzo nuovo; ora ~8. Il fondo e la sfumatura si fanno da una riga di pixel, non riga per riga e
+            # pixel per pixel; l'arte si riduce col Lanczos dentro il ritaglio; l'ultima riduzione e' un 2:1 esatto, box)
+            col = Image.frombytes("RGBA", (1, H), bytes(v for y in range(H) for g in (44 - int(26 * y / (H - 1)),) for v in (g, g, g + 8, 255)))
+            im = col.resize((L, H), Image.NEAREST)
             if c_e:
                 try:
                     a = Image.open(f).convert("RGBA")
                     larga = max(int(L * 0.62), 150 * S)
                     z = max(larga / a.width, H / a.height)
-                    a = a.resize((int(a.width * z) + 1, int(a.height * z) + 1), Image.LANCZOS)
-                    a = a.crop(((a.width - larga) // 2, (a.height - H) // 3, (a.width - larga) // 2 + larga, (a.height - H) // 3 + H))
-                    sfuma = Image.new("L", (larga, 1))
-                    for x in range(larga):
-                        sfuma.putpixel((x, 0), int(235 * min(1.0, (1 - x / larga) / 0.6)))
-                    a.putalpha(sfuma.resize((larga, H)))
+                    nl, nh = int(a.width * z) + 1, int(a.height * z) + 1
+                    x0, y0 = (nl - larga) // 2, (nh - H) // 3
+                    a = a.resize((larga, H), Image.LANCZOS, box=(x0 / z, y0 / z, (x0 + larga) / z, (y0 + H) / z), reducing_gap=2.0)
+                    sfuma = Image.frombytes("L", (larga, 1), bytes(int(235 * min(1.0, (1 - x / larga) / 0.6)) for x in range(larga)))
+                    a.putalpha(sfuma.resize((larga, H), Image.NEAREST))
                     im.alpha_composite(a)
                     velo = Image.new("RGBA", (L, H), (0, 0, 0, 0))    # un velo sopra, perche' il nome si legga su ogni arte
                     ImageDraw.Draw(velo).rectangle((0, 0, L, H), fill=(0, 0, 0, scuro))
@@ -551,7 +550,7 @@ class Liste:
             m = Image.new("L", (L, H), 0); ImageDraw.Draw(m).rounded_rectangle((0, 0, L - 1, H - 1), radius=5 * S, fill=255)
             im.putalpha(m)
             im = im.resize((w, alto), Image.LANCZOS)
-            buf = io.BytesIO(); im.save(buf, "PNG")
+            buf = io.BytesIO(); im.save(buf, "PNG", compress_level=1)
             self.fondi[k] = self.tk.PhotoImage(data=base64.b64encode(buf.getvalue()))
         return self.fondi[k]
 
@@ -702,7 +701,9 @@ class Liste:
         colonna, col_destra). -> la tela, con .righe = [(riga, nome, copie, opzioni)]."""
         import carta_tela
         alto = self.alto + passo
-        c = self.tk.Canvas(padre, height=max(1, len(voci) * alto - passo), bg=bg, highlightthickness=0, bd=0)
+        # width=1: la tela non chiede i suoi 380 pixel di partenza, quindi non spinge l'impaginazione della finestra (11 nov 2026: la lista del mazzo si disegnava a
+        # 189, poi 386, poi 334 pixel, tre volte per apertura)
+        c = self.tk.Canvas(padre, width=1, height=max(1, len(voci) * alto - passo), bg=bg, highlightthickness=0, bd=0)
         sm = carta_tela.Smistatore(c)
         c.righe = []
         for i, v in enumerate(voci):
@@ -712,15 +713,28 @@ class Liste:
             r.bind("<Enter>", lambda e, r=r, nome=nome: self.entra(r, nome)); r.bind("<Leave>", self.esci); r.bind("<Destroy>", self.esci, add=True)
             c.righe.append((r, nome, q, opz))
 
-        def disegna(e=None):
-            w = c.winfo_width()
+        def disegna():
+            c.attesa_ = None
+            try:
+                w = c.winfo_width()
+            except Exception:       # la tela non c'e' piu'
+                return
             if w < 60 or w == getattr(c, "larga_fatta", None):
                 return
             c.larga_fatta = w
             for r, nome, q, opz in c.righe:
                 r.larga = w
                 self.disegna_riga(r, w, nome, q, **opz)
-        c.bind("<Configure>", disegna)
+
+        def ridimensiona(e=None):
+            """Mentre la finestra si impagina arrivano piu' larghezze di fila, tutte dentro lo stesso giro di Tk (la tela di sinistra prende la sua larghezza solo
+            dopo che la lista si e' gia' impaginata a quella richiesta): si disegna una volta, all'ultima, col primo timer dopo l'impaginazione. Un timer e non
+            after_idle: l'impaginazione e' fatta di compiti idle, e un idle girava in mezzo (11 nov 2026: due disegni per apertura, a 189 e a 335 pixel)."""
+            if getattr(c, "attesa_", None) is None:
+                c.attesa_ = c.after(1, disegna)
+        c.attesa_ = None
+        c.disegna_ora = disegna
+        c.bind("<Configure>", ridimensiona)
         return c
 
     # ------------------------------------------------ le carte a figura piena

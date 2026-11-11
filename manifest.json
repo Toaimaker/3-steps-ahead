@@ -1,6 +1,6 @@
 {
- "version": "0.1.14",
+ "version": "0.1.15",
  "date": "2026-11-11",
- "notes": "First experimental Mac package (Install.command and the app launcher, not yet tested on a real Mac); same app on Windows.",
+ "notes": "Faster deck windows, deck builder and Board: a deck opens in about half the time and the Board redraws twice as fast.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

@@ -156,6 +156,52 @@ class Evento:
         self.__dict__.update(kw)
 
 
+_BATCH = []
+
+
+def batch_che_tiene(tetto=300):
+    """Un Batch di pyglet che non butta i domini vuoti (11 nov 2026). Il Board si ridisegna tutto: cancella ogni elemento e lo rifa' subito, con gli stessi
+    gruppi d'ordine. pyglet a ogni fotogramma toglieva i domini rimasti vuoti e al disegno dopo li ricreava, coi loro buffer sulla scheda (90 per ridisegno,
+    ~25 ms). Qui un dominio vuoto resta pronto (si «disegna» senza vertici: costa una chiamata); oltre tetto domini vuoti si fa la pulizia di pyglet, cosi' la memoria non cresce."""
+    if not _BATCH:
+        import pyglet
+
+        class BatchCheTiene(pyglet.graphics.Batch):
+            def _update_draw_list(self):
+                try:
+                    return self._tieni()
+                except Exception:       # un pyglet diverso da quello provato (2.1.19): la pulizia sua, come prima
+                    return super()._update_draw_list()
+
+            def _tieni(self):
+                vuoti = sum(1 for dm in self.group_map.values() for d in dm.values() if d.is_empty)
+                if vuoti > self.tetto:
+                    return super()._update_draw_list()
+
+                def visit(group):
+                    draw_list = []
+                    domain_map = self.group_map[group]
+                    for (_ix, _inst, mode, _f), domain in domain_map.items():      # anche i vuoti: pyglet non segna da ridisegnare quando un dominio
+                        draw_list.append((lambda d, m: lambda: d.draw(m))(domain, mode))      # che c'e' gia' riceve vertici (lo fa solo per i domini nuovi)
+                    children = self.group_children.get(group)
+                    if children:
+                        children.sort()
+                        for child in list(children):
+                            if child.visible:
+                                draw_list.extend(visit(child))
+                    return [group.set_state, *draw_list, group.unset_state] if draw_list else []
+                self.top_groups.sort()
+                self._draw_list = []
+                for group in list(self.top_groups):
+                    if group.visible:
+                        self._draw_list.extend(visit(group))
+                self._draw_list_dirty = False
+        _BATCH.append(BatchCheTiene)
+    b = _BATCH[0]()
+    b.tetto = tetto
+    return b
+
+
 class TelaGPU:
     """La tela. Il frame di Tk sta nel layout al posto della tela; la finestra di pyglet ci sta dentro come figlia (SetParent) e ne segue la misura.
     Coordinate: quelle della tela di Tk, con la y in giu' (la proiezione della scheda e' capovolta apposta) e la vista (vx, vy) come canvasx(0), canvasy(0)."""
@@ -171,7 +217,7 @@ class TelaGPU:
             self.w = pyglet.window.Window(64, 64, style=pyglet.window.Window.WINDOW_STYLE_BORDERLESS, visible=False, vsync=VSYNC, config=cfg)
         except Exception:
             self.w = pyglet.window.Window(64, 64, style=pyglet.window.Window.WINDOW_STYLE_BORDERLESS, visible=False, vsync=VSYNC)
-        self.batch = pyglet.graphics.Batch()
+        self.batch = batch_che_tiene()
         self.batch_fisso = pyglet.graphics.Batch()      # lo strato fisso: coordinate della finestra, sopra tutto, non segue pan e zoom (l'HUD del Board)
         self.el = {}                # id -> elemento
         self.per_tag = {}           # tag -> gli id che lo hanno: _ids non scorre tutti gli elementi (10 nov 2026: move costava 0,7 ms a chiamata con 500 elementi)
@@ -187,6 +233,10 @@ class TelaGPU:
         self.puntatore = (-1e9, -1e9)
         self.ultimo_clic = (0.0, 0, 0)
         self._gruppi = {}
+        # la riserva degli sprite (11 nov 2026): un elemento cancellato lascia il suo sprite nascosto, e un elemento nuovo con la stessa immagine allo stesso
+        # posto nell'ordine di disegno lo riprende. Il Board si ridisegna tutto (cancella e rifa'), e pyglet rifaceva ogni volta i suoi blocchi di vertici
+        # (90 domini per ridisegno, il 60% del tempo). Quel che avanza si cancella prima del fotogramma (_svuota_riserva)
+        self._riuso = {}
         self._cursore = None
         try:
             self.scala_font = float(padre.tk.call("tk", "scaling"))      # pixel per punto, come Tk misura i font
@@ -290,8 +340,20 @@ class TelaGPU:
         except Exception:
             errore("giro della tela")
 
+    def _svuota_riserva(self):
+        """Gli sprite della riserva che nessuno ha ripreso se ne vanno davvero."""
+        if self._riuso:
+            for lista in self._riuso.values():
+                for o in lista:
+                    try:
+                        o.delete()
+                    except Exception:
+                        pass
+            self._riuso = {}
+
     def _disegna(self):
         from pyglet.math import Mat4, Vec3
+        self._svuota_riserva()
         gl, w = self.gl, self.w
         L, H = w.get_framebuffer_size()
         gl.glViewport(0, 0, L, H)
@@ -583,6 +645,21 @@ class TelaGPU:
         dy = 0 if "n" in a else -h if "s" in a else -h / 2
         return x + dx, y + dy
 
+    def _sprite(self, tex, x, y, b, g, e, k=1.0):
+        """Uno sprite: dalla riserva se ce n'e' uno con la stessa immagine allo stesso posto nell'ordine (stesso gruppo), se no nuovo."""
+        lista = self._riuso.get((e["ord"], id(tex), bool(e.get("fisso"))))
+        if lista:
+            s = lista.pop()
+            s.position = (x, y, s.z)
+            if s.scale != k:
+                s.scale = k
+            s.visible = True
+            return s
+        s = self.pyglet.sprite.Sprite(tex, x=x, y=y, batch=b, group=g)
+        if k != 1.0:
+            s.scale = k
+        return s
+
     def _costruisci(self, e):
         """Gli oggetti di pyglet dell'elemento, nell'ordine di disegno."""
         from pyglet import shapes
@@ -602,9 +679,7 @@ class TelaGPU:
             tex = self._texture(str(foto), pil, mip=k != 1.0)
             L, H = pil.width * k, pil.height * k
             x, y = self._ancora(c[0], c[1], L, H, o.get("anchor"))
-            s = self.pyglet.sprite.Sprite(tex, x=x, y=y, batch=b, group=g)
-            if k != 1.0:
-                s.scale = k
+            s = self._sprite(tex, x, y, b, g, e, k)
             e["obj"] = [s]
             e["box"] = (x, y, x + L, y + H)
         elif e["tipo"] == "text":
@@ -613,7 +688,7 @@ class TelaGPU:
             if tex is None:         # il testo si disegna con PIL una volta sola: poi la sua immagine e' gia' sulla scheda (10 nov 2026: era un terzo del disegno)
                 tex = self._texture(chiave, self._testo_pil(e))
             x, y = self._ancora(c[0], c[1], tex.width, tex.height, o.get("anchor"))
-            e["obj"] = [self.pyglet.sprite.Sprite(tex, x=x, y=y, batch=b, group=g)]
+            e["obj"] = [self._sprite(tex, x, y, b, g, e)]
             e["box"] = (x, y, x + tex.width, y + tex.height)
         elif e["tipo"] == "line":
             col = _rgba(o.get("fill") or "#000000")
@@ -776,7 +851,11 @@ class TelaGPU:
                     del self.per_tag[tg]
         for o in e["obj"]:
             try:
-                o.delete()
+                if hasattr(o, "image") and hasattr(o, "position") and len(self._riuso) < 3000:      # uno sprite: nella riserva, nascosto
+                    o.visible = False
+                    self._riuso.setdefault((e["ord"], id(o.image), bool(e.get("fisso"))), []).append(o)
+                else:
+                    o.delete()
             except Exception:
                 pass
         if i in self.ord:
@@ -984,6 +1063,50 @@ def chiudi_e_riapri(tk, root, avvio=None):
         TelaGPU._avvia_giro = giusto
 
 
+def prova_riserva(t, root, foto):
+    """La riserva degli sprite e i domini che restano (11 nov 2026): lo sprite cancellato e rifatto e' lo stesso, il dominio di una forma pure, e quel che
+    torna in un dominio rimasto vuoto si disegna davvero (il pixel letto dalla scheda). Negativa: col Batch di pyglet il dominio si rifa'."""
+    from pyglet import gl
+    casi = []
+
+    def giro():
+        t.sporco = True; t.pompa()
+
+    def pixel(x, y):
+        t.w.switch_to(); t._disegna()
+        buf = (gl.GLubyte * 4)()
+        gl.glReadPixels(int(x), int(t.w.get_framebuffer_size()[1] - y - 1), 1, 1, gl.GL_RGBA, gl.GL_UNSIGNED_BYTE, buf)
+        return tuple(buf[:3])
+
+    def domini(b):
+        return {id(d) for dm in b.group_map.values() for d in dm.values()}
+    s0 = t.create_image(400, 50, image=foto, anchor="nw", tags="ris"); o0 = t.el[s0]["obj"][0]
+    t.delete("ris")
+    s1 = t.create_image(420, 60, image=foto, anchor="nw", tags="ris"); o1 = t.el[s1]["obj"][0]
+    casi.append(("riserva: lo sprite cancellato e rifatto e' lo stesso, al posto nuovo e visibile", o1 is o0 and o1.visible and t.bbox(s1) == (420, 60, 460, 90)
+                 and tuple(round(v) for v in o1.position[:2]) == (420, 60)))
+    t.delete("ris"); giro()
+    casi.append(("riserva: quel che nessuno riprende se ne va al fotogramma", not t._riuso))
+    r0 = t.create_rectangle(400, 200, 440, 240, fill="#00ff00", width=0, tags="dom"); giro()
+    prima = domini(t.batch)
+    t.delete("dom"); giro()
+    casi.append(("il dominio rimasto vuoto resta nel Batch", domini(t.batch) == prima))
+    r1 = t.create_rectangle(400, 200, 440, 240, fill="#00ff00", width=0, tags="dom")
+    casi.append(("la forma rifatta riprende il dominio, nessuno nuovo", domini(t.batch) == prima))
+    px = pixel(420, 220)
+    casi.append(("e si disegna davvero (il pixel letto dalla scheda e' verde)", px[1] > 200 and px[0] < 60))
+    t.delete("dom"); giro()
+    import pyglet
+    b_ = pyglet.graphics.Batch(); g_ = pyglet.graphics.Group(order=0)
+    from pyglet import shapes
+    q = shapes.Rectangle(0, 0, 10, 10, color=(1, 2, 3), batch=b_, group=g_); d0 = domini(b_)
+    q.delete(); b_._update_draw_list()
+    q = shapes.Rectangle(0, 0, 10, 10, color=(1, 2, 3), batch=b_, group=g_)
+    casi.append(("negativa: col Batch di pyglet il dominio vuoto se ne va e si rifa'", domini(b_) != d0))
+    del r0, r1
+    return casi
+
+
 def prova():
     import tkinter as tk
     from PIL import Image, ImageTk
@@ -1059,6 +1182,7 @@ def prova():
     casi.append(("delete toglie il tag", not t.find_withtag("c1") and len(t.find_all()) == 2))
     for _ in range(5):
         root.update(); time.sleep(0.01)
+    casi += prova_riserva(t, root, foto)
     big = Image.new("RGBA", (80, 60), (50, 200, 50, 255))
     ch = registra_pil("prova:2x", big)
     sc = t.create_image(300, 300, image=ch, anchor="nw", scala=0.5, tags="sc")

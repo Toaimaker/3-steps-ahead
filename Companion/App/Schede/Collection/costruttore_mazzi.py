@@ -34,7 +34,7 @@ from pagina_base import prepara_capsule
 from pagina_collezione import PaginaCollezione
 from pagina_standard import PaginaStandard
 from tema import CI as C, barra_scura
-from widget import ARANCIO, Tendina, pronta_poi, pulsante_solido
+from widget import ARANCIO, Tendina, pronta_poi, pulsante_solido, svuota
 
 DOVE = ("Deck", "Sideboard", "Commander")
 LARGA, ALTA = 1180, 900
@@ -174,13 +174,11 @@ class Costruttore:
     def disegna_mazzo(self):
         tk, F = self.tk, self.F
         self.t_nome = None
-        for x in self.dentro_m.winfo_children():
-            x.destroy()
+        svuota(self.dentro_m)
         main = self.zone["Deck"]
         voci = [(q, n) for n, q in {**self.zone["Commander"], **main}.items()]
         tinte = [k for k in "WUBRG" if k in {k for _q, n in voci for k in CAP.info(n)[1]}]
-        for x in self.f_colori.winfo_children():
-            x.destroy()
+        svuota(self.f_colori)
         self.pg.mana_label(self.f_colori, "".join(tinte), C["cap"]).pack(side="left")
         if voci:
             self.lista_m.testata(self.dentro_m, self.v_nome.get() or "Deck", sum(main.values()) + sum(self.zone["Commander"].values()),
@@ -237,8 +235,7 @@ class Costruttore:
                 r.bind("<Button-3>", lambda e, n=n, z=zona: self.metti(n, 1, z), add="+")
             tk.Frame(padre, bg=C["scheda"], height=8).pack(fill="x")
         # l'esportazione sotto la lista, la stessa della scheda del mazzo, piu' le azioni del builder
-        for x in self.f_esporta.winfo_children():
-            x.destroy()
+        svuota(self.f_esporta)
         PaginaStandard.esportazione(self.pg, self.f_esporta, self.v_nome.get() or "Deck", dict(main), dict(self.zone["Sideboard"]), dict(self.zone["Commander"]),
                                        dict(self.compagno), [("Import", self.importa, False), ("Clear", self.svuota_ora, True), ("Save", lambda: self.salva() and "Saved", False)])
 
@@ -286,8 +283,7 @@ class Costruttore:
     def disegna_dati(self):
         tk, F = self.tk, self.F
         d = self.dentro_d
-        for x in d.winfo_children():
-            x.destroy()
+        svuota(d)
         fmt = self.t_fmt.get()
         main, side, com = self.zone["Deck"], self.zone["Sideboard"], self.zone["Commander"]
         tutte = dict(main)
@@ -295,8 +291,7 @@ class Costruttore:
             for n, q in z.items():
                 tutte[n] = tutte.get(n, 0) + q
         manca, si = craft(tutte, self.coll, self.jl)
-        for x in self.barra_jolly.winfo_children():
-            x.destroy()
+        svuota(self.barra_jolly)
         self.pg.riquadro_jolly(self.barra_jolly, manca, si, self.jl)
         magie = [(n, q) for n, q in main.items() if not MS.e_terra(n, self.carte_db)]
         mn = MS.mana({**com, **main}, self.carte_db)

@@ -425,3 +425,53 @@ def pulsante_solido(tk, F, padre, testo, premuto, azione, alto=40, bg="#18181c",
     c.bind("<Configure>", disegna); c.bind("<Button-1>", lambda e: azione())
     c.bind("<Enter>", lambda e: sopra(True)); c.bind("<Leave>", lambda e: sopra(False))
     return c
+
+
+def smonta(w, quanti=25, prima=250):
+    """Distrugge w un pezzo alla volta, quando la finestra e' libera: dopo prima ms, le foglie per prime a gruppi di quanti, poi w. Un widget gia' distrutto si
+    salta. Fino all'11 nov 2026 il primo gruppo partiva subito e il primo figlio si portava dietro tutto il contenuto (~100 widget, 30 ms dentro il clic che
+    apriva il mazzo nuovo)."""
+    def foglie(x):
+        try:
+            figli = x.winfo_children()
+        except Exception:
+            return []
+        return [y for f in figli for y in foglie(f)] + [x]
+
+    def giro(resto):
+        n = 0
+        while resto and n < quanti:
+            x = resto.pop(0)
+            try:
+                if x.winfo_exists():
+                    x.destroy(); n += 1
+            except Exception:
+                pass
+        if resto:
+            try:
+                resto[-1].after(15, lambda: giro(resto))
+            except Exception:       # la radice non c'e' piu': i pezzi sono gia' andati con lei
+                pass
+    try:
+        w.via = True        # segnato: chi scorre i widget (le prove) sa che sta per andarsene
+        if w.winfo_exists():
+            w.after(prima, lambda: giro(foglie(w)))
+    except Exception:
+        pass
+
+
+def svuota(contenitore):
+    """Toglie subito dalla vista i figli di contenitore e li distrugge dopo, a pezzi (11 nov 2026): distruggere 50 widget costava ~50 ms dentro il clic
+    che rifa' il contenuto (il builder a ogni carta)."""
+    for x in contenitore.winfo_children():
+        try:
+            m = x.winfo_manager()
+            if m == "pack":
+                x.pack_forget()
+            elif m == "grid":
+                x.grid_forget()
+            elif m == "place":
+                x.place_forget()
+            smonta(x)
+        except Exception:
+            pass

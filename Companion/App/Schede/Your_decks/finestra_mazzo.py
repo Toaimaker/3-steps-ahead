@@ -1,24 +1,17 @@
 """La finestra di un mazzo."""
 import mazzi_salvati as MS
+import piattaforma
+from widget import smonta
 
 from pagina_base import Pagina
 from tema import CI as C, barra_scura
 
 
-def smonta(w, quanti=25):
-    """Distrugge w un pezzo alla volta, quando la finestra e' libera: i figli a gruppi di quanti, poi w. Un widget gia' distrutto si salta."""
-    try:
-        if not w.winfo_exists():
-            return
-        figli = w.winfo_children()
-    except Exception:
-        return
-    if not figli:
-        w.destroy()
-        return
-    for x in figli[:quanti]:
-        x.destroy()
-    w.after(15, lambda: smonta(w, quanti))
+def tk_frame(f):
+    """Il contenitore vuoto della finestra del mazzo, montato."""
+    import tkinter
+    d = tkinter.Frame(f, bg=C["scheda"]); d.pack(fill="both", expand=True)
+    return d
 
 
 class FinestraMazzo:
@@ -41,15 +34,31 @@ class FinestraMazzo:
         if altra is not None and altra is not self and altra.aperto:
             altra.apri(None)
         FinestraMazzo.IN_VISTA = self
+        riposo = getattr(self, "fin_riposo", None)
+        if (self.fin is None or not self.fin.winfo_exists()) and riposo is not None and riposo.winfo_exists():
+            # la finestra chiusa prima e' rimasta, nascosta (11 nov 2026): si riusa. Gia' impaginata alla sua misura, il contenuto nuovo si impagina giusto
+            # anche da nascosta, e si mostra a contenuto fatto
+            self.fin, self.fin_riposo = riposo, None
+            self.fin.riusata = True
+            self.det = getattr(riposo, "det_vuoto", None)
+        if getattr(self.fin, "riusata", False):        # al centro della finestra grande, come una finestra nuova
+            L, H, posto = self.misura_fin(self.fin)
+            self.fin.geometry(f"{L}x{H}{posto}")
+            self.alto_fin = H
         if self.fin is None or not self.fin.winfo_exists():
             top = self.fr.winfo_toplevel()
             f = self.fin = tk.Toplevel(top, bg=C["fondo"])
-            f.withdraw()        # nascosta finche' il contenuto non e' pronto: non compare vuota e poi a pezzi (11 nov 2026); la mostra disegna_dettaglio
             f.nuova = True
             f.transient(top)
-            top.update_idletasks()
-            L, H = max(1000, min(1320, top.winfo_width() - 60)), max(640, min(1000, top.winfo_height() - 40, f.winfo_screenheight() - 90))
-            f.geometry(f"{L}x{H}+{top.winfo_rootx() + (top.winfo_width() - L) // 2}+{top.winfo_rooty() + (top.winfo_height() - H) // 2}")
+            L, H, f.posto = self.misura_fin(f)
+            if piattaforma.WINDOWS:
+                # la prima volta si impagina fuori dallo schermo, alla sua misura vera, e poi si sposta al suo posto (11 nov 2026): una finestra nascosta si
+                # impagina alla misura che il contenuto chiede, non alla sua (Windows le da' la misura solo quando compare), e la misura giusta costava un
+                # secondo giro. Su Mac fuori schermo non si sa se resta fuori: nascosta come prima
+                f.geometry(f"{L}x{H}+-12000+-12000")      # (-32000 e' il posto delle finestre ridotte a icona)
+            else:
+                f.withdraw()
+                f.geometry(f"{L}x{H}{f.posto}")
             f.minsize(1000, 640)
             self.alto_fin = H
             f.protocol("WM_DELETE_WINDOW", lambda: self.apri(None))
@@ -61,27 +70,63 @@ class FinestraMazzo:
         # mazzo nuovo potesse comparire
         vecchio = self.det
         self.det = tk.Frame(self.fin, bg=C["scheda"]); self.det.pack(fill="both", expand=True)
-        vecchio.pack_forget()
-        smonta(vecchio)
+        if vecchio is not None:
+            vecchio.pack_forget()
+            smonta(vecchio)
         return self.fin
+
+    def misura_fin(self, f):
+        """La misura della finestra del mazzo e il suo posto, al centro della finestra grande: (L, H, «+x+y»)."""
+        top = self.fr.winfo_toplevel()
+        top.update_idletasks()
+        L, H = max(1000, min(1320, top.winfo_width() - 60)), max(640, min(1000, top.winfo_height() - 40, f.winfo_screenheight() - 90))
+        return L, H, f"+{top.winfo_rootx() + (top.winfo_width() - L) // 2}+{top.winfo_rooty() + (top.winfo_height() - H) // 2}"
 
     def disegna_dettaglio(self):
         """Un mazzo cliccato si apre nella sua finestra, sopra il Companion e piu' ordinata (Autore, 6 nov 2026: «i decks cliccati si aprono in una nuova finestra sovraimpressa piu' ordinata»): a sinistra
         la lista, a destra i dati dall'alto in basso. E' la stessa da Performance e da Your decks. Si chiude con la X o con Esc."""
         if not self.aperto:
             if self.fin is not None and self.fin.winfo_exists():
-                self.fin.destroy()
+                # non si distrugge: si nasconde e si riusa al prossimo mazzo (11 nov 2026). Il contenuto se ne va a pezzi, a finestra libera
+                f = self.fin
+                f.withdraw()
+                if self.det is not None:
+                    vecchio = self.det
+                    f.det_vuoto = tk_frame(f)
+                    vecchio.pack_forget()
+                    smonta(vecchio)
+                self.fin_riposo = f
             self.fin = self.det = None
             return
         tipo_, chi_ = self.aperto
         am = self.mazzo_arena(chi_) if tipo_ == "mio" else None
         self.finestra_mazzo(am["nome"] if am else chi_ if tipo_ == "mio" else chi_.get("nome", "Deck"))
         self.scheda_mazzo()
-        if getattr(self.fin, "nuova", False):       # la prima volta: a contenuto fatto, poi si mostra
-            self.fin.nuova = False
-            self.fin.update_idletasks()
-            self.fin.deiconify()
-        self.fin.lift(); self.fin.focus_set()
+        f = self.fin
+        if getattr(f, "nuova", False):       # la prima volta: impaginata e disegnata fuori schermo (Windows) o nascosta, poi al suo posto
+            f.nuova = False
+            if piattaforma.WINDOWS:
+                self.al_posto(f)
+            else:
+                f.update_idletasks()
+                f.deiconify()
+        elif getattr(f, "riusata", False):
+            f.riusata = False
+            f.deiconify()
+        f.lift(); f.focus_set()
+
+    def al_posto(self, f, n=0):
+        """La finestra nuova, fuori schermo, va al suo posto quando Tk le ha dato la misura vera e le liste si sono disegnate (i loro timer da 1 ms): al
+        massimo 0,4 s, poi ci va comunque."""
+        try:
+            if not f.winfo_exists():
+                return
+            if n < 25 and (self.det is None or self.det.winfo_width() <= 1):
+                f.after(16, lambda: self.al_posto(f, n + 1))
+                return
+            f.after(5, lambda: f.winfo_exists() and f.geometry(f.posto))
+        except Exception:
+            pass
 
     def formato_mazzo(self, tipo, chi):
         """Il formato di un mazzo per i conti (legalita', meta simile) e per le copie: quello di Arena per i tuoi, quello scritto per meta, wishlist e build. Uno che non si conosce: Standard."""

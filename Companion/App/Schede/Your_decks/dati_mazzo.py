@@ -36,7 +36,12 @@ _M = {}
 
 
 def schede():
-    """{minuto d'inizio: dict(turni, esito, primo)} dalle schede di Partite/."""
+    """{minuto d'inizio: dict(turni, esito, primo)} dalle schede di Partite/. La cartella si riguarda al massimo ogni 5 s (11 nov 2026: elencare 600 file
+    costava 5 ms a ogni mazzo aperto); una partita nuova arriva fra due partite, non fra due clic."""
+    import time
+    if _S["chiave"] is not None and time.monotonic() - _S.get("visto", 0) < 5:
+        return _S["d"]
+    _S["visto"] = time.monotonic()
     file = glob.glob(os.path.join(RADICE, "Partite", "*.json"))
     chiave = (len(file), max((os.path.getmtime(f) for f in file[-5:]), default=0))
     if chiave != _S["chiave"]:
@@ -121,8 +126,23 @@ def righe(partite, carte, sc=None):
     return out
 
 
+_AN = {}
+
+
 def analizza(partite, carte, sc=None):
-    """-> dict(play, draw, chiude, perde, terre, mani, veloci). play e draw: (vinte, partite). chiude e perde: (turno medio, partite) o None."""
+    """-> dict(play, draw, chiude, perde, terre, mani, veloci). play e draw: (vinte, partite). chiude e perde: (turno medio, partite) o None.
+    Ricordata per le stesse partite, le stesse carte e le stesse schede (11 nov 2026): riaprire un mazzo non la rifa'. Chi la usa la legge soltanto."""
+    sc_ = schede() if sc is None else sc
+    k = (id(carte), id(sc_), len(partite), tuple((p.get("quando"), p.get("vinta"), p.get("ds"), id(p)) for p in partite))
+    if k in _AN:
+        return _AN[k]
+    if len(_AN) > 64:
+        _AN.clear()
+    _AN[k] = r = _analizza(partite, carte, sc_)
+    return r
+
+
+def _analizza(partite, carte, sc=None):
     rr = righe(partite, carte, sc)
 
     def conta(xs):

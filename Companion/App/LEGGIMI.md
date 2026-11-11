@@ -19,7 +19,8 @@ Companion/
     Comune/              ambiente (cartelle e file di stato), tema (colori, font), icone, widget (tendine, spunte, pulsanti),
                          pagina_base (la pagina di una scheda e il grafico del win rate), dati_app (collezione, jolly, partite,
                          meta), capsule (le liste delle carte come in Arena), carta_tela (le carte disegnate sulla
-                         tela della griglia, non una finestra per carta), registro_errori, stemmi_icone
+                         tela della griglia, non una finestra per carta), tabella_tela (le tabelle disegnate,
+                         con celle dichiarate), registro_errori, stemmi_icone
     Chat/                chat_partita (la chat), chat_testi (fasi, inglese, righe), diario, pescate, chat_finestra (la chat nella finestra)
     Schede/
       Meta/              pagina_meta, dati_meta
@@ -79,6 +80,7 @@ I registri delle pagine dei mazzi stanno su `FinestraMazzo`: `IN_VISTA` (chi ha 
 | `Companion/App/Prove/prova_help.py` | Help fuori schermo: le sezioni, i comandi del Board, gli aggiornamenti col pulsante e il pallino |
 | `Companion/App/Prove/prova_account.py` | l'app pubblica con due account di Arena in un log finto: ognuno i suoi dati, All accounts, il cambio in Arena (10 nov 2026) |
 | `Companion/App/Prove/prova_finestra.py` | la finestra grande: chat, inglese, pescate, posizione, solo i limited, Cercatore |
+| `Companion/App/Comune/tabella_tela.py --prova` | le tabelle su tela: misure, fasce, evidenzia, allarga, clic e accensione di una riga (11 nov 2026) |
 | `Companion/App/Comune/carta_tela.py --prova` | le carte sulla tela della griglia: elementi, eventi smistati, distruggi (11 nov 2026) |
 | `Companion/Strumenti/prove_app.py` | tutte queste piu' le prove dei moduli di dati, dell'overlay, il collaudo della finestra e il banco della spalla |
 
@@ -86,10 +88,14 @@ Tutte con `py -I -X utf8`. Le finestre di prova stanno fuori schermo o trasparen
 
 ## Il motore grafico: misurare prima di cambiare
 
-Lo scatto viene da quante finestre di Windows l'app ridipinge (ogni widget di Tk e' una finestra), non da Python. Una griglia o un elenco nuovo si
-disegna su una tela sola (elementi coi tag, `carta_tela.CartaTela` per le carte), non con widget messi nella tela con `create_window`. Prima e dopo ogni
+Lo scatto viene da quante finestre di Windows l'app ridipinge (ogni widget di Tk e' una finestra), non da Python. Una griglia, un elenco o una tabella nuovi si
+disegnano su una tela sola (elementi coi tag, `carta_tela.CartaTela` per le carte), non con widget messi nella tela con `create_window`. Prima e dopo ogni
 cambio grafico: `py -I -X utf8 Companion/Strumenti/metro_grafico.py` (la finestra vera, trasparente, sullo schermo; mai con Arena aperta) e
 `metro_griglie.py`. Misure e strade scartate: `Note/Motore_Grafico_App.md`.
+Un contenuto che si rifa' (il builder a ogni carta, la finestra del mazzo a ogni mazzo) non distrugge i widget vecchi dentro il clic: `widget.svuota(contenitore)`
+li stacca subito e `widget.smonta` li distrugge dopo, a pezzi (i pezzi in attesa hanno `via = True`: chi scorre i widget li salta). Una tela che si
+impagina con la finestra non chiede la sua larghezza (`width=1`) e disegna all'ultima misura (`capsule.Liste.elenco`). Sulla scheda video (`tela_gpu`) gli
+sprite cancellati e rifatti si riprendono dalla riserva e i domini vuoti restano: cancellare tutto e ridisegnare costa la meta' di prima.
 
 ## La storia dei due moduli di prima
 

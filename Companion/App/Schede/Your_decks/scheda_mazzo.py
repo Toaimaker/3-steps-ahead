@@ -153,16 +153,27 @@ class SchedaMazzo:
         if not an["terre"]:
             tk.Label(sx, text="No games yet", bg=C["cap"], fg=C["grigio"], font=F(8), anchor="w", pady=0).pack(fill="x")
         else:
-            g = tk.Frame(sx, bg=C["cap"]); g.pack(fill="x")
+            # i riquadri su una tela sola, due per riga (11 nov 2026: erano 4 widget per riquadro, ~17 finestre di Windows a ogni mazzo)
             voci = sorted(an["terre"].items())
-            for j in range(2):
-                g.columnconfigure(j, weight=1, uniform="terre")
-            for j, (k, (v, n)) in enumerate(voci):
-                b = tk.Frame(g, bg=C["scheda"], padx=6, pady=3); b.grid(row=j // 2, column=j % 2, sticky="nsew", padx=(0, 4 if j % 2 == 0 else 0), pady=(0, 4))
-                self.etichetta(b, f"{k} land" + ("" if k == 1 else "s"), C["scheda"]).pack(anchor="w")
-                q = round(100 * v / n)
-                tk.Label(b, text=f"{q}%", bg=C["scheda"], fg=C["verde_t"] if q > 50 else C["rosso_t"] if q < 50 else C["titolo"], font=F(11, True), pady=0).pack(anchor="w")
-                tk.Label(b, text=f"{v}-{n - v} · {n} games" if n != 1 else f"{v}-{n - v} · 1 game", bg=C["scheda"], fg=C["grigio"], font=F(7), pady=0).pack(anchor="w")
+            ALTO_R, SPAZIO = 62, 4       # le misure dei riquadri di prima
+            righe_ = (len(voci) + 1) // 2
+            g = tk.Canvas(sx, width=1, height=righe_ * (ALTO_R + SPAZIO), bg=C["cap"], highlightthickness=0, bd=0); g.pack(fill="x")
+            g.testi = []
+
+            def riquadri(e=None):
+                g.delete("all"); g.testi = []
+                w = max(g.winfo_width(), 2 * 60)
+                lb = (w - SPAZIO) / 2
+                for j, (k, (v, n)) in enumerate(voci):
+                    x0, y0 = (j % 2) * (lb + SPAZIO), (j // 2) * (ALTO_R + SPAZIO)
+                    q = round(100 * v / n)
+                    g.create_rectangle(x0, y0, x0 + lb, y0 + ALTO_R, fill=C["scheda"], width=0)
+                    for t, yy, col, font in (((f"{k} land" + ("" if k == 1 else "s")).upper(), 11, C["titolo"], F(7, True)),
+                                             (f"{q}%", 31, C["verde_t"] if q > 50 else C["rosso_t"] if q < 50 else C["titolo"], F(11, True)),
+                                             (f"{v}-{n - v} · {n} games" if n != 1 else f"{v}-{n - v} · 1 game", 51, C["grigio"], F(7))):
+                        g.create_text(x0 + 6, y0 + yy, text=t, anchor="w", fill=col, font=font); g.testi.append(t)
+            g.bind("<Configure>", riquadri)
+            riquadri()
 
     def scheda_mazzo(self):
         tk, F = self.tk, self.F
@@ -462,37 +473,77 @@ class SchedaMazzo:
     def riquadro_jolly(self, padre, manca, si, jl, stretto=False):
         """Il costo in jolly del mazzo, come su Untapped: per ogni rarita' l'icona del jolly di Arena, quanti ne servono per
         completare il mazzo (grande) e quanti ne hai (piccolo); accanto il martelletto verde se lo puoi craftare coi jolly che
-        hai, «completo» se hai gia' tutte le carte, rosso se i jolly non bastano (Autore, 18 ott 2026)."""
+        hai, «completo» se hai gia' tutte le carte, rosso se i jolly non bastano (Autore, 18 ott 2026).
+        Dall'11 nov 2026 su una tela sola (erano 25 widget, cioe' 25 finestre di Windows da creare a ogni mazzo e a ogni carta del builder). -> la tela,
+        con .testi (per le prove)."""
         tk, F = self.tk, self.F
         bg = padre["bg"]
-        # una riga sola: il nome a sinistra, le quattro icone allineate, lo stato in fondo a destra
-        if not stretto:     # nel builder la colonna e' stretta: bastano le icone dei jolly
-            tk.Label(padre, text="WILDCARDS", bg=bg, fg=C["titolo"], font=F(7, True), pady=0).pack(side="left", padx=(0, 10))
-        r = tk.Frame(padre, bg=bg); r.pack(side="left", fill="x", expand=True)
+        imgs = {}
         for k in "MRUC":
             img = self.loghi.get(("jolly", k))
             if img is None:
                 f = icona_jolly(k, 24)
                 if f:
                     img = self.loghi[("jolly", k)] = tk.PhotoImage(file=f)
-            c = tk.Frame(r, bg=bg); c.pack(side="left", padx=(0, 5))
-            if img:
-                tk.Label(c, image=img, bg=bg).pack(side="left")
-            else:
-                tk.Label(c, text=k, bg=bg, fg=COL_RARITA.get(k), font=F(10, True)).pack(side="left")
-            num = tk.Frame(c, bg=bg); num.pack(side="left", padx=(4, 0))
-            serve, hai = manca.get(k, 0), (jl or {}).get(k)
-            col = C["muto"] if not serve else (C["rosso_t"] if hai is not None and serve > hai else C["titolo"])
-            tk.Label(num, text=str(serve), bg=bg, fg=col, font=F(11, True), pady=0).pack(anchor="w")
-            tk.Label(num, text=f"own {hai}" if hai is not None else "", bg=bg, fg=C["grigio"], font=F(7), pady=0).pack(anchor="w")
-        stato = tk.Frame(r, bg=bg); stato.pack(side="right", padx=(6, 0))
+            imgs[k] = img
         if not any(manca.values()):
-            tk.Label(stato, text="✓ OK", bg=bg, fg=C["verde_t"], font=F(8, True)).pack(side="left")
+            stato = [("✓ OK", C["verde_t"])]
         elif si:
-            img = self.loghi.get("martello")
-            if img is None:
-                img = self.loghi["martello"] = tk.PhotoImage(file=icona_azione("martello", C["verde"], 22))
-            tk.Label(stato, image=img, bg=bg).pack(side="left")
-            tk.Label(stato, text="CRAFTABLE", bg=bg, fg=C["verde_t"], font=F(8, True)).pack(side="left", padx=(4, 0))
+            if self.loghi.get("martello") is None:
+                self.loghi["martello"] = tk.PhotoImage(file=icona_azione("martello", C["verde"], 22))
+            stato = [("martello", None), ("CRAFTABLE", C["verde_t"])]
         elif si is False:
-            tk.Label(stato, text="NOT ENOUGH" if stretto else "NOT ENOUGH WILDCARDS", bg=bg, fg=C["rosso_t"], font=F(8, True)).pack(side="left")
+            stato = [("NOT ENOUGH" if stretto else "NOT ENOUGH WILDCARDS", C["rosso_t"])]
+        else:
+            stato = []
+        c = tk.Canvas(padre, width=1, height=38, bg=bg, highlightthickness=0, bd=0)
+        c.pack(side="left", fill="x", expand=True)
+        f_titolo, f_num, f_own, f_stato = F(7, True), F(11, True), F(7), F(8, True)
+        c.testi = []
+
+        def disegna(e=None):
+            c.delete("all"); c.testi = []
+            w = c.winfo_width()
+            x, y = 3, 19
+
+            def testo(x_, y_, t, col, font, ancora="w"):
+                c.create_text(x_, y_, text=t, fill=col, font=font, anchor=ancora); c.testi.append(t)
+            if not stretto:     # nel builder la colonna e' stretta: bastano le icone dei jolly
+                testo(x, y, "WILDCARDS", C["titolo"], f_titolo)
+                x += misura_font(f_titolo, "WILDCARDS") + 10
+            for k in "MRUC":
+                img = imgs[k]
+                if img:
+                    c.create_image(x, y, image=img, anchor="w"); x += img.width()
+                else:
+                    testo(x, y, k, COL_RARITA.get(k), F(10, True)); x += misura_font(F(10, True), k)
+                serve, hai = manca.get(k, 0), (jl or {}).get(k)
+                col = C["muto"] if not serve else (C["rosso_t"] if hai is not None and serve > hai else C["titolo"])
+                own = f"own {hai}" if hai is not None else ""
+                testo(x + 7, 12, str(serve), col, f_num)
+                testo(x + 7, 29, own, C["grigio"], f_own)
+                x += 7 + max(misura_font(f_num, str(serve)), misura_font(f_own, own)) + 12      # le misure dei widget di prima
+            xr = max(x + 6 + sum(misura_font(f_stato, t) + 4 for t, _c in stato if t != "martello") + 26, w)
+            for t, col in reversed(stato):     # lo stato in fondo a destra
+                if t == "martello":
+                    img = self.loghi["martello"]
+                    c.create_image(xr, y, image=img, anchor="e"); xr -= img.width() + 4
+                else:
+                    testo(xr, y, t, col, f_stato, "e"); xr -= misura_font(f_stato, t) + 4
+        c.bind("<Configure>", disegna)
+        disegna()
+        return c
+
+
+_MISURE = {}
+
+
+def misura_font(font, testo):
+    """La larghezza di un testo in un font, ricordata (ogni misura e' una chiamata a Tk). Un font e' una tupla («Segoe UI», 8, «bold»)."""
+    import tkinter.font as tkf
+    k = (font, testo)
+    if k not in _MISURE:
+        if len(_MISURE) > 2000:
+            _MISURE.clear()
+        _MISURE[k] = tkf.Font(font=font).measure(testo)
+    return _MISURE[k]
