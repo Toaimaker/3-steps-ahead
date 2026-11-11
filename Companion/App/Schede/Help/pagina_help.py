@@ -15,6 +15,20 @@ from ambiente import PRODOTTO, PUBBLICA, VERSIONE
 from tema import CI as C
 from widget import ARANCIO, pulsante_solido
 
+def url_donazioni():
+    """La pagina delle donazioni: nell'app pubblica da canale.json («sostegno»), in quella di Autore da Distribuzione/config.json («url_sostegno»). "" se
+    non c'e' ancora."""
+    import json
+    from percorsi import ROOT
+    for f, k in ((os.path.join(ROOT, "canale.json"), "sostegno"), (os.path.join(ROOT, "Distribuzione", "config.json"), "url_sostegno")):
+        try:
+            v = str(json.load(open(f, encoding="utf-8")).get(k) or "").strip()
+        except (OSError, ValueError):
+            continue
+        return v if v.startswith(("https://", "http://")) else ""
+    return ""
+
+
 # (chiave, titolo, cosa fa, [(comando, effetto)]): una sezione per scheda, nell'ordine delle linguette
 SEZIONI = (
     ("meta", "Meta", ("The most played decks of every format. The starting data comes from Untapped.gg (Arena formats) and MTGGoldfish (paper and MTGO "
@@ -97,6 +111,7 @@ class PaginaHelp:
         self.b_controlla.configure(width=120); self.b_controlla.pack(side="right")
         self.l_note = tk.Label(upd, text="", bg=C["scheda"], fg=C["grigio"], font=F(9), anchor="w", justify="left", wraplength=900)
         if ASPETTO_PUBBLICO:        # l'app pubblica (e quella di Autore, che la vede uguale: 11 nov 2026): la condivisione dei dati si cambia da qui (condividi.py; l'informativa lo promette), col codice da citare per i diritti
+            self.riquadro_donazioni()
             self.riquadro_untapped()
             self.riquadro_condivisione()
         # i collegamenti alle sezioni
@@ -126,6 +141,24 @@ class PaginaHelp:
         for k, titolo, descr, comandi in tutti:
             self.sezione(t, k, titolo, descr, comandi)
         t.configure(state="disabled")
+
+    def riquadro_donazioni(self):
+        """SUPPORT: l'app e' gratis al 100%, solo donazioni (Autore, 11 nov 2026: «lanciamo l'app come 100% free e solo donazioni»). Il pulsante apre la pagina
+        delle donazioni (url_donazioni); finche' non c'e', dice che apre presto."""
+        tk, F = self.tk, self.F
+        box = tk.Frame(self.fr, bg=C["filo"], padx=1, pady=1); box.pack(fill="x", padx=16, pady=(0, 10))
+        d = tk.Frame(box, bg=C["scheda"]); d.pack(fill="x")
+        tk.Label(d, text="SUPPORT", bg=C["scheda"], fg=C["muto"], font=F(7, True)).pack(anchor="w", padx=12, pady=(8, 2))
+        riga = tk.Frame(d, bg=C["scheda"]); riga.pack(fill="x", padx=12, pady=(0, 10))
+        url = url_donazioni()
+        self.b_dona = None
+        self.l_dona = tk.Label(riga, text=f"{PRODOTTO} is 100% free, for everyone: nothing is locked. If it helps you, a donation of any amount keeps it going."
+                               + ("" if url else " Donations open soon."), bg=C["scheda"], fg=C["testo"], font=F(9), anchor="w", justify="left", wraplength=700)
+        self.l_dona.pack(side="left", fill="x", expand=True)
+        if url:
+            import webbrowser
+            b = self.b_dona = pulsante_solido(tk, F, riga, "Donate", False, lambda: webbrowser.open(url), alto=30, bg=C["scheda"], colori=ARANCIO)
+            b.configure(width=140); b.pack(side="right")
 
     def riquadro_untapped(self):
         """YOUR COLLECTION: il link del profilo pubblico di Untapped (account.collega_untapped). Il log di Arena non scrive la collezione intera: senza, Your decks e

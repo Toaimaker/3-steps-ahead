@@ -824,6 +824,14 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
                 self.coda.put(("schede", sch))
             except Exception as e:
                 print("schede:", f"{type(e).__name__}: {e}")
+            if not PUBBLICA:        # le partite di Autore nella raccolta dai log, col suo consenso in Help come tutti (11 nov 2026; l'app pubblica lo fa
+                try:                # in avvio_pubblico.condividi_in_fondo): finche' il server dei dati non ha un indirizzo restano in coda sul PC
+                    import condividi
+                    if condividi.qualcuno():
+                        condividi.accoda()
+                        condividi.invia(condividi.endpoint())
+                except Exception as e:      # noqa: BLE001 - la condivisione non ferma mai la finestra
+                    print("condivisione:", f"{type(e).__name__}: {e}")
             if not untapped_ok:
                 for _ in range(60):          # Untapped non ha risposto: si tengono i suoi dati di prima e si riprova fra un minuto
                     time.sleep(1)

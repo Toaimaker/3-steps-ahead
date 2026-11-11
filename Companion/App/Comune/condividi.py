@@ -121,6 +121,17 @@ def accoda(partite=None, id_account=None):
     return n
 
 
+def endpoint():
+    """L'indirizzo a cui mandare le partite: nell'app pubblica da canale.json («endpoint_log»), in quella di Autore da Distribuzione/config.json (11 nov 2026:
+    anche le sue partite si condividono, col consenso dato in Help come tutti). "" finche' il server dei dati non e' online (Distribuzione/server_dati)."""
+    for f in (os.path.join(percorsi.ROOT, "canale.json"), os.path.join(percorsi.ROOT, "Distribuzione", "config.json")):
+        try:
+            return str(json.load(open(f, encoding="utf-8")).get("endpoint_log") or "").strip()
+        except (OSError, ValueError):
+            continue
+    return ""
+
+
 def invia(endpoint, timeout=30):
     """Manda la coda all'indirizzo (POST, JSON lines), solo col consenso e con un indirizzo https. -> quante mandate, o None se non si manda."""
     if not qualcuno() or not endpoint or not endpoint.startswith("https://"):
