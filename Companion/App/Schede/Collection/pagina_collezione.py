@@ -2,6 +2,7 @@
 import os
 
 import capsule as CAP
+import carta_tela
 import collezione_carte as CC
 import disegni as DG
 import mazzi_salvati as MS
@@ -114,6 +115,8 @@ class PaginaCollezione(Pagina):
                 H_ = barra.winfo_height(); barra.create_rectangle(0, H_ * a, 8, max(H_ * b_, H_ * a + 24), fill=C["grigio"], width=0)
             self.chiedi_vedi()
         self.cv = cv = tk.Canvas(b_car, bg=fondo, highlightthickness=0, yscrollcommand=segna); cv.pack(side="left", fill="both", expand=True)
+        # le carte a figura piena si disegnano su questa tela, non in una tela ciascuna: lo smistatore passa gli eventi alla carta sotto il puntatore (11 nov 2026)
+        self.smista = carta_tela.Smistatore(cv)
         cv.bind("<Configure>", lambda e: self.adatta(e.width))
         def trascina(e):
             a, b_ = cv.yview()
@@ -403,7 +406,7 @@ class PaginaCollezione(Pagina):
             self.sporco = True
             return
         self.sporco = False
-        self.svuota(self.cv); self.cv.delete("all"); self.viste = {}
+        self.smista.svuota(); self.svuota(self.cv); self.cv.delete("all"); self.viste = {}
         self.lista.nuova_pagina()
         n = max(1, self.colonne)
         self.cv.configure(scrollregion=(0, 0, self.cv.winfo_width(), (len(self.trovate) + n - 1) // n * self.alto_riga()))
@@ -438,8 +441,10 @@ class PaginaCollezione(Pagina):
             if figure:
                 quante = CC.copie_in(c, s)
                 bandita = self.legalita(c) == "banned"     # bandita nel formato scelto: il bordo rosso e BANNED sotto
-                w = self.lista.carta_piena(cv, c["nome"], f"x{quante}" + ("  ·  BANNED" if bandita else ""), C["scheda"], spenta=not quante, bandita=bandita)      # le carte che non hai, opache
-                cv.create_window(x + cella / 2, y, anchor="n", window=w)
+                # sulla tela della griglia, non una finestra di Windows per carta (11 nov 2026, sessione Magic 13): la rotella faceva fino a 8 quadri a pezzi per
+                # scatto e fermava la finestra fino a 190 ms (Note/Motore_Grafico_App.md)
+                w = self.lista.carta_piena(cv, c["nome"], f"x{quante}" + ("  ·  BANNED" if bandita else ""), C["scheda"], spenta=not quante, bandita=bandita,
+                                           su=(round(x + cella / 2), y, self.smista))      # le carte che non hai, opache
             else:
                 sets_ = CC.RS.ordina_set([k for k in c["sets"] if not s or k in s])
                 bandita = self.legalita(c) == "banned"

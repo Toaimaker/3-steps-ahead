@@ -628,11 +628,17 @@ class Liste:
             for n in [n for n in self.piene if n not in vivi]:
                 del self.piene[n]; self.grezze.pop(n, None)
 
-    def carta_piena(self, padre, nome, sotto="", bg="#18181c", spenta=False, bandita=False):
+    def carta_piena(self, padre, nome, sotto="", bg="#18181c", spenta=False, bandita=False, su=None):
         """Una carta intera con sotto, in grigio al centro, il solo testo sotto (Autore, 5 nov 2026: «teniamo sotto le carte in grigio al centro un testo che indica in quante copie
         la si possiede»). Finche' l'immagine non c'e', un riquadro col nome. spenta: la carta che non hai, opaca (Autore, 8 nov 2026: «in collection le carte mancanti falle
-        opache che si capisca che non si hanno»). bandita: bandita nel formato scelto, col bordo rosso sopra l'immagine e il testo sotto in rosso (10 nov 2026)."""
-        c = self.tk.Canvas(padre, width=LARGA_CARTA, height=ALTA_CARTA + SOTTO_CARTA, bg=bg, highlightthickness=0, bd=0)
+        opache che si capisca che non si hanno»). bandita: bandita nel formato scelto, col bordo rosso sopra l'immagine e il testo sotto in rosso (10 nov 2026).
+        su=(x, y, smistatore): la carta si disegna sulla tela padre, col centro in alto in (x, y), non in una tela sua (carta_tela.py, 11 nov 2026: una finestra di
+        Windows per carta faceva scattare la rotella di Collection)."""
+        if su is not None:
+            import carta_tela
+            c = carta_tela.CartaTela(padre, su[0] - LARGA_CARTA / 2, su[1], LARGA_CARTA, ALTA_CARTA + SOTTO_CARTA, su[2])
+        else:
+            c = self.tk.Canvas(padre, width=LARGA_CARTA, height=ALTA_CARTA + SOTTO_CARTA, bg=bg, highlightthickness=0, bd=0)
         c.spenta, c.fondo_spenta = spenta, bg
         c.create_text(LARGA_CARTA / 2, ALTA_CARTA + SOTTO_CARTA / 2, text=sotto, fill=ROSSO_BAN if bandita else "#6e6e74" if spenta else "#e6e6ea", font=self.F(11, True),
                       tags="sotto")     # «x1 x2 ecc e piu' visibile», stesso giorno

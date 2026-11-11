@@ -1,6 +1,6 @@
 {
- "version": "0.1.8",
- "date": "2026-11-10",
- "notes": "Deck window: Performance is one clean row (win rate, games played with wins and losses, on the play, on the draw); closing turns moved to Analysis.",
+ "version": "0.1.9",
+ "date": "2026-11-11",
+ "notes": "Collection scrolls smoothly: the cards are drawn on one canvas instead of one window per card.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }
