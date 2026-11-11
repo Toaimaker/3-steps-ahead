@@ -74,8 +74,9 @@ def _leggi():
         col = json.load(open(F_COLL, encoding="utf-8"))
     except (OSError, ValueError):       # un account nuovo dell'app pubblica: senza scarico, la collezione e' quella dei log
         col = {"cards": []}
-    carte = {c["grpid"]: c for c in json.load(open(F_CARTE, encoding="utf-8"))}
-    loc = {e["id"]: e["text"] for e in json.load(open(F_LOC, encoding="utf-8"))}
+    import db_carte         # il database di Arena letto una volta per processo, ridotto e cotto (11 nov 2026)
+    carte = {c["grpid"]: c for c in db_carte.carte()}
+    loc = db_carte.testi()
     try:
         std = {c["name"] for c in json.load(open(F_STD, encoding="utf-8"))}
         std |= {n.split(" // ")[0].strip() for n in std}

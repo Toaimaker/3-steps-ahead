@@ -48,6 +48,9 @@ from tema import C, CI, barra_scura, carica_font
 from widget import TendinaMulti, pulsante_solido
 
 
+GC_PRIMO, GC_OGNI, GC_FERMO = 30, 1800, 5       # secondi: il primo congelamento dopo l'avvio, poi ogni mezz'ora, a mouse e tastiera fermi (congela)
+
+
 class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPartita):
     """La finestra grande del Companion: costruita in __init__, aggiornata dal giro. avvia() la crea e accende il ciclo di Tk."""
 
@@ -536,6 +539,23 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
 
         self.root.after(100, self.giro)
         self.root.after(60, self.fine_avvio)
+        self.root.after(GC_PRIMO * 1000, self.congela)
+
+    def congela(self):
+        """Il garbage collector fuori dai ~210.000 oggetti che restano per sempre (moduli, cache, tabelle delle carte): una raccolta completa fermava la
+        finestra 34-41 ms, dopo gc.freeze() 0 (11 nov 2026, sessione Magic 13). Si fa a mouse e tastiera fermi da GC_FERMO secondi, la prima volta dopo
+        l'avvio e poi ogni GC_OGNI: si scongela, si raccoglie tutto (cosi' anche un ciclo di oggetti congelato e poi morto se ne va, ~40 ms a finestra ferma),
+        si ricongela. Con l'utente al lavoro si riprova fra 10 s."""
+        import gc
+        if time.time() - getattr(self, "ultimo_input", 0) < GC_FERMO or self.pescate.in_partita:
+            self.root.after(10000, self.congela)
+            return
+        try:
+            gc.unfreeze()
+            gc.collect()
+            gc.freeze()
+        finally:
+            self.root.after(GC_OGNI * 1000, self.congela)
 
     def fine_avvio(self, attesa=None):
         """La finestra e' a schermo: le pagine tornano a disegnarsi, e la scheda davanti si disegna adesso. Se e' la Meta, i suoi dati (collezione, quaderni delle
@@ -755,9 +775,9 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
         import mazzi_salvati
         import prezzi_carte
         time.sleep(3)
-        import importlib
+        import numpy_leggero
         for f in (dati_mazzo.schede, prezzi_carte.tutti, lambda: prezzi_carte.carta("Island"), mazzi_salvati.pool_standard,
-                  lambda: importlib.import_module("numpy")):      # numpy: le sfumature delle capsule (112 ms la prima volta)
+                  numpy_leggero.carica):      # numpy: le sfumature delle capsule (112 ms la prima volta), senza i 600 MB di OpenBLAS
             try:
                 f()
             except Exception as e:      # noqa: BLE001 - scaldare non e' necessario: la finestra li legge da se'

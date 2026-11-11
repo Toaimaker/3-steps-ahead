@@ -1,6 +1,6 @@
 {
- "version": "0.1.12",
+ "version": "0.1.13",
  "date": "2026-11-11",
- "notes": "Faster first deck window and startup, lighter Farmer controls, and a memory leak fixed when opening many decks.",
+ "notes": "Much lighter on memory: about 250 MB instead of 900 on many-core PCs, faster card database loading, smoother long sessions.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

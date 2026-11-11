@@ -41,6 +41,7 @@ CARTE_IMG = os.path.join(ROOT, "Log_Arena", "carte_img")
 MINI = os.path.join(CARTE_IMG, "mini")     # le carte gia' pronte per la griglia: vedi cuoci
 LARGO_IMG = 440       # Autore, 5 nov 2026: «possiamo aumentare la dimensione della carta in hover?»; il file di Scryfall e' largo 488
 LARGA_CARTA, ALTA_CARTA = 200, 279
+TETTO_IMMAGINI = 96     # carte intere in memoria oltre quelle a vista (solo)
 SOTTO_CARTA = 24      # la riga sotto la carta intera
 ROSSO_BAN = "#d9534f"     # il bordo e il testo di una carta bandita nel formato scelto (il rosso della finestra)
 # Le regole delle immagini di Scryfall (scryfall.com/docs/api/images, lette l'11 nov 2026, Distribuzione/Business_Model.md sezione 5): niente immagini
@@ -378,8 +379,9 @@ def sfumatura(ca, cb, A, spenta, L=64):
     """La sfumatura di una capsula, L x A: piu' chiara in alto, il riflesso nella meta' alta, da ca a cb fra il 30% e il 70% della larghezza. Con numpy dall'11
     nov 2026 (sessione Magic 13): era un doppio ciclo in Python, ~1 ms a coppia di colori; stesse operazioni nello stesso ordine, stessi pixel
     (sfumatura_lenta, --prova)."""
-    import numpy as np
+    import numpy_leggero
     from PIL import Image
+    np = numpy_leggero.carica()      # senza i 600 MB di OpenBLAS (numpy_leggero)
     q = np.arange(A, dtype=np.float64) / (A - 1)
     luce = 1.22 - 0.5 * q
     velo = np.where(q < 0.46, (0.30 * (1 - q / 0.46) + 0.05) * (0.45 if spenta else 1), 0.0)
@@ -729,13 +731,18 @@ class Liste:
             self.piene.clear(); self.grezze.clear(); self.spente.clear()
 
     def solo(self, nomi):
-        """Scorrendo: si aspettano solo le carte a vista, l'operaio salta le altre; oltre 200 immagini in memoria restano solo quelle (duecento fanno 45 MB, tutta la collezione 700)."""
+        """Scorrendo: si aspettano solo le carte a vista, l'operaio salta le altre; oltre TETTO_IMMAGINI immagini in memoria restano solo quelle a vista (duecento
+        facevano 45 MB di pixel, e Tk su Windows ne tiene una seconda copia per disegnarle; tutta la collezione 700). Dall'11 nov 2026 il tetto e' 96, anche
+        per le carte opache (prima 200, e a 200 si buttavano tutte): una miniatura cotta si rilegge dal disco in meno di 1 ms."""
         vivi = set(nomi)
         for n in [n for n in self.attese if n not in vivi]:
             del self.attese[n]
-        if len(self.piene) > 200:
+        if len(self.piene) > TETTO_IMMAGINI:
             for n in [n for n in self.piene if n not in vivi]:
                 del self.piene[n]; self.grezze.pop(n, None)
+        if len(self.spente) > TETTO_IMMAGINI:
+            for k in [k for k in self.spente if k[0] not in vivi]:
+                del self.spente[k]
 
     def carta_piena(self, padre, nome, sotto="", bg="#18181c", spenta=False, bandita=False, su=None):
         """Una carta intera con sotto, in grigio al centro, il solo testo sotto (Autore, 5 nov 2026: «teniamo sotto le carte in grigio al centro un testo che indica in quante copie
@@ -788,7 +795,7 @@ class Liste:
                 rgb = tuple(int(c.fondo_spenta[i:i + 2], 16) for i in (1, 3, 5))
                 out = Image.blend(Image.new("RGBA", im.size, rgb + (255,)), g, 0.38)       # e velata dal fondo: si vede, ma si capisce che manca
                 out.putalpha(im.getchannel("A"))
-                if len(self.spente) > 200:
+                if len(self.spente) > 4 * TETTO_IMMAGINI:     # solo() le sfoltisce scorrendo; questo e' il tetto per chi non chiama solo()
                     self.spente.clear()
                 self.spente[k] = ImageTk.PhotoImage(out)
             except Exception:

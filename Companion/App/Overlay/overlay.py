@@ -50,7 +50,8 @@ except Exception:
     except Exception:
         pass
 
-import numpy as np  # noqa: E402
+import numpy_leggero  # noqa: E402
+np = numpy_leggero.carica()      # senza i 600 MB di OpenBLAS su un PC con tanti processori (numpy_leggero)
 from PIL import Image, ImageDraw, ImageFont, ImageGrab  # noqa: E402
 
 import confronto as CF  # noqa: E402

@@ -73,7 +73,8 @@ def titoli():
     """{grpId: titleId} dal database delle carte di Arena sul disco (letto una volta)."""
     if not _T:
         try:
-            for c in json.load(open(F_CARTE, encoding="utf-8")):
+            import db_carte         # il database di Arena letto una volta per processo, ridotto e cotto (11 nov 2026)
+            for c in db_carte.carte():
                 if c.get("titleId") is not None:
                     _T[c["grpid"]] = c["titleId"]
                 _COL[c["grpid"]] = "".join(COLORI[k] for k in c.get("colors") or () if k in COLORI)

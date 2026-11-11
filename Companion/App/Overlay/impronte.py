@@ -22,7 +22,8 @@ import percorsi  # noqa: E402
 import hashlib
 import time
 
-import numpy as np
+import numpy_leggero  # noqa: E402
+np = numpy_leggero.carica()      # senza i 600 MB di OpenBLAS su un PC con tanti processori (numpy_leggero)
 from PIL import Image
 
 QUI = os.path.dirname(os.path.abspath(__file__))

@@ -271,10 +271,28 @@ def partite_costruite(tutti=False):
     return sorted(out, key=lambda x: x["quando"])
 
 
+_MAZZI_ARENA = {}
+
+
 def mazzi_arena_o_niente():
+    """I mazzi di Arena per chi li legge soltanto (le partite, l'analisi di un mazzo): ricordati finche' Player.log, la copia dei mazzi e l'account mostrato
+    restano gli stessi (11 nov 2026, sessione Magic 13: ogni finestra di un mazzo rileggeva i 20 MB del Player.log e riscriveva la copia, 42-126 ms e un
+    picco di 21 MB). Non si modificano."""
     try:
         import mazzi_arena
-        return mazzi_arena.mazzi() or []
+        import account as _ACC
+
+        def data(f):
+            try:
+                st = os.stat(f)
+                return st.st_mtime, st.st_size
+            except OSError:
+                return None
+        chiave = (data(mazzi_arena.LOG), data(mazzi_arena.CACHE), _ACC.attivo(), mazzi_arena.CACHE)
+        if _MAZZI_ARENA.get("chiave") != chiave:
+            _MAZZI_ARENA["d"] = mazzi_arena.mazzi() or []
+            _MAZZI_ARENA["chiave"] = (data(mazzi_arena.LOG), data(mazzi_arena.CACHE), _ACC.attivo(), mazzi_arena.CACHE)      # dopo: mazzi() riscrive la copia
+        return _MAZZI_ARENA["d"]
     except (OSError, ValueError, KeyError):
         return []
 

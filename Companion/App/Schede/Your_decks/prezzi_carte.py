@@ -147,6 +147,15 @@ def aggiorna():
     return False
 
 
+def condividi(carte):
+    """{nome: {campo: valore}} con una copia sola di ogni valore uguale (11 nov 2026, sessione Magic 13): il lettore JSON fa un oggetto nuovo per ogni
+    stringa e ogni numero, e 35.358 carte ripetono le stesse righe di tipo, gli stessi elenchi di formati, gli stessi prezzi. I formati da 21,7 a 13,8 MB,
+    dati uguali. Un dizionario per tipo: 0 e 0.0 restano diversi."""
+    memo = {}
+    return {n: {k: (memo.setdefault((type(v), v), v) if isinstance(v, (str, float, int)) else v) for k, v in c.items()} if isinstance(c, dict) else c
+            for n, c in carte.items()}
+
+
 def tutti():
     global _CACHE
     with _CHIAVE:
@@ -154,6 +163,7 @@ def tutti():
             try:
                 with open(PREZZI, encoding="utf-8") as g:
                     _CACHE = json.load(g)
+                _CACHE["carte"] = condividi(_CACHE.get("carte") or {})
             except (OSError, ValueError):
                 _CACHE = dict(data=None, carte={})
                 return _CACHE      # non si tiene: appena il file c'e' si rilegge
@@ -186,7 +196,7 @@ def carta(nome):
         if _INFO is None:
             try:
                 with open(CARTE, encoding="utf-8") as g:
-                    _INFO = json.load(g)["carte"]
+                    _INFO = condividi(json.load(g)["carte"])
             except (OSError, ValueError, KeyError):
                 return None
             for n, v in list(_INFO.items()):

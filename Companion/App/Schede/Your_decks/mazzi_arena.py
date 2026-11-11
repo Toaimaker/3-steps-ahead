@@ -95,8 +95,9 @@ def nome_precon(n):
 def tabella():
     """{grpId: (nome, colori, terra)} dal database delle carte di Arena, letto una volta."""
     if not _T:
-        loc = {e["id"]: e["text"] for e in json.load(open(F_LOC, encoding="utf-8"))}
-        for c in json.load(open(F_CARTE, encoding="utf-8")):
+        import db_carte         # il database di Arena letto una volta per processo, ridotto e cotto (11 nov 2026)
+        loc = db_carte.testi()
+        for c in db_carte.carte():
             _T[c["grpid"]] = (loc.get(c.get("titleId")) or str(c["grpid"]), "".join(k for i, k in COLORI.items() if i in (c.get("colors") or [])), "Land" in (loc.get(c.get("cardTypeTextId")) or ""))
     return _T
 
