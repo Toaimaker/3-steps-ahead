@@ -1,6 +1,6 @@
 {
- "version": "0.1.35",
+ "version": "0.1.36",
  "date": "2026-11-12",
- "notes": "Deck builder and board: nothing is saved by itself (Save, Undo, Redo, and a question when you close with changes); delete asks first; clone a deck; Board view and Edit this deck side by side; deck window sections start closed.",
+ "notes": "Deck HUD: the opponent's deck while you play (archetype with confidence, likely cards, its turns 2-4, instants its open mana can pay, your record against it; in limited the 17Lands numbers of its colors). Decks only, never players.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }
