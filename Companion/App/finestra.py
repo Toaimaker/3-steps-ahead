@@ -401,6 +401,9 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
             lab.bind("<Leave>", lambda e, k=self.k, lab=lab: lab.configure(fg=CI["grigio"]) if self.scelta["v"] != k else None)
             self.linguette[self.k] = (lab, sopra)
         self.tendina_conto()
+        if not FUORI_SCHERMO:       # l'HUD del mazzo avversario (12 nov 2026, sessione Magic 15): il pulsante e il pallino durante una partita
+            import vista_hud
+            self.hud = vista_hud.pulsante(self, tk)
         # un aggiornamento dell'app: un pallino sulla linguetta Help (10 nov 2026)
         self.pagine["help"].su_aggiornamento = lambda nuova: self.linguette["help"][0].configure(text="Help  ●" if nuova else "Help")
         self.pagine["help"].mostra_stato()

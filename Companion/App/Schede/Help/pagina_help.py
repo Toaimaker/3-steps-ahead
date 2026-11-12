@@ -70,6 +70,11 @@ SEZIONI = (
       ("Hover", "the card large")]),
     ("board", "Board", "The deck as whole cards on a sheet, with the network of synergies: parent → child arrows, dots, labels. From the deck window it is "
               "view only; open it from the builder (Edit, then Board) to change it.", None),
+    ("hud", "Deck HUD", "The opponent's deck while you play, like a poker HUD but for decks, never for players: the archetype it most likely is, with how sure "
+            "(from the spells it has shown and the meta lists), the cards likely still in its 60, what it plays on its turns 2-4, the instants its open mana "
+            "can pay, and your record against it on the play and on the draw. In limited: its color pair with the public 17Lands numbers. Nothing about "
+            "the opponent is saved, and it stays off in sanctioned competitive events.",
+     [("Deck HUD", "in the tab bar: opens the HUD window; during a game it shows a dot"), ("Mouse wheel", "scrolls the HUD"), ("Esc", "closes it")]),
     ("social", "Social column", "On the right of every tab: your profile and the friends you follow, read from their public Untapped profile.",
      [("Avatar", "click: a card art or a file"), ("+", "adds a friend by the link of the Untapped profile"), ("✕", "on a friend: removes it")]),
 )

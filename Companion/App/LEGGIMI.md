@@ -23,7 +23,8 @@ Companion/
                          con celle dichiarate), registro_errori, stemmi_icone
     Chat/                chat_partita (la chat), chat_testi (fasi, inglese, righe), diario, pescate, chat_finestra (la chat nella finestra)
     Schede/
-      Meta/              pagina_meta, dati_meta
+      Meta/              pagina_meta, dati_meta, matchup_log (la banca dati delle partite), Deck HUD: hud_partita (la partita dal Player.log),
+                         hud_mazzo (archetipo, carte probabili, T2-T4, istantanee, tu contro), vista_hud (la finestra e il pulsante)
       Drafter/           drafter_evento (Rare pick, calendario, Play limited, Closed session, record), drafter_mazzi (le tre fasi, i mazzi,
                          Select deck, Fix, overlay), deck_sheet, drafter_partita, dati_drafter, calendario_eventi, chiudi_draft,
                          pronto_limited, finestra_mazzi (la finestra a 3 colonne di prima)
