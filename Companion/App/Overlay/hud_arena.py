@@ -6,11 +6,11 @@ dirette). Due pannelli a lista sui bordi di Arena (Autore, 12 nov 2026: «l'hud 
 belli leggibili nelle liste delle carte / il mio deck deve dirmi quante carte mie ho in quante copie, man mano che scendono mi aggiorna il numero e mi da la %
 di trovarle alla prossima pescata»): a sinistra il tuo mazzo, carta per carta, con le copie rimaste su quelle del mazzo e la P di pescarla alla prossima
 pescata, le terre in fondo; a destra il suo: l'archetipo con la confidenza, le carte probabili con la P, le istantanee che il suo mana aperto paga, il tuo
-record contro di lui (nel limited la coppia coi numeri di 17Lands). I conti sono quelli della finestra Deck HUD (hud_mazzo, hud_partita): niente nomi o id
+record contro di lui (nel limited la coppia coi numeri di 17Lands). I conti sono in hud_mazzo e hud_partita: niente nomi o id
 dell'avversario, nessun file oltre al pid.
 
 Si vede solo durante una partita, con Arena visibile in quel punto dello schermo (un'altra finestra sopra Arena, Arena ridotta a icona: niente), mai negli
-eventi competitivi sanzionati e contro Sparky. La lancia la finestra grande quando «On Arena» e' acceso nella finestra Deck HUD (Log_Arena/hud_arena.json,
+eventi competitivi sanzionati e contro Sparky. La lancia la finestra grande quando l'HUD e' acceso (la pillola DECK HUD nella barra delle schede, vista_hud.py; l'HUD si vede solo qui, dal 12 nov 2026 sera) (Log_Arena/hud_arena.json,
 acceso di partenza); si chiude da sola quando lo spegni, quando la finestra grande che l'ha lanciata si chiude, e una sola alla volta (Log_Arena/hud_arena.pid).
 Solo Windows (Distribuzione/Mac.md: sul Mac l'overlay non c'e').
 
@@ -57,7 +57,7 @@ def _pref():
 
 
 def preferenza(chi="suo"):
-    """«On Arena» di un pannello, «suo» (il suo mazzo, a sinistra) o «mio» (il tuo, a destra): acceso di partenza (Autore l'ha chiesto). Il file di
+    """«On Arena» di un pannello, «suo» (il suo mazzo, bordo destro di Arena) o «mio» (il tuo, bordo sinistro): acceso di partenza (Autore l'ha chiesto). Il file di
     prima aveva una chiave sola, «acceso», che vale per il suo."""
     d = _pref()
     return bool(d.get(chi, d.get("acceso", True) if chi == "suo" else True))

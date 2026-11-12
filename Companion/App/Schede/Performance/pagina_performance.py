@@ -344,15 +344,25 @@ class PaginaPerformance:
             asse_e_finestra()
         lista = None
         if k == "chart":       # sotto il grafico le partite della situazione, una per riga, con la mano e la board (12 nov 2026, «proprio come holdem manager»)
-            corpo_ = tk.Frame(fr, bg=C["scheda"]); corpo_.pack(fill="both", expand=True)
-            corpo_.columnconfigure(0, weight=1); corpo_.rowconfigure(0, weight=3); corpo_.rowconfigure(1, weight=2)
+            # grafico e partite divisi da una linea da trascinare: allarga uno e stringe l'altro (12 nov 2026, Autore: «tra chart e elenco crea una linea di
+            # separazione che possa aumentare la dimensione della lista sotto restringendo lo spazio sopra e viceversa»)
+            corpo_ = tk.PanedWindow(fr, orient="vertical", bg="#2c2c34", bd=0, sashwidth=7, sashrelief="flat", sashpad=0, opaqueresize=True,
+                                    sashcursor="sb_v_double_arrow")
+            corpo_.pack(fill="both", expand=True, padx=8, pady=(4, 6))
             c = tk.Canvas(corpo_, bg=C["scheda"], highlightthickness=0, bd=0, height=120)
-            c.grid(row=0, column=0, sticky="nsew", padx=8, pady=(4, 2))
-            sotto = tk.Frame(corpo_, bg=C["scheda"]); sotto.grid(row=1, column=0, sticky="nsew", padx=8, pady=(2, 6))
+            corpo_.add(c, minsize=120, stretch="always")
+            sotto = tk.Frame(corpo_, bg=C["scheda"])
+            corpo_.add(sotto, minsize=110, stretch="always")
             lista = self.fai_tabella(sotto)
-            lista.sotto = sotto
+            lista.sotto, lista.diviso = sotto, corpo_
+
+            def primo_posto(e, p_=corpo_):      # la prima volta il grafico prende il 60%
+                if not getattr(p_, "_messo", False) and e.height > 300 and len(p_.panes()) > 1:
+                    p_._messo = True
+                    p_.after_idle(lambda: p_.sash_place(0, 0, int(e.height * 0.6)))
+            corpo_.bind("<Configure>", primo_posto, add="+")
             if self.partite_fuori:      # la tabella sta nella sua finestra: qui il grafico prende tutto
-                sotto.grid_remove()
+                corpo_.forget(sotto)
         else:
             c = tk.Canvas(fr, bg=C["scheda"], highlightthickness=0, bd=0, height=120)
             c.pack(fill="both", expand=True, padx=8, pady=(4, 6))
@@ -738,15 +748,42 @@ class PaginaPerformance:
         etx = (lambda x: f"game {int(x)}") if asse == "games" else (lambda x: datetime.date.fromordinal(int(x)).strftime("%d %b"))
         c.create_text(x0, y1 + 12, text=etx(xa), anchor="w", fill=C["muto"], font=F(7))
         c.create_text(x1, y1 + 12, text=etx(xb), anchor="e", fill=C["muto"], font=F(7))
-        tratti = []
+        tratti, etichette = [], []
         for i, (n, p) in enumerate(lin):
             col = colori[i % len(colori)]
             pts = [(sx(x), sy(y)) for x, y in p]
             if len(pts) == 1:
                 pts = [pts[0], (pts[0][0] + 1, pts[0][1])]
             # sottili (12 nov 2026, Autore: «le linee dei grafici le voglio piu' sottili»; erano 2,4 / 2,0 / 1,6)
-            tratti.append((pts, col, 1.4 if n == "All" and len(lin) == 1 else 1.2 if n != "All" else 1.0, None))
-            c.create_text(x1 + 8, pts[-1][1], text=f"{n}  {p[-1][1]:.0f}{'%' if metrica in ('wr', 'mull') else ''}", anchor="w", fill=col, font=F(7, True))
+            spess = 1.4 if n == "All" and len(lin) == 1 else 1.2 if n != "All" else 1.0
+            # una linea divisa si spezza dove quel valore non c'e' per un tratto lungo (un mazzo che per 30 partite non giochi): niente ponti piatti che
+            # attraversano il grafico (12 nov 2026, «split by my decks ... non si capisce mai nulla»)
+            salto = max(12, (xb - xa) * 0.04) if n != "All" and asse == "games" else float("inf")
+            pezzo = [pts[0]]
+            for (xp, _yp), q in zip(p, p[1:]):
+                if q[0] - xp > salto:
+                    tratti.append((pezzo if len(pezzo) > 1 else [pezzo[0], (pezzo[0][0] + 1, pezzo[0][1])], col, spess, None))
+                    pezzo = []
+                pezzo.append((sx(q[0]), sy(q[1])))
+            tratti.append((pezzo if len(pezzo) > 1 else [pezzo[0], (pezzo[0][0] + 1, pezzo[0][1])], col, spess, None))
+            etichette.append([pts[-1][1], pts[-1][1], n, p[-1][1], col])
+        # i nomi in fondo alle linee non si sovrappongono (12 nov 2026, Autore: «split by my decks: i nomi dei decks si sormontano e non si capisce mai
+        # nulla»): ordinati per altezza e distanziati di 14 pixel, dentro il grafico; un filo collega il nome spostato alla fine della sua linea
+        etichette.sort(key=lambda e_: e_[0])
+        for j in range(1, len(etichette)):
+            etichette[j][1] = max(etichette[j][1], etichette[j - 1][1] + 14)
+        troppo = etichette[-1][1] - (y1 + 4) if etichette else 0
+        if troppo > 0:
+            for e_ in etichette:
+                e_[1] -= troppo
+            for j in range(len(etichette) - 2, -1, -1):
+                etichette[j][1] = min(etichette[j][1], etichette[j + 1][1] - 14)
+        corto = lambda t_, n_: t_ if len(t_) <= n_ else t_[:n_ - 1] + "…"
+        for y_vero, y_et, n, v_, col in etichette:
+            if abs(y_et - y_vero) > 2:
+                tratti.append(([(x1 + 1, y_vero), (x1 + 5, y_et)], col, 0.8, None))
+            c.create_text(x1 + 8, y_et, text=f"{corto(str(n).strip(), 24)}  {v_:.0f}{'%' if metrica in ('wr', 'mull') else ''}", anchor="w", fill=col,
+                          font=F(7, True))
         c._img = DG.tratti(W, H, linee=tratti)
         c.create_image(0, 0, image=c._img, anchor="nw")
         c.create_text((x0 + x1) / 2, y0 - 12, text=titolo, anchor="n", fill=C["grigio"], font=F(7))
@@ -765,7 +802,7 @@ class PaginaPerformance:
         fin = "" if self.metrica == "n" else (", cumulative" if self.finestra == "cum" else f", last {self.finestra} games")
         tit = f"{tit}{fin}" + (f" · split by {DA.nome_var(self.dividi).lower()}" if self.dividi else "")
         vuoto = "No games in this situation" if not r else f"{len(r)} games: too few for this chart (a moving window starts at 5)"
-        sc = self.traccia(c, lin, (52, 16, W - 120, H - 24), self.metrica, self.asse, LINEE, tit, vuoto)
+        sc = self.traccia(c, lin, (52, 16, W - (210 if self.dividi else 120), H - 24), self.metrica, self.asse, LINEE, tit, vuoto)
         if sc and self.asse == "games" and len(lin) == 1:       # i cambi di lega, come nel grafico di prima
             sx, _sy = sc
             for i_, rango in DA.cambi_rango(r):
@@ -780,7 +817,7 @@ class PaginaPerformance:
     # premendo su quello specifico dato si apre una board dedicata che ci mostra le carte in quello spot in mano o sul tavolo»)
     def colonne_partite(self, W):
         """Le colonne della tabella delle partite: (chiave, titolo, x, larghezza); mano e board si dividono quel che resta."""
-        fisse = (("data", "DATE", 96), ("mio", "YOUR DECK", 150), ("suo", "OPPONENT", 150), ("esito", "RESULT", 76), ("via", "START", 60), ("mull", "MULLIGAN", 76))
+        fisse = (("data", "DATE", 96), ("mio", "YOUR DECK", 150), ("suo", "OPPONENT", 150), ("via", "START", 60), ("mull", "MULLIGAN", 76), ("esito", "RESULT", 64), ("turni", "TURNS", 56))
         out, x = [], 8
         for k, t, w in fisse:
             out.append((k, t, x, w)); x += w
@@ -858,7 +895,7 @@ class PaginaPerformance:
         w.protocol("WM_DELETE_WINDOW", self.riattacca_partite)
         for o in self.copie("chart"):       # sotto il grafico il posto va al grafico
             if o.get("lista") is not None:
-                o["lista"].sotto.grid_remove()
+                o["lista"].diviso.forget(o["lista"].sotto)
         self.aggiorna_fuori()
         if self.righe is not None:
             w.after(60, lambda: w.winfo_exists() and self.disegna_partite(lista))
@@ -874,7 +911,8 @@ class PaginaPerformance:
                 pass
         for o in self.copie("chart"):
             if o.get("lista") is not None:
-                o["lista"].sotto.grid()
+                if str(o["lista"].sotto) not in [str(x_) for x_ in o["lista"].diviso.panes()]:
+                    o["lista"].diviso.add(o["lista"].sotto, minsize=110, stretch="always")
         if self.righe is not None:
             self.disegna_partite(self.tabella_partite())
 
@@ -936,9 +974,11 @@ class PaginaPerformance:
                         testo = DA.nome_vs(v)
                     else:
                         testo, col = "Unknown", C["muto"]
-                elif k == "esito":
-                    testo = ("Won" if x_["vinta"] else "Lost") + (f" · T{x_['turno']}" if x_.get("turno") else "")
+                elif k == "esito":      # dopo il mulligan, e accanto i turni della partita (12 nov 2026, Autore: «result dopo mulligan e dopo result il numero
+                    testo = "Won" if x_["vinta"] else "Lost"        # di turni partita»)
                     col, font = (C["azzurro"] if x_["vinta"] else C["rosso"]), F(8, True)
+                elif k == "turni":
+                    testo = str(x_["turno"]) if x_.get("turno") else "-"
                 elif k == "via":
                     testo = x_.get("partenza") or "-"
                 elif k == "mull":       # la sua colonna (12 nov 2026, Autore: «aggiungi anche la colonna mulligan cosi' esce dallo start»)
@@ -1067,7 +1107,7 @@ class PaginaPerformance:
             f = self.fin_board = tk.Toplevel(self.fr); f.configure(bg=C["scheda"])
             f.title("The board")
             f.geometry(f"1500x960+{self.cv_sx.winfo_rootx() + 60}+{max(0, self.cv_sx.winfo_rooty() - 90)}")
-            f.bind("<Escape>", lambda e: f.destroy())
+            f.bind("<Escape>", lambda e: self.chiudi_pila() if getattr(self, "_pila_aperta", None) else f.destroy())
             f.bind("<Left>", lambda e: self.passo_board(-1))
             f.bind("<Right>", lambda e: self.passo_board(1))
             self.l_board = tk.Label(f, text="", bg=C["cap"], fg=C["titolo"], font=F(10, True), anchor="w", padx=16, pady=10); self.l_board.pack(fill="x")
@@ -1093,6 +1133,7 @@ class PaginaPerformance:
             self.cv_board.bind("<Motion>", self.sopra_carta_board)
             self.cv_board.bind("<Leave>", self.via_hover)
         self.ferma_board()
+        self._pila_aperta = None
         self._board = dict(x=x_, passi=passi, i=0 if dove == "mano" else len(passi) - 1, play=False, vel=getattr(self, "_vel_board", 1.0))
         self._board["svolta"] = self.svolta(passi, x_["vinta"])
         esito = "won" if x_["vinta"] else "lost"
@@ -1605,6 +1646,7 @@ class PaginaPerformance:
             i_ = c.create_text(xr + 30, y, text=testo, anchor="nw", fill=C["testo"], font=F(8), width=LARGA_RACCONTO - 46)      # dall'alto: a capo non copre la riga dopo
             bb = c.bbox(i_)
             y = (bb[3] if bb else y + 16) + 6
+        self.disegna_pila_aperta(c, f, W, H)
         self.disegna_controlli()
 
     def frecce_board(self, c, rel, pila_box, W, H):
@@ -1743,37 +1785,81 @@ class PaginaPerformance:
         return cache.get(nome)
 
     def clic_pila(self, e):
-        """Il clic su un cimitero o un esilio: tutte le sue carte in una finestrella."""
-        for x0, y0, x1, y1, tit, _k, carte in getattr(self, "_box_pile", []):
+        """Il clic sulla tavola: con un cimitero o un esilio aperto, la ✕ o il clic fuori dal riquadro lo chiudono; se no il clic su una pila la apre."""
+        if getattr(self, "_pila_aperta", None):
+            x0, y0, x1, y1 = getattr(self, "_box_riquadro", (0, 0, 0, 0))
+            cx0, cy0, cx1, cy1 = getattr(self, "_box_chiudi", (0, 0, 0, 0))
+            if not (x0 <= e.x <= x1 and y0 <= e.y <= y1) or (cx0 <= e.x <= cx1 and cy0 <= e.y <= cy1):
+                self.chiudi_pila()
+            return None
+        for x0, y0, x1, y1, tit, k, carte in getattr(self, "_box_pile", []):
             if x0 <= e.x <= x1 and y0 <= e.y <= y1:
-                return self.apri_pila(tit, carte)
+                return self.apri_pila(tit, carte, k)
         return None
 
-    def apri_pila(self, tit, carte):
-        tk, F = self.tk, self.F
-        f = getattr(self, "fin_pila", None)
-        if f is not None and f.winfo_exists():
-            f.destroy()
-        f = self.fin_pila = tk.Toplevel(self.fin_board); f.configure(bg=C["scheda"]); f.transient(self.fin_board)
-        f.title(tit.capitalize()); f.bind("<Escape>", lambda e: f.destroy())
-        nome = self._board["passi"][self._board["i"]][0]
-        tk.Label(f, text=f"{tit} · {len(carte)} · {nome}", bg=C["scheda"], fg=C["titolo"], font=F(9, True)).pack(anchor="w", padx=14, pady=(12, 6))
-        w, per = 110, 6
+    def apri_pila(self, tit, carte, chiave=None):
+        """Il cimitero o l'esilio aperto sopra la tavola, nella stessa finestra (12 nov 2026, Autore: «cimitero ed esilio ora si aprono ma non in
+        sovrimpressione ma da un'altra parte e sta cosa non va bene»): un riquadro sopra la tavola velata, le carte dall'ultima arrivata, la carta grande in
+        hover; segue il momento (cambiando momento mostra quella pila in quel momento); ✕, clic fuori o Esc lo chiudono."""
+        self._pila_aperta = (tit, chiave, carte)
+        self.disegna_board()
+        return self._pila_aperta
+
+    def chiudi_pila(self):
+        if getattr(self, "_pila_aperta", None):
+            self._pila_aperta = None
+            self.disegna_board()
+
+    def disegna_pila_aperta(self, c, f, W, H):
+        ap = getattr(self, "_pila_aperta", None)
+        if not ap:
+            return
+        F = self.F
+        tit, chiave, carte = ap
+        dove = {"cim_mio": ("cim", 0), "cim_suo": ("cim", 1), "esi_mio": ("esi", 0), "esi_suo": ("esi", 1)}.get(chiave)
+        if dove:        # la pila di questo momento
+            carte = (f.get(dove[0]) or ([], []))[dove[1]]
+            self._pila_aperta = (tit, chiave, carte)
+        chi = "YOUR" if (chiave or "").endswith("mio") else "OPPONENT'S"
+        d = DG.Disegno(W, H)
+        d.rett(0, 0, W, H, riempi=(8, 8, 12, 190))
+        mx = 60
+        rx0, ry0, rx1, ry1 = mx, 40, W - mx, H - 40
+        d.rett(rx0, ry0, rx1, ry1, riempi="#18181e", bordo="#3a3a44", larghezza=1.2, raggio=8)
+        self._img_velo = d.foto(veloce=True)
+        c.create_image(0, 0, image=self._img_velo, anchor="nw", tags="pila_aperta")
+        self._box_riquadro = (rx0, ry0, rx1, ry1)
+        self._box_carte = []        # sotto il velo le carte della tavola non si guardano: solo quelle della pila
+        c.create_text(rx0 + 20, ry0 + 22, text=f"{chi} {tit} · {len(carte)} card{'s' if len(carte) != 1 else ''}", anchor="w", fill=C["titolo"], font=F(11, True))
+        c.create_text(rx0 + 20, ry0 + 42, text=self._board["passi"][self._board["i"]][0] + "  ·  the last one in first  ·  click outside or Esc to close",
+                      anchor="w", fill=C["grigio"], font=F(7))
+        self._box_chiudi = (rx1 - 40, ry0 + 8, rx1 - 10, ry0 + 36)
+        c.create_text(rx1 - 25, ry0 + 22, text="✕", fill=C["titolo"], font=F(12, True))
+        if not carte:
+            c.create_text((rx0 + rx1) / 2, (ry0 + ry1) / 2, text="empty", fill=C["muto"], font=F(10))
+            return
+        larga, alta = rx1 - rx0 - 40, ry1 - ry0 - 80
+        w = 150
+        while w > 60:       # la carta piu' grande con cui ci stanno tutte
+            h = round(w * 279 / 200)
+            per = max(1, int((larga + 10) // (w + 10)))
+            if ((len(carte) + per - 1) // per) * (h + 10) <= alta:
+                break
+            w -= 6
         h = round(w * 279 / 200)
-        righe_ = (len(carte) + per - 1) // per
-        cv = tk.Canvas(f, bg=C["scheda"], highlightthickness=0, bd=0, width=per * (w + 8) + 8, height=min(3, righe_) * (h + 8) + 8)
-        cv.pack(padx=8, pady=(0, 12))
-        cv.configure(scrollregion=(0, 0, per * (w + 8) + 8, righe_ * (h + 8) + 8))
-        cv.bind("<MouseWheel>", lambda e: cv.yview_scroll(-2 if e.delta > 0 else 2, "units"))
+        per = max(1, int((larga + 10) // (w + 10)))
         for j, n in enumerate(reversed(carte)):     # l'ultima arrivata per prima
-            x, y = 8 + (j % per) * (w + 8), 8 + (j // per) * (h + 8)
+            x, y = rx0 + 20 + (j % per) * (w + 10), ry0 + 60 + (j // per) * (h + 10)
+            if y + h > ry1:
+                c.create_text(rx1 - 20, ry1 - 14, text=f"+{len(carte) - j} more", anchor="e", fill=C["grigio"], font=F(8, True))
+                break
             img = self.immagine_carta(n, w, False)
             if img is not None:
-                cv.create_image(x, y, image=img, anchor="nw")
+                c.create_image(x, y, image=img, anchor="nw")
             else:
-                cv.create_rectangle(x, y, x + w, y + h, fill="#26262c", outline="#4a4a52")
-                cv.create_text(x + w / 2, y + h / 2, text=n, width=w - 10, fill=C["titolo"], font=F(7, True), justify="center")
-        return f
+                c.create_rectangle(x, y, x + w, y + h, fill="#26262c", outline="#4a4a52")
+                c.create_text(x + w / 2, y + h / 2, text=n, width=w - 10, fill=C["titolo"], font=F(7, True), justify="center")
+            self._box_carte.append((x, y, x + w, y + h, n))
 
     def punta(self, e):
         """Il puntatore su un grafico (Chart o Compare): la linea verticale e il valore di ogni linea in quel punto."""

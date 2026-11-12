@@ -100,11 +100,10 @@ SEZIONI = (
             "(from the spells it has shown and the meta lists), the cards likely still in its 60, what it plays on its turns 2-4, the instants its open mana "
             "can pay, and your record against it on the play and on the draw. In limited: its color pair with the public 17Lands numbers. Nothing about "
             "the opponent is saved, and it stays off in sanctioned competitive events.",
-     [("Deck HUD", "in the tab bar: opens the HUD window; during a game it shows a dot"),
-      ("Two columns", "its deck on the left, yours on the right: your next draws, lands left, your deck's record"),
-      ("On Arena", "on top of each column: its panel on Arena during your games, your deck on the left edge (every card: copies left / in the deck, chance "
-                   "to draw it next), its deck on the right edge (on by default); clicks pass through"),
-      ("Mouse wheel", "scrolls the HUD"), ("Esc", "closes it")]),
+     [("Deck HUD", "the pill in the tab bar: blue ON when the HUD is on, grey OFF when it is off, a green dot and LIVE during a game"),
+      ("On Arena only", "the HUD shows only on top of Arena during your games, never in an app window; clicks pass through"),
+      ("Click the pill", "two switches: your deck on the left edge (every card: copies left / in the deck, chance to draw it next) and the "
+                         "opponent's deck on the right edge (both on by default)"), ("Esc", "closes the switches")]),
     ("social", "Social column", "On the right of every tab: your profile and the friends you follow, read from their public Untapped profile.",
      [("Avatar", "click: a card art or a file"), ("+", "adds a friend by the link of the Untapped profile"), ("✕", "on a friend: removes it")]),
 )
