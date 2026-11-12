@@ -112,16 +112,38 @@ class MenuGoal:
         self.v.update(giu)
 
     def trascina(self, k, x):
+        """Il pallino segue il mouse al pixel (12 nov 2026, Autore: «gli slider del farmer sarebbero piu' apprezzabili se con movimento piu' fluido»: fino a quel
+        giorno saltava a passi di 5, circa 10 pixel, e a ogni movimento si ridisegnavano con PIL tutti gli slider). Gli altri si muovono in proporzione, anche
+        loro al pixel; al rilascio tutto torna a passi di PASSO col totale a 100 (rilascia)."""
         L = max(40, self.cv[k].winfo_width())
-        pc = round(max(0.0, min(1.0, (x - 8) / (L - 16))) * 100 / self.PASSO) * self.PASSO
+        pc = max(0.0, min(1.0, (x - 8) / (L - 16))) * 100
         if self.inizio is None:
             self.inizio = dict(self.v)
-        if pc != self.v[k]:
-            self.imposta(k, pc, self.inizio); self.mosso = True
-            self.disegna()
+            self.preso = k
+        if abs(pc - self.v[k]) > 1e-9:
+            self.imposta_fluido(k, pc, self.inizio); self.mosso = True
+            self.aggiorna()
+
+    def imposta_fluido(self, k, pc, base):
+        """Come imposta, senza i passi: gli altri accesi in proporzione esatta."""
+        b = dict(base)
+        pieno = sum(b.values()) >= 100
+        self.v = dict(b)
+        self.v[k] = pc
+        altri = [g for g in b if g != k and b[g] > 0]
+        tot = sum(b[g] for g in altri)
+        posto = 100 - pc
+        if not altri or (tot <= posto and not pieno):
+            return
+        for g in altri:
+            self.v[g] = b[g] * posto / tot
 
     def rilascia(self):
-        self.inizio = None
+        k, base = getattr(self, "preso", None), self.inizio
+        self.inizio, self.preso = None, None
+        if self.mosso and k is not None and base is not None:      # i passi di PASSO e il totale a 100, come prima
+            self.imposta(k, round(self.v[k] / self.PASSO) * self.PASSO, base)
+            self.disegna()
         if self.mosso and self.cb:
             self.mosso = False
             self.cb()
@@ -129,30 +151,63 @@ class MenuGoal:
 
     # ---- il disegno
     def disegna_uno(self, k):
+        """La barra (un'immagine nitida, fatta una volta per larghezza), la parte piena (una linea dritta, nitida da sola), il pallino (un'immagine fatta una volta,
+        spostata), il nome e la percentuale. Trascinando cambiano solo coordinate e testi (aggiorna_uno)."""
         c = self.cv[k]; c.delete("all")
         L = max(40, c.winfo_width() if c.winfo_width() > 1 else self.LARGO)
+        c.largo_ = L
         x0, x1, y = 8, L - 8, self.ALTO // 2
-        v_ = self.v[k]      # sopra la barra il nome e la percentuale, disegnati
-        c.create_text(0, self.TESTA / 2, text=self.nomi[k], anchor="w", fill=C["titolo"] if v_ > 0 else C["testo"], font=self.F(8), tags="nome")
-        c.create_text(L, self.TESTA / 2, text=f"{round(v_)}%", anchor="e", fill=C["azzurro"] if v_ > 0 else C["muto"], font=self.F(8, True), tags="pc")
-        pos = lambda pc: x0 + (x1 - x0) * pc / 100
-        v = self.v[k]
-        d = DG.Disegno(L, self.ALTO)          # la barra, la parte piena e il pomello in un'immagine nitida (disegni.py)
+        c.create_text(0, self.TESTA / 2, text=self.nomi[k], anchor="w", fill=C["testo"], font=self.F(8), tags="nome")
+        c.create_text(L, self.TESTA / 2, text="", anchor="e", fill=C["muto"], font=self.F(8, True), tags="pc")
+        d = DG.Disegno(L, self.ALTO)
         d.linea([(x0, y), (x1, y)], TEND["bordo"], 4)
-        if v > 0:
-            d.linea([(x0, y), (pos(v), y)], C["azzurro"], 4)
-        d.cerchio(pos(v), y, 6.5, riempi=C["azzurro"], bordo=C["titolo"], larghezza=1.5)      # colorato anche a 0
         c.foto_ = d.foto()
         c.create_image(0, self.TESTA, image=c.foto_, anchor="nw")
+        c.create_line(x0, self.TESTA + y, x0, self.TESTA + y, fill=C["azzurro"], width=4, capstyle="round", tags="pieno")
+        c.create_image(x0, self.TESTA + y, image=pomello(), tags="pomello")      # colorato anche a 0
+        self.aggiorna_uno(k)
+
+    def aggiorna_uno(self, k):
+        c = self.cv[k]
+        L = getattr(c, "largo_", None)
+        if L is None:
+            return self.disegna_uno(k)
+        x0, x1, y = 8, L - 8, self.TESTA + self.ALTO // 2
+        v = self.v[k]
+        xv = x0 + (x1 - x0) * v / 100
+        c.coords("pieno", x0, y, xv, y)
+        c.itemconfigure("pieno", state="normal" if v > 0.5 else "hidden")
+        c.coords("pomello", xv, y)
+        c.itemconfigure("nome", fill=C["titolo"] if v > 0 else C["testo"])
+        c.itemconfigure("pc", text=f"{round(v)}%", fill=C["azzurro"] if v > 0 else C["muto"])
+
+    def aggiorna(self):
+        for k in self.cv:
+            self.aggiorna_uno(k)
+        tot = round(sum(self.v.values()))
+        self.l_tot.configure(text="No goal" if not tot else f"{tot}% assigned", fg=C["azzurro"] if tot == 100 else C["muto"])
 
     def disegna(self):
         for k in self.cv:
-            self.disegna_uno(k)
+            c = self.cv[k]
+            if getattr(c, "largo_", None) == max(40, c.winfo_width() if c.winfo_width() > 1 else self.LARGO):
+                self.aggiorna_uno(k)
+            else:
+                self.disegna_uno(k)
         tot = round(sum(self.v.values()))
         self.l_tot.configure(text="No goal" if not tot else f"{tot}% assigned", fg=C["azzurro"] if tot == 100 else C["muto"])
         c = self.c_oro; c.delete("all"); on = self.oro_buste
         c.create_image(0, 0, image=DG.spunta(13, on, C["azzurro"], TEND["campo"], TEND["bordo"], C["fondo"]), anchor="nw")
         self.l_oro.configure(fg=C["titolo"] if on else C["testo"])
+
+
+def pomello():
+    """Il pallino dello slider: azzurro col bordo chiaro, nitido (disegni.py), fatto una volta."""
+    def fa():
+        d = DG.Disegno(15, 15)
+        d.cerchio(7.5, 7.5, 6.5, riempi=C["azzurro"], bordo=C["titolo"], larghezza=1.5)
+        return d
+    return DG._icona(("pomello_farmer",), fa)
 
 
 class Farmer:

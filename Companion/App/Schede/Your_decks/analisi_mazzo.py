@@ -99,10 +99,11 @@ def _stima(v, n):
     return (v + 1) / (n + 2)
 
 
-def analizza(partite, lista, e_terra=lambda n: False, idx=None):
+def analizza(partite, lista, e_terra=lambda n: False, idx=None, righe=None):
     """partite: quelle del mazzo (dict con matchId e vinta: partite_mazzo); lista: {nome: copie} del mazzo (main, comandante, sideboard).
     -> dict(n, con_dati, wr, migliori, fatica, perse, sue, combo_sue, combo_mie); ogni lista di dict con nome (o coppia), numeri e wr."""
     idx = carte_partite() if idx is None else idx
+    RIGHE = righe or globals()["RIGHE"]         # la finestra dettagliata (12 nov 2026) chiede le liste intere
     intero = {faccia(n): n for n in lista}        # nella finestra le carte del mazzo hanno il nome della lista
     terra_ = e_terra
 
@@ -140,6 +141,9 @@ def analizza(partite, lista, e_terra=lambda n: False, idx=None):
     for k in ("migliori", "fatica", "perse"):
         for x in out[k]:
             x["nome"] = intero.get(x["nome"], x["nome"])
+    # ogni carta, per la scheda in hover della finestra del mazzo (12 nov 2026, Autore: «l'hover sulle carte dovrebbe dare i meta dati accanto o sotto la carta
+    # in merito al suo comportamento in partita in quel mazzo»): viste, lanciate, rimaste in mano, con le vinte di ognuna
+    out["carte"] = {intero.get(n, n): dict(a) for n, a in st.items()}
     loro = collections.defaultdict(lambda: [0, 0])     # nome -> [partite viste, perse]
     for g in giochi:
         for n in g["sue"]:

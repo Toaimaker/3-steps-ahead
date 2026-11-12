@@ -105,10 +105,17 @@ PASSO_X = BASE_W + SPAZIO
 PASSO_Y = misure(1.0)[2]
 
 
+# la griglia piu' fitta (12 nov 2026, Autore: «ridimensioniamo la grid sulla quale dovrebbero snappare le carte, rendiamola piu' fitta: dimensione adatta a fare
+# in modo che una carta sia compresa in uno specifico range di quadratini della griglia e che quindi non snappi in disordine»): quadratini quasi quadrati, 12 per
+# colonna (una carta e lo spazio fra le pile: 166 / 12 = 13,8 pixel) e 2 per passo verticale (26 / 2 = 13). Una carta occupa sempre le stesse 12 colonne di
+# quadratini; la disposizione per costo e la rete restano sulla griglia di prima, che e' fatta degli stessi quadratini.
+CELLE_X, CELLE_Y = 12, 2
+CELLA_X, CELLA_Y = PASSO_X / CELLE_X, PASSO_Y / CELLE_Y
+
+
 def a_griglia(x, y, mezza=False):
-    """Il punto della griglia piu' vicino (mezza: anche a meta' colonna, per i dot)."""
-    px = PASSO_X / 2 if mezza else PASSO_X
-    return MARGINE + round((x - MARGINE) / px) * px, round(y / PASSO_Y) * PASSO_Y
+    """Il quadratino della griglia piu' vicino (mezza: tenuta per chi la passa; i quadratini sono gia' piu' fitti di meta' colonna)."""
+    return MARGINE + round((x - MARGINE) / CELLA_X) * CELLA_X, round(y / CELLA_Y) * CELLA_Y
 
 
 def carica_tavoli(f=None):
@@ -187,6 +194,84 @@ def foto_gpu(nome):
         return None
     _FOTO_2X[nome] = (TG.registra_pil(f"carta2x:{nome}", c[0]), c[1])
     return _FOTO_2X[nome]
+
+
+RIGA_COPIA = 24       # la riga di una carta in un gruppo duplicato (scala 1)
+TIPI = (("all", "All"), ("creature", "Creatures"), ("instant", "Instants"), ("sorcery", "Sorceries"), ("enchantment", "Enchantments"),
+        ("artifact", "Artifacts"), ("planeswalker", "Planeswalkers"), ("land", "Lands"), ("battle", "Battles"))
+_TIPO_ARENA = {}
+
+
+def tipo_arena(nome):
+    """La riga del tipo di una carta dal database delle carte di Arena (per nome, la prima faccia), quando carte_db non ce l'ha."""
+    if not _TIPO_ARENA:
+        try:
+            import db_carte
+            t = db_carte.testi()
+            for c in db_carte.carte():
+                n = t.get(c.get("titleId"))
+                if n:
+                    _TIPO_ARENA.setdefault(n.split(" // ")[0].strip().lower(), t.get(c.get("cardTypeTextId")) or "")
+        except Exception:       # noqa: BLE001 - senza database niente tipo: la carta resta con All
+            _TIPO_ARENA["?"] = ""
+    return _TIPO_ARENA.get((nome or "").split(" // ")[0].strip().lower(), "")
+
+
+def icona_tipo(tipo, lato=18, colore="#bebec2"):
+    """L'icona di un tipo di carta, disegnata da noi nello stile dei simboli dei tipi (12 nov 2026): artiglio, fulmine, fiamma, sole, anfora, scintilla, monti,
+    scudo. Antialias."""
+    def fa():
+        d = DG.Disegno(lato, lato)
+        k = lato / 20
+        P = lambda pts: [(x * k, y * k) for x, y in pts]
+        if tipo == "creature":          # tre graffi d'artiglio
+            for dx in (0, 4.5, 9):
+                d.linea(P([(4 + dx, 17), (8 + dx, 3)]), colore, 2.2 * k)
+        elif tipo == "instant":         # il fulmine
+            d.poligono(P([(12, 1), (4, 11), (9, 11), (7, 19), (16, 8), (11, 8), (13, 1)]), riempi=colore)
+        elif tipo == "sorcery":         # la fiamma
+            d.poligono(P([(10, 1), (14, 7), (16, 12), (14, 17), (10, 19), (6, 17), (4, 12), (6, 7), (8, 10)]), riempi=colore)
+        elif tipo == "enchantment":     # il sole: un cerchio e otto raggi
+            d.cerchio(10 * k, 10 * k, 3.6 * k, riempi=colore)
+            import math
+            for a in range(8):
+                r0, r1 = 5.8, 9.2 if a % 2 == 0 else 8.0
+                ca, sa = math.cos(a * math.pi / 4), math.sin(a * math.pi / 4)
+                d.linea(P([(10 + r0 * ca, 10 + r0 * sa), (10 + r1 * ca, 10 + r1 * sa)]), colore, 1.6 * k)
+        elif tipo == "artifact":        # l'anfora
+            d.poligono(P([(7, 2), (13, 2), (12, 5), (15, 9), (14, 15), (11, 18), (9, 18), (6, 15), (5, 9), (8, 5)]), riempi=colore)
+        elif tipo == "planeswalker":    # la scintilla: una lama verticale e due ali
+            d.poligono(P([(10, 1), (12, 8), (10, 19), (8, 8)]), riempi=colore)
+            d.poligono(P([(3, 6), (8, 9), (8, 13)]), riempi=colore)
+            d.poligono(P([(17, 6), (12, 9), (12, 13)]), riempi=colore)
+        elif tipo == "land":            # i monti
+            d.poligono(P([(1, 17), (7, 6), (10, 11), (13, 4), (19, 17)]), riempi=colore)
+        elif tipo == "battle":          # lo scudo
+            d.poligono(P([(10, 1), (17, 4), (16, 12), (10, 19), (4, 12), (3, 4)]), riempi=colore)
+        else:
+            d.cerchio(10 * k, 10 * k, 6 * k, bordo=colore, larghezza=1.6 * k)
+        return d
+    return DG._icona(("icona_tipo", tipo, lato, colore), fa)
+
+
+def segno_nota(lato=20, piena=True):
+    """Il foglietto della nota (12 nov 2026): un foglio ambra con l'angolo piegato e tre righe; vuoto (solo il bordo e un +) per farne una nuova. Antialias."""
+    def fa():
+        d = DG.Disegno(lato, lato)
+        k = lato / 20
+        amb, scuro = (240, 173, 78, 255), (42, 34, 20, 255)
+        foglio = [(3 * k, 2 * k), (13 * k, 2 * k), (17 * k, 6 * k), (17 * k, 18 * k), (3 * k, 18 * k)]
+        if piena:
+            d.poligono(foglio, riempi=amb)
+            d.poligono([(13 * k, 2 * k), (13 * k, 6 * k), (17 * k, 6 * k)], riempi=(190, 128, 50, 255))
+            for y in (9, 12, 15):
+                d.linea([(6 * k, y * k), (14 * k, y * k)], scuro, 1.4 * k, tondo=False)
+        else:
+            d.poligono(foglio, riempi=(32, 32, 36, 230), bordo=amb, larghezza=1.4 * k)
+            d.linea([(10 * k, 7 * k), (10 * k, 15 * k)], amb, 1.6 * k)
+            d.linea([(6 * k, 11 * k), (14 * k, 11 * k)], amb, 1.6 * k)
+        return d
+    return DG._icona(("segno_nota", lato, piena), fa)
 
 
 def pallino_nodo(lato=16):
@@ -369,12 +454,20 @@ class TavoloCarte:
         self.pile = []          # dict(zona="main"|"side"|"cmd", x, y, carte=[id...], aperta=id|None) in coordinate di scala M
         self.zoom = 1.0             # lo zoom del foglio (il mazzo)
         self.hs = FASCIA_DEF        # l'altezza della fascia della sideboard, in pixel: la barra di separazione
+        # la fascia ferma in cima alla finestra (12 nov 2026, Autore: «quando zoomo in o out le carte nell'area sideboard si ridimensionano mentre quelle del
+        # deck no», «quando sposto le carte nell'area sideboard, l'area side resta value 0»): prima scorreva col foglio, e lo zoom della rotella (che tiene
+        # fermo il punto sotto il mouse) la portava fuori dallo schermo. Ora la fascia e le sue carte stanno dove comincia la vista (_fx, _fy: la vista con cui
+        # sono disegnate) e si rimettono li' quando la vista cambia (segui_fascia); il foglio del mazzo le scorre sotto.
+        self._fx, self._fy = 0.0, 0.0
         self.separa = None          # la barra mentre la trascini
         self._zoom_dopo = None
         self.drag = None
         self.sel = []           # le pile selezionate (riquadro sul vuoto, Ctrl+clic): si spostano insieme, e da loro nasce una label
         self.banda = None       # il riquadro di selezione mentre lo tiri
         self.ridim = None       # l'angolo di una label mentre lo tiri
+        self.filtro = set()     # i tipi a vista (12 nov 2026): vuoto = All; le carte fuori stanno da parte (_riposte), nel mazzo e nella disposizione
+        self._riposte = []      # [(pila, tolta, [(indice, vid)])]: le carte tenute da parte per il filtro, e se la pila e' uscita perche' non ne restava nessuna
+        self.note = {}          # le note personali sulle carte (12 nov 2026): {nome della carta: dict(testo, aperta)}; quelle delle label stanno nella label
         self.etichette = []     # le label: dict(nome, x, y, w, h) in coordinate del mazzo (scala 1), riquadri col nome; le carte dentro ne fanno parte
         # i dot delle linee (Autore, 9 nov 2026: «la possibilita' di spezzare le linee con dei dot dai quali possiamo fare partire altre linee (come in nuke)»):
         # id -> dict(x, y nel mazzo a scala 1, padre = la carta da cui viene il segnale, da = il dot prima nella catena o None); vie: (padre, figlio) -> l'ultimo dot
@@ -415,6 +508,7 @@ class TavoloCarte:
         f.bind("<Key>", self.tasto, add="+")       # A e F
         f.protocol("WM_DELETE_WINDOW", self.chiudi)
         self.testata()
+        self.riga_filtri()
         # il foglio sulla scheda video (Autore, 9 nov 2026: «Sì, portalo»): la tela GPU ha le funzioni della tela di Tk; se la scheda non parte, Tk come prima.
         # Senza bordi: il pan va ovunque (confine=False nella tela di Tk)
         self.cv = TG.crea(tk, f, bg=C["scheda"], highlightthickness=0, bd=0, confine=False)
@@ -458,6 +552,225 @@ class TavoloCarte:
         self.cv.bind("<Configure>", lambda e: self.disegna())
         self.carica_mancanti()
         f.lift(); f.focus_set()
+
+    # ------------------------------------------------ i filtri per tipo (12 nov 2026)
+    # Autore: «aggiungiamo la possibilita' con pulsanti sulla cornice alta della board e relativi loghi di mtga di visualizzare solo le creature solo gli istantanei
+    # ecc nascondendo le carte non incluse nel flag e un flag per all che di default e' acceso - quando premo un flag diverso all si spegne e si rivela solo il
+    # contenuto di quel flag - posso combinare piu' flag tra loro ma il flag all non puo' combinarsi con altri flag e' assoluto». Le icone sono disegnate da noi
+    # nello stile dei simboli dei tipi (i loghi di Arena non sono fra i file che abbiamo): artiglio, fulmine, fiamma, sole, anfora, scintilla, monti, scudo.
+    def riga_filtri(self):
+        tk = self.tk
+        self.c_filtri = tk.Canvas(self.fin, height=40, bg=C["cap"], highlightthickness=0, cursor="hand2")
+        self.c_filtri.pack(fill="x")
+        self.c_filtri.bind("<Button-1>", self.clic_filtro)
+        self.c_filtri.bind("<Configure>", lambda e: self.disegna_filtri())
+        self.disegna_filtri()
+
+    def disegna_filtri(self):
+        c, F = self.c_filtri, self.F
+        c.delete("all")
+        self._box_filtri = []
+        x = 14
+        c.create_text(x, 20, text="SHOW", anchor="w", fill=C["muto"], font=F(7, True))
+        x += 44
+        conti = collections.Counter()
+        for vid in self.voci:
+            for t_ in self.tipi_di(vid):
+                conti[t_] += self.voci[vid]["q"]
+        for chiave, testo in TIPI:
+            on = (chiave == "all" and not self.filtro) or chiave in self.filtro
+            n = sum(v["q"] for v in self.voci.values()) if chiave == "all" else conti.get(chiave, 0)
+            if chiave != "all" and not n:
+                continue
+            etichetta = f"{testo} {n}"
+            lg = 34 + 7 * len(etichetta)
+            col = C["accento"] if on else C["grigio"]
+            c.create_rectangle(x, 7, x + lg, 33, fill=C["scheda"] if on else C["cap"], outline=C["accento"] if on else C["filo"])
+            if chiave != "all":
+                c.create_image(x + 7, 11, image=icona_tipo(chiave, 18, col), anchor="nw")
+            c.create_text(x + (28 if chiave != "all" else 12), 20, text=etichetta, anchor="w", fill=C["titolo"] if on else C["grigio"], font=F(8, True))
+            self._box_filtri.append((x, x + lg, chiave))
+            x += lg + 6
+        if self.modifica:       # i gruppi automatici (12 nov 2026), a destra
+            W = max(c.winfo_width(), x + 200)
+            testo = "AUTO GROUPS ▾"
+            lg = 24 + 7 * len(testo)
+            c.create_rectangle(W - 14 - lg, 7, W - 14, 33, fill=C["scheda"], outline=C["accento"])
+            c.create_text(W - 14 - lg / 2, 20, text=testo, fill=C["accento"], font=F(8, True))
+            self._box_filtri.append((W - 14 - lg, W - 14, "auto"))
+
+    def clic_filtro(self, e):
+        for x0, x1, chiave in getattr(self, "_box_filtri", []):
+            if x0 <= e.x <= x1:
+                return self.menu_auto() if chiave == "auto" else self.scegli_filtro(chiave)
+
+    def scegli_filtro(self, chiave):
+        """All e' assoluto: lo accende e spegne gli altri. Un tipo spegne All e si somma agli altri accesi; spento l'ultimo, torna All."""
+        if chiave == "all":
+            self.filtro = set()
+        elif chiave in self.filtro:
+            self.filtro.discard(chiave)
+        else:
+            self.filtro.add(chiave)
+        self.disegna_filtri()
+        self.disegna()
+        nascoste = sum(len(x[2]) for x in self._riposte)
+        self.dici("Showing all the cards" if not self.filtro else f"Showing {', '.join(sorted(self.filtro))} · {nascoste} cards hidden")
+
+    # i gruppi automatici (12 nov 2026, Autore: «aggiungiamo la possibilita' di creare autogruppi di carte in base ai dati di analysis / autogruppi in base alle
+    # carte visibili contro quelle nascoste»): ogni gruppo nasce come label, con le sue carte in fila, a destra di tutto, uno sotto l'altro
+    def menu_auto(self):
+        tk, F = self.tk, self.F
+        self.nome_chiudi()
+        p = self._nome_pop = tk.Toplevel(self.fin); p.overrideredirect(True); p.configure(bg=C["accento"])
+        dentro = tk.Frame(p, bg=C["cap"]); dentro.pack(padx=1, pady=1)
+        tk.Label(dentro, text="Auto groups", bg=C["cap"], fg=C["titolo"], font=F(9, True)).pack(anchor="w", padx=10, pady=(8, 4))
+        voci = [("From analysis: best performers, hard to cast, weak in losses", self.auto_analisi),
+                ("Shown vs hidden (the type filter)", self.auto_visibili)]
+        for testo, fa in voci:
+            b = tk.Label(dentro, text=testo, bg=C["cap"], fg=C["accento"], font=F(8, True), cursor="hand2", anchor="w")
+            b.pack(fill="x", padx=10, pady=2)
+            b.bind("<Button-1>", lambda ev, fa=fa: (self.nome_chiudi(), fa()))
+        tk.Label(dentro, text="Esc closes", bg=C["cap"], fg=C["grigio"], font=F(7)).pack(anchor="w", padx=10, pady=(4, 8))
+        p.bind("<Escape>", lambda ev: self.nome_chiudi())
+        p.geometry(f"+{self.fin.winfo_pointerx() - 320}+{self.fin.winfo_pointery() + 14}")
+        p.focus_force()
+        return p
+
+    def gruppi_auto(self, gruppi):
+        """gruppi: [(nome, colore, [nomi delle carte])]. Le carte del mazzo con quei nomi escono dalle loro pile, una pila ciascuna, in fila a destra di tutto,
+        e una label intorno a ogni fila. -> le label nate."""
+        self.sfiltra()
+        w, h, _off, _p = misure(1.0)
+        destra = max([pl["x"] + w for pl in self.pile if pl["zona"] == "main"] + [lb["x"] + lb["w"] for lb in self.etichette], default=MARGINE)
+        x0 = a_griglia(destra + 2 * PASSO_X, 0)[0]
+        y = 0
+        nate = []
+        usate = set()
+        for nome, colore, nomi in gruppi:
+            vids = [vid for vid, v in self.voci.items() if v["zona"] == "main" and v["nome"] in nomi and vid not in usate]
+            if not vids:
+                continue
+            for i, vid in enumerate(sorted(vids, key=self.ordine)):
+                usate.add(vid)
+                pl = self.pila_di(vid)
+                if pl is not None:
+                    pl["carte"].remove(vid)
+                    if pl.get("aperta") == vid:
+                        pl["aperta"] = None
+                    if not pl["carte"]:
+                        self.pile.remove(pl)
+                self.pile.append(dict(zona="main", x=x0 + i * PASSO_X, y=y + TIT_L + PAD_L, carte=[vid], aperta=None))
+            lb = dict(nome=nome, x=round(x0 - PAD_L - 14), y=round(y), w=round(len(vids) * PASSO_X + 2 * PAD_L), h=round(TIT_L + PAD_L * 2 + h),
+                      colore=colore, lucchetto=True, id=self.nuovo_id())
+            self.etichette.append(lb)
+            nate.append(lb)
+            y = a_griglia(0, y + lb["h"] + 2 * PASSO_Y)[1]
+        self.disegna(); self.salva()
+        if nate:
+            self.inquadra_tutto()
+        return nate
+
+    def auto_visibili(self):
+        if not self.filtro:
+            self.dici("Turn on a type filter first: the groups are the cards it shows and the ones it hides")
+            return []
+        nomi = sorted(self.filtro)
+        si = {v["nome"] for vid, v in self.voci.items() if v["zona"] == "main" and self.visibile(vid)}
+        no = {v["nome"] for vid, v in self.voci.items() if v["zona"] == "main" and not self.visibile(vid)}
+        filtro = set(self.filtro)
+        self.filtro = set()         # i gruppi si vedono tutti e due
+        nate = self.gruppi_auto([("Shown: " + ", ".join(nomi), "#24baff", si), ("Hidden", GRIGIO_L, no)])
+        self.disegna_filtri()
+        self.dici(f"Auto groups: {len(nate)} from the filter ({', '.join(sorted(filtro))})")
+        return nate
+
+    def analisi_mazzo(self):
+        """L'analisi del mazzo dai nostri log (analisi_mazzo.py), se il Board e' quello di un mazzo di Arena con partite; None se no. Le prove la passano."""
+        f = getattr(self, "fonte_analisi", None)
+        if f is not None:
+            return f()
+        if not (self.chiave or "").startswith("mio:"):
+            return None
+        try:
+            import analisi_mazzo as AM
+            import dati_mazzo as DM
+            pp = AM.partite_mazzo(self.chiave[4:])
+            lista = collections.Counter()
+            for v in self.voci.values():
+                lista[v["nome"]] += v["q"]
+            return AM.analizza(pp, dict(lista), lambda n: DM.e_terra(n, self.carte_db)) if pp else None
+        except Exception:       # noqa: BLE001 - senza analisi lo dice
+            return None
+
+    def auto_analisi(self):
+        a = self.analisi_mazzo()
+        if not a or not a.get("con_dati"):
+            self.dici("No games of this deck in your logs yet: the analysis groups need them (play it on Arena)")
+            return []
+        nel = {v["nome"] for v in self.voci.values() if v["zona"] == "main"}
+        gruppi = [("Best performers", "#5cb85c", [x["nome"] for x in a.get("migliori") or [] if x["nome"] in nel]),
+                  ("Hard to cast", "#f0ad4e", [x["nome"] for x in a.get("fatica") or [] if x["nome"] in nel]),
+                  ("Weak in your losses", "#d9534f", [x["nome"] for x in a.get("perse") or [] if x["nome"] in nel])]
+        nate = self.gruppi_auto(gruppi)
+        self.dici(f"Auto groups from {a['con_dati']} games: " + ", ".join(lb["nome"] for lb in nate) if nate else "The analysis has no card to group yet")
+        return nate
+
+    def tipi_di(self, vid):
+        """I tipi della carta (creature, instant, ...) dalla sua riga del tipo: carte_db, se no il database delle carte di Arena."""
+        v = self.voci.get(vid) or {}
+        riga = (self.info(vid).get("tipo") or "") if vid in self.voci else ""
+        if not riga:
+            riga = tipo_arena(v.get("nome") or "")
+        riga = riga.lower()
+        return {k for k, _t in TIPI[1:] if k in riga}
+
+    def visibile(self, vid):
+        return not self.filtro or bool(self.tipi_di(vid) & self.filtro)
+
+    def sfiltra(self):
+        """Rimette nelle pile le carte tenute da parte (e le pile uscite perche' vuote)."""
+        for pl, tolta, carte in reversed(self._riposte):
+            # la pila torna sul foglio se non c'e' piu': uscita perche' il filtro l'aveva svuotata, o perche' ne hai trascinato via tutte le carte a vista
+            # (12 nov 2026, lo stress: le sue carte nascoste restavano senza pila)
+            if (tolta or any(vid in self.voci for _i, vid in carte)) and not any(pl is q for q in self.pile):
+                self.pile.append(pl)
+            for i, vid in carte:
+                if vid in self.voci and vid not in pl["carte"]:
+                    pl["carte"].insert(min(i, len(pl["carte"])), vid)
+            if pl.get("aperta") not in pl["carte"]:
+                pl["aperta"] = None
+        self._riposte = []
+
+    def filtra(self):
+        """Tiene da parte le carte fuori dal filtro; una pila che resta vuota esce dal foglio finche' il filtro c'e'."""
+        if not self.filtro:
+            return
+        for pl in list(self.pile):
+            via = [(i, vid) for i, vid in enumerate(pl["carte"]) if not self.visibile(vid)]
+            if not via:
+                continue
+            for _i, vid in via:
+                pl["carte"].remove(vid)
+            tolta = not pl["carte"]
+            if tolta:
+                self.pile.remove(pl)
+            self._riposte.append((pl, tolta, via))
+
+    def pile_tutte(self):
+        """Le pile con tutte le loro carte, anche quelle tenute da parte dal filtro: [(pila, carte)] (per salvare)."""
+        extra = {}
+        for pl, _tolta, carte in self._riposte:
+            extra.setdefault(id(pl), (pl, []))[1].extend(carte)
+        out = []
+        for pl in self.pile + [x[0] for x in extra.values() if not any(x[0] is q for q in self.pile)]:
+            carte = list(pl["carte"])
+            for i, vid in sorted(extra.get(id(pl), (pl, []))[1]):
+                if vid in self.voci and vid not in carte:
+                    carte.insert(min(i, len(carte)), vid)
+            if carte:
+                out.append((pl, carte))
+        return out
 
     # ------------------------------------------------ la testata
     def testata(self):
@@ -547,6 +860,28 @@ class TavoloCarte:
                 ("", [i for i in ordinate if self.voci[i]["zona"] == "main" and terra(i)]),
                 ("SIDEBOARD", [i for i in ordinate if self.voci[i]["zona"] == "side"])]
 
+    def gruppi_label(self):
+        """[(k, label, [vid] o [(nome, copie)] per una copia)]: i gruppi per l'outliner, nell'ordine delle label; con tutte le carte, anche quelle che il filtro
+        nasconde."""
+        nascoste = bool(self._riposte)
+        if nascoste:
+            self.sfiltra()
+        try:
+            return self._gruppi_label()
+        finally:
+            if nascoste:
+                self.filtra()
+
+    def _gruppi_label(self):
+        out = []
+        for k, lb in enumerate(self.etichette):
+            if lb.get("copia"):
+                out.append((k, lb, sorted((lb.get("carte") or {}).items())))
+            else:
+                pile, _a = self.membri(k)
+                out.append((k, lb, sorted((c for pl in pile for c in pl["carte"]), key=self.ordine)))
+        return out
+
     def disegna_outliner(self):
         cv = getattr(self, "out_cv", None)
         if cv is None or not cv.winfo_exists():
@@ -582,12 +917,43 @@ class TavoloCarte:
                 cv.create_text(L - 10, y + RIGA_OUT / 2, text=str(v["q"]), fill=C["accento"] if scelta else C["grigio"], font=F(8, True), anchor="e")
                 self._out_righe.append((y, y + RIGA_OUT, vid))
                 y += RIGA_OUT
+        # i gruppi (12 nov 2026, Autore: «nell'outliner se ho creato dei gruppi anche li vengono visualizzati»): il nome nel colore del gruppo, poi le carte
+        gl = self.gruppi_label()
+        if gl:
+            y += 9
+            cv.create_text(10, y + 6, text="GROUPS", fill=C["muto"], font=F(6, True), anchor="w")
+            y += 14
+        for k, lb, carte in gl:
+            col = lb.get("colore") or GRIGIO_L
+            n_ = sum(q for _n, q in carte) if lb.get("copia") else sum(self.voci[v]["q"] for v in carte)
+            cv.create_rectangle(4, y + 4, 8, y + RIGA_OUT - 4, fill=col, width=0)
+            cv.create_text(14, y + RIGA_OUT / 2, text=lb["nome"], fill=C["grigio"] if lb.get("copia") else "#ffffff", font=F(8, True), anchor="w")
+            cv.create_text(L - 10, y + RIGA_OUT / 2, text=str(n_), fill=col, font=F(8, True), anchor="e")
+            self._out_righe.append((y, y + RIGA_OUT, ("l", k)))
+            y += RIGA_OUT
+            for c in carte:
+                nome, q = (c if lb.get("copia") else (self.voci[c]["nome"], self.voci[c]["q"]))
+                cv.create_text(22, y + RIGA_OUT / 2, text=nome if len(nome) <= 26 else nome[:25] + "…", fill=C["grigio"] if lb.get("copia") else C["testo"],
+                               font=F(8), anchor="w")
+                cv.create_text(L - 10, y + RIGA_OUT / 2, text=str(q), fill=C["grigio"], font=F(8, True), anchor="e")
+                if not lb.get("copia"):
+                    self._out_righe.append((y, y + RIGA_OUT, c))
+                y += RIGA_OUT
         cv.configure(scrollregion=(0, 0, L, y + 6))
 
     def scegli_outliner(self, e):
         y = self.out_cv.canvasy(e.y)
         vid = next((v for y0, y1, v in self._out_righe if y0 <= y < y1), None)
         if vid is None:
+            return
+        if isinstance(vid, tuple):      # la riga di un gruppo: la label scelta e inquadrata
+            k = vid[1]
+            self.vuota_sel()
+            self.sel_label = {k}
+            lb = self.etichette[k]
+            z, o = self.zoom, self.oy("main")
+            self.inquadra((lb["x"] * z, o + lb["y"] * z, (lb["x"] + lb["w"]) * z, o + (lb["y"] + lb["h"]) * z))
+            self.disegna_sel(); self.disegna_outliner()
             return
         self.sel_carta = vid
         self.disegna_sel()
@@ -730,6 +1096,8 @@ class TavoloCarte:
             return
         cv = self.cv
         W = cv.winfo_width()
+        if not getattr(cv, "zk", 1.0) != 1.0:       # durante lo zoom immediato della scheda video no: lo rifa' il disegno
+            self.segui_fascia()
         vista = (cv.canvasx(0), cv.canvasy(0), W)
         if self._hud_vista is not None and (vista != self._hud_vista if not self.gpu else vista[2] != self._hud_vista[2]) and getattr(self, "_hud_dati", None):
             self.disegna_info(*self._hud_dati)
@@ -836,6 +1204,7 @@ class TavoloCarte:
                 spx, spy = nx - cv.canvasx(fermo[2]), ny - cv.canvasy(fermo[3])
                 cv.scan_mark(0, 0)
                 cv.scan_dragto(int(round(-spx)), int(round(-spy)), gain=1)
+                self.segui_fascia()
             self.salva()
         self._zoom_dopo = cv.after(60, fai)
 
@@ -867,6 +1236,7 @@ class TavoloCarte:
             nx, ny = fx * self.zoom, omain + fy * self.zoom
             cv.vx, cv.vy = nx - px, ny - py                 # il punto torna sotto il puntatore
             cv.sporco = True
+            self.segui_fascia()
             self.salva()
         self._zoom_dopo = cv.after(140, fai)
 
@@ -882,6 +1252,7 @@ class TavoloCarte:
 
     def pan_muovi(self, e):
         self.cv.scan_dragto(e.x, e.y, gain=1)
+        self.segui_fascia()
 
     def pan_fine(self, e):
         self.cv.configure(cursor="")
@@ -914,12 +1285,45 @@ class TavoloCarte:
         return self.zoom if zona == "main" else self.sf()
 
     def oy(self, zona):
-        """Dove comincia la zona sulla tela, in pixel: la fascia sotto il suo titolo, il mazzo sotto la barra e il suo titolo."""
-        return self.hs + ETICHETTA if zona == "main" else ETICHETTA
+        """Dove comincia la zona sulla tela, in pixel: la fascia sotto il suo titolo (dove comincia la vista: la fascia sta ferma in cima alla finestra), il
+        mazzo sotto la barra e il suo titolo."""
+        return self.hs + ETICHETTA if zona == "main" else self._fy + ETICHETTA
+
+    def ox(self, zona):
+        """Dove comincia la zona in orizzontale: il mazzo a 0 sulla tela, la fascia dove comincia la vista."""
+        return 0.0 if zona == "main" else self._fx
+
+    def in_fascia(self, cy):
+        """Il punto della tela (y) e' nella fascia della sideboard, che sta in cima alla finestra?"""
+        return cy - self._fy < self.hs and not self.nascosta()
+
+    def segui_fascia(self):
+        """La vista e' cambiata (pan, rotella, zoom, inquadra): la fascia e le sue carte tornano in cima alla finestra, spostate, senza ridisegnare. Le frecce
+        che toccano la fascia si rifanno. -> True se si e' mossa."""
+        cv = self.cv
+        fx, fy = cv.canvasx(0), cv.canvasy(0)
+        dx, dy = fx - self._fx, fy - self._fy
+        if abs(dx) < 0.5 and abs(dy) < 0.5:
+            return False
+        self._fx, self._fy = fx, fy
+        cv.move("fascia", dx, dy)
+        tocca, rete = False, self._nomi_rete()
+        for pl in self.pile:
+            if pl["zona"] != "main":
+                for vid in pl["carte"]:
+                    for t_ in (f"c{vid}", f"n{vid}", f"s{vid}"):
+                        cv.move(t_, dx, dy)
+                    tocca |= self.voci[vid]["nome"] in rete
+        if tocca:
+            self.disegna_rete()
+        return True
+
+    def _nomi_rete(self):
+        return {n for p_, c_, _f in self.rete.legami({v["nome"] for v in self.voci.values()}) for n in (p_, c_)}
 
     def pos_px(self, pl):
         s_ = self.sc(pl["zona"])
-        return pl["x"] * s_, self.oy(pl["zona"]) + pl["y"] * s_, s_
+        return self.ox(pl["zona"]) + pl["x"] * s_, self.oy(pl["zona"]) + pl["y"] * s_, s_
 
     def ys_px(self, pl):
         s_ = self.sc(pl["zona"]); o = self.oy(pl["zona"])
@@ -932,7 +1336,7 @@ class TavoloCarte:
         return x, y, x + w * s_, self.oy(pl["zona"]) + (self.posizioni(pl)[-1] + h) * s_
 
     def vicino_barra(self, cy):
-        return abs(cy - self.hs) <= 6
+        return abs(cy - self._fy - self.hs) <= 6
 
     def premi_tela(self, e):
         """Il tasto sinistro, ovunque sulla tela. In ordine: la barra della fascia (si trascina), il contatore (lo fa contatore), il pallino (una freccia
@@ -946,8 +1350,13 @@ class TavoloCarte:
             if su_hud == "testa":
                 self.apri_info()
             return
-        if self.sola:       # da guardare: la barra della fascia e una pila che si apre, nient'altro
+        if self.sola:       # da guardare: la barra della fascia, una pila che si apre e le note da aprire e chiudere, nient'altro
             self.drag = self.tira = None
+            sopra_n = self.pezzo_a(cx, cy)
+            if sopra_n[0] in ("nota_i", "nota_b") and sopra_n[1] is not None:
+                return self.apri_nota("c", self.voci[sopra_n[1]]["nome"])
+            if sopra_n[0] in ("label_n", "label_nb") and sopra_n[1] is not None:
+                return self.apri_nota("l", sopra_n[1])
             if self.vicino_barra(cy):
                 self.separa = dict(y0=cy, hs0=self.hs, attesa=None)
                 return
@@ -969,6 +1378,26 @@ class TavoloCarte:
         if sopra[0] == "sel_menu":
             self.drag = None
             return self.menu_label(None)
+        if sopra[0] in ("copia_s", "copia_x", "copia_a", "copia_w") and sopra[1] is not None:       # una copia di un gruppo: ⇄ cambia, ✕ toglie, + aggiunge, Swap
+            self.drag = None
+            if sopra[0] == "copia_w":
+                return self.scambia_gruppo(sopra[1])
+            if sopra[0] == "copia_a":
+                return self.cerca_copia(sopra[1], None)
+            k_, i_ = sopra[1]
+            nome_ = sorted((self.etichette[k_].get("carte") or {}))[i_]
+            if sopra[0] == "copia_x":
+                return self.cambia_copia(k_, nome_, None)
+            return self.cerca_copia(k_, nome_)
+        if sopra[0] in ("nota_i", "nota_b", "nota_n", "label_n", "label_nb") and sopra[1] is not None:      # le note: l'icona apre e chiude, il riquadro e il ✎ scrivono
+            self.drag = None
+            if sopra[0] == "nota_i":
+                return self.apri_nota("c", self.voci[sopra[1]]["nome"])
+            if sopra[0] == "label_n":
+                return self.apri_nota("l", sopra[1])
+            if sopra[0] in ("nota_b", "nota_n"):
+                return self.editor_nota("c", self.voci[sopra[1]]["nome"])
+            return self.editor_nota("l", sopra[1])
         cor = self.cornice_sel()
         if (cor and sopra[0] in (None, "carta", "punto", "label_t") and not e.state & 0x4 and cor[0] <= cx <= cor[2] and cor[1] <= cy <= cor[3]):
             # con una selezione, dentro la sua cornice (una carta, un dot, il titolo di una label o il vuoto) si sposta sempre tutta la selezione, mai una carta sola
@@ -1054,6 +1483,16 @@ class TavoloCarte:
                 return "punto", next((int(t[1:]) for t in tags if t[0] == "p" and t[1:].isdigit()), None)
             if "sel_menu" in tags:
                 return "sel_menu", None
+            for nome_, pre in (("copia_s", "cs"), ("copia_x", "cx")):      # le righe di una copia (12 nov 2026): (k, riga)
+                if nome_ in tags:
+                    t_ = next((t for t in tags if t.startswith(pre) and "_" in t), None)
+                    return (nome_, tuple(int(x) for x in t_[2:].split("_"))) if t_ else (nome_, None)
+            for nome_, pre in (("copia_a", "ca"), ("copia_w", "cw")):
+                if nome_ in tags:
+                    return nome_, next((int(t[2:]) for t in tags if t.startswith(pre) and t[2:].isdigit()), None)
+            for nome_, pre in (("nota_i", "ni"), ("nota_b", "nb"), ("nota_n", "nn"), ("label_n", "ln"), ("label_nb", "lb")):      # le note (12 nov 2026)
+                if nome_ in tags:
+                    return nome_, next((int(t[2:]) for t in tags if t.startswith(pre) and t[2:].isdigit()), None)
             for nome_, pre in (("label_x", "lx"), ("label_l", "ll"), ("label_m", "lm"), ("label_r", "lr"), ("label_t", "lt")):     # la label sta sotto le carte: una carta sopra vince
                 if nome_ in tags and self.carta_a(x, y) is None:
                     return nome_, next((int(t[2:]) for t in tags if t.startswith(pre) and t[2:].isdigit()), None)
@@ -1081,8 +1520,9 @@ class TavoloCarte:
     def _carta_a(self, x, y):
         """La carta sotto il punto, dalla geometria delle pile (non dai pezzi disegnati): in ogni punto della carta, compreso il numero delle copie che sporge a
         sinistra; fra due carte che si coprono vince quella sopra (disegnata dopo)."""
+        su_fascia = self.in_fascia(y)       # sulla fascia solo le sue carte: le pile del mazzo le passano sotto (12 nov 2026)
         for pl in reversed(self.pile):
-            if pl["zona"] != "main" and self.nascosta():
+            if (pl["zona"] != "main") != su_fascia:
                 continue
             px, _py, s_ = self.pos_px(pl)
             w, h, _off, _p = misure(s_)
@@ -1297,30 +1737,37 @@ class TavoloCarte:
     def disegna(self):
         cv = self.cv
         self.nascondi()
+        self.sfiltra()          # il filtro per tipo si rifa' a ogni disegno: le carte nuove, le pile rifatte, le copie cambiate
+        self.filtra()
+        if getattr(self, "c_filtri", None) is not None:
+            self.disegna_filtri()
         cv.delete("all")
         L = max(cv.winfo_width(), 400)
         hs = self.hs
+        self._fx, self._fy = cv.canvasx(0), cv.canvasy(0)
+        fx, fy = self._fx, self._fy
         conti = collections.Counter()
         for v in self.voci.values():
             conti[v["zona"]] += v["q"]
         destra = max([L] + [self.ingombro_px(pl)[2] + MARGINE for pl in self.pile])
-        cv.create_rectangle(-50000, -50000, 50000, hs, fill=C["fondo"], width=0, tags="fondo")        # la fascia senza bordi, come il foglio
+        cv.create_rectangle(-50000, -50000, 50000, hs, fill=C["fondo"], width=0, tags="fondo")        # il foglio sopra il mazzo, quando la vista ci arriva
+        cv.create_rectangle(fx - 50000, fy - 50000, fx + 50000, fy + hs, fill=C["fondo"], width=0, tags=("fascia", "fascia_fondo"))     # la fascia, in cima alla vista
         if hs >= 22:
-            cv.create_text(MARGINE, 8, text=f"SIDEBOARD · {conti['side']}", fill=C["titolo"], font=self.F(8, True), anchor="nw")
+            cv.create_text(fx + MARGINE, fy + 8, text=f"SIDEBOARD · {conti['side']}", fill=C["titolo"], font=self.F(8, True), anchor="nw", tags=("fascia",))
         cv.create_text(MARGINE, hs + 8, text=f"DECK · {conti['main']}" + ("" if hs >= 22 else f"   ·   SIDEBOARD · {conti['side']}"), fill=C["titolo"], font=self.F(8, True),
                        anchor="nw")
         cmd = [pl for pl in self.pile if pl["zona"] == "cmd"]
         if cmd and not self.nascosta():
-            x0, y0 = min(self.ingombro_px(pl)[0] for pl in cmd) - 16 * self.sf(), ETICHETTA - 6
+            x0, y0 = min(self.ingombro_px(pl)[0] for pl in cmd) - 16 * self.sf(), fy + ETICHETTA - 6
             x1, y1 = max(self.ingombro_px(pl)[2] for pl in cmd) + 6, max(self.ingombro_px(pl)[3] for pl in cmd) + 6
-            cv.create_rectangle(x0, y0, x1, y1, outline="#c9a227", width=1)
+            cv.create_rectangle(x0, y0, x1, y1, outline="#c9a227", width=1, tags=("fascia",))
             cv.create_text(x0 + 4, y0 - 2, text="COMPANION" if all(self.voci[i]["nome"] in self.compagno for pl in cmd for i in pl["carte"]) else "COMMANDER",
-                           fill="#c9a227", font=self.F(7, True), anchor="sw")
+                           fill="#c9a227", font=self.F(7, True), anchor="sw", tags=("fascia",))
         self.disegna_etichette()        # le label sotto le carte
         legate = {n for p_, c_, _f in self.rete.legami({v["nome"] for v in self.voci.values()}) for n in (p_, c_)}      # le carte coperte con una freccia hanno il pallino piccolo
         tot = conti["main"] + conti["side"]
         self.disegna_info(conti, tot)
-        for pl in self.pile:
+        for pl in sorted(self.pile, key=lambda q: q["zona"] != "main"):       # prima il mazzo, poi la fascia sopra
             if pl["zona"] != "main" and self.nascosta():        # la fascia chiusa: le sue carte non ci sono piu'
                 continue
             x, _y, s_ = self.pos_px(pl)
@@ -1335,18 +1782,36 @@ class TavoloCarte:
         cv.configure(scrollregion=(0, 0, max(bb[2] + MARGINE, L) + L // 2, max(bb[3] + MARGINE * 2, H) + H // 2))
         self.barra(destra)
         self.disegna_rete()
+        self.disegna_note()
         self.disegna_sel()
         self.disegna_outliner()
         cv.tag_raise("nodo")
+        self.fascia_sopra()
+
+    def fascia_sopra(self):
+        """La fascia sopra il foglio del mazzo (che le scorre sotto), le sue carte sopra la fascia, la barra e l'HUD sopra tutto."""
+        cv = self.cv
+        if self.nascosta():
+            cv.tag_raise("barra")
+            return
+        cv.tag_raise("fascia")
+        for pl in self.pile:
+            if pl["zona"] != "main":
+                for vid in pl["carte"]:
+                    cv.tag_raise(f"c{vid}")
+        for t_ in ("punto", "nodo", "scambia", "nota", "nota_b", "label_nb", "sel", "sel_menu", "barra"):        # gli strumenti restano sopra le carte, come sempre
+            cv.tag_raise(t_)
+        if not self.gpu:
+            cv.tag_raise("hud")
 
     def barra(self, destra):
         """La barra fra la fascia e il foglio: una linea e, nel mezzo, il segno ▲▼ disegnato che dice che si trascina su e giu'. Sopra le carte."""
         cv = self.cv
         L = max(cv.winfo_width(), 400)
-        y = self.hs
-        cv.create_line(-50000, y, 50000, y, fill=C["filo"], width=1, tags="barra")
+        y = self._fy + self.hs
+        cv.create_line(-50000, y, 50000, y, fill=C["filo"], width=1, tags=("barra", "fascia"))
         cx = cv.canvasx(0) + L / 2
-        cv.create_image(cx - 30, y - 9, image=segno_barra(), anchor="nw", tags="barra")
+        cv.create_image(cx - 30, y - 9, image=segno_barra(), anchor="nw", tags=("barra", "fascia"))
         cv.tag_raise("barra")
 
     def carta(self, vid, x, y, intera, s=1.0):
@@ -1535,10 +2000,10 @@ class TavoloCarte:
         if x_root is not None:
             mx, my = self.punto(x_root, y_root)
             b = self.bersaglio(mx, my)
-            zona = b["zona"] if b is not None else ("side" if my < self.hs and not self.nascosta() else "main")
+            zona = b["zona"] if b is not None else ("side" if self.in_fascia(my) else "main")
             s_ = self.sc(zona)
             w, _h, _off, _p = misure(s_)
-            xy = ((mx - w / 2) / s_, (my - 20 - self.oy(zona)) / s_)
+            xy = ((mx - w / 2 - self.ox(zona)) / s_, (my - 20 - self.oy(zona)) / s_)
         zona = zona or "main"
         if self.totale(nome) >= self.limite(nome):
             self.dici(f"{nome}: max {self.limite(nome)} copies")
@@ -1614,6 +2079,175 @@ class TavoloCarte:
         y = self.cv.winfo_rooty() + int(bb[3] - self.cv.canvasy(0)) + 4 if bb else self.fin.winfo_pointery()
         p.geometry(f"+{x}+{y}")
         e.focus_force()
+        return p
+
+    # ------------------------------------------------ le note personali (12 nov 2026)
+    # Autore: «aggiungiamo la possibilita' di aggiungere note personali ai gruppi o individualmente alle carte. le note sono espandibili o chiudibili, editabili
+    # e cancellabili». Una nota per carta (per nome: vale anche per le copie in sideboard) e una per label. Chiusa e' l'icona del foglietto in alto a destra della
+    # carta (sul titolo della label); il clic la apre o la chiude, il clic sul riquadro aperto la modifica. In modalita' edit il foglietto vuoto col + nello stesso
+    # angolo ne fa una nuova;
+    # nella label, Note... nel menu ≡. Il riquadro ha una misura fissa a ogni zoom, come gli strumenti. Si salvano con la disposizione del Board.
+    def nota_box(self, x, y, testo, tags, larga=230):
+        """Il riquadro della nota aperta: il testo che va a capo, su un fondo ambra scuro col bordo ambra. -> (x0, y0, x1, y1)."""
+        cv = self.cv
+        t = cv.create_text(x + 10, y + 8, text=testo, width=larga - 20, anchor="nw", fill="#f3e3c3", font=self.F(8), tags=tags + ("nota",))
+        bb = cv.bbox(t) or (x, y, x + larga, y + 30)
+        r = cv.create_rectangle(x, y, x + larga, bb[3] + 8, fill="#2a2214", outline="#f0ad4e", width=1, tags=tags + ("nota",))
+        cv.tag_lower(r, t)
+        return x, y, x + larga, bb[3] + 8
+
+    def disegna_note(self):
+        """Le note delle carte: l'icona sulla carta intera che ha una nota, il riquadro se e' aperta; il ✎ per farne una nuova (modalita' edit)."""
+        cv = self.cv
+        for pl in self.pile:
+            if pl["zona"] != "main" and self.nascosta():
+                continue
+            for vid in pl["carte"]:
+                if not (vid == pl["carte"][-1] or vid == pl.get("aperta")):
+                    continue
+                r = self.rett(vid)
+                if r is None:
+                    continue
+                nome = self.voci[vid]["nome"]
+                n = self.note.get(nome)
+                if n:
+                    cv.create_image(r[2] - 26, r[1] + 6, image=segno_nota(20, True), anchor="nw", tags=("nota", "nota_i", f"ni{vid}"))
+                    if n.get("aperta"):
+                        self.nota_box(r[2] + 8, r[1], n["testo"], ("nota_b", f"nb{vid}"))
+        self._nota_su = None
+        self.nota_hover(getattr(self, "_nota_hover", None))
+        cv.tag_raise("nota")
+        cv.tag_raise("nota_b")
+        cv.tag_raise("label_nb")
+
+    def nota_hover(self, vid):
+        """Il foglietto vuoto col + per una nota nuova: solo sulla carta sotto il mouse (in modalita' edit, se la carta intera non ha gia' una nota), nell'angolo in
+        alto a destra, dove sta la nota quando c'e'; su tutte le carte copriva il costo di mana e i riquadri delle note vicine."""
+        self._nota_hover = vid
+        if vid == getattr(self, "_nota_su", None) and self.cv.find_withtag("nota_n"):
+            return
+        self.cv.delete("nota_n")
+        self._nota_su = vid
+        if vid is None or not self.modifica or vid not in self.voci:
+            return
+        pl = self.pila_di(vid)
+        if pl is None or pl["zona"] == "cmd" or self.voci[vid]["nome"] in self.note or not (vid == pl["carte"][-1] or vid == pl.get("aperta")):
+            return
+        r = self.rett(vid)
+        if r is not None:
+            self.cv.create_image(r[2] - 24, r[1] + 8, image=segno_nota(16, False), anchor="nw", tags=("nota", "nota_n", f"nn{vid}"))
+
+    def nota_di(self, tipo, chiave):
+        if tipo == "c":
+            return (self.note.get(chiave) or {}).get("testo", "")
+        lb = self.etichette[chiave] if isinstance(chiave, int) and 0 <= chiave < len(self.etichette) else {}
+        return lb.get("nota", "")
+
+    def metti_nota(self, tipo, chiave, testo):
+        """Scrive (o, col testo vuoto, cancella) la nota di una carta (tipo «c», per nome) o di una label (tipo «l», per indice). Una nota scritta si apre."""
+        testo = (testo or "").strip()
+        if tipo == "c":
+            if testo:
+                self.note[chiave] = dict(testo=testo, aperta=True)
+            else:
+                self.note.pop(chiave, None)
+        elif isinstance(chiave, int) and 0 <= chiave < len(self.etichette):
+            lb = self.etichette[chiave]
+            if testo:
+                lb["nota"], lb["nota_aperta"] = testo, True
+            else:
+                lb.pop("nota", None); lb.pop("nota_aperta", None)
+        self.disegna()
+        self.salva()
+        self.dici("Note saved" if testo else "Note deleted")
+
+    def apri_nota(self, tipo, chiave):
+        """Apre o chiude la nota (si vede in tutte e due le modalita')."""
+        if tipo == "c" and chiave in self.note:
+            self.note[chiave]["aperta"] = not self.note[chiave].get("aperta")
+        elif tipo == "l" and isinstance(chiave, int) and 0 <= chiave < len(self.etichette) and self.etichette[chiave].get("nota"):
+            lb = self.etichette[chiave]
+            lb["nota_aperta"] = not lb.get("nota_aperta")
+        else:
+            return
+        self.disegna()
+        self.salva()
+
+    def editor_nota(self, tipo, chiave):
+        """La finestrella per scrivere la nota: il testo su piu' righe, Save (Ctrl+Invio), Delete se c'e', Esc chiude. Solo in modalita' edit."""
+        if not self.modifica:
+            return None
+        tk, F = self.tk, self.F
+        self.nota_chiudi()
+        titolo = chiave if tipo == "c" else (self.etichette[chiave]["nome"] if 0 <= chiave < len(self.etichette) else "Label")
+        p = self._nota_pop = tk.Toplevel(self.fin); p.overrideredirect(True); p.configure(bg="#f0ad4e")
+        dentro = tk.Frame(p, bg=C["cap"]); dentro.pack(padx=1, pady=1)
+        tk.Label(dentro, text=f"Note · {titolo}", bg=C["cap"], fg=C["titolo"], font=F(9, True)).pack(anchor="w", padx=10, pady=(8, 4))
+        testo = tk.Text(dentro, width=40, height=6, bg=C["scheda"], fg=C["titolo"], insertbackground=C["titolo"], relief="flat", font=F(9), wrap="word")
+        testo.pack(padx=10)
+        testo.insert("1.0", self.nota_di(tipo, chiave))
+        giu = tk.Frame(dentro, bg=C["cap"]); giu.pack(fill="x", padx=10, pady=(6, 8))
+
+        def salva(*_a):
+            self.metti_nota(tipo, chiave, testo.get("1.0", "end"))
+            self.nota_chiudi()
+            return "break"
+        ok = tk.Label(giu, text="Save", bg=C["accento"], fg="#ffffff", font=F(8, True), padx=10, pady=2, cursor="hand2"); ok.pack(side="right")
+        ok.bind("<Button-1>", salva)
+        if self.nota_di(tipo, chiave):
+            via = tk.Label(giu, text="Delete", bg=C["cap"], fg=C["rosso"], font=F(8, True), cursor="hand2"); via.pack(side="left")
+            via.bind("<Button-1>", lambda ev: (self.metti_nota(tipo, chiave, ""), self.nota_chiudi()))
+        tk.Label(giu, text="Ctrl+Enter saves · Esc closes", bg=C["cap"], fg=C["grigio"], font=F(7)).pack(side="left", padx=(10, 0))
+        testo.bind("<Control-Return>", salva)
+        testo.bind("<Escape>", lambda ev: self.nota_chiudi())
+        x, y = self.fin.winfo_pointerxy()
+        p.geometry(f"+{x + 12}+{y + 12}")
+        testo.focus_set()
+        self.pronta_nota = salva        # le prove salvano da qui
+        self.testo_nota = testo
+        return p
+
+    def nota_chiudi(self):
+        p = getattr(self, "_nota_pop", None)
+        if p is not None:
+            try:
+                p.destroy()
+            except Exception:
+                pass
+        self._nota_pop = None
+
+    def cerca_copia(self, k, vecchia):
+        """La casella col nome per cambiare (vecchia) o aggiungere (None) una carta della copia k: le carte che combaciano, prima quelle che hai."""
+        tk, F = self.tk, self.F
+        self.scambia_chiudi()
+        p = self._scambio = tk.Toplevel(self.fin); p.overrideredirect(True); p.configure(bg=C["accento"])
+        dentro = tk.Frame(p, bg=C["cap"]); dentro.pack(padx=1, pady=1)
+        tk.Label(dentro, text=f"Replace {vecchia} with…" if vecchia else "Add a card to the copy", bg=C["cap"], fg=C["titolo"], font=F(9, True)).pack(anchor="w", padx=10, pady=(8, 4))
+        var = tk.StringVar()
+        e = tk.Entry(dentro, textvariable=var, width=36, bg=C["scheda"], fg=C["titolo"], insertbackground=C["titolo"], relief="flat", font=F(10)); e.pack(padx=10, ipady=4)
+        lista = tk.Listbox(dentro, bg=C["cap"], fg=C["testo"], selectbackground=C["accento"], selectforeground="#ffffff", relief="flat", bd=0, highlightthickness=0,
+                           font=F(10), activestyle="none", height=8, width=40); lista.pack(padx=10, pady=(6, 8))
+        voci = []
+
+        def aggiorna(*_a):
+            voci[:] = self.scambia_trova(var.get(), vecchia or "")
+            lista.delete(0, "end")
+            for n, q in voci:
+                lista.insert("end", f"{n}   ·   x{q}" if q else f"{n}   ·   not owned")
+            if voci:
+                lista.selection_set(0)
+
+        def scegli(*_a):
+            sel = lista.curselection()
+            if voci:
+                self.cambia_copia(k, vecchia, voci[sel[0] if sel else 0][0])
+            self.scambia_chiudi()
+        var.trace_add("write", aggiorna)
+        e.bind("<Return>", scegli); lista.bind("<Double-Button-1>", scegli)
+        e.bind("<Escape>", lambda ev: self.scambia_chiudi())
+        p.geometry(f"+{self.fin.winfo_pointerx() + 10}+{self.fin.winfo_pointery() + 10}")
+        e.focus_force()
+        p.scelta = dict(var=var, scegli=scegli)         # per le prove
         return p
 
     def scambia_chiudi(self):
@@ -2288,8 +2922,9 @@ class TavoloCarte:
         trascinamento era gia' chiuso, quindi anche la pila tirata via tutta contava come bersaglio: il bordo azzurro diceva libera, la carta tornava a posto).
         d: il trascinamento, se non e' piu' in self.drag (il rilascio)."""
         d = d or self.drag
+        su_fascia = self.in_fascia(y)       # sulla fascia solo le pile della fascia, sul foglio solo quelle del mazzo (12 nov 2026)
         for pl in reversed(self.pile):
-            if pl["zona"] == "cmd" or (d and pl is d["da"]) or (pl["zona"] == "side" and self.nascosta()):
+            if pl["zona"] == "cmd" or (d and pl is d["da"]) or (pl["zona"] != "main") != su_fascia:
                 continue
             x0, y0, x1, y1 = self.ingombro_px(pl)
             if x0 - 4 <= x <= x1 + 4 and y0 - 4 <= y <= y1 + 4:
@@ -2332,7 +2967,7 @@ class TavoloCarte:
         b = self.bersaglio(d["x"], d["y"], d)
         da = d["da"]
         if self.sola:       # in sola lettura una carta non passa fra mazzo e sideboard: lasciata nell'altra zona torna al suo posto
-            verso = b["zona"] if b is not None else ("side" if d["y"] < self.hs and not self.nascosta() else "main")
+            verso = b["zona"] if b is not None else ("side" if self.in_fascia(d["y"]) else "main")
             if verso != da["zona"]:
                 self.disegna()
                 return
@@ -2345,9 +2980,9 @@ class TavoloCarte:
             zona = b["zona"]
         else:       # libera: una pila nuova dove e' finita la prima carta presa (nella fascia se il mouse e' sopra la barra)
             nx, ny = d["x_presa"] + d["x"] - d["x0"], d["y_presa"] + d["y"] - d["y0"]
-            zona = "side" if d["y"] < self.hs and not self.nascosta() else "main"
+            zona = "side" if self.in_fascia(d["y"]) else "main"
             s_ = self.sc(zona)
-            bx, by = nx / s_, (ny - self.oy(zona)) / s_
+            bx, by = (nx - self.ox(zona)) / s_, (ny - self.oy(zona)) / s_
             if self.griglia:        # libera mentre la trascini, sulla griglia quando la lasci, in una cella libera
                 gx, gy = self.cella_libera(zona, bx, by if zona == "main" else 0, len(d["prese"]))
             else:
@@ -2460,9 +3095,9 @@ class TavoloCarte:
         if not self.chiave or (self.sola and not self.sposta):        # in sola lettura si salva solo la disposizione delle carte spostate (10 nov 2026)
             return
         try:
-            salva_tavolo(self.chiave, dict(v=2, zoom=self.zoom, fascia=self.hs, etichette=[dict(lb) for lb in self.etichette],
-                                                    punti=[dict(id=q, **p_) for q, p_ in self.punti.items()], vie=[[a, b, q] for (a, b), q in self.vie.items()], pile=[dict(zona=pl["zona"], x=pl["x"], y=pl["y"], carte=[[self.voci[c]["nome"], self.voci[c]["q"]] for c in pl["carte"]])
-                                                                    for pl in self.pile]), self.file_tavoli)
+            salva_tavolo(self.chiave, dict(v=2, zoom=self.zoom, fascia=self.hs, etichette=[dict(lb) for lb in self.etichette], note=dict(self.note),
+                                                    punti=[dict(id=q, **p_) for q, p_ in self.punti.items()], vie=[[a, b, q] for (a, b), q in self.vie.items()], pile=[dict(zona=pl["zona"], x=pl["x"], y=pl["y"], carte=[[self.voci[c]["nome"], self.voci[c]["q"]] for c in carte_])
+                                                                    for pl, carte_ in self.pile_tutte()]), self.file_tavoli)
         except OSError as e:
             print("tavolo: non salvato:", e)
 
@@ -2478,7 +3113,13 @@ class TavoloCarte:
         if not t or not all(isinstance(c, list) for pl in t.get("pile", []) for c in pl["carte"]):     # una disposizione del primo giro (una carta per copia): si rifa'
             return False
         self.etichette = [dict(nome=str(x.get("nome") or "Label"), x=x["x"], y=x["y"], w=x["w"], h=x["h"], colore=x.get("colore") or GRIGIO_L,
-                               lucchetto=x.get("lucchetto", True)) for x in t.get("etichette") or [] if all(k in x for k in ("x", "y", "w", "h"))]
+                               lucchetto=x.get("lucchetto", True), **({"nota": str(x["nota"]), "nota_aperta": bool(x.get("nota_aperta"))} if x.get("nota") else {}),
+                               **({"id": str(x["id"])} if x.get("id") else {}),
+                               **({"copia": True, "carte": {str(n): int(q) for n, q in (x.get("carte") or {}).items()}, "origine": x.get("origine")}
+                                  if x.get("copia") else {}))
+                          for x in t.get("etichette") or [] if all(k in x for k in ("x", "y", "w", "h"))]
+        self.note = {str(n): dict(testo=str(v.get("testo")), aperta=bool(v.get("aperta"))) for n, v in (t.get("note") or {}).items()
+                     if isinstance(v, dict) and v.get("testo")}
         self.punti = {}
         for x in t.get("punti") or []:
             if not all(k in x for k in ("id", "x", "y")):
@@ -2552,6 +3193,8 @@ class TavoloCarte:
             self.cv.configure(cursor="hand2" if self.hud_su(e.x, e.y) == "testa" else "")
             return
         pezzo = self.pezzo_a(cx, cy)[0]
+        if self.drag is None and not self.tira:
+            self.nota_hover(self.carta_a(cx, cy))
         bx_ = getattr(self, "_barra_box", None)
         verso_barra = bool(bx_ and (self._arco or self._arco_t) and bx_[0] <= cx <= bx_[2] and bx_[1] <= cy <= bx_[3])
         if self.drag is None and not self.tira and not self.sola and not verso_barra and pezzo not in ("rete_x", "rete_s", "rete_c", "rete_xt"):
@@ -2561,7 +3204,8 @@ class TavoloCarte:
                 self.accendi_tronco(tr)
             else:
                 self.accendi_arco(sg)
-        self.cv.configure(cursor="sb_v_double_arrow" if self.vicino_barra(cy) and pezzo is None else "hand2" if pezzo in ("nodo", "ctrl", "rete_x", "rete_s", "rete_c", "rete_xt", "punto_out", "scambia", "label_x", "label_l", "label_m", "sel_menu")
+        self.cv.configure(cursor="sb_v_double_arrow" if self.vicino_barra(cy) and pezzo is None else "hand2" if pezzo in ("nodo", "ctrl", "rete_x", "rete_s", "rete_c", "rete_xt", "punto_out", "scambia", "label_x", "label_l", "label_m", "sel_menu",
+                                                                                                                                         "nota_i", "nota_b", "nota_n", "label_n", "label_nb")
                           or self._arco else "fleur" if pezzo in ("carta", "label_t", "punto") else "size_nw_se" if pezzo == "label_r" else "")
         if self.drag is not None or _tm.time() - self._fine_drag < 0.8:
             return
@@ -2788,13 +3432,14 @@ class TavoloCarte:
         alta = h + (max(1, n) - 1) * off
         cand = []
         gx, gy = a_griglia(x, y)
-        for i in range(-3, 4):
-            for j in (range(-24, 25) if zona == "main" else (0,)):
-                cx, cy = gx + i * PASSO_X, (gy + j * PASSO_Y) if zona == "main" else 0
+        for i in range(-3 * CELLE_X, 3 * CELLE_X + 1):
+            for j in (range(-24 * CELLE_Y, 24 * CELLE_Y + 1) if zona == "main" else (0,)):
+                cx, cy = gx + i * CELLA_X, (gy + j * CELLA_Y) if zona == "main" else 0
                 cand.append(((cx - x) ** 2 + (cy - y) ** 2, cx, cy))
         cand.sort()
+        altre = [self.ingombro(pl) for pl in self.pile if pl["zona"] == zona and pl["carte"] and not any(pl is q for q in ignora)]
         for _d, cx, cy in cand:
-            if not self.occupato(zona, (cx, cy, cx + w, cy + alta), ignora):
+            if not any(a[0] < cx + w - 1 and cx < a[2] - 1 and a[1] < cy + alta - 1 and cy < a[3] - 1 for a in altre):
                 return cx, cy
         return a_griglia(x, y if zona == "main" else 0)
 
@@ -2808,8 +3453,8 @@ class TavoloCarte:
             return not any(self.occupato("main", (r[0] + dx, r[1] + dy, r[2] + dx, r[3] + dy), ignora=gruppo) for r in rett)
         if libero(*passo):
             return passo
-        cand = sorted((((passo[0] + i * PASSO_X - voluto[0]) ** 2 + (passo[1] + j * PASSO_Y - voluto[1]) ** 2), passo[0] + i * PASSO_X, passo[1] + j * PASSO_Y)
-                      for i in range(-3, 4) for j in range(-24, 25))
+        cand = sorted((((passo[0] + i * CELLA_X - voluto[0]) ** 2 + (passo[1] + j * CELLA_Y - voluto[1]) ** 2), passo[0] + i * CELLA_X, passo[1] + j * CELLA_Y)
+                      for i in range(-3 * CELLE_X, 3 * CELLE_X + 1) for j in range(-24 * CELLE_Y, 24 * CELLE_Y + 1))
         for _d, dx, dy in cand:
             if libero(dx, dy):
                 return dx, dy
@@ -2818,6 +3463,9 @@ class TavoloCarte:
     def membri(self, k):
         """Le pile del mazzo dentro la label (il centro della pila nel riquadro) e le label tutte dentro di lei."""
         lb = self.etichette[k]
+        if lb.get("copia"):        # un gruppo duplicato ha le sue carte scritte, non pile del mazzo
+            self._punti_dentro = []
+            return [], []
         dentro = lambda cx, cy: lb["x"] <= cx <= lb["x"] + lb["w"] and lb["y"] <= cy <= lb["y"] + lb["h"]
         pile = [pl for pl in self.pile if pl["zona"] == "main" and dentro(*(lambda r: ((r[0] + r[2]) / 2, (r[1] + r[3]) / 2))(self.ingombro(pl)))]
         altre = [j for j, l2 in enumerate(self.etichette) if j != k and lb["x"] <= l2["x"] and l2["x"] + l2["w"] <= lb["x"] + lb["w"]
@@ -2911,6 +3559,18 @@ class TavoloCarte:
             scritta()
             via = tk.Label(giu, text="Delete", bg=C["cap"], fg=C["rosso"], font=F(8, True), cursor="hand2"); via.pack(side="left", padx=(12, 0))
             via.bind("<Button-1>", lambda ev: (self.nome_chiudi(), self.togli_etichetta(k)))
+            nota = tk.Label(giu, text="Note…", bg=C["cap"], fg="#f0ad4e", font=F(8, True), cursor="hand2"); nota.pack(side="left", padx=(12, 0))
+            nota.bind("<Button-1>", lambda ev: (self.nome_chiudi(), self.editor_nota("l", k)))
+            if self.modifica:       # i gruppi (12 nov 2026): duplicare, scambiare una copia con l'originale, togliere il gruppo con le sue carte
+                altro = tk.Frame(dentro, bg=C["cap"]); altro.pack(fill="x", padx=10, pady=(0, 8))
+                if lb.get("copia"):
+                    sw = tk.Label(altro, text=f"⇄ Swap with «{self.nome_origine(lb)}»", bg=C["cap"], fg=C["accento"], font=F(8, True), cursor="hand2"); sw.pack(side="left")
+                    sw.bind("<Button-1>", lambda ev: (self.nome_chiudi(), self.scambia_gruppo(k)))
+                else:
+                    du = tk.Label(altro, text="Duplicate", bg=C["cap"], fg=C["accento"], font=F(8, True), cursor="hand2"); du.pack(side="left")
+                    du.bind("<Button-1>", lambda ev: (self.nome_chiudi(), self.duplica_gruppo(k)))
+                    vc = tk.Label(altro, text="Delete with its cards", bg=C["cap"], fg=C["rosso"], font=F(8, True), cursor="hand2"); vc.pack(side="left", padx=(12, 0))
+                    vc.bind("<Button-1>", lambda ev: (self.nome_chiudi(), self.togli_gruppo(k)))
         e.bind("<Return>", applica)
         e.bind("<Escape>", lambda ev: self.nome_chiudi())
         p.bind("<Escape>", lambda ev: self.nome_chiudi())
@@ -2948,16 +3608,30 @@ class TavoloCarte:
             tg = ("label", f"l{k}")
             fz = max(7, round(9 * min(z, 1.6)))
             col = lb.get("colore") or GRIGIO_L
-            cv.create_rectangle(x0, y0, x1, y1, fill=mescola(FONDO_L, col, 0.06), outline=col, width=1, tags=tg)
+            if lb.get("copia"):
+                self.misura_copia(k)
+                x1, y1 = x0 + lb["w"] * z, y0 + lb["h"] * z
+            cv.create_rectangle(x0, y0, x1, y1, fill=mescola(FONDO_L, col, 0.06), outline=col, width=1, tags=tg, **({"dash": (5, 4)} if lb.get("copia") else {}))
             cv.create_rectangle(x0, y0, x1, y0 + th, fill=mescola(TESTA_L, col, 0.3), outline=col, width=1, tags=tg + ("label_t", f"lt{k}"))
-            cv.create_text(x0 + 10, y0 + th / 2, text=lb["nome"].upper(), fill=C["titolo"], font=self.F(fz, True), anchor="w", tags=tg + ("label_t", f"lt{k}"))
-            if self.sola:       # in sola lettura la label si vede col suo nome, senza strumenti
+            cv.create_text(x0 + 10, y0 + th / 2, text=lb["nome"].upper(), fill=C["titolo"], font=self.F(fz, True), anchor="w",
+                           tags=tg + ("label_t", f"lt{k}"))
+            if lb.get("copia"):
+                self.disegna_copia(k, x0, y0, x1, th, fz)
+            if self.sola:       # in sola lettura la label si vede col suo nome, senza strumenti (la sua nota si', da aprire e chiudere)
+                if lb.get("nota"):
+                    cv.create_image(x1 - 8 - 18, y0 + th / 2 - 9, image=segno_nota(18, True), anchor="nw", tags=tg + ("nota", "label_n", f"ln{k}"))
+                    if lb.get("nota_aperta"):
+                        self.nota_box(x0 + 8, y0 + th + 6, lb["nota"], ("label_nb", f"lb{k}"), larga=max(160, min(300, x1 - x0 - 16)))
                 continue
             cv.create_image(x1 - 8 - 12, y0 + th / 2 - 6, image=croce(12), anchor="nw", tags=tg + ("label_x", f"lx{k}"))
             chiusa = lb.get("lucchetto", True)      # chiusa: si sposta con quello che ha dentro; aperta: da sola
-            cv.create_image(x1 - 30 - 14, y0 + th / 2 - 7, image=DG.lucchetto(14, chiusa, "#f0ad4e" if chiusa else "#bebec2"), anchor="nw",
+            cv.create_image(x1 - 30 - 16, y0 + th / 2 - 8, image=DG.lucchetto(16, chiusa, "#f0ad4e" if chiusa else "#bebec2"), anchor="nw",
                             tags=tg + ("label_l", f"ll{k}"))
             cv.create_image(x1 - 52 - 16, y0 + th / 2 - 8, image=segno_menu(16), anchor="nw", tags=tg + ("label_m", f"lm{k}"))
+            if lb.get("nota"):      # la nota della label (12 nov 2026): l'icona sul titolo, il riquadro sotto il titolo se e' aperta
+                cv.create_image(x1 - 76 - 18, y0 + th / 2 - 9, image=segno_nota(18, True), anchor="nw", tags=tg + ("nota", "label_n", f"ln{k}"))
+                if lb.get("nota_aperta"):
+                    self.nota_box(x0 + 8, y0 + th + 6, lb["nota"], ("label_nb", f"lb{k}"), larga=max(160, min(300, x1 - x0 - 16)))
             g = 14
             cv.create_rectangle(x1 - g, y1 - g, x1 - 1, y1 - 1, fill=FONDO_L, outline="", width=0, tags=tg + ("label_r", f"lr{k}"))
             for a in (4, 8, 12):
@@ -2978,7 +3652,8 @@ class TavoloCarte:
               for k in self.sel_label if k < len(self.etichette)]
         x0, y0 = min(a[0] for a in r) - PAD_L - 14, min(a[1] for a in r) - PAD_L - TIT_L
         x1, y1 = max(a[2] for a in r) + PAD_L, max(a[3] for a in r) + PAD_L
-        lb = dict(nome=nome.strip() or "Label", x=round(x0), y=round(y0), w=round(x1 - x0), h=round(y1 - y0), colore=colore or GRIGIO_L, lucchetto=True)
+        lb = dict(nome=nome.strip() or "Label", x=round(x0), y=round(y0), w=round(x1 - x0), h=round(y1 - y0), colore=colore or GRIGIO_L, lucchetto=True,
+                  id=self.nuovo_id())
         self.etichette.append(lb)
         self.sel, self.sel_punti, self.sel_label = [], set(), set()
         self.disegna()
@@ -2986,14 +3661,151 @@ class TavoloCarte:
         self.dici(f"Label «{lb['nome']}»: drag its title to move it with its cards · lock: open to move it alone · ≡: name and color · ✕ removes")
         return lb
 
+    # ------------------------------------------------ i gruppi (12 nov 2026)
+    # Autore: «la possibilita' di duplicare dei gruppi - i gruppi duplicati non portano carte nel mazzo ma permettono la sostituzione veloce delle carte nel gruppo
+    # duplicato e la sostituzione veloce di un gruppo di carte nuovo contro quello da cui e' stato copiato / la possibilita' di cancellare un gruppo con tutto il suo
+    # contenuto in carte / la possibilita' di cancellare un gruppo vuoto dopo aver spostato fuori da esso le carte». Un gruppo e' una label. La copia tiene le sue
+    # carte scritte (nome e copie), una per riga col ⇄ che la cambia; «+ Add card» ne aggiunge una; Swap mette nel mazzo le carte della copia al posto di quelle
+    # del gruppo da cui viene, e la copia prende quelle di prima (un altro Swap torna indietro).
+    def nuovo_id(self):
+        import random
+        return "g" + "".join(random.choice("0123456789abcdef") for _ in range(8))
+
+    def nome_origine(self, lb):
+        o = next((x for x in self.etichette if x.get("id") and x.get("id") == lb.get("origine")), None)
+        return o["nome"] if o else "?"
+
+    def carte_gruppo(self, k):
+        """Le carte del mazzo dentro il gruppo k: {nome: copie} (solo il mazzo, non la fascia)."""
+        pile, _a = self.membri(k)
+        out = collections.Counter()
+        for pl in pile:
+            for vid in pl["carte"]:
+                out[self.voci[vid]["nome"]] += self.voci[vid]["q"]
+        return dict(out)
+
+    def misura_copia(self, k):
+        lb = self.etichette[k]
+        righe = len(lb.get("carte") or {}) + 1
+        lb["w"] = max(lb.get("w") or 0, 300)
+        lb["h"] = TIT_L + 14 + righe * RIGA_COPIA + 10
+
+    def disegna_copia(self, k, x0, y0, x1, th, fz):
+        cv, F, z = self.cv, self.F, self.zoom
+        lb = self.etichette[k]
+        rh = RIGA_COPIA * z
+        y = y0 + th + 7 * z
+        for i, (nome, q) in enumerate(sorted((lb.get("carte") or {}).items())):
+            if i % 2:
+                cv.create_rectangle(x0 + 1, y, x1 - 1, y + rh, fill=mescola(FONDO_L, lb.get("colore") or GRIGIO_L, 0.12), width=0, tags=("label", f"l{k}"))
+            cv.create_text(x0 + 12, y + rh / 2, text=f"{q}x", fill=C["accento"], font=F(max(7, round(8 * min(z, 1.6))), True), anchor="w", tags=("label", f"l{k}"))
+            cv.create_text(x0 + 12 + 30 * min(z, 1.6), y + rh / 2, text=nome, fill=C["titolo"], font=F(max(7, round(9 * min(z, 1.6)))), anchor="w",
+                           tags=("label", f"l{k}"))
+            if not self.sola:
+                cv.create_image(x1 - 8 - 16, y + rh / 2 - 8, image=segno_scambia(16), anchor="nw", tags=("label", f"l{k}", "copia_s", f"cs{k}_{i}"))
+                cv.create_image(x1 - 30 - 14, y + rh / 2 - 7, image=croce(14), anchor="nw", tags=("label", f"l{k}", "copia_x", f"cx{k}_{i}"))
+            y += rh
+        if not self.sola:
+            cv.create_text(x0 + 12, y + rh / 2, text="+ Add card", fill=C["accento"], font=F(max(7, round(8 * min(z, 1.6))), True), anchor="w",
+                           tags=("label", f"l{k}", "copia_a", f"ca{k}"))
+            cv.create_text(x1 - 104, y0 + th / 2, text="SWAP", fill=C["accento"], font=F(fz, True), anchor="e", tags=("label", f"l{k}", "copia_w", f"cw{k}"))
+
+    def duplica_gruppo(self, k):
+        """Una copia del gruppo k accanto (a destra): le sue carte scritte, non nel mazzo. -> la copia."""
+        if not self.modifica or not 0 <= k < len(self.etichette):
+            return None
+        self.sfiltra()
+        lb = self.etichette[k]
+        if not lb.get("id"):
+            lb["id"] = self.nuovo_id()
+        carte = self.carte_gruppo(k)
+        if not carte:
+            self.filtra()
+            self.dici(f"«{lb['nome']}» is empty: nothing to duplicate")
+            return None
+        nuova = dict(nome=lb["nome"] + " (copy)", x=round(lb["x"] + lb["w"] + 2 * SPAZIO), y=lb["y"], w=300, h=60, colore=lb.get("colore") or GRIGIO_L, lucchetto=True,
+                     id=self.nuovo_id(), copia=True, carte=carte, origine=lb["id"])
+        self.etichette.append(nuova)
+        self.misura_copia(len(self.etichette) - 1)
+        self.disegna(); self.salva()
+        self.dici(f"«{nuova['nome']}»: change its cards with ⇄, then ⇄ Swap puts them in the deck instead of «{lb['nome']}»")
+        return nuova
+
+    def cambia_copia(self, k, vecchia, nuova, q=None):
+        """Nella copia, la carta vecchia diventa la nuova (stesse copie); nuova None la toglie; vecchia None aggiunge la nuova (q copie, 1 di partenza)."""
+        lb = self.etichette[k]
+        carte = dict(lb.get("carte") or {})
+        n = carte.pop(vecchia, 1) if vecchia else (q or 1)
+        if nuova:
+            carte[nuova] = carte.get(nuova, 0) + n if vecchia is None else max(carte.get(nuova, 0), n)
+        lb["carte"] = carte
+        self.misura_copia(k)
+        self.disegna(); self.salva()
+
+    def scambia_gruppo(self, k):
+        """Swap: nel mazzo le carte della copia k al posto di quelle del gruppo da cui viene; la copia prende quelle di prima. -> True se fatto."""
+        if not self.modifica or not 0 <= k < len(self.etichette) or not self.etichette[k].get("copia"):
+            return False
+        self.sfiltra()
+        cp = self.etichette[k]
+        ko = next((j for j, x in enumerate(self.etichette) if x.get("id") and x.get("id") == cp.get("origine")), None)
+        if ko is None:
+            self.filtra()
+            self.dici("The original group is gone: nothing to swap with")
+            return False
+        vecchie, nuove = self.carte_gruppo(ko), dict(cp.get("carte") or {})
+        for n, q in nuove.items():      # il limite delle copie vale per il mazzo che nasce
+            if self.totale(n) - vecchie.get(n, 0) + q > self.limite(n):
+                self.filtra()
+                self.dici(f"{n}: max {self.limite(n)} copies, the swap would go over")
+                return False
+        lb = self.etichette[ko]
+        pile, _a = self.membri(ko)
+        for pl in pile:
+            for vid in list(pl["carte"]):
+                self.togli(vid)
+        w, _h, _off, _p = misure(1.0)
+        x, y = lb["x"] + PAD_L + 14, lb["y"] + TIT_L + PAD_L
+        for i, (n, q) in enumerate(sorted(nuove.items(), key=lambda t_: t_[0])):
+            gx, gy = a_griglia(x + i * PASSO_X, y)
+            self.nuova_voce(n, "main", q, xy=(gx, gy))
+        lb["w"] = max(lb["w"], round(len(nuove) * PASSO_X + PAD_L * 2 + 14))
+        cp["carte"] = vecchie
+        self.misura_copia(k)
+        self.mazzo_cambiato()
+        self.disegna(); self.salva()
+        self.dici(f"Swapped: «{lb['nome']}» now has the cards of the copy; ⇄ Swap again to go back")
+        return True
+
+    def togli_gruppo(self, k):
+        """Il gruppo e tutte le sue carte via dal mazzo (la copia: solo lei)."""
+        if not self.modifica or not 0 <= k < len(self.etichette):
+            return
+        self.sfiltra()
+        lb = self.etichette[k]
+        n = 0
+        if not lb.get("copia"):
+            pile, _a = self.membri(k)
+            for pl in pile:
+                for vid in list(pl["carte"]):
+                    n += self.voci[vid]["q"]
+                    self.togli(vid)
+        self.etichette.pop(k)
+        self.sel_label = set()
+        if n:
+            self.mazzo_cambiato()
+        self.disegna(); self.salva()
+        self.dici(f"Group «{lb['nome']}» removed with its {n} cards" if n else f"Group «{lb['nome']}» removed")
+
     def togli_etichetta(self, k):
         if k is None or not 0 <= k < len(self.etichette):
             return
+        vuota = not self.etichette[k].get("copia") and not self.membri(k)[0]
         lb = self.etichette.pop(k)
         self.sel_label = set()
         self.disegna()
         self.salva()
-        self.dici(f"Label «{lb['nome']}» removed: the cards stay where they are")
+        self.dici(f"Empty group «{lb['nome']}» removed" if vuota else f"Label «{lb['nome']}» removed: the cards stay where they are")
 
     def rinomina_etichetta(self, k, nome=None):
         if k is None or not 0 <= k < len(self.etichette):
@@ -3532,16 +4344,18 @@ def prova():
     trascina(ab, xy=(500, 60))      # Abrade torna in sideboard
     sb = ab
     ws = largo(sb)
+    # la fascia sta in cima alla finestra (12 nov 2026): la barra e' a hs sotto l'inizio della vista, non a hs sulla tela
     E = lambda x, y: type("E", (), dict(x=x - t.cv.canvasx(0), y=y - t.cv.canvasy(0), state=0))()
-    t.premi_tela(E(400, t.hs)); t.trascina(E(400, t.hs - 110)); t.rilascia(E(400, t.hs - 110)); root.update()
+    fy_ = lambda: t._fy
+    t.premi_tela(E(400, fy_() + t.hs)); t.trascina(E(400, fy_() + t.hs - 110)); t.rilascia(E(400, fy_() + t.hs - 110)); root.update()
     casi.append(("la barra trascinata abbassa la fascia", t.hs == FASCIA_DEF - 110 and t.cv.find_withtag("barra")))
     casi.append(("fascia piu' bassa: le carte della sideboard piu' piccole", t.cv.bbox(f"c{sb}") and largo(sb) < ws * 0.7))
     casi.append(("e il mazzo sale con la barra", t.oy("main") == t.hs + ETICHETTA))
-    t.premi_tela(E(400, t.hs)); t.trascina(E(400, -50)); t.rilascia(E(400, -50)); root.update()
+    t.premi_tela(E(400, fy_() + t.hs)); t.trascina(E(400, fy_() - 50)); t.rilascia(E(400, fy_() - 50)); root.update()
     casi.append(("fascia a zero: le carte della sideboard spariscono", t.hs == 0 and t.nascosta() and not t.cv.find_withtag(f"c{sb}")))
-    t.premi_tela(E(400, 300)); t.rilascia(E(400, 300))
+    t.premi_tela(E(400, fy_() + 300)); t.rilascia(E(400, fy_() + 300))
     casi.append(("negativa: premuta lontano dalla barra la fascia non si muove", t.hs == 0))
-    t.premi_tela(E(400, t.hs)); t.trascina(E(400, 140)); t.rilascia(E(400, 140)); root.update()
+    t.premi_tela(E(400, fy_() + t.hs)); t.trascina(E(400, fy_() + 140)); t.rilascia(E(400, fy_() + 140)); root.update()
     pos = [(pl["zona"], pl["x"], pl["y"], [t.voci[c]["q"] for c in pl["carte"]]) for pl in t.pile]
     posti = {n: next(((pl["x"], pl["y"]) for pl in t.pile for c in pl["carte"] if t.voci[c]["nome"] == n), None) for n in ("Mountain", "Shock")}
     t.chiudi()
@@ -3689,7 +4503,9 @@ def prova():
     t8.premi_tela(E8(rb[2] + 300, rb[3] + 300))
     casi.append(("negativa: nel vuoto non si prende niente", t8.drag is None))
     t8.cv.tag_raise("rete")     # lo strato delle frecce sopra tutto: il contatore deve rispondere lo stesso
-    piu = next(i for i in t8.cv.find_withtag("ctrl") if any(g.startswith("piu") for g in t8.cv.gettags(i)))
+    # un + che si puo' premere (una carta sotto il suo limite): l'ordine dei pezzi sulla tela non conta (12 nov 2026, la fascia sopra il foglio)
+    piu = next(i for i in t8.cv.find_withtag("ctrl") if any(g.startswith("piu") for g in t8.cv.gettags(i))
+               and (lambda v_: t8.totale(v_["nome"]) < t8.limite(v_["nome"]))(t8.voci[int(next(g for g in t8.cv.gettags(i) if g.startswith("piu"))[3:])]))
     vpiu = int(next(g for g in t8.cv.gettags(piu) if g.startswith("piu"))[3:])
     q0 = t8.voci[vpiu]["q"]
     bp = t8.cv.bbox(piu)
@@ -3725,6 +4541,16 @@ def prova():
     casi.append(("lasciata, le frecce tornano nell'immagine, gia' al posto nuovo", not t8.cv.find_withtag("rete_viva") and t8.cv.find_withtag("rete")
                  and t8.segmento(t8.nodo_xy(va), t8.nodo_xy(vb)) != sg))
     # la carta segue dal primo pixel; sotto i 3 pixel e' un clic e torna al suo posto
+    # la fascia ferma in cima alla finestra (12 nov 2026): la vista scende, la fascia la segue; sulla fascia non si prende una carta del mazzo che le passa sotto
+    t8.cv.xview_moveto(0); t8.cv.yview_moveto(0); t8.segui_fascia(); root.update()
+    rv0 = t8.rett(va)
+    t8.cv.scan_mark(0, 0); t8.cv.scan_dragto(0, -int(rv0[1] + 20), gain=1); t8.segui_fascia(); root.update()
+    bf = t8.cv.bbox("fascia_fondo")
+    casi.append(("la vista scende: la fascia resta in cima alla finestra", bf is not None and abs(bf[3] - (t8.cv.canvasy(0) + t8.hs)) <= 1 and t8._fy == t8.cv.canvasy(0)))
+    rv1 = t8.rett(va)
+    sotto = ((rv1[0] + rv1[2]) / 2, t8.cv.canvasy(0) + 10)
+    casi.append(("negativa: sulla fascia la carta del mazzo che le passa sotto non si prende", rv1[1] < sotto[1] < rv1[3] and t8.carta_a(*sotto) != va))
+    t8.cv.xview_moveto(0); t8.cv.yview_moveto(0); t8.segui_fascia(); root.update()     # la vista in cima: la carta non e' sotto la fascia
     rv = t8.rett(va)
     px_, py_ = (rv[0] + rv[2]) / 2, (rv[1] + rv[3]) / 2
     b0 = t8.cv.bbox(f"c{va}")
@@ -3787,9 +4613,124 @@ def prova():
     t8.scambia(t8.vid_nome("Anthem"), "Grizzly Bears"); root.update()
     casi.append(("negativa: oltre il limite del formato non sostituisce, e le connessioni restano dove sono", t8.vid_nome("Anthem") is not None
                  and t8.voci[t8.vid_nome("Grizzly Bears")]["q"] == 4 and {k_ for k_ in t8.rete.figli if "Anthem" in k_} == fig_anthem))
+    # le note personali (12 nov 2026): sulla carta e sulla label; si aprono e si chiudono, si scrivono, si cancellano, si salvano
+    t8.cv.xview_moveto(0); t8.cv.yview_moveto(0); t8.segui_fascia(); t8.disegna(); root.update()
+    vn = t8.vid_nome("Token Maker")
+    t8.pila_di(vn)["aperta"] = vn; t8.disegna(); root.update()
+    altra = next(v_ for v_ in t8.voci if v_ != vn and t8.rett(v_) is not None)
+    t8.nota_hover(altra); senza_ = not t8.cv.find_withtag(f"nn{vn}")
+    t8.nota_hover(vn)
+    casi.append(("nota: il foglietto vuoto in alto a destra della carta sotto il mouse, in modalita' edit (negativa: non sulle altre)",
+                 bool(t8.cv.find_withtag(f"nn{vn}")) and senza_))
+    t8.metti_nota("c", "Token Maker", "Keep for the late game"); root.update()
+    casi.append(("nota scritta: l'icona sulla carta e il riquadro aperto col testo", bool(t8.cv.find_withtag(f"ni{vn}")) and bool(t8.cv.find_withtag(f"nb{vn}"))
+                 and "Keep for the late game" in [t8.cv.itemcget(i, "text") for i in t8.cv.find_withtag(f"nb{vn}") if t8.cv.type(i) == "text"]))
+    bi = t8.cv.bbox(f"ni{vn}")
+    t8.premi_tela(E8((bi[0] + bi[2]) / 2, (bi[1] + bi[3]) / 2)); t8.rilascia(E8((bi[0] + bi[2]) / 2, (bi[1] + bi[3]) / 2)); root.update()
+    casi.append(("il clic sull'icona la chiude, la carta non si sposta", not t8.note["Token Maker"]["aperta"] and not t8.cv.find_withtag(f"nb{vn}") and t8.drag is None))
+    t8.premi_tela(E8((bi[0] + bi[2]) / 2, (bi[1] + bi[3]) / 2)); t8.rilascia(E8((bi[0] + bi[2]) / 2, (bi[1] + bi[3]) / 2)); root.update()
+    bb_ = t8.cv.bbox(f"nb{vn}")
+    t8.premi_tela(E8(bb_[0] + 20, bb_[1] + 8)); t8.rilascia(E8(bb_[0] + 20, bb_[1] + 8)); root.update()
+    casi.append(("riaperta; il clic sul riquadro apre l'editor col testo", t8.note["Token Maker"]["aperta"] and getattr(t8, "_nota_pop", None) is not None
+                 and t8.testo_nota.get("1.0", "end").strip() == "Keep for the late game"))
+    t8.testo_nota.delete("1.0", "end"); t8.testo_nota.insert("1.0", "Side out vs control"); t8.pronta_nota(); root.update()
+    casi.append(("l'editor la cambia e si chiude", t8.note["Token Maker"]["testo"] == "Side out vs control" and t8._nota_pop is None))
+    t8.sel = [t8.pila_di(t8.vid_nome("Anthem"))]; lbn = t8.crea_etichetta("Plan B"); root.update()
+    kn = t8.etichette.index(lbn)
+    t8.metti_nota("l", kn, "Swap in after game 1"); root.update()
+    casi.append(("la nota della label: l'icona sul titolo e il riquadro sotto", bool(t8.cv.find_withtag(f"ln{kn}")) and bool(t8.cv.find_withtag(f"lb{kn}"))))
+    salvata_ = carica_tavoli(t8.file_tavoli).get(t8.chiave) or {}
+    casi.append(("le note si salvano con la disposizione", (salvata_.get("note") or {}).get("Token Maker", {}).get("testo") == "Side out vs control"
+                 and any(x.get("nota") == "Swap in after game 1" for x in salvata_.get("etichette") or [])))
+    t8.metti_nota("c", "Token Maker", ""); t8.metti_nota("l", kn, ""); root.update()
+    casi.append(("negativa: cancellate, niente icone ne' riquadri e niente nel file", not t8.cv.find_withtag(f"ni{vn}") and not t8.cv.find_withtag(f"ln{kn}")
+                 and not (carica_tavoli(t8.file_tavoli).get(t8.chiave) or {}).get("note") and "nota" not in t8.etichette[kn]))
+    t8.togli_etichetta(kn)
     if ("Token Maker", "Anthem") not in t8.rete.figli:       # la connessione che la prova dell'imparato cerca in un altro mazzo
         t8.rete.lega("Token Maker", "Anthem", dbr)
     t8.chiudi()
+    # i filtri per tipo (12 nov 2026): All acceso di partenza e assoluto; un tipo spegne All, piu' tipi si sommano; le carte fuori non si vedono e non si
+    # prendono, ma restano nel mazzo e nella disposizione salvata
+    tF = nuovo_t("build:filtri")
+    pos0 = {tF.voci[c]["nome"]: (pl["x"], pl["y"]) for pl in tF.pile for c in pl["carte"]}
+    etich_ = [tF.c_filtri.itemcget(i, "text") for i in tF.c_filtri.find_all() if tF.c_filtri.type(i) == "text"]
+    casi.append(("filtri: la riga coi tipi del mazzo e i loro conti, All acceso", not tF.filtro and "All 21" in etich_ and "Creatures 8" in etich_
+                 and "Enchantments 3" in etich_ and "Lands 10" in etich_ and not any(x.startswith("Instants") for x in etich_)))
+    an_ = vid_di(tF, "Anthem"); ra0_ = tF.rett(an_)
+    tF.scegli_filtro("creature"); root.update()
+    casi.append(("Creatures: si vedono solo le creature, All si spegne", tF.filtro == {"creature"} and not tF.cv.find_withtag(f"c{an_}")
+                 and tF.cv.find_withtag(f"c{vid_di(tF, 'Token Maker')}") and tF.rett(an_) is None))
+    casi.append(("negativa: dove stava una carta nascosta non si prende niente", tF.carta_a((ra0_[0] + ra0_[2]) / 2, (ra0_[1] + ra0_[3]) / 2) != an_))
+    tF.scegli_filtro("enchantment"); root.update()
+    casi.append(("piu' tipi si sommano: creature e incantesimi, le terre restano nascoste", tF.filtro == {"creature", "enchantment"} and tF.cv.find_withtag(f"c{an_}")
+                 and not tF.cv.find_withtag(f"c{vid_di(tF, 'Plains')}")))
+    tF.salva()
+    sal_ = carica_tavoli(ft).get("build:filtri") or {}
+    casi.append(("filtrato, la disposizione salvata ha tutte le carte", {c[0] for pl in sal_.get("pile") or [] for c in pl["carte"]} >= {"Plains", "Anthem", "Vanilla", "Token Maker"}))
+    tF.scegli_filtro("all"); root.update()
+    pos1 = {tF.voci[c]["nome"]: (pl["x"], pl["y"]) for pl in tF.pile for c in pl["carte"]}
+    casi.append(("All assoluto: spegne gli altri e tutto torna al suo posto", not tF.filtro and pos1 == pos0 and not tF._riposte))
+    tF.scegli_filtro("land"); tF.scegli_filtro("land"); root.update()
+    casi.append(("spento l'ultimo tipo torna All", not tF.filtro and tF.cv.find_withtag(f"c{vid_di(tF, 'Plains')}")))
+    # lo stress del 12 nov 2026: col filtro acceso, trascinate via tutte le carte a vista di una pila, quelle nascoste non devono perdersi
+    pa_ = tF.pila_di(vid_di(tF, "Anthem")); ptm_ = tF.pila_di(vid_di(tF, "Token Maker"))
+    pa_["carte"].remove(vid_di(tF, "Anthem")); ptm_["carte"].insert(0, vid_di(tF, "Anthem"))
+    if not pa_["carte"]:
+        tF.pile.remove(pa_)
+    tF.disegna(); tF.scegli_filtro("creature"); root.update()
+    top_ = ptm_["carte"][-1]; rt_ = tF.rett(top_)
+    EF = lambda x, y, st=0: type("E", (), dict(x=x - tF.cv.canvasx(0), y=y - tF.cv.canvasy(0), state=st))()
+    tF.premi_tela(EF((rt_[0] + rt_[2]) / 2, (rt_[1] + rt_[3]) / 2, 1)); tF.trascina(EF(rt_[0] + 900, rt_[1] + 400)); tF.rilascia(EF(rt_[0] + 900, rt_[1] + 400))
+    root.update()
+    tF.scegli_filtro("all"); root.update()
+    in_pila = {c for pl in tF.pile for c in pl["carte"]}
+    casi.append(("negativa dello stress: trascinate via le carte a vista di una pila, quella nascosta torna al suo posto", set(tF.voci) <= in_pila
+                 and vid_di(tF, "Anthem") in in_pila))
+    # i gruppi (12 nov 2026): nell'outliner, duplicati che non portano carte, il ⇄ nella copia, lo Swap, via col contenuto, via vuoti; i gruppi automatici
+    tF.scegli_filtro("all")
+    tF.sel = [tF.pila_di(vid_di(tF, "Anthem"))]; g1 = tF.crea_etichetta("Buffs"); root.update()
+    k1 = tF.etichette.index(g1)
+    righe_g = [v for _y0, _y1, v in tF._out_righe if isinstance(v, tuple)]
+    casi.append(("gruppi: l'outliner mostra il gruppo", ("l", k1) in righe_g))
+    mazzo0 = tF.liste()
+    cp = tF.duplica_gruppo(k1); root.update()
+    kc = tF.etichette.index(cp)
+    casi.append(("Duplicate: la copia ha le carte del gruppo scritte, e il mazzo non cambia", cp["copia"] and cp["carte"] == {"Anthem": 2} and tF.liste() == mazzo0
+                 and cp["origine"] == g1["id"] and tF.cv.find_withtag("copia_w")))
+    tF.cambia_copia(kc, "Anthem", "Side Anthem"); root.update()
+    casi.append(("il ⇄ nella copia cambia la carta, il mazzo no", cp["carte"] == {"Side Anthem": 2} and tF.liste() == mazzo0))
+    casi.append(("Swap: nel mazzo le carte della copia al posto di quelle del gruppo, la copia prende quelle di prima",
+                 tF.scambia_gruppo(kc) and tF.liste()[0].get("Side Anthem") == 2 and "Anthem" not in tF.liste()[0] and cp["carte"] == {"Anthem": 2}
+                 and tF.carte_gruppo(k1) == {"Side Anthem": 2}))
+    tF.scambia_gruppo(kc); root.update()
+    casi.append(("un altro Swap torna indietro", tF.liste()[0].get("Anthem") == 2 and "Side Anthem" not in tF.liste()[0] and cp["carte"] == {"Side Anthem": 2}))
+    cp["carte"] = {"Anthem": 4, "Vanilla": 1}
+    casi.append(("negativa: lo Swap che passa il limite delle copie non si fa", not tF.scambia_gruppo(kc) and tF.liste()[0].get("Anthem") == 2))
+    salv_ = carica_tavoli(ft).get("build:filtri") or {}
+    casi.append(("la copia si salva con le sue carte e l'origine", any(x.get("copia") and x.get("origine") == g1["id"] for x in salv_.get("etichette") or [])))
+    tF.togli_gruppo(tF.etichette.index(cp)); root.update()
+    casi.append(("via la copia: il mazzo non cambia", tF.liste()[0].get("Anthem") == 2 and cp not in tF.etichette))
+    tF.togli_gruppo(tF.etichette.index(g1)); root.update()
+    casi.append(("via il gruppo con le sue carte: l'Anthem esce dal mazzo", "Anthem" not in tF.liste()[0] and g1 not in tF.etichette))
+    tF.sel = [tF.pila_di(vid_di(tF, "Vanilla"))]; g2 = tF.crea_etichetta("Bears"); root.update()
+    p2_ = tF.pila_di(vid_di(tF, "Vanilla")); p2_["x"] += 3000; tF.disegna()
+    tF.togli_etichetta(tF.etichette.index(g2)); root.update()
+    casi.append(("il gruppo vuoto (le carte portate fuori) si toglie, e lo dice", g2 not in tF.etichette and "Empty group" in tF.aiuto.cget("text")
+                 and tF.liste()[0].get("Vanilla") == 4))
+    # i gruppi automatici: dal filtro e dall'analisi (passata dalla prova: il mazzo di prova non ha partite)
+    tF.scegli_filtro("creature")
+    nate_ = tF.auto_visibili(); root.update()
+    nomi_ = {lb["nome"] for lb in nate_}
+    casi.append(("Auto groups dal filtro: «Shown» con le creature e «Hidden» col resto, ognuno con le sue carte", nomi_ == {"Shown: creature", "Hidden"}
+                 and set(tF.carte_gruppo(tF.etichette.index(next(lb for lb in nate_ if lb["nome"].startswith("Shown"))))) == {"Token Maker", "Vanilla"}
+                 and not tF.filtro))
+    tF.fonte_analisi = lambda: dict(con_dati=30, migliori=[dict(nome="Token Maker")], fatica=[dict(nome="Plains")], perse=[dict(nome="Non nel mazzo")])
+    nate2 = tF.auto_analisi(); root.update()
+    casi.append(("Auto groups dall'analisi: Best performers e Hard to cast; negativa: la carta che non e' nel mazzo non fa gruppo",
+                 [lb["nome"] for lb in nate2] == ["Best performers", "Hard to cast"]))
+    tF.fonte_analisi = lambda: None
+    casi.append(("negativa: senza partite niente gruppi dall'analisi, e lo dice", tF.auto_analisi() == [] and "No games" in tF.aiuto.cget("text")))
+    tF.chiudi()
     t9 = nuovo_t("build:altro")
     t9.apri_pila(vid_di(t9, "Token Maker")); root.update()
     va = vid_di(t9, "Token Maker")
@@ -4021,7 +4962,11 @@ def prova():
     b1_ = tG.cv.bbox(f"c{va_}")
     tG.rilascia(EG(cxv + 337, cyv + 211)); root.update()
     plv = tG.pila_di(va_)
-    sulla = lambda x_, y_: abs(((x_ - MARGINE) / PASSO_X) - round((x_ - MARGINE) / PASSO_X)) < 1e-6 and abs(y_ / PASSO_Y - round(y_ / PASSO_Y)) < 1e-6
+    # sulla griglia a quadratini (12 nov 2026): 12 per colonna, 2 per passo verticale
+    sulla = lambda x_, y_: abs(((x_ - MARGINE) / CELLA_X) - round((x_ - MARGINE) / CELLA_X)) < 1e-6 and abs(y_ / CELLA_Y - round(y_ / CELLA_Y)) < 1e-6
+    casi.append(("la griglia a quadratini: 12 per colonna e 2 per passo, quasi quadrati; la colonna di prima e' fatta degli stessi quadratini",
+                 abs(CELLE_X * CELLA_X - PASSO_X) < 1e-9 and abs(CELLE_Y * CELLA_Y - PASSO_Y) < 1e-9 and 12 <= CELLA_X <= 15 and 12 <= CELLA_Y <= 15
+                 and a_griglia(MARGINE + 3 * CELLA_X + 5, 4 * CELLA_Y - 5) == (MARGINE + 3 * CELLA_X, 4 * CELLA_Y)))
     casi.append(("Grid snap: mentre trascini la carta segue il mouse al pixel, lasciata va sulla griglia", b1_[0] - b0_[0] == 337 and b1_[1] - b0_[1] == 211
                  and sulla(plv["x"], plv["y"])))
     p_tm, p_an = tG.pila_di(vid_di(tG, "Token Maker")), tG.pila_di(vid_di(tG, "Anthem"))
@@ -4046,7 +4991,7 @@ def prova():
     tocca_ = lambda a_, b_: a_[0] < b_[2] - 1 and b_[0] < a_[2] - 1 and a_[1] < b_[3] - 1 and b_[1] < a_[3] - 1
     casi.append(("Grid snap: lasciata accanto a una pila, la carta va nella cella libera piu' vicina, non sopra la pila", plv is not pan_ and len(plv["carte"]) == 1
                  and not any(tocca_(tG.ingombro(plv), tG.ingombro(q_)) for q_ in tG.pile if q_ is not plv and q_["zona"] == "main" and q_["carte"])
-                 and sulla(plv["x"], plv["y"]) and abs(plv["x"] - pan_["x"]) >= PASSO_X))
+                 and sulla(plv["x"], plv["y"]) and abs(plv["x"] - pan_["x"]) >= BASE_W - 1))
     occ_ = [q_ for q_ in tG.pile if q_["zona"] == "main" and q_["carte"]]
     lib_x, lib_y = tG.cella_libera("main", -2000, -2000, 1)
     casi.append(("negativa: dove non c'e' niente la cella e' quella piu' vicina, senza spostamenti", (lib_x, lib_y) == a_griglia(-2000, -2000) and occ_))
@@ -4115,6 +5060,7 @@ def prova():
         tS.cv.after_cancel(tS.clic); tS.clic = None
     casi.append(("negativa: in sola lettura il riquadro, il doppio clic e il tasto destro non cambiano niente", not tS.sel
                  and tS.voci[vid_di(tS, "Anthem")]["zona"] == "main" and len(tS.rete.figli) == 1 and not tS.cambia_copie(vid_di(tS, "Anthem"), +1)))
+    casi.append(("negativa: in sola lettura niente foglietto vuoto e l'editor delle note non si apre", not tS.cv.find_withtag("nota_n") and tS.editor_nota("c", "Anthem") is None))
     tS.zoom_a(1.3); tS.chiudi()
     dopo_ = carica_tavoli(ft).get("build:sola") or {}
     casi.append(("sola lettura: si salva la posizione nuova, label e mazzo restano quelli di edit",

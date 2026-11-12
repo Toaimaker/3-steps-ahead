@@ -1,6 +1,6 @@
 {
- "version": "0.1.25",
+ "version": "0.1.26",
  "date": "2026-11-12",
- "notes": "Meta Charts, Premier Draft: the whole history of the format and the color-pair matchups, from 17Lands public datasets (CC BY 4.0).",
+ "notes": "Your decks public/private; Board: fixed sideboard band, notes, type filters, groups with copies and swap, auto groups, finer grid; deck window: card hover game data, play/draw flags, full analysis window; smoother Farmer sliders.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

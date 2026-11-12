@@ -241,13 +241,16 @@ class SchedaMazzo:
         carte_db = DM.tabella_carte()
         if tipo == "meta" and m.get("carte_info"):      # le carte che Arena non ha (Modern, Legacy...): tipo, mana e testo da Scryfall
             carte_db = {**{n: dict(nome=n, tipo=v["tipo"], cmc=v["cmc"], testo=v.get("testo", "")) for n, v in m["carte_info"].items()}, **carte_db}
-        # on the play e on the draw si premono e filtrano la scheda (Autore, 10 nov 2026: «sulle schede del mazzo fai che i dati di analytics varino in base al
-        # premere on the draw on the play»): Performance, Analysis, mani, snowball, terre in mano e grafico leggono solo quelle partite; le due tessere restano su tutte
+        # on the play e on the draw (12 nov 2026, Autore: «Performance panel: on the play / on the draw non sono piu' pulsanti, quella meccanica la abbandoniamo»,
+        # «Analysis Panel: mettiamo qui 3 flag: all games - on the play - on the draw e relativo aggiornamento dati analisi», «win rate panel: mettiamo qui 3 flag
+        # … e relativo aggiornamento dati grafico»): Performance, mani e snowball su tutte le partite; Analysis e Win rate col loro filtro, ognuno il suo
         tutte_p = partite
-        partenza = getattr(self, "partenza", None)
-        partite = DM.per_partenza(tutte_p, partenza)
+        partenza = getattr(self, "partenza_an", None)         # il filtro di Analysis
+        partenza_wr = getattr(self, "partenza_wr", None)      # il filtro del grafico
+        partite_an = DM.per_partenza(tutte_p, partenza)
         an_tutte = DM.analizza(tutte_p, carte_db) if tutte_p else None
-        an = (an_tutte if not partenza else DM.analizza(partite, carte_db)) if partite else None
+        an = an_tutte
+        an_an = (an_tutte if not partenza else DM.analizza(partite_an, carte_db)) if partite_an else None
         self.carte_db = carte_db
         # i numeri del mazzo
         tutte = dict(main)
@@ -262,6 +265,7 @@ class SchedaMazzo:
         # le stesse voci per ogni mazzo, da qualunque scheda lo apri (Autore, 9 nov 2026: «ogni mazzo nell'app, in qualunque scheda, quando li apro devono avere sempre la stessa
         # identica configurazione scheda mazzo e usiamo quella assolutamente piu' completa che abbiamo»): le partite, la costruzione e il meta, i prezzi; un dato che non c'e' esce «-»
         v_part = self.voci_partite(partite, an, nome, an_tutte=an_tutte)
+        v_part_an = self.voci_partite(partite_an, an_an, nome, an_tutte=an_tutte)      # closes on e loses on col filtro di Analysis
         v_build = self.voci_build(dict(formato=self.formato_mazzo(tipo, chi)), main, side, comandante, compagno, coll, carte_db, meta=m if tipo == "meta" else None)
         # i jolly stanno in alto a sinistra sul grafico, come su Untapped (Autore, 18 ott 2026): il riquadro sotto
         if collezione_nota():
@@ -301,29 +305,27 @@ class SchedaMazzo:
                 cv_d.after_idle(lambda: cv_d.configure(scrollregion=(0, 0, 0, col.winfo_reqheight())) if cv_d.winfo_exists() else None)
         n_ = len(partite)
         nome_p = {"play": "on the play", "draw": "on the draw"}.get(partenza)
-        if partenza:        # la riga del filtro in cima: si vede sempre che la scheda e' filtrata, e si toglie da li'
-            fb = tk.Frame(col, bg=C["sel"], highlightthickness=1, highlightbackground=C["accento"]); fb.pack(fill="x", pady=(0, 8))
-            tk.Label(fb, text=f"SHOWING ONLY GAMES {nome_p.upper()}  ·  {n_} of {len(tutte_p)}", bg=C["sel"], fg=C["accento"], font=F(8, True), padx=10, pady=6,
-                     anchor="w").pack(side="left")
-            via = tk.Label(fb, text="Show all games  ✕", bg=C["sel"], fg=C["titolo"], font=F(8, True), padx=10, cursor="hand2"); via.pack(side="right")
-            via.bind("<Button-1>", lambda e: self.filtra_partenza(None))
-            self.riga_filtro = fb
-        else:
-            self.riga_filtro = None
-        clic = {"on the play": lambda: self.filtra_partenza("play"), "on the draw": lambda: self.filtra_partenza("draw")} if tutte_p else {}
-        self.tessere_partite = self.tessere(self.sezione_tendina(col, "prestazioni", "Performance", (f"{n_} game{'s' if n_ != 1 else ''}" + (f" {nome_p}" if nome_p else ""))
-                                                                 if n_ else ("no games " + nome_p if nome_p else "no games yet"), dopo=rilega),
-                                            v_part[:4], colonne=4, clic=clic, scelta=nome_p)
+        self.riga_filtro = None
+        n_play, n_draw = len(DM.per_partenza(tutte_p, "play")), len(DM.per_partenza(tutte_p, "draw"))
+        self.tessere_partite = self.tessere(self.sezione_tendina(col, "prestazioni", "Performance", f"{n_} game{'s' if n_ != 1 else ''}" if n_ else "no games yet",
+                                                                 dopo=rilega), v_part[:4], colonne=4)
         s_an = self.sezione_tendina(col, "analisi", "Analysis", "from your Arena logs" + (f" · {nome_p}" if nome_p else ""), dopo=rilega)
+        if tutte_p:
+            self.flag_an = self.flag_partenza(s_an, partenza, lambda v: self.filtra_partenza(v, "an"), len(tutte_p), n_play, n_draw)
         # in Performance solo la prima riga (win rate, games played, on the play, on the draw); closes on e loses on in cima ad Analysis (Autore, 10 nov 2026:
         # «nei dati schede mazzo in performance tieni solo la prima riga, il resto dei dati va in analytics»)
-        self.tessere_analisi = self.tessere(s_an, v_part[4:], colonne=4)
+        self.tessere_analisi = self.tessere(s_an, v_part_an[4:], colonne=4)
         self.sezione_analisi(s_an, tipo, chi, main, side, comandante, compagno, carte_db, lista, dopo=rilega, partenza=partenza)
         # le mani, lo snowball e le terre in mano ci sono sempre, vuote se il mazzo non ha partite: la stessa scheda per ogni mazzo (9 nov 2026)
         arch = DM.archetipo({**comandante, **main}, carte_db, an["chiude"] if an else None)
         self.quadro_mazzo(self.sezione_tendina(col, "mani", "Archetype & hands", arch[0] if arch else "", dopo=rilega), an or dict(mani=[], veloci=[], terre={}), arch)
-        gf = tk.Frame(self.sezione_tendina(col, "grafico", "Win rate", "", dopo=rilega), bg=C["scheda"]); gf.pack(fill="x")      # il grafico c'e' sempre: senza partite lo dice
-        pt_, ini, lg, _ = saldo_partite(partite, ev=None) if partite else ([], [], [], None)
+        nome_wr = {"play": "on the play", "draw": "on the draw"}.get(partenza_wr)
+        s_wr = self.sezione_tendina(col, "grafico", "Win rate", nome_wr or "", dopo=rilega)
+        if tutte_p:
+            self.flag_wr = self.flag_partenza(s_wr, partenza_wr, lambda v: self.filtra_partenza(v, "wr"), len(tutte_p), n_play, n_draw)
+        gf = tk.Frame(s_wr, bg=C["scheda"]); gf.pack(fill="x")      # il grafico c'e' sempre: senza partite lo dice
+        partite_wr = DM.per_partenza(tutte_p, partenza_wr)
+        pt_, ini, lg, _ = saldo_partite(partite_wr, ev=None) if partite_wr else ([], [], [], None)
         self.grafico(gf, pt_, ini, lg, (), vuoto="No games with this deck yet", altezza=170, tipo_lega="constructed")
         s_b = self.sezione_tendina(col, "costruzione", "Deck build", f"{v_build[0][1]} · " + ("legal" if not self._problemi else f"{len(self._problemi)} issue{'s' if len(self._problemi) > 1 else ''}"),
                            dopo=rilega)
@@ -409,9 +411,34 @@ class SchedaMazzo:
             voci.append(("MTGO", f"{pz['tix']:.2f} tix", None))
         return voci
 
-    def filtra_partenza(self, partenza):
-        """Il filtro on the play / on the draw della finestra del mazzo: premuto di nuovo si toglie. La finestra si rifa' e la colonna dei dati torna dov'era."""
-        self.partenza = None if partenza is None or getattr(self, "partenza", None) == partenza else partenza
+    def flag_partenza(self, padre, scelta, fa, n_tutte, n_play, n_draw):
+        """I tre flag in cima a una sezione: ALL GAMES, ON THE PLAY, ON THE DRAW, col numero delle partite; uno solo acceso (12 nov 2026). -> la tela, con .voci."""
+        tk, F = self.tk, self.F
+        c = tk.Canvas(padre, height=30, bg=C["scheda"], highlightthickness=0, cursor="hand2"); c.pack(fill="x", pady=(0, 6))
+        c.voci = []
+        x = 0
+        for chiave, testo, n in ((None, "ALL GAMES", n_tutte), ("play", "ON THE PLAY", n_play), ("draw", "ON THE DRAW", n_draw)):
+            on = chiave == scelta
+            et = f"{testo} · {n}"
+            lg = 24 + 7 * len(et)
+            c.create_rectangle(x, 3, x + lg, 27, fill=C["sel"] if on else C["scheda"], outline=C["accento"] if on else C["filo"])
+            c.create_text(x + lg / 2, 15, text=et, fill=C["accento"] if on else C["grigio"], font=F(8, True))
+            c.voci.append((x, x + lg, chiave))
+            x += lg + 6
+
+        def clic(e):
+            for x0, x1, k in c.voci:
+                if x0 <= e.x <= x1:
+                    fa(k)
+                    return
+        c.bind("<Button-1>", clic)
+        c.scelta = scelta
+        return c
+
+    def filtra_partenza(self, partenza, dove="an"):
+        """Il filtro on the play / on the draw di una sezione (dove: «an» Analysis, «wr» il grafico del win rate): ALL GAMES lo toglie. La finestra si rifa' e la
+        colonna dei dati torna dov'era."""
+        setattr(self, "partenza_" + dove, partenza)
         cv = getattr(self, "colonna_dati", None)
         y = cv.yview()[0] if cv is not None and cv.winfo_exists() else 0
         self.disegna_dettaglio()

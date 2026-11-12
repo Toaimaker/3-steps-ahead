@@ -21,8 +21,13 @@ class VistaAnalisi:
             tk.Label(padre, text="The analysis reads the games of this deck in your Arena logs: play it on Arena and it fills in.", bg=C["scheda"], fg=C["grigio"],
                      font=F(8), anchor="w", justify="left", wraplength=520).pack(fill="x")
             return
-        attesa = tk.Label(padre, text="Reading your logs…", bg=C["scheda"], fg=C["grigio"], font=F(8), anchor="w"); attesa.pack(fill="x")
         lista_mazzo = {**main, **side, **comandante, **compagno}
+        # la finestra dettagliata (12 nov 2026, Autore: «un pulsante che permette a questa sezione di espandersi in una finestra piu' dettagliata»)
+        import widget
+        b = widget.pulsante_solido(tk, F, padre, "Open full analysis", False, lambda: self.apri_analisi(chi, am, dict(main), carte_db, partenza), alto=28, bg=C["scheda"])
+        b.configure(width=170); b.pack(anchor="w", pady=(0, 8))
+        self.b_analisi = b
+        attesa = tk.Label(padre, text="Reading your logs…", bg=C["scheda"], fg=C["grigio"], font=F(8), anchor="w"); attesa.pack(fill="x")
         box = {}
 
         def calcola():
@@ -47,6 +52,8 @@ class VistaAnalisi:
                 padre.after(80, guarda)
                 return
             attesa.destroy()
+            if "a" in box and lista is not None:
+                self.metti_dati_partita(lista, box["a"], partenza)
             if "errore" in box:
                 tk.Label(padre, text=f"The analysis could not read the logs: {box['errore']}", bg=C["scheda"], fg=C["rosso_t"], font=F(8), anchor="w").pack(fill="x")
             else:
@@ -54,6 +61,38 @@ class VistaAnalisi:
             if dopo:
                 dopo()
         padre.after(80, guarda)
+
+    def apri_analisi(self, chi, am, lista, carte_db, partenza):
+        """La finestra dettagliata di Analysis (analisi_dettaglio.py), sopra la finestra del mazzo: una alla volta."""
+        import analisi_dettaglio as AD
+        vecchia = getattr(self, "fin_analisi", None)
+        try:
+            if vecchia is not None and vecchia.fin.winfo_exists():
+                vecchia.fin.destroy()
+        except Exception:       # noqa: BLE001
+            pass
+        self.fin_analisi = AD.FinestraAnalisi(self, self.fin, chi, am.get("nome") or "Deck", lista, carte_db, partenza)
+        return self.fin_analisi
+
+    def metti_dati_partita(self, lista, a, partenza=None):
+        """Sotto i dati della carta in hover, come si comporta nelle partite del mazzo (12 nov 2026): lanciata (in quante partite e il win rate quando la lanci),
+        la differenza col mazzo, rimasta in mano dopo averla vista. Dalla stessa analisi dei log, col filtro play/draw se c'e'."""
+        n, wr = a.get("con_dati") or 0, a.get("wr")
+        if not n or wr is None:
+            return
+        for nome, st in (a.get("carte") or {}).items():
+            base = [v for v in (lista.schede.get(nome) or []) if v[0] != "§" and not v[0].startswith(("CAST", "WIN WHEN", "VS DECK", "STUCK"))]
+            voci = [("§", f"IN THIS DECK · {n} games" + (f" {('on the play' if partenza == 'play' else 'on the draw')}" if partenza else ""), None)]
+            if st["nl"]:
+                w = st["vl"] / st["nl"]
+                voci += [("CAST", f"{st['nl']}/{n}", None), ("WIN WHEN CAST", f"{round(100 * w)}%", C["verde_t"] if w > wr else C["rosso_t"] if w < wr else None),
+                         ("VS DECK", f"{'+' if w >= wr else ''}{round(100 * (w - wr))}", C["verde_t"] if w > wr else C["rosso_t"] if w < wr else None)]
+            else:
+                voci += [("CAST", f"0/{n}", C["grigio"])]
+            if st["nv"]:
+                q = st["nb"] / st["nv"]
+                voci.append(("STUCK", f"{st['nb']}/{st['nv']}", C["arancio"] if q >= 0.5 else None))
+            lista.schede[nome] = base + voci
 
     def disegna_analisi(self, padre, a, lista, dopo=None):
         """Ogni categoria e' una mini tendina, chiusa di partenza, col primo della lista nella testata (Autore, 10 nov 2026: «metti ogni categoria in delle mini

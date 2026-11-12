@@ -22,7 +22,7 @@ class FinestraMazzo:
     def apri(self, chi):
         """chi: ("mio", nome), ("meta", archetipo del meta) o ("farm", mazzo del farming). None torna al grafico. Un altro mazzo riparte senza il filtro on the play / on the draw."""
         if chi != getattr(self, "aperto", None):
-            self.partenza = None
+            self.partenza = self.partenza_an = self.partenza_wr = None
         self.aperto = chi
         self.disegna_dettaglio()
         self.disegna_mazzi()

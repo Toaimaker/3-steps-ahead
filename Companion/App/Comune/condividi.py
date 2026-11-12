@@ -103,6 +103,15 @@ def accoda(partite=None, id_account=None):
         return 0
     if not partite:
         return 0
+    # i mazzi privati (12 nov 2026, la regola pubblico/privato di Your decks): le loro partite non escono
+    try:
+        import visibilita_mazzi as VM
+        d_vis = VM.leggi()
+        partite = [p for p in partite if not VM.privato_arena(p.get("mazzo"), d_vis)]
+    except Exception:       # noqa: BLE001 - senza la regola si condivide come prima
+        pass
+    if not partite:
+        return 0
     os.makedirs(CARTELLA[0], exist_ok=True)
     f_coda, f_fatte = os.path.join(CARTELLA[0], "coda.jsonl"), os.path.join(CARTELLA[0], "inviate.json")
     gia = set()

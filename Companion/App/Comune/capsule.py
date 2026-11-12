@@ -973,16 +973,34 @@ class Liste:
         cv.create_image(0, 0, image=img, anchor="nw")
         y = img.height()
         tinte = ("#24baff", "#5cb85c", "#f0ad4e", "#c792ea", "#ffffff")
-        if voci:
-            _w, h1 = TT.misura(cv, self.F(9, True), "Ag"); _w, h2 = TT.misura(cv, self.F(10, True), "Ag")
+        # le righe dei dati: una voce («§», testo) apre una riga nuova col suo titolo (12 nov 2026: «IN THIS DECK», come si comporta la carta nelle partite del
+        # mazzo); oltre 4 voci si va a capo
+        righe_v, cur = [], dict(titolo=None, voci=[])
+        for v in voci or []:
+            if v[0] == "§":
+                if cur["voci"] or cur["titolo"]:
+                    righe_v.append(cur)
+                cur = dict(titolo=v[1], voci=[])
+            else:
+                if len(cur["voci"]) == 4:
+                    righe_v.append(cur); cur = dict(titolo=None, voci=[])
+                cur["voci"].append(v)
+        if cur["voci"] or cur["titolo"]:
+            righe_v.append(cur)
+        for rv in righe_v:
+            _w, h1 = TT.misura(cv, self.F(9, True), "Ag"); _w, h2 = TT.misura(cv, self.F(10, True), "Ag"); _w, ht = TT.misura(cv, self.F(8, True), "Ag")
             y0 = y + 6
-            alto = 6 + h1 + h2 + 2 + 6
+            alto = 6 + (ht + 4 if rv["titolo"] else 0) + (h1 + h2 + 2 if rv["voci"] else 0) + 6
             cv.create_rectangle(0, y0, W, y0 + alto, fill=fondo, width=0)
-            n = len(voci)
-            for i, (titolo, valore, col) in enumerate(voci):
+            yy = y0 + 6
+            if rv["titolo"]:
+                cv.create_text(10, yy, text=rv["titolo"], anchor="nw", fill="#f0ad4e", font=self.F(8, True))
+                yy += ht + 4
+            n = max(1, len(rv["voci"]))
+            for i, (titolo, valore, col) in enumerate(rv["voci"]):
                 x = 10 + i * (W - 20) / n
-                cv.create_text(x, y0 + 6, text=titolo, anchor="nw", fill=tinte[i % len(tinte)], font=self.F(9, True))
-                cv.create_text(x, y0 + 6 + h1 + 1, text=valore, anchor="nw", fill=col or "#ffffff", font=self.F(10, True))
+                cv.create_text(x, yy, text=titolo, anchor="nw", fill=tinte[i % len(tinte)], font=self.F(9, True))
+                cv.create_text(x, yy + h1 + 1, text=valore, anchor="nw", fill=col or "#ffffff", font=self.F(10, True))
             y = y0 + alto
         if righe:
             testa = (("", "#ffffff"), ("GIH WR", "#24baff"), ("ALSA", "#5cb85c"), ("PLAYED", "#f0ad4e"), ("GAMES", "#c792ea"))

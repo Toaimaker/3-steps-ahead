@@ -10,6 +10,7 @@ import collezione_carte as CC
 import disegni as DG
 import mazzi_salvati as MS
 import prezzi_carte as PZ
+import visibilita_mazzi as VM
 
 from dati_app import BASI, collezione, collezione_nota, craft, jolly, mazzi_costruiti
 from finestra_mazzo import FinestraMazzo
@@ -17,7 +18,12 @@ from gruppi_mazzi import GRUPPI_CHIUSI, MS_dict, nome_formato, ordine_formato, s
 from pagina_base import Pagina, prepara_capsule
 from pagina_standard import PaginaStandard
 from tema import CI as C, PERSA, VINTA
-from widget import Tendina, pulsante_solido
+from widget import ARANCIO, Tendina, pulsante_solido
+
+
+def VIS(larga):
+    """La pillola pubblico/privato su una scheda: in alto a sinistra, sulla copertina. -> (x0, y0, x1, y1)."""
+    return 10, 10, 10 + 96, 10 + 26
 
 
 def CESTINO(larga):
@@ -378,11 +384,12 @@ class PaginaMazzi(PaginaStandard):
             wr = round(100 * m["w"] / m["n"]) if m["n"] else 0
             c.create_text(x, H - 27, text=f"{wr}%" if m["n"] else "-", anchor="w", fill=C["muto"] if not m["n"] else VINTA if wr >= 50 else PERSA, font=F(15, True))
             self.pulsante_scheda(c, dx_, H, "View deck")
+            c.box_vis = self.vis_mazzo(c, m)
         disegna()
         self.lista.chiedi_arte(c, m["arte"], disegna)
         c.bind("<Enter>", lambda e: c.itemconfigure("corpo", fill=C["cap"], outline=C["accento"]))
         c.bind("<Leave>", lambda e: c.itemconfigure("corpo", fill=C["fondo"], outline=C["filo"]))
-        c.bind("<Button-1>", lambda e: self.apri(("mio", m.get("id") or m["nome"])))
+        c.bind("<Button-1>", lambda e: self.clic_vis(m, c, e) or self.apri(("mio", m.get("id") or m["nome"])))
         return c
 
     def pulsante_scheda(self, c, dx_, H, testo):
@@ -454,6 +461,7 @@ class PaginaMazzi(PaginaStandard):
             self.pulsante_scheda(c, dx_, H, "Edit" if sez == "build" and scrivibile else "View deck")
             if sez in ("wish", "build") and scrivibile:
                 self.cestino(c, *CESTINO(L))
+            c.box_vis = self.vis_mazzo(c, m)
         sez = m.get("_sez") or self.sezione
         import account
         scrivibile = not account.sola_lettura()         # All accounts: niente cestino ne' Edit (10 nov 2026, Magic 12)
@@ -472,6 +480,8 @@ class PaginaMazzi(PaginaStandard):
         def clic(e):
             # il cestino in alto a destra: il mazzo va via subito e la pagina si ridisegna (Autore, 9 nov 2026: «cambiamo il modo di cancellare i mazzi, non da dentro il mazzo ma da
             # fuori metti un cestino in alto a destra sulla scheda e che il cancellamento sia immediato perche' vedo che devo cambiare e poi tornare alla pagina per vederlo cancellato»)
+            if self.clic_vis(m, c, e):
+                return
             x0, y0, x1, y1 = CESTINO(L)
             if sez in ("wish", "build") and scrivibile and x0 <= e.x <= x1 and y0 <= e.y <= y1:
                 self.cancella(sez, m["id"]); return
@@ -481,6 +491,41 @@ class PaginaMazzi(PaginaStandard):
             self.apri((sez, MS_dict(m)) if sez in ("wish", "build") else ("mio", m["id"]))
         c.bind("<Button-1>", clic)
         return c
+
+    def pillola_vis(self, c, x0, y0, stato, eccezione, tag, alta=26, sopra=False):
+        """La pillola pubblico/privato (12 nov 2026, Autore): il globo azzurro e PUBLIC, o il lucchetto e PRIVATE; il bordo arancio quando il mazzo viola
+        la regola del suo gruppo. Disegnata su c (una tela o una scheda della griglia) coi tag dati. -> la larghezza."""
+        pub = stato == VM.PUBBLICO
+        testo = ("PUBLIC" if pub else "PRIVATE") + (" ·  own rule" if eccezione else "")
+        col = C["accento"] if pub else C["grigio"]
+        lg = 38 + 7 * len(testo)
+        bordo = ARANCIO[1] if eccezione else (C["accento"] if sopra else C["filo"])
+        c.create_rectangle(x0, y0, x0 + lg, y0 + alta, fill=C["fondo"], outline=bordo, width=1, tags=tag)
+        img = DG.globo(16, col) if pub else DG.lucchetto(16, True, col)
+        c.create_image(x0 + 8, y0 + (alta - 16) / 2, image=img, anchor="nw", tags=tag)
+        c.create_text(x0 + 30, y0 + alta / 2, text=testo, anchor="w", fill=col, font=self.F(7, True), tags=tag)
+        return lg
+
+    def vis_mazzo(self, c, m):
+        """La pillola del mazzo sulla scheda (niente per Arena decks): stato e se viola la regola del gruppo."""
+        stato, ecc = VM.mazzo(m)
+        if stato is None:
+            return None
+        c.delete("vis")
+        lg = self.pillola_vis(c, 10, 10, stato, ecc, ("vis",))
+        return (10, 10, 10 + lg, 36)
+
+    def clic_vis(self, m, c, e):
+        """Vero se il clic e' sulla pillola: il mazzo cambia regola e la pillola si ridisegna."""
+        box = getattr(c, "box_vis", None)
+        if not box or not (box[0] <= e.x <= box[2] and box[1] <= e.y <= box[3]):
+            return False
+        import account
+        if account.sola_lettura():
+            return True
+        VM.cambia_mazzo(m)
+        c.box_vis = self.vis_mazzo(c, m)
+        return True
 
     def cestino(self, c, x0, y0, x1, y1):
         """Il cestino disegnato, non scritto: un quadrato scuro sulla copertina col coperchio, il manico e il secchio a righe. Si accende di rosso sotto il puntatore."""
@@ -604,10 +649,32 @@ class PaginaMazzi(PaginaStandard):
         cv.create_text(cv.bbox(tit)[2] + 12, y0 + 20, text=f"{quanti} deck{'s' if quanti != 1 else ''}", anchor="w", fill=C["grigio"], font=F(10, True), tags=t)
         yl = y0 + 40
         cv.create_line(0, yl, larga, yl, fill=C["filo"], tags="gruppo")
+        regola = VM.gruppo(nome) if self.sezione == "mine" else None
+        if regola is not None:       # la regola del gruppo, a destra della riga (12 nov 2026); Arena decks no
+            tv = ("visg", f"visg:{chiave}")
+            lg = self.pillola_vis(cv, 0, y0 + 4, regola, False, tv)
+            cv.move(tv[1], larga - lg - 16, 0)
+            cv.create_text(larga - lg - 26, y0 + 17, text="decks in this group:", anchor="e", fill=C["muto"], font=F(8), tags=tv)
+
+            def gira(_e, nome=nome):
+                import account
+                if not account.sola_lettura():
+                    VM.cambia_gruppo(nome)
+                    self.ridisegna_vis()
+            cv.tag_bind(tv[1], "<Button-1>", gira)
+            cv.tag_bind(tv[1], "<Enter>", lambda e: cv.configure(cursor="hand2"))
+            cv.tag_bind(tv[1], "<Leave>", lambda e: cv.configure(cursor=""))
         cv.tag_bind(t[1], "<Button-1>", lambda e: self.cambia_gruppo(chiave))
         cv.tag_bind(t[1], "<Enter>", lambda e: (cv.itemconfigure(tit_t, fill=C["accento"]), cv.configure(cursor="hand2")))
         cv.tag_bind(t[1], "<Leave>", lambda e: (cv.itemconfigure(tit_t, fill=C["titolo"]), cv.configure(cursor="")))
         return yl + 20      # aria fra il filo del gruppo e le schede (7 nov 2026)
+
+    def ridisegna_vis(self):
+        """Dopo un cambio di regola di un gruppo: le testate e le pillole dei mazzi, senza rifare le schede."""
+        for m, c in zip(self.mazzi, self.scatole):
+            if getattr(c, "box_vis", None) is not None:
+                c.box_vis = self.vis_mazzo(c, m)
+        self.disponi(self.cv.winfo_width(), forza=True)
 
     def cambia_gruppo(self, chiave):
         GRUPPI_CHIUSI.symmetric_difference_update({chiave})

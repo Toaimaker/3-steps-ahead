@@ -233,23 +233,44 @@ def cestino(lato, colore, fondo, bordo):
 
 
 def lucchetto(lato, chiuso, colore):
-    """Il lucchetto delle terre nel builder: l'arco chiuso o aperto a destra, il corpo pieno."""
+    """Il lucchetto (le terre nel builder, le label della Board, i mazzi privati). Ridisegnato il 12 nov 2026 (Autore: «un redesign piu' definito dei
+    lucchetti»): l'arco spesso a U che entra nel corpo, il corpo pieno con gli angoli tondi e il buco della chiave forato (trasparente); aperto, l'arco
+    alzato e girato a destra con la gamba sinistra libera. Su una griglia di 20 unita', una scala per ogni misura."""
+    def fa():
+        d = Disegno(lato, lato)
+        k = lato / 20
+        s = SCALA
+        sp = 2.6 * k            # lo spessore dell'arco
+        if chiuso:
+            d.arco(5.2 * k, 1.6 * k, 14.8 * k, 11.2 * k, 180, 360, colore, sp)
+            d.linea([(5.2 * k + sp / 2, 6.4 * k), (5.2 * k + sp / 2, 9.6 * k)], colore, sp, tondo=False)
+            d.linea([(14.8 * k - sp / 2, 6.4 * k), (14.8 * k - sp / 2, 9.6 * k)], colore, sp, tondo=False)
+        else:
+            d.arco(9.6 * k, 0.4 * k, 19.2 * k, 10.0 * k, 180, 360, colore, sp)
+            d.linea([(19.2 * k - sp / 2, 5.2 * k), (19.2 * k - sp / 2, 9.6 * k)], colore, sp, tondo=False)
+            d.linea([(9.6 * k + sp / 2, 5.2 * k), (9.6 * k + sp / 2, 6.6 * k)], colore, sp, tondo=True)
+        d.rett(3.0 * k, 9.0 * k, 17.0 * k, 19.4 * k, riempi=colore, raggio=2.4 * k)
+        # il buco della chiave: un tondo e una gamba, forati nel corpo
+        cx, cy, r = 10 * k, 13.2 * k, 1.7 * k
+        d.d.ellipse(((cx - r) * s, (cy - r) * s, (cx + r) * s, (cy + r) * s), fill=(0, 0, 0, 0))
+        d.d.polygon([((cx - 0.9 * k) * s, (cy + 0.6 * k) * s), ((cx + 0.9 * k) * s, (cy + 0.6 * k) * s), ((cx + 1.2 * k) * s, 17.2 * k * s),
+                     ((cx - 1.2 * k) * s, 17.2 * k * s)], fill=(0, 0, 0, 0))
+        return d
+    return _icona(("lucchetto2", lato, chiuso, colore), fa)
+
+
+def globo(lato, colore):
+    """Il globo di «pubblico» (12 nov 2026, la regola pubblico/privato dei mazzi): il cerchio, l'equatore e un meridiano a ellisse."""
     def fa():
         d = Disegno(lato, lato)
         k = lato / 18
-        if chiuso:
-            d.arco(5 * k, 2 * k, 13 * k, 13 * k, 180, 360, colore, 2 * k)
-            d.linea([(5 * k, 7.5 * k), (5 * k, 10 * k)], colore, 2 * k, tondo=False)
-            d.linea([(13 * k, 7.5 * k), (13 * k, 10 * k)], colore, 2 * k, tondo=False)
-        else:
-            d.arco(8 * k, 0, 16 * k, 11 * k, 180, 360, colore, 2 * k)
-            d.linea([(16 * k, 5.5 * k), (16 * k, 8 * k)], colore, 2 * k, tondo=False)
-        if chiuso:
-            d.rett(3 * k, 9 * k, 15 * k, 17 * k, riempi=colore, raggio=1.5 * k)
-        else:
-            d.rett(3 * k, 9 * k, 15 * k, 17 * k, bordo=colore, larghezza=2 * k, raggio=1.5 * k)
+        d.cerchio(9 * k, 9 * k, 7.2 * k, bordo=colore, larghezza=1.6 * k)
+        d.linea([(1.8 * k, 9 * k), (16.2 * k, 9 * k)], colore, 1.3 * k)
+        d.arco(5.6 * k, 1.8 * k, 12.4 * k, 16.2 * k, 0, 360, colore, 1.3 * k)
+        d.linea([(3 * k, 5.4 * k), (15 * k, 5.4 * k)], colore, 1.0 * k)
+        d.linea([(3 * k, 12.6 * k), (15 * k, 12.6 * k)], colore, 1.0 * k)
         return d
-    return _icona(("lucchetto", lato, chiuso, colore), fa)
+    return _icona(("globo", lato, colore), fa)
 
 
 def punto(diametro, colore, bordo=None, larghezza=0.0):
