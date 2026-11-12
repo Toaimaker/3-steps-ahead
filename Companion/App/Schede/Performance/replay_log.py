@@ -48,6 +48,67 @@ def righe_partita(mid, dove=None):
     return []
 
 
+# le righe della spalla da mostrare accanto al replay (12 nov 2026, «Sì, prosegui»: «nei limited, i consigli della spalla accanto all'azione»): la mano, la
+# giocata, il piano, l'attacco, il suo attacco col blocco, il pericolo, il letale, il Cercatore; l'etichetta in inglese, il resto con la traduzione della chat
+ETICHETTE_SPALLA = (("MANO", "HAND"), ("GIOCA ORA", "PLAY NOW"), ("GIOCA", "PLAY"), ("PIANO ORA", "PLAN NOW"), ("PIANO", "PLAN"), ("TURNO INTERO", "WHOLE TURN"),
+                    ("ATTACCO SCELTO IN P", "ATTACK (BY WIN CHANCE)"), ("ATTACCO SUO", "THEIR ATTACK"), ("ATTACCO (EV)", "ATTACK"), ("ATTACCO", "ATTACK"),
+                    ("PERICOLO", "DANGER"), ("LETALE", "LETHAL"), ("CERCATORE", "SEARCH"), ("SURVEIL", "SURVEIL"), ("PW TUO", "YOUR PW"), ("PW SUO", "THEIR PW"),
+                    ("SUO MANA", "THEIR MANA"))
+
+
+FRASI_SPALLA = (("win condition misurate nel mazzo: nessuna, si vince col board", "measured win conditions in the deck: none, the board wins"),
+                ("niente in campo", "nothing on the battlefield"), ("in campo", "on the battlefield"), ("forza in campo", "power on the battlefield"),
+                ("win condition misurate nel mazzo", "measured win conditions in the deck"), ("(segui questo)", "(follow this)"),
+                ("dell'attacco qui sopra", "of the attack above"), ("con la sua risposta peggiore per te", "with their worst answer for you"),
+                ("la differenza vale circa la meta'", "the difference is worth about half"), ("restare a casa vale", "staying home is worth"),
+                ("risposta sua", "their answer"), ("nessun blocco", "no block"), ("p trucco", "trick chance"), ("prior grado C", "grade C prior"),
+                ("grado C", "grade C"), ("grado B", "grade B"), ("attacchi con", "attack with"), ("tu chiudi in", "you close in"), ("lui in", "opponent in"),
+                ("dopo GIOCA", "after PLAY"), ("creature: dopo l'attacco", "creatures: after the attack"), ("le creature adesso", "creatures now"),
+                ("niente attacco", "no attack"), ("tieni", "keep"), ("TIENI", "KEEP"), ("MULLIGAN", "MULLIGAN"), ("contro", "vs"), ("forza", "power"),
+                ("blocca con", "block with"), ("non bloccare", "don't block"), ("nessun attacco", "no attack"), ("sue terre libere", "their open lands"),
+                ("tue terre libere", "your open lands"), ("trucchi possibili", "possible tricks"), ("punti sul mulligan", "points over a mulligan"),
+                ("lascialo stare", "leave it"), ("attacca lui", "attack the player"), ("regola dell'11 ott", "rule of 11 Oct"), ("salvo", "except"),
+                ("e' a corto di mana", "is short on mana"), ("spingi adesso, prima che sblocchi", "push now, before they recover"), ("terre dopo", "lands after"),
+                ("ne ha saltate", "missed"), ("turni", "turns"), ("turno", "turn"), ("vite", "life"), ("tue", "your"), ("sue", "their"))
+
+
+def spalla(mid):
+    """Cosa diceva la spalla in quella partita, turno per turno di Arena, dal diario della partita (Log_Arena/partite/<ID>/diario.txt: c'e' solo nei limited
+    seguiti dal companion). -> {turno: [testo]}; la mano iniziale sta al turno 0. {} senza diario."""
+    import re
+    cart = MA.indice().get(mid)
+    if not cart:
+        return {}
+    try:
+        with open(os.path.join(cart, "diario.txt"), encoding="utf-8", errors="replace") as h:
+            righe = h.read().splitlines()
+    except OSError:
+        return {}
+    try:
+        from chat_testi import en
+    except Exception:      # noqa: BLE001 - senza la traduzione restano in italiano
+        en = lambda x: x
+    out, turno = {}, None
+    for r in righe:
+        corpo = r[9:] if len(r) > 9 and r[2] == ":" and r[5] == ":" else r
+        dentro = corpo.startswith("  ")
+        testo = corpo.strip()
+        if not dentro:
+            m = re.match(r"TURNO (\d+)\b", testo) or re.search(r"\bT(\d+)\b", testo)
+            turno = int(m.group(1)) if m else (0 if testo.startswith("MANO") else None)
+        if turno is None:
+            continue
+        for it, inglese in ETICHETTE_SPALLA:
+            if testo.startswith(it) and (dentro or it in ("MANO", "ATTACCO SUO", "LETALE", "PERICOLO", "CERCATORE", "SURVEIL")):
+                resto = testo[len(it):].lstrip(" :")
+                resto = re.sub(r"^T\d+\b[:]?\s*", "", resto)
+                for a_, b_ in FRASI_SPALLA:      # prima le frasi intere della spalla, poi la traduzione parola per parola della chat
+                    resto = resto.replace(a_, b_)
+                out.setdefault(turno, []).append(f"{inglese}: {en(resto)}")
+                break
+    return out
+
+
 def _dettaglio(a, k):
     for x in a.get("details") or []:
         if x.get("key") == k:
@@ -247,6 +308,24 @@ def prova():
             ("la foto dopo la terra ha la terra in campo con il suo id", fr[1]["foto"]["c"][0] == [[100, 0, 0, None, None, 3]]),
             ("i danni e le vite dopo la risoluzione", fr[3]["danni"] == [(9, 3)] and fr[3]["foto"]["v"] == [20, 17] and fr[3]["foto"]["c"][1] == []),
             ("negativa: righe senza stato del gioco, nessuna foto", azioni(["niente", "{rotto"]) == [])]
+    # la spalla da un diario finto (in una cartella di partita finta)
+    import tempfile
+    vecchia = MA.CARTELLA
+    MA.CARTELLA = tempfile.mkdtemp()
+    try:
+        cart = os.path.join(MA.CARTELLA, "x")
+        os.makedirs(cart)
+        with open(os.path.join(cart, "partita.json"), "w", encoding="utf-8") as h:
+            json.dump(dict(matchId="m1"), h)
+        with open(os.path.join(cart, "diario.txt"), "w", encoding="utf-8") as h:
+            h.write("02:17:20 MANO (7) contro X: Shock, Mountain | terre 3/7 -> TIENI\n02:17:30 TURNO 4 | vite tu 20 lui 20\n02:17:30   GIOCA: Mountain\n"
+                    "02:17:30   PIANO: tu chiudi in 5 turni\n02:18:00 STATO Partita contro X\n02:18:18 ATTACCO SUO T5: Goblin 2/1 = 2 su 20 vite\n")
+        sp = spalla("m1")
+        casi.append(("la spalla turno per turno: la mano al turno 0, giocata e piano al 4, il suo attacco al 5; lo STATO no",
+                     list(sp) == [0, 4, 5] and sp[4][0] == "PLAY: Mountain" and sp[4][1].startswith("PLAN:") and sp[5][0].startswith("THEIR ATTACK: Goblin")))
+        casi.append(("negativa: una partita senza diario, niente spalla", spalla("nessuna") == {}))
+    finally:
+        MA.CARTELLA = vecchia
     for n, ok in casi:
         print(("ok    " if ok else "ROSSO ") + n)
     print(f"{sum(1 for _n, ok in casi if ok)}/{len(casi)}")

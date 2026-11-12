@@ -1,6 +1,6 @@
 {
- "version": "0.1.61",
+ "version": "0.1.62",
  "date": "2026-11-12",
- "notes": "Replayer: jump to the next combat, spell or moment the opponent is tapped out; bookmark spots and find them in My filters.",
+ "notes": "Replayer: cards slide from zone to zone, and in limited games the companion advice for each turn sits next to the action.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

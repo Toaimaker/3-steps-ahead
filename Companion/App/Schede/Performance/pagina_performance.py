@@ -1183,6 +1183,7 @@ class PaginaPerformance:
     def passo_board(self, d):
         b = getattr(self, "_board", None)
         if b:
+            self._anima = d == 1        # un passo avanti: le carte scorrono da dove erano (anima_board)
             self.vai_board(b["i"] + d)
 
     def vai_board(self, i):
@@ -1216,6 +1217,7 @@ class PaginaPerformance:
             self.disegna_controlli()
             return
         b["i"] += 1
+        self._anima = True
         self.disegna_board()
         self._play_id = f.after(int(1600 / b["vel"]), self.giro_board)
 
@@ -1624,6 +1626,13 @@ class PaginaPerformance:
                 cp.xview_moveto(max(0, (x0 - W_ / 2) / x))
         # la tavola
         c.delete("all")
+        prima_zone = list(getattr(self, "_box_zona", []))        # dove stavano le carte nel passo disegnato prima (per farle scorrere)
+        prima_pile = None
+        anima = getattr(self, "_anima", False)
+        self._anima = False
+        self.ferma_animazione()
+        self._pila_prima, self._pila_ora = getattr(self, "_pila_ora", None), None
+        self._box_zona, self._nuove = [], []
         self._box_pile, self._box_carte = [], []
         self.via_hover()
         W, H = max(c.winfo_width(), 900), max(c.winfo_height(), 560)
@@ -1687,7 +1696,7 @@ class PaginaPerformance:
                     self._pos_vita[voce[2]] = (xd - 20, y - 10, (bb[2] if bb else xd + 30), y + 10)
                 xd -= 30
 
-        def zona(tit, carte, y, alto, colore, destra="", vecchie=None, largo=Wt):
+        def zona(tit, carte, y, alto, colore, destra="", vecchie=None, largo=Wt, zkey=""):
             c.create_text(16, y + 12, text=tit, anchor="w", fill=colore, font=F(8, True))
             if isinstance(destra, list):
                 info(largo - 16, y + 12, destra)
@@ -1719,7 +1728,8 @@ class PaginaPerformance:
                 for id_ in ids.get(g, []):
                     self._pos_id[id_] = (x, cy, x + ww, cy + hh)
                 if img is not None:
-                    c.create_image(x, cy, image=img, anchor="nw")
+                    it_ = c.create_image(x, cy, image=img, anchor="nw")
+                    self._box_zona.append((zkey, n, (x, cy, x + ww, cy + hh), tap, it_))
                     if not ped:
                         self._box_carte.append((x, cy, x + ww, cy + hh, n))
                     if ped:     # il nome della pedina sul disegno di default
@@ -1728,6 +1738,8 @@ class PaginaPerformance:
                     c.create_rectangle(x, cy, x + ww, cy + hh, fill="#26262c", outline="#4a4a52")
                     c.create_text(x + ww / 2, cy + hh / 2, text=n, width=ww - 10, fill=C["titolo"], font=F(7, True), justify="center")
                 nuova = prima_n is not None and ora_n.get(n, 0) > prima_n.get(n, 0)
+                if nuova and img is not None and not ped:
+                    self._nuove.append((zkey, n, (x, cy, x + ww, cy + hh), tap, it_))
                 if nuova:       # arrivata dal momento prima
                     c.create_rectangle(x - 2, cy - 2, x + ww + 2, cy + hh + 2, outline="#24baff", width=2)
                     c.create_rectangle(x + 4, cy + 4, x + 38, cy + 18, fill="#0f86cc", outline="")
@@ -1748,17 +1760,17 @@ class PaginaPerformance:
         c.create_rectangle(0, 0, Wt, terzo, fill="#18161a", outline="")
         vv = lambda v: str(v) if v is not None else "-"
         zona("OPPONENT'S BATTLEFIELD", f["suo"], 4, terzo - 8, C["arancio"], [("carte", str(f["n_suo"])), ("cuore", vv(vite[1]), "vita_suo")],
-             [c_[0] for c_ in prima["suo"]] if prima else None, largo_campo)
+             [c_[0] for c_ in prima["suo"]] if prima else None, largo_campo, "suo")
         pila(largo_campo + 4, 8, LARGA_PILE - 4, terzo - 16, "GRAVEYARD", cim[1], C["arancio"], "cim_suo")
         pila(largo_campo + LARGA_PILE + 8, 8, LARGA_PILE - 4, terzo - 16, "EXILE", esi[1], C["arancio"], "esi_suo")
         c.create_line(0, terzo, Wt, terzo, fill=C["filo"])
         zona("YOUR BATTLEFIELD", f["mio"], terzo + 4, terzo - 8, C["azzurro"], [("carte", str(len(f["mano"]))), ("cuore", vv(vite[0]), "vita_mio")],
-             [c_[0] for c_ in prima["mio"]] if prima else None, largo_campo)
+             [c_[0] for c_ in prima["mio"]] if prima else None, largo_campo, "mio")
         pila(largo_campo + 4, terzo + 8, LARGA_PILE - 4, terzo - 16, "GRAVEYARD", cim[0], C["azzurro"], "cim_mio")
         pila(largo_campo + LARGA_PILE + 8, terzo + 8, LARGA_PILE - 4, terzo - 16, "EXILE", esi[0], C["azzurro"], "esi_mio")
         c.create_line(0, 2 * terzo, Wt, 2 * terzo, fill=C["filo"])
         zona("YOUR HAND" + ("  ·  the hand you kept" if nome == "Opening hand" else ""), [(n, False, False) for n in f["mano"]], 2 * terzo + 4, terzo + 12,
-             C["titolo"], [("carte", str(len(f["mano"])))], prima["mano"] if prima else None, Wt)
+             C["titolo"], [("carte", str(len(f["mano"])))], prima["mano"] if prima else None, Wt, "mano")
         # il racconto del momento
         xr = Wt + 12
         c.create_rectangle(xr, 0, W, H, fill="#18181e", outline="")
@@ -1781,6 +1793,7 @@ class PaginaPerformance:
                 c.create_rectangle(xr + 14, y + 12, xr + 14 + w_p, y + 12 + hp, fill="#26262c", outline="#b58cff")
                 c.create_text(xr + 14 + w_p / 2, y + 12 + hp / 2, text=rel["nome"], width=w_p - 10, fill=C["titolo"], font=F(8, True), justify="center")
             pila_box = (xr + 14, y + 12, xr + 14 + w_p, y + 12 + hp)
+            self._pila_ora = (pila_box, rel["nome"])
             y += hp + 28
             nc = len(rel.get("colpiti") or [])
             if nc:      # l'effetto: quanti permanenti ha tolto
@@ -1793,14 +1806,25 @@ class PaginaPerformance:
                           font=F(7, True))
             y += 22
         self.frecce_board(c, rel, pila_box, W, H)
+        if "spalla" not in b:       # cosa diceva la spalla (solo nei limited seguiti dal companion)
+            try:
+                import replay_log as RL
+                b["spalla"] = RL.spalla(b["x"].get("partita"))
+            except Exception:      # noqa: BLE001 - senza diario niente spalla
+                b["spalla"] = {}
+        t_passo = b["passi"][b["i"]][2]
+        consigli = [(None, "THE COMPANION SAID")] + [("spalla", s_) for s_ in b["spalla"].get(t_passo, [])] if b["spalla"].get(t_passo) else []
         if b.get("modo") == "azioni":
             self.danni_board(c, b["passi"][b["i"]][5])
-            righe_r = [(m_, "▸ " + t_) for m_, t_ in b["passi"][b["i"]][4]]       # quest'azione, in testa
+            righe_r = [(m_, "▸ " + t_) for m_, t_ in b["passi"][b["i"]][4]]       # quest'azione, in testa, poi la spalla, poi il resto del turno
             prima_ = [ev_ for p_ in b["passi"][:b["i"]] if p_[2] == b["passi"][b["i"]][2] for ev_ in p_[4]]
+            righe_r += consigli
             if prima_:
                 righe_r += [(None, "EARLIER THIS TURN")] + list(reversed(prima_))
         else:
             righe_r = self.racconto(b["i"])
+            if righe_r is not None or consigli:
+                righe_r = consigli + (righe_r or [])
         if righe_r is None:
             c.create_text(xr + 14, y, text="No turn record for this game.", anchor="w", fill=C["grigio"], font=F(8))
         elif not righe_r:
@@ -1813,14 +1837,108 @@ class PaginaPerformance:
                 c.create_text(xr + 14, y + 6, text=testo, anchor="w", fill=C["muto"], font=F(7, True))
                 y += 20
                 continue
-            c.create_oval(xr + 14, y + 4, xr + 22, y + 12, fill="#24baff" if mio_ else "#f0ad4e", outline="")
+            sp_ = mio_ == "spalla"
+            c.create_oval(xr + 14, y + 4, xr + 22, y + 12, fill="#b58cff" if sp_ else "#24baff" if mio_ else "#f0ad4e", outline="")
             forte = testo.startswith("▸ ")
-            i_ = c.create_text(xr + 30, y, text=testo[2:] if forte else testo, anchor="nw", fill=C["titolo"] if forte else C["testo"], font=F(8, forte),
-                               width=LARGA_RACCONTO - 46)      # dall'alto: a capo non copre la riga dopo
+            i_ = c.create_text(xr + 30, y, text=testo[2:] if forte else testo, anchor="nw", fill="#d6c8ff" if sp_ else C["titolo"] if forte else C["testo"],
+                               font=F(7 if sp_ else 8, forte), width=LARGA_RACCONTO - 46)      # dall'alto: a capo non copre la riga dopo
             bb = c.bbox(i_)
             y = (bb[3] if bb else y + 16) + 6
+        if anima and prima is not None:
+            self.anima_board(c, prima_zone, prima_pile, prima, f)
         self.disegna_pila_aperta(c, f, W, H)
         self.disegna_controlli()
+
+    def ferma_animazione(self):
+        for a_ in getattr(self, "_anim_after", []):
+            try:
+                self.fin_board.after_cancel(a_)
+            except Exception:      # noqa: BLE001 - gia' scattato
+                pass
+        self._anim_after = []
+        c = getattr(self, "cv_board", None)
+        if c is not None and c.winfo_exists():
+            c.delete("anim")
+            for it_ in getattr(self, "_nascoste", []):
+                c.itemconfigure(it_, state="normal")
+        self._nascoste = []
+
+    def anima_board(self, c, prima_zone, prima_pile, prima, f):
+        """Le carte che scorrono (12 nov 2026, «le carte che scorrono da una zona all'altra invece di comparire»): una carta arrivata in campo dalla tua mano
+        parte da dov'era in mano (dal lato dell'avversario, dalla sua mano); una carta che lascia il campo scivola sul suo cimitero o sul suo esilio, o nella
+        tua mano se ci torna. 200 ms, 12 quadri; un altro passo le chiude subito."""
+        def centro(r_):
+            return ((r_[0] + r_[2]) / 2, (r_[1] + r_[3]) / 2)
+        mosse = []
+        mano_prima = [z for z in prima_zone if z[0] == "mano"]
+        usate = set()
+        pila_prima = getattr(self, "_pila_prima", None)
+        for zkey, n, box, tap, it_ in self._nuove:        # arrivi
+            da = None
+            if pila_prima and pila_prima[1] == n:       # dalla pila al campo: la magia risolta
+                da = pila_prima[0]
+            elif zkey == "mio":
+                da = next((z for z in mano_prima if z[1] == n and id(z) not in usate), None)
+                if da:
+                    usate.add(id(da))
+                    da = da[2]
+            elif zkey == "suo":
+                vs_ = self._pos_vita.get("vita_suo")
+                if vs_:
+                    da = (vs_[0] - 40, vs_[1], vs_[0] + 20, vs_[3] + 60)
+            if da:
+                mosse.append((n, tap, da, box, it_))
+        ora_conta = {}
+        for z in self._box_zona:
+            ora_conta[(z[0], z[1])] = ora_conta.get((z[0], z[1]), 0) + 1
+        for z in prima_zone:        # partenze dal campo
+            if z[0] not in ("mio", "suo"):
+                continue
+            k_ = (z[0], z[1])
+            if ora_conta.get(k_, 0) > 0:
+                ora_conta[k_] -= 1
+                continue
+            lato = 0 if z[0] == "mio" else 1
+            dove = None
+            if z[1] in ((f.get("cim") or ([], []))[lato])[:3]:
+                dove = next((b_[:4] for b_ in self._box_pile if b_[5] == ("cim_mio" if lato == 0 else "cim_suo")), None)
+            elif z[1] in ((f.get("esi") or ([], []))[lato])[:3]:
+                dove = next((b_[:4] for b_ in self._box_pile if b_[5] == ("esi_mio" if lato == 0 else "esi_suo")), None)
+            elif lato == 0 and z[1] in f["mano"]:
+                dove = next((zz[2] for zz in self._box_zona if zz[0] == "mano" and zz[1] == z[1]), None)
+            if dove:
+                mosse.append((z[1], z[3], z[2], dove, None))
+        pila_ora = getattr(self, "_pila_ora", None)
+        if pila_ora and not (pila_prima and pila_prima[1] == pila_ora[1]):       # una magia appena lanciata: dalla tua mano alla pila
+            da = next((z[2] for z in mano_prima if z[1] == pila_ora[1]), None)
+            if da:
+                mosse.append((pila_ora[1], False, da, pila_ora[0], None))
+        if not mosse:
+            return
+        quadri = 12
+        oggetti = []
+        for n, tap, da, a_, it_ in mosse:
+            w0 = max(30, round(min(da[2] - da[0], da[3] - da[1]) if tap else da[2] - da[0]))
+            img = self.immagine_carta(n, int(w0), tap)
+            if img is None:
+                continue
+            if it_ is not None:
+                c.itemconfigure(it_, state="hidden")
+                self._nascoste.append(it_)
+            (x0, y0), (x1, y1) = centro(da), centro(a_)
+            g_ = c.create_image(x0, y0, image=img, tags="anim")
+            oggetti.append((g_, x0, y0, x1, y1, it_))
+
+        def quadro(k):
+            u = k / quadri
+            u = 1 - (1 - u) ** 3        # rallenta all'arrivo
+            for g_, x0, y0, x1, y1, _it in oggetti:
+                c.coords(g_, x0 + (x1 - x0) * u, y0 + (y1 - y0) * u)
+            if k < quadri:
+                self._anim_after.append(self.fin_board.after(16, lambda: quadro(k + 1)))
+            else:
+                self.ferma_animazione()
+        self._anim_after = [self.fin_board.after(16, lambda: quadro(1))]
 
     def danni_board(self, c, danni):
         """I danni dell'azione: un tondo rosso col «-N» sulla carta o sul cuore colpito (la carta morta non c'e' piu': lo dice il racconto)."""

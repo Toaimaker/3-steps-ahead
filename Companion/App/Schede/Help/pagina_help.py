@@ -91,7 +91,8 @@ SEZIONI = (
                     "card in; Moments or Every action on top: every action is the game action by action (each draw, land, spell, damage, life change, token, "
                     "counter, attack), with the damage on the card it hits; PgUp and PgDn jump a turn; "
                     "Combat ›, Spell › and Opp. tapped out › jump to the next one (C, S, O; with Shift the one before); Bookmark (B) marks the spot: it goes to "
-                    "My filters, under your filters, one click to watch it again")]),
+                    "My filters, under your filters, one click to watch it again; stepping forward the cards slide from where they were (hand, stack, battlefield, "
+                    "graveyard, exile); in the limited games the companion followed, THE COMPANION SAID shows its advice for that turn")]),
     ("risorse", "Resources", "Gold, gems, packs, cards and wildcards: what you earn and spend, the Farmer that plans how to spend them, the roadmap and the ROI.",
      [("Period · Range · Resource", "what the chart and the income show"), ("Farmer", "goal sliders; Create makes the roadmap, Dismiss ends it"),
       ("Gold value", "My win rate or Pack price"), ("Spend gold on packs", "off: gold never buys packs"), ("Roadmap check", "above or below the plan, day by day")]),
