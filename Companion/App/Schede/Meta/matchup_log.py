@@ -5,7 +5,8 @@ Ogni partita finita del costruito diventa un record: formato, giorno, il tuo maz
 - **L'archetipo dell'avversario** si riconosce dalle sue carte viste fuori da grimorio e mano (partite_log «sue»): le magie viste si confrontano con le liste
   degli archetipi del meta del formato (i file della pagina Meta: lo scout nell'app di Autore, la copia ferma dell'11 nov 2026 nell'app pubblica).
   Vince l'archetipo che ne contiene di piu' (ogni carta pesa le copie della lista su 4) se arriva almeno a SOGLIA con almeno 2 carte e se i colori visti
-  stanno nei suoi; se no l'avversario resta coi soli colori («Other · Azorius»), e senza magie viste «Unknown». Grado C: chi concede al turno 3 mostra poco.
+  stanno nei suoi; se no l'avversario resta coi soli colori («Azorius», «Mono-White»: mai «Other», regola di Autore del 12 nov 2026), e senza magie viste
+  «Unknown». Grado C: chi concede al turno 3 mostra poco.
 - **Il tuo mazzo** e' il nome che ha su Arena (partite_log «nome_mazzo»); una riga condivisa (condividi.riga, senza nomi) si riconosce come l'avversario,
   dalla lista intera.
 - Fuori: le partite contro Sparky (AIBotMatch) e quelle non finite. I Dual Color Precons hanno formato «precon» e gli avversari coi soli colori: le liste del
@@ -41,6 +42,12 @@ COLORI = "WUBRG"
 DUE = dict(WU="Azorius", UB="Dimir", BR="Rakdos", RG="Gruul", WG="Selesnya", WB="Orzhov", UR="Izzet", BG="Golgari", WR="Boros", UG="Simic")
 TRE = dict(WUB="Esper", UBR="Grixis", BRG="Jund", WRG="Naya", WUG="Bant", WBG="Abzan", WUR="Jeskai", UBG="Sultai", WBR="Mardu", URG="Temur")
 MONO = dict(W="Mono-White", U="Mono-Blue", B="Mono-Black", R="Mono-Red", G="Mono-Green")
+SOLI_COLORI = set(MONO.values()) | set(DUE.values()) | set(TRE.values()) | {"4-Color", "5-Color", "Colorless"}
+
+
+def solo_colori(suo):
+    """Un avversario fuori dal meta, chiamato coi soli colori (12 nov 2026: mai «Other»; «Other · ...» e' il nome di prima, se ne resta uno in una copia)."""
+    return bool(suo) and (suo in SOLI_COLORI or suo.startswith("Other"))
 META_FMT = dict(standard="Standard", historic="Historic", explorer="Explorer", alchemy="Alchemy", timeless="Timeless", brawl="Brawl")
 _LOCK = threading.Lock()
 _INFO = {}
@@ -134,7 +141,7 @@ def archetipi(fmt, meta=None):
 
 
 def riconosci(nomi, fmt, arch=None):
-    """(archetipo, punti) dalle carte viste: l'archetipo del meta o «Other · colori», «Unknown» senza magie."""
+    """(archetipo, punti) dalle carte viste: l'archetipo del meta o i soli colori («Azorius»), «Unknown» senza magie."""
     info = info_carte()
     m = magie(nomi, info)
     if not m:
@@ -153,7 +160,7 @@ def riconosci(nomi, fmt, arch=None):
             meglio = (p, quota, nome)
     if meglio:
         return meglio[2], round(meglio[0], 2)
-    return "Other · " + nome_colori(col), 0.0
+    return nome_colori(col), 0.0
 
 
 def nome_mazzo(n):
@@ -293,9 +300,9 @@ def prova():
     arch = archetipi(None, meta)
     casi.append(("le terre non entrano nelle liste degli archetipi", all("plains" not in p and "island" not in p for _n, _c, p, _q in arch)))
     casi.append(("due carte della lista bastano: Mono-White Auras", riconosci(["Ethereal Armor", "Sheltered by Ghosts", "Plains"], "x", arch)[0] == "Mono-White Auras"))
-    casi.append(("negativa: una carta sola non basta, resta coi colori", riconosci(["Ethereal Armor", "Plains"], "x", arch)[0] == "Other · Mono-White"))
+    casi.append(("negativa: una carta sola non basta, resta coi colori", riconosci(["Ethereal Armor", "Plains"], "x", arch)[0] == "Mono-White"))
     casi.append(("negativa: un colore fuori dall'archetipo lo esclude", riconosci(["Opt", "Lightning Strike", "Ethereal Armor"], "x", arch)[0] != "Mono-White Auras"
-                 and riconosci(["Opt", "Lightning Strike", "Ethereal Armor"], "x", arch)[0].startswith("Other")))
+                 and solo_colori(riconosci(["Opt", "Lightning Strike", "Ethereal Armor"], "x", arch)[0])))
     casi.append(("una carta sola fuori colore non cambia il mazzo: resta Mono-White Auras",
                  riconosci(["Ethereal Armor", "Sheltered by Ghosts", "Opt"], "x", arch)[0] == "Mono-White Auras"))
     casi.append(("senza magie viste: Unknown", riconosci(["Plains", "Island"], "x", arch)[0] == "Unknown"))
@@ -344,7 +351,7 @@ def stampa():
                       f"  draw {x['draw'][1]}-{x['draw'][0] - x['draw'][1]}")
     riconosciute = [r for r in recs if r["formato"] == "standard"]
     if riconosciute:
-        n = sum(1 for r in riconosciute if not r["suo"].startswith(("Other", "Unknown")))
+        n = sum(1 for r in riconosciute if not solo_colori(r["suo"]) and r["suo"] != "Unknown")
         print(f"\narchetipo riconosciuto in {n} partite su {len(riconosciute)} dello Standard")
 
 

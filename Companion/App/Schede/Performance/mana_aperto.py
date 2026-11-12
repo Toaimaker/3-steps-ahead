@@ -24,7 +24,7 @@ import re  # noqa: E402
 
 from ambiente import LOGDIR  # noqa: E402
 
-VERSIONE = 2        # 2: le foto della partita
+VERSIONE = 3        # 2: le foto della partita; 3: cimitero, esilio, forza e costituzione
 CARTELLA = os.path.join(LOGDIR, "partite")
 COPIA = os.path.join(LOGDIR, "mana_aperto.json")
 
@@ -32,26 +32,38 @@ COPIA = os.path.join(LOGDIR, "mana_aperto.json")
 def leggi(righe):
     """Le righe di un pezzo di log -> dict(attacchi=[[turno, chi attacca, terre stappate di chi difende, sue terre]], fine=[[turno, chi, stappate, terre]],
     mano0=foto all'inizio del primo turno, foto=[[turno, chi e' di turno, foto]] alla fine di ogni turno, ultima=[turno, chi, foto] all'ultimo stato).
-    Una foto: dict(c=[campo del posto 1, del posto 2] con [grpId, tappata, pedina], m=[mano 1, mano 2] coi grpId che si vedono, n=[carte in mano], v=[vite])."""
+    Una foto: dict(c=[campo del posto 1, del posto 2] con [grpId, tappata, pedina, forza, costituzione], m=[mano 1, mano 2] coi grpId che si vedono, n=[carte in
+    mano], v=[vite], g=[cimitero 1, 2], e=[esilio 1, 2]) (cimitero ed esilio per proprietario, 12 nov 2026: «aggiungiamo cimitero e esilio»)."""
     obj, zone, ti = {}, {}, {}
     zown, zids, vite = {}, {}, {}
     attacchi, fine, visti_att, visti_fine = [], [], set(), set()
     foto_t, mano0 = [], None
 
+    def valore(o, k):
+        v = o.get(k)
+        return v.get("value") if isinstance(v, dict) else v
+
     def foto():
-        c, m, n = [[], []], [[], []], [0, 0]
+        c, m, n, g, e = [[], []], [[], []], [0, 0], [[], []], [[], []]
         for zid, tp in zone.items():
             ids = zids.get(zid, [])
-            if tp == "ZoneType_Battlefield":
+            if tp in ("ZoneType_Graveyard", "ZoneType_Exile"):
+                for i in ids:
+                    o = obj.get(i)
+                    if o and o.get("grpId") and o.get("type") == "GameObjectType_Card" and o.get("ownerSeatId") in (1, 2):
+                        (g if tp == "ZoneType_Graveyard" else e)[o["ownerSeatId"] - 1].append(o["grpId"])
+            elif tp == "ZoneType_Battlefield":
                 for i in ids:
                     o = obj.get(i)
                     if o and o.get("grpId") and o.get("type") in ("GameObjectType_Card", "GameObjectType_Token") and o.get("controllerSeatId") in (1, 2):
-                        c[o["controllerSeatId"] - 1].append([o["grpId"], 1 if o.get("isTapped") else 0, 1 if o["type"] == "GameObjectType_Token" else 0])
+                        crea = "CardType_Creature" in (o.get("cardTypes") or [])
+                        c[o["controllerSeatId"] - 1].append([o["grpId"], 1 if o.get("isTapped") else 0, 1 if o["type"] == "GameObjectType_Token" else 0,
+                                                             valore(o, "power") if crea else None, valore(o, "toughness") if crea else None])
             elif tp == "ZoneType_Hand" and zown.get(zid) in (1, 2):
                 k = zown[zid] - 1
                 n[k] = len(ids)
                 m[k] = [obj[i]["grpId"] for i in ids if i in obj and obj[i].get("grpId")]
-        return dict(c=c, m=m, n=n, v=[vite.get(1), vite.get(2)])
+        return dict(c=c, m=m, n=n, v=[vite.get(1), vite.get(2)], g=g, e=e)
 
     def terre(seat):
         tot = stap = 0
@@ -241,7 +253,7 @@ def prova():
     df = leggi(fz)
     casi.append(("le foto: la mano tenuta al primo turno (la sua solo contata), la board a fine turno con tappata e pedina, le vite",
                  df["mano0"]["m"] == [[100, 200], []] and df["mano0"]["n"] == [2, 3] and df["foto"][0][:2] == [1, 1]
-                 and df["foto"][0][2]["c"] == [[[100, 1, 0], [900, 0, 1]], []] and df["foto"][0][2]["m"][0] == [200] and df["foto"][0][2]["v"] == [20, 17]
+                 and df["foto"][0][2]["c"] == [[[100, 1, 0, None, None], [900, 0, 1, None, None]], []] and df["foto"][0][2]["m"][0] == [200] and df["foto"][0][2]["v"] == [20, 17]
                  and df["ultima"][0] == 1))
     # dagli archivi: un archivio finto con due partite, ritagliate per matchId; guardato una volta sola
     import tempfile

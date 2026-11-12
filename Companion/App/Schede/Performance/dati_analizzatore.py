@@ -207,7 +207,8 @@ def nome_grp(g):
 
 def foto_partita(x):
     """Le foto di una partita dal tuo posto (mano_aperto): dict(mano0, turni=[(turno, tuo turno?, foto)], ultima) con le foto girate cosi' che [0] sia il tuo
-    lato; None se la partita non ha il log. Una foto: dict(mio=[(nome, tappata, pedina)], suo=[...], mano=[nomi], n_suo=carte nella sua mano, vite=(tu, lui))."""
+    lato; None se la partita non ha il log. Una foto: dict(mio=[(nome, tappata, pedina, forza, costituzione)], suo=[...], mano=[nomi], n_suo=carte nella sua
+    mano, vite=(tu, lui), cim=(tuo cimitero, suo), esi=(tuo esilio, suo))."""
     d = _MANA.get(x.get("partita"))
     seat = x.get("seat")
     if not d or seat not in (1, 2) or "foto" not in d:
@@ -217,8 +218,11 @@ def foto_partita(x):
     def gira(f):
         if not f:
             return None
-        carte = lambda lst: [(nome_grp(g) or ("Token" if p_ else f"#{g}"), bool(t_), bool(p_)) for g, t_, p_ in lst]
-        return dict(mio=carte(f["c"][a]), suo=carte(f["c"][b]), mano=[nome_grp(g) or f"#{g}" for g in f["m"][a]], n_suo=f["n"][b], vite=(f["v"][a], f["v"][b]))
+        carte = lambda lst: [(nome_grp(c[0]) or ("Token" if c[2] else f"#{c[0]}"), bool(c[1]), bool(c[2]), *(list(c[3:5]) + [None, None])[:2]) for c in lst]
+        nomi = lambda lst: [nome_grp(g) or f"#{g}" for g in lst]
+        vuoto = [[], []]
+        return dict(mio=carte(f["c"][a]), suo=carte(f["c"][b]), mano=nomi(f["m"][a]), n_suo=f["n"][b], vite=(f["v"][a], f["v"][b]),
+                    cim=(nomi((f.get("g") or vuoto)[a]), nomi((f.get("g") or vuoto)[b])), esi=(nomi((f.get("e") or vuoto)[a]), nomi((f.get("e") or vuoto)[b])))
     turni = [(t, att == seat, gira(f)) for t, att, f in d.get("foto") or []]
     ult = d.get("ultima")
     return dict(mano0=gira(d.get("mano0")), turni=turni, ultima=(ult[0], ult[1] == seat, gira(ult[2])) if ult else None)
@@ -646,9 +650,10 @@ def spot(r, minimo=15, quanti=8, coppie=True, gia=None):
 
 # ------------------------------------------------------------------ la matrice dei matchup
 # (stesso giorno: «potranno incastrare anche i mazzi che utilizzano vs i mazzi del meta o trovati in partite»): i tuoi mazzi in riga, gli archetipi incontrati in
-# colonna (quelli riconosciuti fra le liste del meta, o anche «Other · colori» e «Unknown», i mazzi trovati in partita), in ogni cella partite e win rate.
+# colonna (quelli riconosciuti fra le liste del meta, o anche i soli colori, «Azorius», e «Unknown», i mazzi trovati in partita), in ogni cella partite e win rate.
 def del_meta(suo):
-    return bool(suo) and not suo.startswith("Other") and suo != "Unknown"
+    import matchup_log as MU
+    return bool(suo) and not MU.solo_colori(suo) and suo != "Unknown"
 
 
 def matrice(r, solo_meta=False, righe_max=8, colonne_max=10):

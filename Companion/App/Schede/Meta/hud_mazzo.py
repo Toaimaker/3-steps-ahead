@@ -128,7 +128,7 @@ def altro_misurato(recs, fmt):
     rr = [r for r in recs if r["formato"] == fmt and r["carte_viste"] >= 3]
     if len(rr) < 30:
         return None
-    return round(sum(1 for r in rr if r["suo"].startswith("Other")) / len(rr), 3)
+    return round(sum(1 for r in rr if ML.solo_colori(r["suo"])) / len(rr), 3)
 
 
 def posteriori(visti, mod):
@@ -403,8 +403,9 @@ def scheda(stato, recs=None, meta=None, storia=None, archivio=None):
         return dict(out, tipo="spento", motivo=f"No meta lists for {fmt}.")
     post = posteriori(visti, mod)
     top = post[0][0]
-    # un mazzo fuori dal meta si chiama coi colori delle sue magie, come nella banca dati (matchup_log: «Other · Boros»): i tuoi conti contro di lui sono quelli
-    altro = "Other · " + ML.nome_colori(ML.colori_di(visti)) if ML.magie(visti) else "Other"
+    # un mazzo fuori dal meta si chiama coi colori delle sue magie, come nella banca dati (matchup_log: «Boros»): i tuoi conti contro di lui sono quelli
+    # mai «Other» (12 nov 2026): fuori dal meta i soli colori, senza magie viste «Unknown colors»
+    altro = ML.nome_colori(ML.colori_di(visti)) if ML.magie(visti) else "Unknown colors"
     out.update(tipo="costruito", archetipi=[(altro if n == "Other" else n, p) for n, p in post[:3]], altro=mod["altro"], probabili=probabili(post, mod, visti),
                istantanee=istantanee(post, mod, visti, out["aperte"]),
                curva=curva(top, recs, mod, archivio) if top != "Other" else None, contro=contro(altro if top == "Other" else top, recs, fmt, s.get("mazzo")))
@@ -463,7 +464,7 @@ def misura(recs=None, archivio=None, fmt="standard"):
             if len(ordine) < k:
                 continue
             post = posteriori(ordine[:k], mod)
-            atteso = "Other" if r["suo"].startswith("Other") else r["suo"]
+            atteso = "Other" if ML.solo_colori(r["suo"]) else r["suo"]
             giuste += post[0][0] == atteso
             conf += post[0][1]
             n += 1
@@ -514,8 +515,8 @@ def prova():
     st = dict(evento="Ladder", sue_nomi=["Lightning Strike", "Opt"], aperte=1, sul_play=True, turno=5, mazzo="UW Bouncer")
     h = scheda(st, recs=[dict(r, formato="standard") for r in recs], meta=meta, archivio=arch)
     casi.append(("la scheda intera del costruito", h["tipo"] == "costruito" and h["archetipi"][0][0] == "Izzet Prowess" and h["contro"]["tutti"]["partite"] == 4))
-    ho = scheda(dict(st, sue_nomi=["Llanowar Elves", "Giant Growth"]), recs=[dict(r, formato="standard", suo="Other · Mono-Green") for r in recs], meta=meta, archivio=arch)
-    casi.append(("fuori dal meta: «Other · Mono-Green» e i tuoi conti contro quei mazzi", ho["archetipi"][0][0] == "Other · Mono-Green"
+    ho = scheda(dict(st, sue_nomi=["Llanowar Elves", "Giant Growth"]), recs=[dict(r, formato="standard", suo="Mono-Green") for r in recs], meta=meta, archivio=arch)
+    casi.append(("fuori dal meta: «Mono-Green» (mai Other) e i tuoi conti contro quei mazzi", ho["archetipi"][0][0] == "Mono-Green"
                  and ho["contro"]["tutti"]["partite"] == 4 and ho["curva"] is None))
     casi.append(("negativa: evento competitivo, l'HUD tace", scheda(dict(st, competitivo=True))["tipo"] == "spento"))
     casi.append(("negativa: contro Sparky niente", scheda(dict(st, evento="AIBotMatch"))["tipo"] == "spento"))

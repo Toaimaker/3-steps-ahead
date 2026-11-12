@@ -1,6 +1,6 @@
 {
- "version": "0.1.54",
+ "version": "0.1.55",
  "date": "2026-11-12",
- "notes": "Performance: the opponent is always called opponent, tokens have a default drawing in the replayer, the games table shows the opponent colors and a mulligan column, fixed Mulligans, Start and Result filters.",
+ "notes": "Replayer: graveyard and exile, what happened in each moment, new cards marked, power and toughness, the chart of the game and its turning point; never Other, only colors.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

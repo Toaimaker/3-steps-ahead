@@ -396,7 +396,7 @@ def prova():
     with open(f1, "a", encoding="utf-8") as fh:
         fh.write(gs([(9, g("Lightning Strike"), False)], 4, 1))
     rifatto = w.aggiorna()
-    casi.append(("una carta nuova fuori colore: si ridisegna e Mono-White Auras scende sotto Other", rifatto is True and w.h["archetipi"][0][0].startswith("Other ·")
+    casi.append(("una carta nuova fuori colore: si ridisegna e Mono-White Auras scende sotto Other", rifatto is True and ML.solo_colori(w.h["archetipi"][0][0])
                  and dict(w.h["archetipi"]).get("Mono-White Auras", 0) < 0.3))
     if ARENA:       # «On Arena»: il clic cambia la preferenza (in un file della prova) e la scritta
         vecchio = HA.PREF

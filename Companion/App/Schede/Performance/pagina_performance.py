@@ -30,7 +30,9 @@ GRIGI = ("#2a2a30", "#3a3a42", "#0f86cc")       # i pulsanti a pillola grigi, az
 ALTO_TAB, LARGA_TAB = 34, 132                   # le cartelle
 LARGA_DECK = 1000                               # la finestra By deck
 ALTO_PARTITA = 24                               # una riga della tabella delle partite
-ALTO_CTRL = 64                                  # la barra del replayer della board
+ALTO_CTRL = 158                                 # la barra del replayer della board: il grafico della partita sopra, i comandi sotto
+ALTO_GRAF = 92                                  # il grafico della partita nella barra
+LARGA_RACCONTO = 300                            # la colonna del racconto a destra della tavola
 # per fasi della partita (12 nov 2026, Autore: «il menu a tendine creiamolo per macro fasi partita: formato evento e deck - poi start e mulligan - lands in
 # hand / cards in hand possiamo toglierlo, their card anche»): prima della partita (con By deck), l'apertura, l'avversario, com'e' finita, quando.
 # «deck» e' il pulsante By deck; Card in hand e Their card non sono tendine (restano in Split by, Group by e negli Spots)
@@ -957,8 +959,8 @@ class PaginaPerformance:
             return "not in the logs"
         import mazzi_salvati as MS
         f = fo["ultima"][2]
-        mie = [n for n, _t, _p in f["mio"] if not MS.e_terra(n)]
-        sue = [n for n, _t, _p in f["suo"] if not MS.e_terra(n)]
+        mie = [c_[0] for c_ in f["mio"] if not MS.e_terra(c_[0])]
+        sue = [c_[0] for c_ in f["suo"] if not MS.e_terra(c_[0])]
         return (", ".join(mie) or "no permanents") + f"  /  opponent: {len(sue)} permanent{'s' if len(sue) != 1 else ''}"
 
     def partita_a(self, c, e):
@@ -997,15 +999,43 @@ class PaginaPerformance:
             self.apri_board(x_, "mano" if k == "mano" else "fine")
 
     def passi_board(self, fo):
-        """I momenti di una partita da guardare: la mano tenuta, la fine di ogni turno, l'ultimo stato (se e' dopo l'ultima fine di turno)."""
+        """I momenti di una partita da guardare: la mano tenuta, la fine di ogni turno, l'ultimo stato (se e' dopo l'ultima fine di turno).
+        -> [(nome, foto, turno di Arena)]."""
         passi = []
         if fo["mano0"]:
-            passi.append(("Opening hand", fo["mano0"]))
+            passi.append(("Opening hand", fo["mano0"], 0))
         for t, mio_, f in fo["turni"]:      # Arena conta i turni dei due giocatori insieme: qui il turno di ognuno, come in partita
-            passi.append((f"{'You' if mio_ else 'Opponent'} T{(t + 1) // 2}", f))
+            passi.append((f"{'You' if mio_ else 'Opponent'} T{(t + 1) // 2}", f, t))
         if fo["ultima"] and fo["ultima"][2] and (not fo["turni"] or fo["ultima"][2] != fo["turni"][-1][2]):
-            passi.append(("End", fo["ultima"][2]))
+            passi.append(("End", fo["ultima"][2], fo["ultima"][0]))
         return passi
+
+    @staticmethod
+    def forza(lato):
+        """La forza delle creature in campo di un lato."""
+        return sum(c_[3] or 0 for c_ in lato if len(c_) > 3 and c_[3] is not None)
+
+    def momenti(self, passi):
+        """Il grafico della partita: per ogni momento le vite, la forza in campo dei due e il vantaggio (vite di differenza piu' due volte la forza di
+        differenza: grado C, un modo semplice di dire chi sta davanti). -> [dict(vite, forza, vantaggio)]."""
+        out = []
+        for _n, f, _t in passi:
+            v = f.get("vite") or (None, None)
+            fm, fs = self.forza(f["mio"]), self.forza(f["suo"])
+            vm, vs = (v[0] if v[0] is not None else 20), (v[1] if v[1] is not None else 20)
+            out.append(dict(vite=(vm, vs), forza=(fm, fs), vantaggio=(vm - vs) + 2 * (fm - fs)))
+        return out
+
+    def svolta(self, passi, vinta):
+        """Il punto di svolta: il momento in cui il vantaggio cambia di piu' verso chi ha vinto (None con meno di 3 momenti)."""
+        m = self.momenti(passi)
+        if len(m) < 3:
+            return None
+        if len(m) >= 4:     # l'ultimo momento no: il colpo che chiude e' sempre il piu' grande, la svolta viene prima
+            m = m[:-1]
+        salti = [(m[i]["vantaggio"] - m[i - 1]["vantaggio"]) * (1 if vinta else -1) for i in range(1, len(m))]
+        i = max(range(len(salti)), key=lambda j: salti[j])
+        return i + 1 if salti[i] > 0 else None
 
     def apri_board(self, x_, dove="fine"):
         """La board di una partita: in alto i momenti (la mano tenuta, la fine di ogni turno, la fine), sotto la tavola: le sue carte in campo, le tue, la tua
@@ -1021,7 +1051,7 @@ class PaginaPerformance:
         if f is None or not f.winfo_exists():
             f = self.fin_board = tk.Toplevel(self.fr); f.configure(bg=C["scheda"])
             f.title("The board")
-            f.geometry(f"1200x860+{self.cv_sx.winfo_rootx() + 60}+{max(0, self.cv_sx.winfo_rooty() - 90)}")
+            f.geometry(f"1500x960+{self.cv_sx.winfo_rootx() + 60}+{max(0, self.cv_sx.winfo_rooty() - 90)}")
             f.bind("<Escape>", lambda e: f.destroy())
             f.bind("<Left>", lambda e: self.passo_board(-1))
             f.bind("<Right>", lambda e: self.passo_board(1))
@@ -1038,12 +1068,15 @@ class PaginaPerformance:
             f.bind("<space>", lambda e: self.play_board())
             f.bind("<Home>", lambda e: self.vai_board(0))
             f.bind("<End>", lambda e: self.vai_board(10 ** 6))
+            f.bind("<t>", lambda e: self.vai_svolta())
             f.bind("<Destroy>", lambda e: e.widget is f and self.ferma_board(), add="+")
             self.cv_board = tk.Canvas(f, bg="#141418", highlightthickness=1, highlightbackground=C["filo"], bd=0)
             self.cv_board.pack(fill="both", expand=True, padx=12, pady=(4, 8))
             self.cv_board.bind("<Configure>", lambda e: self.disegna_board())
+            self.cv_board.bind("<Button-1>", self.clic_pila)
         self.ferma_board()
         self._board = dict(x=x_, passi=passi, i=0 if dove == "mano" else len(passi) - 1, play=False, vel=getattr(self, "_vel_board", 1.0))
+        self._board["svolta"] = self.svolta(passi, x_["vinta"])
         esito = "won" if x_["vinta"] else "lost"
         self.l_board.configure(text=f"{x_['quando']:%d %b %Y %H:%M}  ·  {(x_.get('mio') or '-').strip()} vs {x_.get('suo') or '-'}  ·  {esito}"
                                + (f" on turn {x_['turno']}" if x_.get("turno") else "") + (f"  ·  {x_['partenza'].lower()}" if x_.get("partenza") else ""))
@@ -1104,7 +1137,9 @@ class PaginaPerformance:
         self._play_id = None
 
     def disegna_controlli(self):
-        """La barra del replayer: i pulsanti disegnati (nitidi), la timeline coi momenti (i tuoi turni azzurri), il momento e la velocita'."""
+        """La barra del replayer. Sopra, il grafico della partita sulla stessa x della timeline: le vite (tu azzurro, l'avversario arancio), sotto la forza in
+        campo dei due a barre, la stella sul punto di svolta, la riga del momento; sotto i pulsanti disegnati (nitidi), la timeline coi momenti, il momento, il
+        punto di svolta e la velocita'."""
         c = getattr(self, "cv_ctrl", None)
         b = getattr(self, "_board", None)
         if c is None or not c.winfo_exists() or not b:
@@ -1112,7 +1147,7 @@ class PaginaPerformance:
         F = self.F
         c.delete("all")
         W, H = max(c.winfo_width(), 800), ALTO_CTRL
-        cy = H / 2
+        cy = ALTO_GRAF + (H - ALTO_GRAF) / 2
         d = DG.Disegno(W, H)
         sopra = getattr(self, "_ctrl_sopra", None)
         bianco, grigio = "#e6e6ea", "#9a9aa2"
@@ -1144,56 +1179,104 @@ class PaginaPerformance:
                 d.poligono([(cx - 5, cy - 6), (cx + 3, cy), (cx - 5, cy + 6)], riempi=col)
             self._box_ctrl.append((cx - r, cx + r, k))
             x += 2 * r + 10
-        # la timeline
+        # la timeline, e sopra il grafico della partita sulla stessa x
         t0, t1 = x + 20, W - 330
         n = len(b["passi"])
         self._timeline = (t0, t1, n)
         pos = lambda i: t0 + (t1 - t0) * (i / max(1, n - 1))
+        m = self.momenti(b["passi"])
+        sv = b.get("svolta")
+        g0, g1 = 14, ALTO_GRAF - 30          # la fascia delle vite
+        f0, f1 = ALTO_GRAF - 26, ALTO_GRAF - 4   # la fascia della forza
+        vmax = max([20] + [max(z["vite"]) for z in m])
+        vmin = min([0] + [min(z["vite"]) for z in m])
+        sy = lambda v: g1 - (v - vmin) / max(1, vmax - vmin) * (g1 - g0)
+        d.linea([(t0, sy(20)), (t1, sy(20))], "#2a2a32", 1)
+        if vmin < 0:
+            d.linea([(t0, sy(0)), (t1, sy(0))], "#3a3a42", 1)
+        fmax = max([1] + [max(z["forza"]) for z in m])
+        larga_b = max(2, min(10, (t1 - t0) / max(1, n) / 3))
+        for i, z in enumerate(m):
+            hm, hs = z["forza"][0] / fmax * (f1 - f0), z["forza"][1] / fmax * (f1 - f0)
+            if hm:
+                d.rett(pos(i) - larga_b - 0.5, f1 - hm, pos(i) - 0.5, f1, riempi=(36, 186, 255, 150))
+            if hs:
+                d.rett(pos(i) + 0.5, f1 - hs, pos(i) + larga_b + 0.5, f1, riempi=(240, 173, 78, 150))
+        if n > 1:
+            d.linea([(pos(i), sy(z["vite"][1])) for i, z in enumerate(m)], "#f0ad4e", 1.6)
+            d.linea([(pos(i), sy(z["vite"][0])) for i, z in enumerate(m)], "#24baff", 1.8)
+        d.linea([(pos(b["i"]), 6), (pos(b["i"]), ALTO_GRAF - 2)], "#ffffff", 1)
+        if sv is not None:      # la stella del punto di svolta
+            import math as _m
+            sx_, sy_ = pos(sv), 10
+            pts = [(sx_ + (7 if j % 2 == 0 else 3) * _m.cos(-_m.pi / 2 + j * _m.pi / 5), sy_ + (7 if j % 2 == 0 else 3) * _m.sin(-_m.pi / 2 + j * _m.pi / 5))
+                   for j in range(10)]
+            d.poligono(pts, riempi="#ffd23f")
+        d.linea([(0, ALTO_GRAF), (W, ALTO_GRAF)], "#26262c", 1)
         d.linea([(t0, cy), (t1, cy)], "#3a3a42", 4)
         d.linea([(t0, cy), (pos(b["i"]), cy)], "#0f86cc", 4)
-        for i, (nome, _f) in enumerate(b["passi"]):
+        for i, (nome, _f, _t) in enumerate(b["passi"]):
             mio_ = nome.startswith("You") or nome == "Opening hand"
             d.cerchio(pos(i), cy, 3.2, riempi=("#24baff" if mio_ else "#8a8a92") if i > b["i"] else "#ffffff")
+            if i == sv:
+                d.cerchio(pos(i), cy, 5.5, bordo="#ffd23f", larghezza=1.6)
         d.cerchio(pos(b["i"]), cy, 8, riempi="#ffffff", bordo="#0f86cc", larghezza=2)
-        # la velocita'
-        self._box_vel = []
+        # il punto di svolta e la velocita'
+        self._box_vel, self._box_svolta = [], None
         vx = W - 150
         for v in (0.5, 1.0, 2.0):
             on = abs(b["vel"] - v) < 1e-9
             d.rett(vx, cy - 12, vx + 42, cy + 12, riempi="#0f86cc" if on else "#202026", bordo="#0f86cc" if on else "#3a3a42", larghezza=1, raggio=4)
             self._box_vel.append((vx, vx + 42, v))
             vx += 46
+        if sv is not None:
+            d.rett(W - 150, 8, W - 12, 32, riempi="#2a2416", bordo="#ffd23f", larghezza=1, raggio=4)
+            self._box_svolta = (W - 150, 8, W - 12, 32)
         self._img_ctrl = d.foto()
         c.create_image(0, 0, image=self._img_ctrl, anchor="nw")
+        c.create_text(t0 - 10, sy(m[0]["vite"][0]) if m else 20, text="LIFE", anchor="e", fill=grigio, font=F(6, True))
+        c.create_text(t0 - 10, (f0 + f1) / 2, text="POWER", anchor="e", fill=grigio, font=F(6, True))
+        if m:
+            z = m[b["i"]]
+            c.create_text(t1 + 14, 20, text=f"you {z['vite'][0]}", anchor="w", fill="#24baff", font=F(8, True))
+            c.create_text(t1 + 14, 36, text=f"opponent {z['vite'][1]}", anchor="w", fill="#f0ad4e", font=F(8, True))
+            c.create_text(t1 + 14, (f0 + f1) / 2 + 2, text=f"power {z['forza'][0]} vs {z['forza'][1]}", anchor="w", fill=grigio, font=F(7))
+        if sv is not None:
+            c.create_text(W - 81, 20, text="★ Turning point", fill="#ffd23f", font=F(7, True))
         for x0_, x1_, v in self._box_vel:
             on = abs(b["vel"] - v) < 1e-9
             c.create_text((x0_ + x1_) / 2, cy, text=("0.5×" if v == 0.5 else f"{v:.0f}×"), fill="#ffffff" if on else grigio, font=F(7, True))
         nome = b["passi"][b["i"]][0]
-        c.create_text(W - 166, cy - 7, text=nome, anchor="e", fill=bianco, font=F(9, True))
-        c.create_text(W - 166, cy + 10, text=f"{b['i'] + 1} / {n}   ·   keys: space, arrows, Home, End", anchor="e", fill=grigio, font=F(7))
+        c.create_text(W - 166, cy - 7, text=nome + ("   ★" if b["i"] == sv else ""), anchor="e", fill=bianco, font=F(9, True))
+        c.create_text(W - 166, cy + 10, text=f"{b['i'] + 1} / {n}   ·   keys: space, arrows, Home, End, T", anchor="e", fill=grigio, font=F(7))
 
     def clic_controlli(self, e):
         b = getattr(self, "_board", None)
         if not b:
             return
-        for x0, x1, k in getattr(self, "_box_ctrl", []):
-            if x0 <= e.x <= x1:
-                if k == "play":
-                    self.play_board()
-                else:
-                    self.ferma_board()
-                    {"primo": lambda: self.vai_board(0), "indietro": lambda: self.passo_board(-1), "avanti": lambda: self.passo_board(1),
-                     "ultimo": lambda: self.vai_board(10 ** 6)}[k]()
-                return
-        for x0, x1, v in getattr(self, "_box_vel", []):
-            if x0 <= e.x <= x1:
-                b["vel"] = self._vel_board = v
-                self.disegna_controlli()
-                return
-        self.trascina_timeline(e)
+        if self._box_svolta and self._box_svolta[0] <= e.x <= self._box_svolta[2] and self._box_svolta[1] <= e.y <= self._box_svolta[3]:
+            self.ferma_board()
+            self.vai_board(b["svolta"])
+            return
+        if e.y >= ALTO_GRAF:
+            for x0, x1, k in getattr(self, "_box_ctrl", []):
+                if x0 <= e.x <= x1:
+                    if k == "play":
+                        self.play_board()
+                    else:
+                        self.ferma_board()
+                        {"primo": lambda: self.vai_board(0), "indietro": lambda: self.passo_board(-1), "avanti": lambda: self.passo_board(1),
+                         "ultimo": lambda: self.vai_board(10 ** 6)}[k]()
+                    return
+            for x0, x1, v in getattr(self, "_box_vel", []):
+                if x0 <= e.x <= x1:
+                    b["vel"] = self._vel_board = v
+                    self.disegna_controlli()
+                    return
+        self.trascina_timeline(e)       # la timeline, o il grafico sopra di lei: il momento piu' vicino
 
     def trascina_timeline(self, e):
-        """Clic o trascinamento sulla timeline: il momento piu' vicino."""
+        """Clic o trascinamento sulla timeline (o sul grafico sopra): il momento piu' vicino."""
         t0, t1, n = getattr(self, "_timeline", (0, 0, 0))
         if n and t0 - 12 <= e.x <= t1 + 12:
             i = round((min(max(e.x, t0), t1) - t0) / max(1, t1 - t0) * (n - 1))
@@ -1202,11 +1285,54 @@ class PaginaPerformance:
                 self.vai_board(i)
 
     def clic_passo(self, e):
+        x = self.cv_passi.canvasx(e.x)
         for x0, x1, i in getattr(self, "_box_passi", []):
-            if x0 <= e.x <= x1:
-                self._board["i"] = i
-                self.disegna_board()
+            if x0 <= x <= x1:
+                self.ferma_board()
+                self.vai_board(i)
                 return
+
+    def vai_svolta(self):
+        b = getattr(self, "_board", None)
+        if b and b.get("svolta") is not None:
+            self.ferma_board()
+            self.vai_board(b["svolta"])
+
+    def racconto(self, i):
+        """Cosa e' successo nel momento i, dalla scheda della partita (Partite/): le terre, le magie, le abilita' (non quelle di mana delle terre), gli attacchi,
+        i blocchi, le pedine, chi muore. -> [(tu?, testo)]; None senza scheda."""
+        b = self._board
+        sch = DA.scheda(b["x"].get("partita"))
+        if not sch:
+            return None
+        import mazzi_salvati as MS
+        nome, _f, t = b["passi"][i]
+        if nome == "Opening hand":
+            x_ = b["x"]
+            out = [(True, f"You are on the {x_['partenza'].lower()}" if x_.get("partenza") else "Who starts is not in the logs")]
+            if x_.get("mulligan"):
+                out.append((True, f"You took {x_['mulligan']} mulligan{'s' if x_['mulligan'] > 1 else ''}"))
+            return out
+        verbi = {"terra": "played", "lancia": "cast", "abilita": "activated", "attacca": "attacked with", "blocca": "blocked with", "pedina": "made a token:",
+                 "muore": "lost"}
+        out = []
+        for e in sch.get("eventi") or []:
+            if e.get("t") != t or e.get("tipo") not in verbi:
+                continue
+            carta = e.get("carta") or "a card"
+            if e["tipo"] == "abilita" and MS.e_terra(carta):
+                continue
+            chi = "You" if e.get("chi") == "io" else "Opponent"
+            testo = f"{chi} {verbi[e['tipo']]} {carta}"
+            if e["tipo"] == "attacca" and e.get("pt"):
+                testo += f" ({e['pt']})"
+            if e["tipo"] == "blocca" and e.get("blocca"):
+                testo += " → " + ", ".join(e["blocca"])
+            if out and out[-1][1] == testo:      # le righe uguali di fila una volta sola, con quante
+                out[-1][2] += 1
+            else:
+                out.append([e.get("chi") == "io", testo, 1])
+        return [(a, t_ + (f"  ×{n_}" if n_ > 1 else "")) for a, t_, n_ in out]
 
     def immagine_carta(self, nome, w, tappata):
         """La carta in piccolo dalla miniatura cotta (capsule.cuoci), girata se tappata; None se la miniatura non c'e'."""
@@ -1254,6 +1380,9 @@ class PaginaPerformance:
         return cache[k]
 
     def disegna_board(self):
+        """La tavola del momento: il campo dell'avversario, il tuo, la tua mano; accanto a ogni campo il cimitero e l'esilio di quel giocatore; le carte arrivate
+        dal momento prima col filo azzurro e «NEW»; forza e costituzione sulle creature; a destra il racconto di cosa e' successo (12 nov 2026, Autore:
+        «aggiungiamo cimitero e esilio, facciamo un replayer piu' avanzato e migliore degli attuali, di nuova generazione»)."""
         c = getattr(self, "cv_board", None)
         b = getattr(self, "_board", None)
         if c is None or not c.winfo_exists() or not b:
@@ -1265,11 +1394,12 @@ class PaginaPerformance:
         cp.delete("all")
         self._box_passi = []
         x = 0
-        for i, (nome, _f) in enumerate(b["passi"]):
+        for i, (nome, _f, _t) in enumerate(b["passi"]):
             w = max(64, len(nome) * 7 + 20)
             on = i == b["i"]
             mio_ = nome.startswith("You") or nome == "Opening hand"
-            cp.create_rectangle(x, 4, x + w, 32, fill="#0f86cc" if on else "#202024", outline="#0f86cc" if on else ("#3a3a40" if mio_ else "#2c2c32"))
+            cp.create_rectangle(x, 4, x + w, 32, fill="#0f86cc" if on else "#202024", outline="#ffd23f" if i == b.get("svolta") else
+                                ("#0f86cc" if on else ("#3a3a40" if mio_ else "#2c2c32")))
             cp.create_text(x + w / 2, 18, text=nome, fill="#ffffff" if on else (C["testo"] if mio_ else C["grigio"]), font=F(7, True))
             self._box_passi.append((x, x + w, i))
             x += w + 4
@@ -1281,42 +1411,72 @@ class PaginaPerformance:
                 cp.xview_moveto(max(0, (x0 - W_ / 2) / x))
         # la tavola
         c.delete("all")
-        W, H = max(c.winfo_width(), 800), max(c.winfo_height(), 600)
-        nome, f = b["passi"][b["i"]]
+        self._box_pile = []
+        W, H = max(c.winfo_width(), 900), max(c.winfo_height(), 560)
+        Wt = W - LARGA_RACCONTO - 12          # la tavola; a destra il racconto
+        nome, f, _t = b["passi"][b["i"]]
+        prima = b["passi"][b["i"] - 1][1] if b["i"] > 0 else None
+        LARGA_PILE = 150
 
-        def misura(ordine, alto):
+        def contate(lst):
+            out = {}
+            for n_ in lst:
+                out[n_] = out.get(n_, 0) + 1
+            return out
+
+        def misura(ordine, alto, largo):
             """La carta piu' grande (larghezza) con cui le carte della zona ci stanno tutte, a capo compreso; le tappate occupano l'altezza in larghezza."""
             for w in range(min(150, int((alto - 40) * 200 / 279)), 44, -4):
                 h = round(w * 279 / 200)
                 x, righe_ = 16, 1
-                for _n, tap, _p in ordine:
-                    ww = h if tap else w
-                    if x + ww > W - 16:
+                for g in ordine:
+                    ww = h if g[1] else w
+                    if x + ww > largo - 16:
                         x, righe_ = 16, righe_ + 1
                     x += ww + 8
                 if righe_ * (h + 10) <= alto - 30:
                     return w
             return 44
 
-        def zona(tit, carte, y, alto, colore, destra=""):
+        def pila(x0, y0, larga, alta, tit, carte, colore, chiave):
+            """Il cimitero o l'esilio: il titolo col numero, l'ultima carta arrivata, il clic apre tutte."""
+            c.create_rectangle(x0, y0, x0 + larga, y0 + alta, fill="#18181e", outline="#2c2c34")
+            c.create_text(x0 + 8, y0 + 11, text=f"{tit} · {len(carte)}", anchor="w", fill=colore, font=F(7, True))
+            if carte:
+                w = max(40, min(larga - 24, int((alta - 30) * 200 / 279)))
+                img = self.immagine_carta(carte[-1], w, False)
+                cx_ = x0 + larga / 2 - w / 2
+                if img is not None:
+                    c.create_image(cx_, y0 + 22, image=img, anchor="nw")
+                else:
+                    c.create_rectangle(cx_, y0 + 22, cx_ + w, y0 + 22 + round(w * 1.395), fill="#26262c", outline="#4a4a52")
+                    c.create_text(cx_ + w / 2, y0 + 22 + w * 0.7, text=carte[-1], width=w - 8, fill=C["titolo"], font=F(7, True), justify="center")
+                self._box_pile.append((x0, y0, x0 + larga, y0 + alta, tit, chiave, carte))
+            else:
+                c.create_text(x0 + larga / 2, y0 + alta / 2 + 6, text="empty", fill=C["muto"], font=F(7))
+
+        def zona(tit, carte, y, alto, colore, destra="", vecchie=None, largo=Wt):
             c.create_text(16, y + 12, text=tit, anchor="w", fill=colore, font=F(8, True))
             if destra:
-                c.create_text(W - 16, y + 12, text=destra, anchor="e", fill=C["titolo"], font=F(9, True))
-            # le stesse carte insieme, con quante; le terre in fondo
+                c.create_text(largo - 16, y + 12, text=destra, anchor="e", fill=C["titolo"], font=F(9, True))
+            # le stesse carte insieme, con quante; le terre in fondo; nuove = piu' copie di prima
             gruppi = {}
-            for n, tap, ped in carte:
-                gruppi.setdefault((n, tap, ped), 0)
-                gruppi[(n, tap, ped)] += 1
+            for c_ in carte:
+                k = (c_[0], c_[1], c_[2], c_[3] if len(c_) > 3 else None, c_[4] if len(c_) > 4 else None)
+                gruppi[k] = gruppi.get(k, 0) + 1
+            prima_n = contate(vecchie) if vecchie is not None else None
+            ora_n = contate([c_[0] for c_ in carte])
             ordine = sorted(gruppi, key=lambda g: (MS.e_terra(g[0]), g[2], g[0]))
-            w_carta = misura(ordine, alto)
+            w_carta = misura(ordine, alto, largo)
             h_carta = round(w_carta * 279 / 200)
             x, yy = 16, y + 28
-            for n, tap, ped in ordine:
+            for g in ordine:
+                n, tap, ped, pw, th = g
                 ww, hh = (h_carta, w_carta) if tap else (w_carta, h_carta)
-                if x + ww > W - 16:
+                if x + ww > largo - 16:
                     x, yy = 16, yy + h_carta + 10
                 if yy + hh > y + alto:
-                    c.create_text(W - 16, y + alto - 8, text="…", anchor="e", fill=C["grigio"], font=F(10, True))
+                    c.create_text(largo - 16, y + alto - 8, text="…", anchor="e", fill=C["grigio"], font=F(10, True))
                     break
                 img = self.immagine_token(w_carta, tap) if ped else self.immagine_carta(n, w_carta, tap)
                 cy = yy + (h_carta - hh)        # le tappate appoggiate in basso
@@ -1327,22 +1487,91 @@ class PaginaPerformance:
                 else:
                     c.create_rectangle(x, cy, x + ww, cy + hh, fill="#26262c", outline="#4a4a52")
                     c.create_text(x + ww / 2, cy + hh / 2, text=n, width=ww - 10, fill=C["titolo"], font=F(7, True), justify="center")
-                if gruppi[(n, tap, ped)] > 1:
+                nuova = prima_n is not None and ora_n.get(n, 0) > prima_n.get(n, 0)
+                if nuova:       # arrivata dal momento prima
+                    c.create_rectangle(x - 2, cy - 2, x + ww + 2, cy + hh + 2, outline="#24baff", width=2)
+                    c.create_rectangle(x + 4, cy + 4, x + 38, cy + 18, fill="#0f86cc", outline="")
+                    c.create_text(x + 21, cy + 11, text="NEW", fill="#ffffff", font=F(6, True))
+                if pw is not None and th is not None:      # forza e costituzione
+                    c.create_rectangle(x + ww - 38, cy + hh - 22, x + ww - 4, cy + hh - 4, fill="#101014", outline="#e6e6ea")
+                    c.create_text(x + ww - 21, cy + hh - 13, text=f"{pw}/{th}", fill="#ffffff", font=F(8, True))
+                if gruppi[g] > 1:
                     c.create_rectangle(x + ww - 28, cy + 4, x + ww - 4, cy + 22, fill="#101014", outline=C["accento"])
-                    c.create_text(x + ww - 16, cy + 13, text=f"×{gruppi[(n, tap, ped)]}", fill=C["titolo"], font=F(7, True))
+                    c.create_text(x + ww - 16, cy + 13, text=f"×{gruppi[g]}", fill=C["titolo"], font=F(7, True))
                 x += ww + 8
             if not carte:
                 c.create_text(16, y + 44, text="nothing", anchor="w", fill=C["muto"], font=F(8))
         vite = f.get("vite") or (None, None)
+        cim, esi = f.get("cim") or ([], []), f.get("esi") or ([], [])
         terzo = (H - 20) / 3
-        c.create_rectangle(0, 0, W, terzo, fill="#18161a", outline="")
-        zona("OPPONENT'S BATTLEFIELD", f["suo"], 4, terzo - 8, C["arancio"], f"life {vite[1] if vite[1] is not None else '-'}   ·   {f['n_suo']} card{'s' if f['n_suo'] != 1 else ''} in hand")
-        c.create_line(0, terzo, W, terzo, fill=C["filo"])
-        zona("YOUR BATTLEFIELD", f["mio"], terzo + 4, terzo - 8, C["azzurro"], f"life {vite[0] if vite[0] is not None else '-'}")
-        c.create_line(0, 2 * terzo, W, 2 * terzo, fill=C["filo"])
+        largo_campo = Wt - 2 * LARGA_PILE - 20
+        c.create_rectangle(0, 0, Wt, terzo, fill="#18161a", outline="")
+        zona("OPPONENT'S BATTLEFIELD", f["suo"], 4, terzo - 8, C["arancio"], f"life {vite[1] if vite[1] is not None else '-'}   ·   {f['n_suo']} "
+             f"card{'s' if f['n_suo'] != 1 else ''} in hand", [c_[0] for c_ in prima["suo"]] if prima else None, largo_campo)
+        pila(largo_campo + 4, 8, LARGA_PILE - 4, terzo - 16, "GRAVEYARD", cim[1], C["arancio"], "cim_suo")
+        pila(largo_campo + LARGA_PILE + 8, 8, LARGA_PILE - 4, terzo - 16, "EXILE", esi[1], C["arancio"], "esi_suo")
+        c.create_line(0, terzo, Wt, terzo, fill=C["filo"])
+        zona("YOUR BATTLEFIELD", f["mio"], terzo + 4, terzo - 8, C["azzurro"], f"life {vite[0] if vite[0] is not None else '-'}",
+             [c_[0] for c_ in prima["mio"]] if prima else None, largo_campo)
+        pila(largo_campo + 4, terzo + 8, LARGA_PILE - 4, terzo - 16, "GRAVEYARD", cim[0], C["azzurro"], "cim_mio")
+        pila(largo_campo + LARGA_PILE + 8, terzo + 8, LARGA_PILE - 4, terzo - 16, "EXILE", esi[0], C["azzurro"], "esi_mio")
+        c.create_line(0, 2 * terzo, Wt, 2 * terzo, fill=C["filo"])
         zona("YOUR HAND" + ("  ·  the hand you kept" if nome == "Opening hand" else ""), [(n, False, False) for n in f["mano"]], 2 * terzo + 4, terzo + 12,
-             C["titolo"], f"{len(f['mano'])} card{'s' if len(f['mano']) != 1 else ''}")
+             C["titolo"], f"{len(f['mano'])} card{'s' if len(f['mano']) != 1 else ''}", prima["mano"] if prima else None, Wt)
+        # il racconto del momento
+        xr = Wt + 12
+        c.create_rectangle(xr, 0, W, H, fill="#18181e", outline="")
+        c.create_text(xr + 14, 16, text="WHAT HAPPENED", anchor="w", fill=C["muto"], font=F(7, True))
+        c.create_text(xr + 14, 34, text=nome + ("   ★ turning point" if b["i"] == b.get("svolta") else ""), anchor="w",
+                      fill="#ffd23f" if b["i"] == b.get("svolta") else C["titolo"], font=F(10, True))
+        righe_r = self.racconto(b["i"])
+        y = 58
+        if righe_r is None:
+            c.create_text(xr + 14, y, text="No turn record for this game.", anchor="w", fill=C["grigio"], font=F(8))
+        elif not righe_r:
+            c.create_text(xr + 14, y, text="Nothing cast or attacked.", anchor="w", fill=C["grigio"], font=F(8))
+        for mio_, testo in righe_r or []:
+            if y > H - 24:
+                c.create_text(xr + 14, y, text="…", anchor="w", fill=C["grigio"], font=F(9, True))
+                break
+            c.create_oval(xr + 14, y - 4, xr + 22, y + 4, fill="#24baff" if mio_ else "#f0ad4e", outline="")
+            i_ = c.create_text(xr + 30, y, text=testo, anchor="w", fill=C["testo"], font=F(8), width=LARGA_RACCONTO - 46)
+            bb = c.bbox(i_)
+            y = (bb[3] if bb else y + 10) + 12
         self.disegna_controlli()
+
+    def clic_pila(self, e):
+        """Il clic su un cimitero o un esilio: tutte le sue carte in una finestrella."""
+        for x0, y0, x1, y1, tit, _k, carte in getattr(self, "_box_pile", []):
+            if x0 <= e.x <= x1 and y0 <= e.y <= y1:
+                return self.apri_pila(tit, carte)
+        return None
+
+    def apri_pila(self, tit, carte):
+        tk, F = self.tk, self.F
+        f = getattr(self, "fin_pila", None)
+        if f is not None and f.winfo_exists():
+            f.destroy()
+        f = self.fin_pila = tk.Toplevel(self.fin_board); f.configure(bg=C["scheda"]); f.transient(self.fin_board)
+        f.title(tit.capitalize()); f.bind("<Escape>", lambda e: f.destroy())
+        nome = self._board["passi"][self._board["i"]][0]
+        tk.Label(f, text=f"{tit} · {len(carte)} · {nome}", bg=C["scheda"], fg=C["titolo"], font=F(9, True)).pack(anchor="w", padx=14, pady=(12, 6))
+        w, per = 110, 6
+        h = round(w * 279 / 200)
+        righe_ = (len(carte) + per - 1) // per
+        cv = tk.Canvas(f, bg=C["scheda"], highlightthickness=0, bd=0, width=per * (w + 8) + 8, height=min(3, righe_) * (h + 8) + 8)
+        cv.pack(padx=8, pady=(0, 12))
+        cv.configure(scrollregion=(0, 0, per * (w + 8) + 8, righe_ * (h + 8) + 8))
+        cv.bind("<MouseWheel>", lambda e: cv.yview_scroll(-2 if e.delta > 0 else 2, "units"))
+        for j, n in enumerate(reversed(carte)):     # l'ultima arrivata per prima
+            x, y = 8 + (j % per) * (w + 8), 8 + (j // per) * (h + 8)
+            img = self.immagine_carta(n, w, False)
+            if img is not None:
+                cv.create_image(x, y, image=img, anchor="nw")
+            else:
+                cv.create_rectangle(x, y, x + w, y + h, fill="#26262c", outline="#4a4a52")
+                cv.create_text(x + w / 2, y + h / 2, text=n, width=w - 10, fill=C["titolo"], font=F(7, True), justify="center")
+        return f
 
     def punta(self, e):
         """Il puntatore su un grafico (Chart o Compare): la linea verticale e il valore di ogni linea in quel punto."""
@@ -1439,11 +1668,12 @@ class PaginaPerformance:
         corto = lambda t, n: t if len(t) <= n else t[:n - 1] + "…"
         for j, a in enumerate(archi):
             x = x0 + j * cw
-            c.create_text(x + cw / 2, 12, text=corto(a, int(cw / 6.5)), anchor="center", fill=C["titolo"], font=F(7, True))
+            # il nome va a capo su due righe invece di tagliarsi (12 nov 2026, Autore: «qui i nomi vengono tagliati, sistema»)
+            c.create_text(x + cw / 2, 30, text=corto(a, 2 * int((cw - 8) / 6.2)), width=cw - 8, anchor="s", justify="center", fill=C["titolo"], font=F(7, True))
             n, wr = per_a[a]
-            c.create_text(x + cw / 2, 26, text=f"{wr:.0f}% · {n}", anchor="center", fill=C["grigio"], font=F(7))
-        c.create_text(x0 + len(archi) * cw + 40, 12, text="ALL", anchor="center", fill=C["titolo"], font=F(7, True))
-        y = 38
+            c.create_text(x + cw / 2, 42, text=f"{wr:.0f}% · {n}", anchor="center", fill=C["grigio"], font=F(7))
+        c.create_text(x0 + len(archi) * cw + 40, 30, text="ALL", anchor="s", fill=C["titolo"], font=F(7, True))
+        y = 54
         for m in mazzi:
             n, wr = per_m[m]
             c.create_text(8, y + rh / 2 - 6, text=corto(m, 30), anchor="w", fill=C["titolo"], font=F(8, True))
