@@ -1,6 +1,6 @@
 {
- "version": "0.1.39",
+ "version": "0.1.40",
  "date": "2026-11-12",
- "notes": "Performance becomes an analyzer of your games and situations: filters, chart with split by (thin lines), spots where you win and lose most, report, matchups, saved situations.",
+ "notes": "Deck HUD on Arena: a small panel at the top left of Arena during your games (archetype with confidence, likely cards, instants its open mana can pay, your record against it). Clicks pass through it; turn it off with On Arena in the Deck HUD window.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

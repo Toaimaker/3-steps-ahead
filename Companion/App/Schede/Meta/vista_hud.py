@@ -17,6 +17,7 @@ if _casa not in sys.path:
 import percorsi  # noqa: E402,F401
 import threading  # noqa: E402
 import hud_mazzo as HM  # noqa: E402
+import hud_arena as HA  # noqa: E402
 import hud_partita as HP  # noqa: E402
 import matchup_log as ML  # noqa: E402
 from tema import CI  # noqa: E402
@@ -24,6 +25,7 @@ from tema import CI  # noqa: E402
 LARGO, ALTO = 420, 700
 OGNI = 1500         # ms fra una lettura e l'altra del Player.log
 PIEDE = "Decks only, never players: nothing about the opponent is saved."
+ARENA = sys.platform == "win32"     # il pannello sopra Arena c'e' solo su Windows (Distribuzione/Mac.md)
 _SEGUITO = {}       # file -> Seguito: uno per la finestra grande (il pulsante, la sorveglianza e l'HUD leggono lo stesso)
 
 
@@ -50,6 +52,7 @@ class FinestraHud:
         self.seg = seguito(file, io)
         self.recs = recs
         self.meta = meta        # le prove: un meta finto al posto del file della pagina Meta
+        self.lancia = not fuori     # le prove fuori schermo non lanciano il pannello sopra Arena
         self.h = None
         self.firma = None
         self.vivo = True
@@ -140,10 +143,18 @@ class FinestraHud:
 
         h = self.h
         testo("OPPONENT DECK", f=F(11, True), col=CI["titolo"], tag="testa")
+        if ARENA:       # «On Arena»: il pannello sopra Arena (Overlay/hud_arena.py), acceso o spento da qui
+            acc = HA.preferenza()
+            y[0] += 22
+            testo(f"On Arena: {'on' if acc else 'off'}", f=F(8, True), col=CI["azzurro"] if acc else CI["grigio"], tag="arena")
+            c.tag_bind("arena", "<Button-1>", lambda e: self.cambia_arena())
+            c.tag_bind("arena", "<Enter>", lambda e: c.configure(cursor="hand2"))
+            c.tag_bind("arena", "<Leave>", lambda e: c.configure(cursor=""))
+            y[0] -= 22
         if h and h.get("tipo") != "spento":
             pp = "on the play" if h.get("sul_play") else "on the draw" if h.get("sul_play") is False else ""
             testo(" · ".join(x for x in (f"T{h['turno']}" if h.get("turno") else "", pp, f"{h.get('aperte', 0)} open") if x), x=x1, ancora="ne", col=CI["grigio"])
-        y[0] += 26
+        y[0] += 26 + (20 if ARENA else 0)
         if h is None:
             riga("No game in the Arena log yet.", col_sx=CI["grigio"])
         elif h.get("tipo") == "spento":
@@ -227,6 +238,14 @@ class FinestraHud:
             if k.get("chiude"):
                 riga(f"It beat you on its turn {k['chiude']:.1f} on average ({k['perse']} losses)", col_sx=CI["grigio"], alto=17)
 
+    def cambia_arena(self):
+        """Accende o spegne il pannello sopra Arena: spento, il processo si chiude da solo al giro dopo; acceso, la finestra grande lo lancia."""
+        acc = not HA.preferenza()
+        HA.imposta(acc)
+        if acc and self.lancia:
+            avvia_arena()
+        self.disegna()
+
     def testi(self):
         """I testi disegnati (per le prove)."""
         return [self.c.itemcget(i, "text") for i in self.c.find_all() if self.c.type(i) == "text"]
@@ -235,6 +254,21 @@ class FinestraHud:
 def apri(tk, padre, F, **kw):
     FinestraHud(tk, padre, F, **kw)
     return FinestraHud.APERTA
+
+
+def avvia_arena():
+    """Lancia il pannello sopra Arena (Overlay/hud_arena.py), legato a questa finestra: si chiude quando lei si chiude. Una sola alla volta (lo fa hud_arena)."""
+    if not ARENA:
+        return False
+    import subprocess
+    from ambiente import LOGDIR, PY_MUTO, ROOT
+    try:
+        subprocess.Popen([PY_MUTO, "-I", "-X", "utf8", percorsi.programma("hud_arena.py"), "--pid", str(os.getpid())], cwd=ROOT, stdout=subprocess.DEVNULL,
+                         stderr=open(os.path.join(LOGDIR, "hud_arena_errori.txt"), "a", encoding="utf-8"))
+        return True
+    except OSError as e:
+        print("hud_arena:", e)
+        return False
 
 
 def pulsante(fin, tk, file=None, io=None):
@@ -259,6 +293,8 @@ def pulsante(fin, tk, file=None, io=None):
         if ancora:
             fin.root.after(3000, guarda)
     lab.guarda = guarda
+    if file is None and HA.preferenza():        # il pannello sopra Arena parte con la finestra grande (si vede solo durante una partita)
+        avvia_arena()
     threading.Thread(target=seg.aggiorna, daemon=True).start()     # la prima lettura (il log intero) in un filo: poi si leggono solo i byte nuovi
     fin.root.after(5000, guarda)
     return lab
@@ -316,6 +352,15 @@ def prova():
     rifatto = w.aggiorna()
     casi.append(("una carta nuova fuori colore: si ridisegna e Mono-White Auras scende sotto Other", rifatto is True and w.h["archetipi"][0][0].startswith("Other ·")
                  and dict(w.h["archetipi"]).get("Mono-White Auras", 0) < 0.3))
+    if ARENA:       # «On Arena»: il clic cambia la preferenza (in un file della prova) e la scritta
+        vecchio = HA.PREF
+        HA.PREF = os.path.join(d, "hud_arena.json")
+        prima = any(x == "On Arena: on" for x in w.testi())
+        w.cambia_arena()
+        dopo = any(x == "On Arena: off" for x in w.testi()) and HA.preferenza() is False
+        HA.PREF = vecchio
+        os.remove(os.path.join(d, "hud_arena.json"))
+        casi.append(("«On Arena»: acceso di partenza, il clic lo spegne (e non lancia niente dalle prove)", prima and dopo))
     w.chiudi()
     # una seconda finestra mentre c'e' la prima: una sola
     w2 = FinestraHud(tk, root, F, file=f1, **kw)

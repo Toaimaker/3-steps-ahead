@@ -35,7 +35,7 @@ Companion/
       Collection/        pagina_collezione, collezione_carte, collezione_viva, cuoci_carte, costruttore_mazzi (il builder), terre_auto
       Social/            finestra_social (la colonna), social (i dati)
       Help/              pagina_help (ogni scheda e i suoi comandi, gli aggiornamenti), aggiornamenti (il controllo: il manifest all'indirizzo di aggiornamenti.json)
-    Overlay/             l'overlay della costruzione sopra Arena
+    Overlay/             l'overlay della costruzione sopra Arena, e hud_arena (il Deck HUD sopra Arena durante le partite)
     Prove/               le prove della finestra, una per scheda
 ```
 
