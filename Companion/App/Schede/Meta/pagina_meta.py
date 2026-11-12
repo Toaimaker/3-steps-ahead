@@ -30,6 +30,7 @@ class PaginaMeta(PaginaMazzi):
 
     ORDINI = ("Meta share", "Win rate", "Price", "Cards you own", "Name")
     VISTE = ("Decks", "Charts")
+    MARGINE_SU = 32     # 12 nov 2026, Autore: «in meta le schede mazzo partono troppo alte abbassiamo un po'» (in Your decks resta 14: sopra c'e' il titolo del gruppo)
 
     def __init__(self, tk, padre, F, mana):
         Pagina.__init__(self, tk, padre, F, mana)
