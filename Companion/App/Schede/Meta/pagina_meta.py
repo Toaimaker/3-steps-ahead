@@ -258,6 +258,9 @@ class PaginaMeta(PaginaMazzi):
         self.sporco = False
         self.smista.svuota(); self.cv.delete("gruppo")
         self.svuota(self.griglia_b)
+        # un Frame di Tk a cui si tolgono tutti i figli non si rimpicciolisce da solo: tornando da Charts a Grid restava alto quanto i grafici (546 pixel), vuoto,
+        # sopra la prima riga di schede (Autore, 12 nov 2026: «quando passo da chart a grid la pagina grid si bugga»)
+        self.griglia_b.configure(height=1)
         self.scatole = []
         if len(self.foto) > 150:         # le copertine di prima: le tele sono appena state distrutte, oltre 150 (30 MB) si liberano
             self.foto.clear()
