@@ -1,6 +1,6 @@
 {
- "version": "0.1.45",
+ "version": "0.1.46",
  "date": "2026-11-12",
- "notes": "Performance: the views are folders you can detach into their own window, and a new Compare folder puts a situation against the rest, with whether the difference holds.",
+ "notes": "Performance: the situations in the game button is now called Add filters.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

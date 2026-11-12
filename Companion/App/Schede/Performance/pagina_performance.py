@@ -179,7 +179,7 @@ class PaginaPerformance:
         tk.Label(rs, text="SMART FILTERS", bg=C["scheda"], fg=C["muto"], font=F(7, True)).pack(side="left")
         via = tk.Label(rs, text="Clear all", bg=C["scheda"], fg=C["accento"], font=F(7, True), cursor="hand2"); via.pack(side="right")
         via.bind("<Button-1>", lambda e: self.pulisci())
-        self.b_sit = pulsante_solido(tk, F, sx, "Situations in the game  ·  none", False, self.apri_situazioni, alto=30, bg=C["scheda"])
+        self.b_sit = pulsante_solido(tk, F, sx, "Add filters  ·  none", False, self.apri_situazioni, alto=30, bg=C["scheda"])        # «Add filters» (12 nov 2026, Autore: «situations in the game chiamalo add filters»)
         self.b_sit.configure(width=260); self.b_sit.pack(fill="x", padx=12, pady=(2, 8))      # la larghezza di partenza di una tela (380) allargava la colonna
         # la colonna scorre: con la rotella sopra qualunque sua parte, e con la barra sottile a destra (fino al 12 nov la rotella andava solo sul fondo vuoto e
         # le ultime tendine e le situazioni salvate restavano tagliate in fondo: Autore, «la finestra degli smart filters e' tagliata sul fondo»)
@@ -1030,11 +1030,11 @@ class PaginaPerformance:
         f = getattr(self, "fin_sit", None)
         if f is not None and f.winfo_exists():
             f.lift(); return f
-        f = self.fin_sit = tk.Toplevel(self.fr); f.title("Situations in the game"); f.configure(bg=C["scheda"])
+        f = self.fin_sit = tk.Toplevel(self.fr); f.title("Add filters"); f.configure(bg=C["scheda"])
         f.transient(self.fr.winfo_toplevel())
         f.geometry(f"+{self.cv_sx.winfo_rootx() + self.cv_sx.winfo_width() + 16}+{self.cv_sx.winfo_rooty()}")
         f.bind("<Escape>", lambda e: f.destroy())
-        tk.Label(f, text="SITUATIONS IN THE GAME", bg=C["scheda"], fg=C["titolo"], font=F(9, True)).pack(anchor="w", padx=14, pady=(12, 2))
+        tk.Label(f, text="ADD FILTERS · SITUATIONS IN THE GAME", bg=C["scheda"], fg=C["titolo"], font=F(9, True)).pack(anchor="w", padx=14, pady=(12, 2))
         tk.Label(f, text="From the games' turn by turn records. Yes: only the games where it happened; No: only those where it did not.", bg=C["scheda"],
                  fg=C["grigio"], font=F(7), wraplength=470, justify="left").pack(anchor="w", padx=14, pady=(0, 8))
         self.cv_fsit = tk.Canvas(f, bg=C["scheda"], highlightthickness=0, bd=0, width=500, height=40 + 34 * len(DA.SIT))
@@ -1074,7 +1074,7 @@ class PaginaPerformance:
 
     def aggiorna_bottone_sit(self):
         on = [(k, v) for k, v in self.filtri.items() if k.startswith("sit:") and v is not None]
-        self.b_sit.metti("Situations in the game  ·  " + (f"{len(on)} on" if on else "none"), bool(on))
+        self.b_sit.metti("Add filters  ·  " + (f"{len(on)} on" if on else "none"), bool(on))
 
     # ------------------------------------------------------------ le situazioni salvate
     def salva_situazione(self):
