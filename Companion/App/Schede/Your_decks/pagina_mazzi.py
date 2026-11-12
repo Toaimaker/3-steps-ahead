@@ -165,7 +165,7 @@ class PaginaMazzi(PaginaStandard):
         su = self.MARGINE_SU
         # le schede dei mazzi si disegnano su questa tela, non una tela ciascuna (11 nov 2026, sessione Magic 13, Note/Motore_Grafico_App.md): griglia_b resta per
         # i testi e la vista Charts della Meta
-        self.griglia_b = tk.Frame(cv, bg=C["scheda"]); id_g = cv.create_window(0, su, anchor="nw", window=self.griglia_b)
+        self.griglia_b = tk.Frame(cv, bg=C["scheda"]); id_g = self.id_griglia_b = cv.create_window(0, su, anchor="nw", window=self.griglia_b)
         self.smista, self.alto_carte = carta_tela.Smistatore(cv), 0
         self.griglia_b.bind("<Configure>", lambda e: self.regione())
         cv.bind("<Configure>", lambda e: (cv.itemconfigure(id_g, width=e.width), self.disponi(e.width)))
@@ -607,6 +607,10 @@ class PaginaMazzi(PaginaStandard):
         return max(self.griglia_b.winfo_reqheight() + self.MARGINE_SU if self.griglia_b.winfo_children() else 0, self.alto_carte)
 
     def regione(self):
+        # griglia_b vuoto e' una finestra di Windows alta 1 pixel e larga quanto la pagina, proprio sulla riga del bordo alto della prima fila di schede: in
+        # hover quel bordo non si accendeva (Autore, 12 nov 2026: «il bordo alto delle schede piu' alte non si illumina, e' tagliato»). Vuoto, si nasconde.
+        if getattr(self, "id_griglia_b", None) is not None:
+            self.cv.itemconfigure(self.id_griglia_b, state="normal" if self.griglia_b.winfo_children() else "hidden")
         self.cv.configure(scrollregion=(0, 0, 0, self.alto_regione()))
 
     def disponi(self, larga, forza=False):

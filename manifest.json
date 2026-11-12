@@ -1,6 +1,6 @@
 {
- "version": "0.1.32",
+ "version": "0.1.33",
  "date": "2026-11-12",
- "notes": "Resources: more room above the Roadmap check button.",
+ "notes": "Meta and Your decks: the top border of the first row of deck cards now lights up on hover.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }
