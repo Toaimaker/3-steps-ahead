@@ -42,7 +42,7 @@ def lista_mtgo(main, side=None, comandante=None, compagno=None):
     return "\n".join(righe) + "\n"
 
 
-PRINCIPALI = ("Edit", "Add to wishlist")
+PRINCIPALI = ("Edit this deck", "Add to wishlist")
 
 
 class EsportaMazzo:

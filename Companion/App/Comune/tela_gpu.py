@@ -458,8 +458,9 @@ class TelaGPU:
                     self._manda("<Escape>", Evento(keysym="Escape", widget=self))
                 else:
                     self.frame.winfo_toplevel().event_generate("<Escape>")
-            elif k.A <= simbolo <= k.Z:
-                self._manda("<Key>", Evento(keysym=chr(ord("a") + simbolo - k.A), widget=self))
+            elif k.A <= simbolo <= k.Z:     # con Ctrl e Maiuscolo nello stato, come Tk (Ctrl+Z e Ctrl+Y del Board, 12 nov 2026)
+                st = (0x1 if mod & k.MOD_SHIFT else 0) | (0x4 if mod & k.MOD_CTRL else 0)
+                self._manda("<Key>", Evento(keysym=chr(ord("a") + simbolo - k.A), state=st, widget=self))
         except Exception:
             errore("tasto")
         return True

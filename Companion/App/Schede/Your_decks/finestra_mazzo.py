@@ -14,6 +14,9 @@ def tk_frame(f):
     return d
 
 
+
+EDIT = "Edit this deck"     # il pulsante che porta al builder (12 nov 2026, Autore: «edit in edit this deck e affiancali» al Board view)
+
 class FinestraMazzo:
     """La finestra di un mazzo, sopra il Companion: si apre col clic su un mazzo di Your decks, del Meta o di Performance, coi pulsanti delle azioni."""
     IN_VISTA = None     # la pagina che ha la finestra del mazzo aperta: una per volta in tutto il Companion
@@ -23,6 +26,8 @@ class FinestraMazzo:
         """chi: ("mio", nome), ("meta", archetipo del meta) o ("farm", mazzo del farming). None torna al grafico. Un altro mazzo riparte senza il filtro on the play / on the draw."""
         if chi != getattr(self, "aperto", None):
             self.partenza = self.partenza_an = self.partenza_wr = None
+            import sezioni_mazzo
+            sezioni_mazzo.nuovo_mazzo()     # un altro mazzo: le sezioni partono chiuse (12 nov 2026)
         self.aperto = chi
         self.disegna_dettaglio()
         self.disegna_mazzi()
@@ -163,13 +168,20 @@ class FinestraMazzo:
 
         gia = tipo != "wish" and MS.in_wishlist(base) is not None       # un mazzo gia' in wishlist non ha Add to wishlist
         if tipo == "meta":
-            return [("Edit", a_edit, False)] + ([] if gia else [("Add to wishlist", a_wish, False)])
+            return [(EDIT, a_edit, False)] + ([] if gia else [("Add to wishlist", a_wish, False)])
         if tipo == "wish":
-            return [("Edit", lambda: (self.builder("wish", chi), None)[1], False), ("Copy to Deck builder", a_build, False)]      # togliere: il cestino sulla scheda (9 nov 2026)
+            return [(EDIT, lambda: (self.builder("wish", chi), None)[1], False), ("Copy to Deck builder", a_build, False)]      # togliere: il cestino sulla scheda (9 nov 2026)
         if tipo == "build":
-            return [("Edit", lambda: (self.builder("build", chi), None)[1], False)] + ([] if gia else [("Add to wishlist", a_wish, False)])
+            def a_clona():      # 12 nov 2026: la copia nasce in Deck builder e la finestra passa a lei
+                pg = FinestraMazzo.MAZZI or self
+                nuovo = pg.clona("build", chi) if hasattr(pg, "clona") else None
+                if nuovo is not None:
+                    self.fin.after(10, lambda: self.apri(("build", nuovo)))
+                return "Cloned" if nuovo is not None else None
+            return ([(EDIT, lambda: (self.builder("build", chi), None)[1], False)] + ([] if gia else [("Add to wishlist", a_wish, False)])
+                    + [("Clone deck", a_clona, False)])
         if tipo == "mio":
-            return [("Edit", a_edit, False)]
+            return [(EDIT, a_edit, False)]
         return []
 
     def builder(self, sez="build", m=None):
@@ -180,6 +192,10 @@ class FinestraMazzo:
             return None
         import costruttore_mazzi
         pg = FinestraMazzo.MAZZI or self
+        b = costruttore_mazzi.Costruttore.APERTO
+        if b is not None and b.w.winfo_exists() and b.da_salvare():       # un builder aperto con modifiche: prima la sua domanda, poi il mazzo nuovo (12 nov 2026)
+            b.chiudi(poi=lambda: self.builder(sez, m))
+            return None
         if self.aperto:
             self.apri(None)
         if Pagina.MOSTRA_SCHEDA is not None:

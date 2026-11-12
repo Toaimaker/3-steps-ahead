@@ -10,7 +10,9 @@ tranne le basi e le carte senza limite. A destra i jolly e i dati, rifatti a ogn
 Il builder e' gia' la scheda del mazzo (Autore, 8 nov 2026: «nel deck builder vedo che c'e' il pulsante deck sheet / no facciamo in modo che gia' il builder sia un deck sheet con
 grafo ecc cosi' abbiamo un passaggio in meno»): accanto ai dati il grafo dell'archetipo, la curva di mana e le terre nella mano iniziale, tutto rifatto a ogni carta; il pulsante Deck
 sheet non c'e' piu' e al suo posto c'e' Export to MTGO.
-Chiudendo, una build cambiata e non vuota si salva. La Collection ha le carte di Arena: per Pioneer, Modern, Legacy, Vintage e Pauper le carte che Arena non ha entrano con Import.
+Niente salvataggi automatici (Autore, 12 nov 2026: «le schede mazzo e la board di editor dei deck non deve autosalvare i cambiamenti / nelle schede mazzo edit
+deve esistere il pulsante save e se si chiude senza salvare un menu chiede se salvare le modifiche, non salvare o annullare l'operazione di chiusura»): Save in
+testata (col punto quando ci sono modifiche), e chiudendo con modifiche la domanda Save / Don't save / Cancel; fino a quel giorno chiudendo si salvava da solo. La Collection ha le carte di Arena: per Pioneer, Modern, Legacy, Vintage e Pauper le carte che Arena non ha entrano con Import.
 Un builder alla volta (Costruttore.APERTO): aprirne un altro chiude il primo, salvandolo.
 """
 import os, sys
@@ -102,7 +104,9 @@ class Costruttore:
         e = tk.Entry(cap, textvariable=self.v_nome, bg=C["cap"], fg=C["titolo"], insertbackground=C["titolo"], relief="flat", font=F(14, True),
                      highlightthickness=1, highlightbackground=C["cap"], highlightcolor=C["accento"])
         e.pack(side="left", fill="x", expand=True, ipady=2); self.v_nome.trace_add("write", lambda *a: self.nome_cambiato())
-        self.t_dove = Tendina(tk, cap, "Add to", F, larga=120, bg=C["cap"]); self.t_dove.fr.pack(side="right", padx=(8, 12), pady=(4, 6))
+        self.b_salva = pulsante_solido(tk, F, cap, "Save", False, self.salva, alto=30, bg=C["cap"], colori=ARANCIO)       # Save, a destra di tutto (12 nov 2026)
+        self.b_salva.configure(width=100); self.b_salva.pack(side="right", padx=(8, 12), pady=(14, 0))
+        self.t_dove = Tendina(tk, cap, "Add to", F, larga=120, bg=C["cap"]); self.t_dove.fr.pack(side="right", padx=(8, 4), pady=(4, 6))
         self.t_dove.opzioni(DOVE, lambda o: None); self.t_dove.set("Deck")
         self.t_fmt = Tendina(tk, cap, "Format", F, larga=150, bg=C["cap"]); self.t_fmt.fr.pack(side="right", pady=(4, 6))
         self.t_fmt.opzioni(MS.FORMATI, lambda o: self.cambia_formato()); self.t_fmt.set((m or {}).get("formato") or "Standard")
@@ -245,7 +249,7 @@ class Costruttore:
 
         def esporta(fr):        # l'esportazione sotto la lista, piu' le azioni del builder: nata una volta, copia il mazzo di adesso (fonte)
             PaginaStandard.esportazione(self.pg, fr, nome, dict(main), dict(self.zone["Sideboard"]), dict(self.zone["Commander"]), dict(self.compagno),
-                                        [("Import", self.importa, False), ("Clear", self.svuota_ora, True), ("Save", lambda: self.salva() and "Saved", False)],
+                                        [("Import", self.importa, False), ("Clear", self.svuota_ora, True)],
                                         fonte=lambda: (self.v_nome.get() or "Deck", dict(self.zone["Deck"]), dict(self.zone["Sideboard"]), dict(self.zone["Commander"]),
                                                        dict(self.compagno)))
         self.blocco(self.f_esporta, "export", "fatto", esporta)
@@ -499,7 +503,8 @@ class Costruttore:
         self.tavolo = TC.TavoloCarte(self.tk, self.F, self.w, self.v_nome.get() or "Deck", dict(self.zone["Deck"]), dict(self.zone["Sideboard"]),
                                      dict(self.zone["Commander"]), dict(self.compagno), carte_db=self.carte_db, chiave=chiave, editore=self.dal_tavolo,
                                      limite=lambda n: limite(n, self.t_fmt.get(), self.carte_db), formato=self.t_fmt.get(), nomi_ricerca=self.nomi_formato,
-                                     geometria=self.w.geometry(), chiave_rete=chiave, chiave_vecchia=f"builder:{self.m['id']}" if chiave else None)
+                                     geometria=self.w.geometry(), chiave_rete=chiave, chiave_vecchia=f"builder:{self.m['id']}" if chiave else None,
+                                     salvataggio=self.salva)
         return self.tavolo
 
     def dal_tavolo(self, lista, side):
@@ -532,6 +537,17 @@ class Costruttore:
 
     def segna(self):
         self.cambiato = True
+        self.aggiorna_salva()
+
+    def da_salvare(self):
+        """Ci sono modifiche non salvate: nel builder, o nel Board aperto sopra (disposizione, rete, note)."""
+        t = self.tavolo_aperto()
+        return bool(self.cambiato or (t is not None and t.da_salvare))
+
+    def aggiorna_salva(self):
+        b = getattr(self, "b_salva", None)
+        if b is not None and b.winfo_exists():
+            b.metti("Save ●" if self.cambiato else "Save", False)
 
     def nome_cambiato(self):
         """La testata del mazzo segue il nome, senza ridisegnare a ogni lettera."""
@@ -659,7 +675,10 @@ class Costruttore:
         t = self.tavolo_aperto()
         if t is not None and self.m and self.m.get("id"):       # il primo Save da' l'id: il tavolo aperto salva da qui sotto la chiave del mazzo
             t.nuova_chiave(f"{self.sez}:{self.m['id']}", f"{self.sez}:{self.m['id']}")
+        if t is not None:       # il Save scrive anche il Board aperto: disposizione, rete, note (12 nov 2026)
+            t.scrivi_tutto()
         self.cambiato = False
+        self.aggiorna_salva()
         self.pg.sporco = True
         if hasattr(self.pg, "sezione") and self.pg.davanti():
             self.pg.disegna()
@@ -667,13 +686,23 @@ class Costruttore:
             b.metti("Saved", False); b.after(2000, lambda: b.winfo_exists() and b.metti("Save", False))
         return self.m
 
-    def chiudi(self):
+    def chiudi(self, chiedi=True, poi=None):
+        """Chiude il builder. Con modifiche non salvate (anche nel Board aperto) prima chiede: Save, Don't save, Cancel (12 nov 2026). poi: dopo la chiusura
+        (per aprire un altro mazzo). -> False se ha chiesto e la finestra resta aperta."""
+        if chiedi and self.da_salvare():
+            from widget import conferma
+            self.w.lift()
+            self.domanda = conferma(self.tk, self.F, self.w, "Save the changes?", f"«{self.v_nome.get() or 'New build'}» has changes you did not save.", "Save",
+                                    lambda: (self.salva(), self.chiudi(chiedi=False, poi=poi)), colori=ARANCIO,
+                                    altro=("Don't save", lambda: self.chiudi(chiedi=False, poi=poi)))
+            return False
         t = self.tavolo_aperto()
         if t is not None:
-            t.chiudi()
-        if self.cambiato and (self.zone["Deck"] or self.zone["Commander"]):
-            self.salva()
+            t.chiudi(chiedi=False)
         self.lista_m.esci()
         if Costruttore.APERTO is self:
             Costruttore.APERTO = None
         self.w.destroy()
+        if poi is not None:
+            poi()
+        return True

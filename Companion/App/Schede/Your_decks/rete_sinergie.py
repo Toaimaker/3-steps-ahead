@@ -104,8 +104,12 @@ class Rete:
         self.stili = {(x[0], x[1]): dict(colore=x[2], peso=int(x[3]), **({"spessore": float(x[4])} if len(x) > 4 and x[4] is not None else {}))
                       for x in d.get("stili", []) if (x[0], x[1]) in self.figli}
 
-    def salva(self):
+    in_memoria = False      # il Board in modalita' edit (12 nov 2026): la rete si scrive solo col suo Save (salva(forza=True))
+
+    def salva(self, forza=False):
         if not self.chiave or (self.f is None and _ACC.sola_lettura()):      # All accounts: sola lettura
+            return
+        if self.in_memoria and not forza:
             return
         f = self.f or FILE
         with _CHIAVE:

@@ -53,7 +53,7 @@ import rete_sinergie as RS
 import tela_gpu as TG
 
 from tema import CI as C, barra_scura
-from widget import pronta_poi, pulsante_solido
+from widget import ARANCIO as ARANCIO_P, pronta_poi, pulsante_solido
 
 import account as _ACC  # noqa: E402
 FILE = _ACC.lega(globals(), "FILE", "tavoli_mazzi.json")     # Log_Arena/tavoli_mazzi.json; nell'app pubblica uno per account (10 nov 2026, Magic 12)
@@ -84,7 +84,8 @@ COMANDI = (("Wheel", "zoom"), ("Middle-drag", "pan"), ("Drag a card", "move · d
            ("Click", "opens a pile"), ("Double-click", "one copy across"), ("Gold dot → card", "parent → child"), ("Click a line", "color and weight"),
            ("✕ · right-click", "unlink"), ("Pin · double-click a line", "adds a dot"), ("Drag on the empty sheet", "select"), ("≡ in the frame", "label: name, color"),
            ("A", "frame the whole network"), ("F", "frame the selection (or the card picked in the outliner)"), ("Esc", "clear the selection, then close"))
-COMANDI_MOD = (("− +", "copies"), ("⇄", "replace the card"), ("+ note beside the gold dot", "a note on the card"),
+COMANDI_MOD = (("− +", "copies"), ("⇄", "replace the card"), ("Ctrl+Z · Ctrl+Y", "undo · redo (also Ctrl+Shift+Z)"),
+               ("Save", "nothing is saved by itself: Save writes the deck and the board"), ("+ note beside the gold dot", "a note on the card"),
                ("+ note on a group title", "a note on the group"), ("Auto groups", "from the analysis, or the visible cards of the type filter"))
 COMANDI_VISTA = (("Wheel", "zoom"), ("Middle-drag", "pan"), ("Drag a card", "move it (deck and sideboard stay as they are)"), ("Click", "opens a pile, selects the card"),
                  ("A", "frame the whole network"),
@@ -462,8 +463,13 @@ class TavoloCarte:
 
     def __init__(self, tk, F, padre, nome, main, side, comandante=None, compagno=None, carte_db=None, chiave=None, modificabile=None, al_cambio=None,
                  file_tavoli=None, file_mazzi=None, fuori=False, alla_fine=None, formato="Standard", limite=None, editore=None, nomi_ricerca=None, geometria=None,
-                 chiave_rete=None, file_rete=None, chiave_vecchia=None, sola_lettura=False):
+                 chiave_rete=None, file_rete=None, chiave_vecchia=None, sola_lettura=False, salvataggio=None):
         self.tk, self.F = tk, F
+        # niente salvataggi automatici in modalita' edit (Autore, 12 nov 2026: «le schede mazzo e la board di editor dei deck non deve autosalvare i cambiamenti»,
+        # «nella board editor vogliamo i pulsanti save, undo (ctrl z), redo»): ogni gesto entra nello storico (Undo e Redo), il file si scrive solo con Save.
+        # salvataggio: il Save del builder (salva il mazzo, poi chiama scrivi_tutto qui)
+        self.salvataggio = salvataggio
+        self.storia, self.passo, self.salvato_a = [], -1, 0
         self.nome, self.carte_db, self.formato = nome or "Deck", carte_db or {}, formato
         self.chiave, self.modificabile, self.al_cambio, self.alla_fine = chiave, modificabile, al_cambio, alla_fine
         self.chiave_vecchia = chiave_vecchia      # dove stava la disposizione prima (il builder la teneva a parte: «builder:<id>»)
@@ -481,6 +487,7 @@ class TavoloCarte:
         self.modifica = bool(modificabile or editore) and not self.sola
         # le connessioni padre -> figlio: le stesse per lo stesso mazzo, dalla scheda e dal builder (chiave_rete)
         self.rete = RS.Rete(chiave_rete if chiave_rete is not None else chiave, file_rete)
+        self.rete.in_memoria = self.modifica        # in modalita' edit la rete si scrive solo con Save
         self.tira, self._img_rete, self._segmenti, self._arco = None, None, [], None
         self._xy = None             # il punto della tela dell'ultimo clic o movimento: da li' si cerca la carta
         self._fine_drag = 0.0       # quando e' finito l'ultimo trascinamento (la carta grande non salta fuori subito dopo)
@@ -586,6 +593,9 @@ class TavoloCarte:
         self.cv.bind("<Shift-MouseWheel>", lambda e: self.cv.xview_scroll(-1 if e.delta > 0 else 1, "units"))
         self.cv.bind("<Configure>", lambda e: self.disegna())
         self.carica_mancanti()
+        if self.modifica:       # il punto di partenza dello storico: Undo non va oltre, ed e' lo stato salvato
+            self.storia, self.passo, self.salvato_a = [self.foto_stato()], 0, 0
+            self.aggiorna_salva()
         f.lift(); f.focus_set()
 
     # ------------------------------------------------ i filtri per tipo (12 nov 2026)
@@ -834,6 +844,13 @@ class TavoloCarte:
                      bg=C["cap"], fg=C["muto"], font=F(8, True)).pack(side="right", padx=(4, 12))
             self.b_griglia = None
         else:
+            if self.modifica:       # Save, Undo, Redo (12 nov 2026): a destra di tutto, Save in arancio come le azioni principali di un mazzo
+                self.b_salva = pulsante_solido(tk, F, dx, "Save", False, self.salva_tutto, alto=28, bg=C["cap"], colori=ARANCIO_P)
+                self.b_salva.configure(width=96); self.b_salva.pack(side="right", padx=(10, 0))
+                for chi, testo, fa in (("b_redo", "Redo ↷", self.ripeti), ("b_undo", "↶ Undo", self.annulla)):
+                    w_ = tk.Label(dx, text=testo, bg=C["cap"], fg=C["muto"], font=F(9, True), padx=6, cursor="hand2")
+                    w_.pack(side="right", padx=(6, 0)); w_.bind("<Button-1>", lambda e, fa=fa: fa())
+                    setattr(self, chi, w_)
             b = pulsante_solido(tk, F, dx, "Arrange network", False, lambda: self.disponi_rete(), alto=28, bg=C["cap"])
             b.configure(width=140); b.pack(side="right", padx=(4, 12))
             self.b_griglia = tk.Label(dx, text="  Grid snap", bg=C["cap"], fg=C["testo"], font=F(9, True), compound="left", cursor="hand2")
@@ -996,9 +1013,14 @@ class TavoloCarte:
     # ------------------------------------------------ inquadrare: A tutta la rete, F la selezione (come in Maya)
     def tasto(self, e):
         """A e F sul Board (anche quando i tasti arrivano dalla finestra della scheda video); non mentre scrivi in una casella."""
-        if isinstance(self.fin.focus_get(), self.tk.Entry):
+        if isinstance(self.fin.focus_get(), (self.tk.Entry, self.tk.Text)):
             return
         k = (getattr(e, "keysym", "") or "").lower()
+        st = getattr(e, "state", 0) or 0
+        if st & 0x4 and k in ("z", "y"):        # Ctrl+Z annulla, Ctrl+Y (o Ctrl+Shift+Z) rifa' (12 nov 2026)
+            return self.ripeti() if k == "y" or st & 0x1 else self.annulla()
+        if st & 0x4:
+            return
         if k == "a":
             return self.inquadra_tutto()
         if k == "f":
@@ -3107,12 +3129,9 @@ class TavoloCarte:
         if not self.modifica:
             return
         lista, side = self.liste()
-        if self.editore is not None:        # nel builder: il mazzo e' suo, lo salva lui
+        if self.editore is not None:        # nel builder: il mazzo e' suo, lo salva lui (col suo Save)
             self.editore(lista, side)
-        else:
-            sez, mid = self.modificabile
-            MS.cambia(sez, mid, f=self.file_mazzi, lista=lista, side=side)
-        self.cambiato = True
+        self.cambiato = True        # da solo: il mazzo si scrive con Save (scrivi_tutto), non a ogni gesto (12 nov 2026)
         if self.al_cambio:
             self.al_cambio(lista, side)
 
@@ -3127,6 +3146,13 @@ class TavoloCarte:
 
     # ------------------------------------------------ salvare e riprendere la disposizione
     def salva(self):
+        """Dopo ogni gesto. In modalita' edit il gesto entra nello storico e il file aspetta Save (12 nov 2026); in sola lettura si scrive la disposizione."""
+        if self.modifica:
+            self.registra()
+            return
+        self.scrivi()
+
+    def scrivi(self):
         if not self.chiave or (self.sola and not self.sposta):        # in sola lettura si salva solo la disposizione delle carte spostate (10 nov 2026)
             return
         try:
@@ -3208,6 +3234,102 @@ class TavoloCarte:
         self.hs = int(t["fascia"]) if nuova and t.get("fascia") is not None else FASCIA_DEF
         self.l_zoom.configure(text=f"{round(self.zoom * 100)}%")
         return True
+
+    # ------------------------------------------------ lo storico: Undo, Redo, Save (12 nov 2026)
+    def foto_stato(self):
+        """Tutto quello che un gesto puo' cambiare: le carte e le pile (anche quelle tenute da parte dal filtro), le label, le note, i dot, la rete."""
+        import copy
+        return copy.deepcopy(dict(voci=self.voci, pile=[dict(zona=pl["zona"], x=pl["x"], y=pl["y"], carte=list(c_)) for pl, c_ in self.pile_tutte()],
+                                  etichette=self.etichette, note=self.note, punti=self.punti, vie=self.vie, figli=self.rete.figli, stili=self.rete.stili))
+
+    def registra(self):
+        if not self.storia:
+            return
+        f = self.foto_stato()
+        if f == self.storia[self.passo]:
+            return
+        del self.storia[self.passo + 1:]
+        if self.salvato_a > self.passo:      # lo stato salvato era un Redo che non c'e' piu'
+            self.salvato_a = -1
+        self.storia.append(f)
+        self.passo += 1
+        if len(self.storia) > 200:      # il tetto: i gesti piu' vecchi escono
+            self.storia.pop(0); self.passo -= 1; self.salvato_a -= 1
+        self.aggiorna_salva()
+
+    @property
+    def da_salvare(self):
+        return self.modifica and bool(self.storia) and self.passo != self.salvato_a
+
+    def ripristina(self, f):
+        import copy
+        f = copy.deepcopy(f)
+        self.nascondi()
+        self._riposte = []
+        self.voci = f["voci"]
+        self.pile = [dict(p_, aperta=None) for p_ in f["pile"]]
+        self.etichette, self.note, self.punti, self.vie = f["etichette"], f["note"], f["punti"], f["vie"]
+        self.rete.figli, self.rete.stili = f["figli"], f["stili"]
+        self.sel, self.sel_punti, self.sel_label, self.sel_carta = [], set(), set(), None
+        if self.modifica:
+            lista, side = self.liste()
+            if self.editore is not None:
+                self.editore(lista, side)
+            self.cambiato = True
+            if self.al_cambio:
+                self.al_cambio(lista, side)
+        self.disegna()
+        self.aggiorna_salva()
+
+    def annulla(self):
+        """Undo (Ctrl+Z): il gesto di prima."""
+        if not self.modifica or self.passo <= 0:
+            self.dici("Nothing to undo")
+            return False
+        self.passo -= 1
+        self.ripristina(self.storia[self.passo])
+        self.dici("Undo")
+        return True
+
+    def ripeti(self):
+        """Redo (Ctrl+Y o Ctrl+Shift+Z): il gesto annullato."""
+        if not self.modifica or self.passo >= len(self.storia) - 1:
+            self.dici("Nothing to redo")
+            return False
+        self.passo += 1
+        self.ripristina(self.storia[self.passo])
+        self.dici("Redo")
+        return True
+
+    def salva_tutto(self):
+        """Save: col builder salva lui il mazzo e poi chiama scrivi_tutto; da solo scrive mazzo, disposizione e rete."""
+        if self.salvataggio is not None:
+            self.salvataggio()
+        else:
+            self.scrivi_tutto()
+        self.dici("Saved")
+
+    def scrivi_tutto(self):
+        if not self.modifica:
+            return
+        if self.editore is None and self.modificabile:
+            sez, mid = self.modificabile
+            lista, side = self.liste()
+            MS.cambia(sez, mid, f=self.file_mazzi, lista=lista, side=side)
+        self.scrivi()
+        self.rete.salva(forza=True)
+        self.salvato_a = self.passo
+        self.aggiorna_salva()
+
+    def aggiorna_salva(self):
+        """Save col punto quando ci sono modifiche da salvare; Undo e Redo spenti quando non c'e' niente."""
+        b = getattr(self, "b_salva", None)
+        if b is not None and b.winfo_exists():
+            b.metti("Save ●" if self.da_salvare else "Save", False)
+        for chi, attivo in (("b_undo", self.passo > 0), ("b_redo", self.passo < len(self.storia) - 1)):
+            w = getattr(self, chi, None)
+            if w is not None and w.winfo_exists():
+                w.configure(fg=C["titolo"] if attivo else C["muto"])
 
     def nuova_chiave(self, chiave, chiave_rete=None):
         """Il mazzo del builder ha appena preso il suo id (il primo Save): da qui la disposizione e la rete si salvano sotto la sua chiave."""
@@ -4202,16 +4324,31 @@ class TavoloCarte:
             return
         self.chiudi()
 
-    def chiudi(self):
+    def chiudi(self, chiedi=True, poi=None):
+        """Chiude il Board. In modalita' edit con modifiche non salvate prima chiede: Save, Don't save (il mazzo torna com'era all'ultimo Save), Cancel."""
+        if chiedi and self.da_salvare:
+            from widget import conferma
+
+            def non_salvare():
+                if self.storia and 0 <= self.salvato_a < len(self.storia):
+                    self.ripristina(self.storia[self.salvato_a])
+                self.chiudi(chiedi=False, poi=poi)
+            self.domanda = conferma(self.tk, self.F, self.fin, "Save the changes?", f"You changed «{self.nome}» on the board and did not save.", "Save",
+                                    lambda: (self.salva_tutto(), self.chiudi(chiedi=False, poi=poi)), colori=ARANCIO_P,
+                                    altro=("Don't save", non_salvare))
+            return False
         self.scambia_chiudi()
         self.stile_chiudi()
         self.nome_chiudi()
         self.nascondi()
-        self.salva()
+        if not self.modifica:
+            self.scrivi()
         try:
             self.fin.destroy()
         except Exception:
             pass
+        if poi is not None:
+            poi()
         if self.cambiato and self.alla_fine:       # il mazzo e' cambiato: la sua scheda si rifa'
             self.alla_fine()
 
@@ -4252,12 +4389,15 @@ def prova():
     bolt, shock = voce("Lightning Bolt"), voce("Shock")
     casi.append(("al limite il + non aggiunge", not t.cambia_copie(bolt, +1) and t.voci[bolt]["q"] == 4))
     t.cambia_copie(shock, +1)
-    casi.append(("il + aggiunge una copia e il mazzo salvato cambia", t.voci[shock]["q"] == 3 and next(x for x in MS.carica(fm)["build"] if x["id"] == m["id"])["lista"]["Shock"] == 3 and cambi))
+    sal_prima = next(x for x in MS.carica(fm)["build"] if x["id"] == m["id"])["lista"]["Shock"]
+    t.salva_tutto()
+    casi.append(("niente salvataggio automatico: prima di Save il file ha ancora le copie di prima (12 nov 2026)", sal_prima == 2))
+    casi.append(("il + aggiunge una copia e col Save il mazzo salvato cambia", t.voci[shock]["q"] == 3 and next(x for x in MS.carica(fm)["build"] if x["id"] == m["id"])["lista"]["Shock"] == 3 and cambi))
     abr = voce("Abrade", "side")
     t.cambia_copie(abr, +1); t.cambia_copie(abr, +1)
     casi.append(("il limite conta mazzo e sideboard insieme", t.voci[abr]["q"] == 4 and not t.cambia_copie(abr, +1)))
     opt = voce("Opt")
-    t.cambia_copie(opt, -1)
+    t.cambia_copie(opt, -1); t.salva_tutto()
     sal = next(x for x in MS.carica(fm)["build"] if x["id"] == m["id"])
     casi.append(("a 0 la carta esce dal mazzo e dal tavolo", opt not in t.voci and "Opt" not in sal["lista"]))
     # la pila che si apre: la carta in mezzo intera, le altre scendono
@@ -4300,13 +4440,14 @@ def prova():
     casi.append(("lasciata su una pila si impila sopra, con tutte le copie", mont["carte"][-1] == bolt and len(mont["carte"]) == n_prima + 1 and t.voci[bolt]["q"] == 4))
     casi.append(("dentro il mazzo la lista non cambia", len(cambi) == n_cambi))
     # nella fascia: tutte le copie vanno in sideboard; il doppio clic ne riporta una
-    trascina(shock, xy=(900, 60))
+    trascina(shock, xy=(900, 60)); t.salva_tutto()
     sal = next(x for x in MS.carica(fm)["build"] if x["id"] == m["id"])
     casi.append(("nella fascia tutte le copie diventano sideboard", t.voci[shock]["zona"] == "side" and "Shock" not in sal["lista"] and sal["side"].get("Shock") == 3))
     orig = t.sotto_al_mouse
     t.sotto_al_mouse = lambda: shock
     t.doppio(None)
     t.sotto_al_mouse = orig
+    t.salva_tutto()
     sal = next(x for x in MS.carica(fm)["build"] if x["id"] == m["id"])
     casi.append(("il doppio clic passa UNA copia nel mazzo", sal["lista"].get("Shock") == 1 and sal["side"].get("Shock") == 2 and t.voci[shock]["q"] == 2))
     # riportata nel mazzo dove c'e' gia' la stessa carta: le copie si sommano, una carta per nome e zona
@@ -4395,13 +4536,13 @@ def prova():
     t.premi_tela(E(400, fy_() + t.hs)); t.trascina(E(400, fy_() + 140)); t.rilascia(E(400, fy_() + 140)); root.update()
     pos = [(pl["zona"], pl["x"], pl["y"], [t.voci[c]["q"] for c in pl["carte"]]) for pl in t.pile]
     posti = {n: next(((pl["x"], pl["y"]) for pl in t.pile for c in pl["carte"] if t.voci[c]["nome"] == n), None) for n in ("Mountain", "Shock")}
-    t.chiudi()
+    t.salva_tutto(); t.chiudi()
     sal = next(x for x in MS.carica(fm)["build"] if x["id"] == m["id"])
     t2 = TavoloCarte(tk, F, root, "Prova", sal["lista"], sal["side"], carte_db=db, chiave="build:" + m["id"], modificabile=("build", m["id"]), file_tavoli=ft, file_mazzi=fm, fuori=True, limite=lim)
     root.update()
     casi.append(("riaperto: la stessa disposizione, lo stesso zoom e la stessa fascia", [(pl["zona"], pl["x"], pl["y"], [t2.voci[c]["q"] for c in pl["carte"]]) for pl in t2.pile] == pos
                  and t2.zoom == 1.25 and t2.hs == 140))
-    t2.chiudi()
+    t2.salva_tutto(); t2.chiudi()
     # la disposizione resta anche se il mazzo e' cambiato da fuori: le carte che ci sono tornano al loro posto con le copie di adesso, la nuova va sulla sua pila
     db["Opt"] = dict(cmc=1, tipo="Instant")
     t3 = TavoloCarte(tk, F, root, "Prova", dict(sal["lista"], **{"Lightning Bolt": 3, "Opt": 2}), sal["side"], carte_db=db, chiave="build:" + m["id"],
@@ -4412,7 +4553,7 @@ def prova():
                  t3.zoom == 1.25 and t3.hs == 140 and t3.voci[next(i for i, v in t3.voci.items() if v["nome"] == "Lightning Bolt")]["q"] == 3
                  and dove(t3, "Mountain") == posti["Mountain"] and dove(t3, "Shock") == posti["Shock"]))
     casi.append(("e la carta nuova entra", any(v["nome"] == "Opt" and v["q"] == 2 for v in t3.voci.values())))
-    t3.chiudi()
+    t3.salva_tutto(); t3.chiudi()
     # il builder legge la disposizione di prima, salvata sotto «builder:<id>», se sotto la chiave del mazzo non c'e'
     d_ = carica_tavoli(ft)
     salva_tavolo("builder:vecchio", d_["build:" + m["id"]], ft)
@@ -4420,12 +4561,12 @@ def prova():
                      chiave_vecchia="builder:vecchio", editore=lambda a_, b_: None, file_tavoli=ft, file_mazzi=fm, fuori=True, limite=lim)
     root.update()
     casi.append(("il builder riprende la disposizione che teneva a parte", dove(tb, "Mountain") == posti["Mountain"] and tb.zoom == 1.25))
-    tb.chiave = None; tb.chiudi()
+    tb.chiave = None; tb.salva_tutto(); tb.chiudi()
     tn = TavoloCarte(tk, F, root, "Prova", {"Shock": 2}, {}, carte_db=db, chiave=None, editore=lambda a_, b_: None, file_tavoli=ft, file_mazzi=fm, fuori=True, limite=lim)
     root.update()
-    tn.nuova_chiave("build:appena")
+    tn.nuova_chiave("build:appena"); tn.scrivi_tutto()
     casi.append(("un mazzo nuovo del builder, al primo Save, salva la disposizione sotto la sua chiave", "build:appena" in carica_tavoli(ft)))
-    tn.chiudi()
+    tn.salva_tutto(); tn.chiudi()
     # un mazzo di Arena: niente contatore, si sposta sul tavolo, il file dei mazzi non si tocca
     prima_file = open(fm, encoding="utf-8").read()
     t4 = TavoloCarte(tk, F, root, "Arena", {"Lightning Bolt": 4, "Mountain": 16}, {"Abrade": 1}, carte_db=db, chiave="mio:arena", file_tavoli=ft, file_mazzi=fm, fuori=True, limite=lim)
@@ -4436,11 +4577,11 @@ def prova():
     casi.append(("negativa: un mazzo di Arena non ha il ⇄ e non si sostituisce", not t4.cv.find_withtag("scambia") and not t4.scambia(b4, "Shock")))
     trascina(b4, xy=(700, 60))
     casi.append(("e la carta va in fascia ma i mazzi salvati non cambiano", t4.voci[b4]["zona"] == "side" and open(fm, encoding="utf-8").read() == prima_file))
-    t4.chiudi()
+    t4.salva_tutto(); t4.chiudi()
     t5 = TavoloCarte(tk, F, root, "Arena", {"Lightning Bolt": 4, "Mountain": 16}, {"Abrade": 1}, carte_db=db, chiave="mio:arena", file_tavoli=ft, file_mazzi=fm, fuori=True, limite=lim)
     root.update()
     casi.append(("alla riapertura resta la sua disposizione", any(v["nome"] == "Lightning Bolt" and v["zona"] == "side" and v["q"] == 4 for v in t5.voci.values())))
-    t5.chiudi()
+    t5.salva_tutto(); t5.chiudi()
     _w, h1, off1, _p = misure(1.0)
     vecchio = 2 * ETICHETTA + h1 + 2 * off1 + 28
     salva_tavolo("mio:vecchio", dict(taglia="L", pile=[dict(zona="side", x=22, y=ETICHETTA, carte=[["Abrade", 1]]), dict(zona="main", x=22, y=vecchio, carte=[["Mountain", 16]]),
@@ -4449,7 +4590,7 @@ def prova():
     root.update()
     casi.append(("una disposizione del primo giro: zoom da L, il mazzo dall'inizio del foglio", tv.zoom == 1.25 and sorted(pl["y"] for pl in tv.pile if pl["zona"] == "main") == [0, 100]
                  and all(pl["y"] == 0 for pl in tv.pile if pl["zona"] == "side")))
-    tv.chiudi()
+    tv.salva_tutto(); tv.chiudi()
     t6 = TavoloCarte(tk, F, root, "Brawl", {"Mountain": 10}, {}, comandante={"Lightning Bolt": 1}, carte_db=db, chiave=None, file_tavoli=ft, file_mazzi=fm, fuori=True,
                      modificabile=None, limite=lim)
     root.update()
@@ -4457,7 +4598,7 @@ def prova():
     t6.sotto_al_mouse = lambda: cmd
     t6.premi(type("E", (), dict(x=10, y=10, state=0))())
     casi.append(("il comandante resta fermo", t6.drag is None))
-    t6.chiudi()
+    t6.salva_tutto(); t6.chiudi()
     # le connessioni padre -> figlio: il pallino sotto le carte intere, tirato su un'altra carta; rifatta la toglie; l'imparato fra i mazzi
     fr = os.path.join(d, "rete.json")
     dbr = {"Token Maker": dict(cmc=2, tipo="Creature — Human", testo="When this creature enters, create two 1/1 white Soldier creature tokens."),
@@ -4511,7 +4652,7 @@ def prova():
     trascina(vid_di(t7, "Anthem"), xy=(1000, t7.oy("main") + 60))
     t = trascina_t
     casi.append(("trascinare la carta (non il pallino) la sposta, non collega", t7.pila_di(vid_di(t7, "Anthem"))["x"] != x_prima and len(t7.rete.figli) == n_prima))
-    t7.chiudi()
+    t7.salva_tutto(); t7.chiudi()
     t8 = nuovo_t()
     casi.append(("riaperto: le connessioni restano, con le frecce", set(t8.rete.figli) == {("Vanilla", "Anthem"), ("Token Maker", "Anthem")} and t8.cv.find_withtag("rete")))
     # il foglio come Obsidian: le frecce dritte sotto le carte, la carta si prende in ogni punto, le frecce la seguono
@@ -4641,11 +4782,13 @@ def prova():
     gb = t8.vid_nome("Grizzly Bears")
     casi.append(("il ⇄ apre la ricerca, e la carta nuova prende il posto e le copie della vecchia", aperto and gb is not None and t8.voci[gb]["q"] == 4
                  and (t8.pila_di(gb)["x"], t8.pila_di(gb)["y"]) == posto and t8.vid_nome("Vanilla") is None))
+    aiuto_8 = t8.aiuto.cget("text")
+    t8.salva_tutto()
     salvate = RS.carica(t8.rete.f or RS.FILE).get(t8.rete.chiave, {}).get("figli", [])
     casi.append(("sostituita, la carta tiene le connessioni: padre resta padre, figlio resta figlio, anche nel file e a video",
                  ("Token Maker", "Grizzly Bears") in t8.rete.figli and ("Grizzly Bears", "Anthem") in t8.rete.figli
                  and not any("Vanilla" in k_ for k_ in t8.rete.figli) and ["Token Maker", "Grizzly Bears"] in [x[:2] for x in salvate]
-                 and any({t8.voci[a_]["nome"], t8.voci[b_]["nome"]} == {"Grizzly Bears", "Anthem"} for a_, b_, _p, _c in t8._segmenti) and "links kept" in t8.aiuto.cget("text")))
+                 and any({t8.voci[a_]["nome"], t8.voci[b_]["nome"]} == {"Grizzly Bears", "Anthem"} for a_, b_, _p, _c in t8._segmenti) and "links kept" in aiuto_8))
     fig_anthem = {k_ for k_ in t8.rete.figli if "Anthem" in k_}
     t8.scambia(t8.vid_nome("Anthem"), "Grizzly Bears"); root.update()
     casi.append(("negativa: oltre il limite del formato non sostituisce, e le connessioni restano dove sono", t8.vid_nome("Anthem") is not None
@@ -4674,17 +4817,18 @@ def prova():
     kn = t8.etichette.index(lbn)
     t8.metti_nota("l", kn, "Swap in after game 1"); root.update()
     casi.append(("la nota della label: l'icona sul titolo e il riquadro sotto", bool(t8.cv.find_withtag(f"ln{kn}")) and bool(t8.cv.find_withtag(f"lb{kn}"))))
+    t8.salva_tutto()
     salvata_ = carica_tavoli(t8.file_tavoli).get(t8.chiave) or {}
     casi.append(("le note si salvano con la disposizione", (salvata_.get("note") or {}).get("Token Maker", {}).get("testo") == "Side out vs control"
                  and any(x.get("nota") == "Swap in after game 1" for x in salvata_.get("etichette") or [])))
-    t8.metti_nota("c", "Token Maker", ""); t8.metti_nota("l", kn, ""); root.update()
+    t8.metti_nota("c", "Token Maker", ""); t8.metti_nota("l", kn, ""); t8.salva_tutto(); root.update()
     casi.append(("negativa: cancellate, niente icone piene ne' riquadri e niente nel file; restano i + nota (alla base della carta, sul titolo della label)",
                  not t8.cv.find_withtag(f"ni{vn}") and not t8.cv.find_withtag(f"lb{kn}") and bool(t8.cv.find_withtag(f"nn{vn}"))
                  and bool(t8.cv.find_withtag(f"ln{kn}")) and not (carica_tavoli(t8.file_tavoli).get(t8.chiave) or {}).get("note") and "nota" not in t8.etichette[kn]))
     t8.togli_etichetta(kn)
     if ("Token Maker", "Anthem") not in t8.rete.figli:       # la connessione che la prova dell'imparato cerca in un altro mazzo
         t8.rete.lega("Token Maker", "Anthem", dbr)
-    t8.chiudi()
+    t8.salva_tutto(); t8.chiudi()
     # i filtri per tipo (12 nov 2026): All acceso di partenza e assoluto; un tipo spegne All, piu' tipi si sommano; le carte fuori non si vedono e non si
     # prendono, ma restano nel mazzo e nella disposizione salvata
     tF = nuovo_t("build:filtri")
@@ -4700,7 +4844,7 @@ def prova():
     tF.scegli_filtro("enchantment"); root.update()
     casi.append(("piu' tipi si sommano: creature e incantesimi, le terre restano nascoste", tF.filtro == {"creature", "enchantment"} and tF.cv.find_withtag(f"c{an_}")
                  and not tF.cv.find_withtag(f"c{vid_di(tF, 'Plains')}")))
-    tF.salva()
+    tF.salva_tutto()
     sal_ = carica_tavoli(ft).get("build:filtri") or {}
     casi.append(("filtrato, la disposizione salvata ha tutte le carte", {c[0] for pl in sal_.get("pile") or [] for c in pl["carte"]} >= {"Plains", "Anthem", "Vanilla", "Token Maker"}))
     tF.scegli_filtro("all"); root.update()
@@ -4742,6 +4886,7 @@ def prova():
     casi.append(("un altro Swap torna indietro", tF.liste()[0].get("Anthem") == 2 and "Side Anthem" not in tF.liste()[0] and cp["carte"] == {"Side Anthem": 2}))
     cp["carte"] = {"Anthem": 4, "Vanilla": 1}
     casi.append(("negativa: lo Swap che passa il limite delle copie non si fa", not tF.scambia_gruppo(kc) and tF.liste()[0].get("Anthem") == 2))
+    tF.salva_tutto()
     salv_ = carica_tavoli(ft).get("build:filtri") or {}
     casi.append(("la copia si salva con le sue carte e l'origine", any(x.get("copia") and x.get("origine") == g1["id"] for x in salv_.get("etichette") or [])))
     tF.togli_gruppo(tF.etichette.index(cp)); root.update()
@@ -4770,7 +4915,7 @@ def prova():
                  [lb["nome"] for lb in nate2] == ["Best performers", "Hard to cast"]))
     tF.fonte_analisi = lambda: None
     casi.append(("negativa: senza partite niente gruppi dall'analisi, e lo dice", tF.auto_analisi() == [] and "No games" in tF.aiuto.cget("text")))
-    tF.chiudi()
+    tF.salva_tutto(); tF.chiudi()
     t9 = nuovo_t("build:altro")
     t9.apri_pila(vid_di(t9, "Token Maker")); root.update()
     va = vid_di(t9, "Token Maker")
@@ -4778,7 +4923,7 @@ def prova():
     t9.nodo_inizio(type("E", (), dict(x=bb[0], y=bb[1], state=0))(), va)
     casi.append(("l'imparato: in un altro mazzo, i figli che Token Maker ha avuto", t9.tira["imparati"] == ["Anthem"]))
     t9.tira = None
-    t9.chiudi()
+    t9.salva_tutto(); t9.chiudi()
     # le linee (9 nov 2026): di partenza grigio perlato e sottili; la tavolozza sulla freccia sceglie colore e importanza, e restano
     tA = nuovo_t("build:stile")
     for k_ in (("Token Maker", "Anthem"), ("Vanilla", "Anthem")):
@@ -4828,10 +4973,10 @@ def prova():
                  and (not tA.gpu or (len(linee_) == 1 and float(tA.cv.itemcget(linee_[0], "width")) == 5.0))
                  and not any(isinstance(w_, tk.Label) and w_.cget("text") == "IMPORTANCE" for w_ in tutti_widget(popA))))
     tA.stile_chiudi()
-    tA.chiudi()
+    tA.salva_tutto(); tA.chiudi()
     tA2 = nuovo_t("build:stile")
     casi.append(("riaperto, la linea ha il suo colore e il suo spessore", tA2.rete.colore_spessore("Token Maker", "Anthem") == ("#d9534f", 5.0)))
-    tA2.chiudi()
+    tA2.salva_tutto(); tA2.chiudi()
     # i dot delle linee, come in Nuke (9 nov 2026): il doppio clic spezza la linea, il dot si trascina, da un dot partono altre linee dello stesso padre
     tD = nuovo_t("build:dot")
     for k_ in (("Token Maker", "Anthem"), ("Vanilla", "Anthem")):
@@ -4868,7 +5013,7 @@ def prova():
         tD.premi_tela(ED(x2_, y2_, st=0x1)); tD.trascina(ED(x2_ + 150, y2_ + 120)); tD.rilascia(ED(x2_ + 150, y2_ + 120)); root.update()
         q2 = max(tD.punti)
         casi.append(("Maiuscolo+trascina dal dot nel vuoto: un dot nuovo in catena", q2 != q1 and tD.punti[q2]["ingressi"] == [["p", q1]] and tD.fonti(q2) == {"Token Maker"}))
-        tD.chiudi()
+        tD.salva_tutto(); tD.chiudi()
         tD = nuovo_t("build:dot")
         casi.append(("riaperto, i dot e le strade delle linee ci sono", set(tD.punti) == {q1, q2} and tD.vie.get(("Token Maker", "Anthem")) == q1
                      and tD.vie.get(("Token Maker", "Plains")) == q1))
@@ -4884,7 +5029,7 @@ def prova():
         sgP = next(x for x in tD._segmenti if (tD.voci[x[0]]["nome"], tD.voci[x[1]]["nome"]) == ("Token Maker", "Plains"))
         tD.togli_arco(sgP)
         casi.append(("tolta la connessione col ✕, il suo dot che non serve piu' sparisce", q3 is not None and q3 not in tD.punti and ("Token Maker", "Plains") not in tD.rete.figli))
-    tD.chiudi()
+    tD.salva_tutto(); tD.chiudi()
     # il chiodo sulla freccia accesa mette il dot; il dot fa partire linee dal suo pallino d'oro e ne riceve (Autore, 10 nov 2026)
     tE = nuovo_t("build:dot2")
     if ("Token Maker", "Anthem") not in tE.rete.figli:
@@ -4953,7 +5098,7 @@ def prova():
         tE.togli_arco(sgO)
         casi.append(("la ✕ su un'uscita del dot toglie quella connessione, il dot resta per le altre", ("Token Maker", "Anthem") not in tE.rete.figli
                      and qE in tE.punti and tE.vie.get(("Token Maker", "Plains")) == qE))
-    tE.chiudi()
+    tE.salva_tutto(); tE.chiudi()
     # una linea corta: i pulsantini ci sono tutti, uno accanto all'altro, fuori dai pallini; la linea resta accesa mentre il mouse va verso di loro
     tC = nuovo_t("build:corta")
     if ("Vanilla", "Anthem") not in tC.rete.figli:
@@ -4990,7 +5135,7 @@ def prova():
     casi.append(("un dot sopra una carta sta sopra la carta e si prende col clic; le linee restano sotto", tutti_C.index(tC.cv.find_withtag(f"p{qC}")[0]) >
                  max(tutti_C.index(i_) for i_ in tC.cv.find_withtag("carta")) and tC.pezzo_a(ptC[0], ptC[1]) == ("punto", qC)
                  and all(tutti_C.index(i_) < min(tutti_C.index(j_) for j_ in tC.cv.find_withtag("carta")) for i_ in tC.cv.find_withtag("rete"))))
-    tC.chiudi()
+    tC.salva_tutto(); tC.chiudi()
     # Grid snap: libero mentre trascini, sulla griglia quando lasci; la spunta lo spegne, e si ricorda
     tG = nuovo_t("build:griglia", griglia=True)
     EG = lambda x, y, st=0: type("E", (), dict(x=x - tG.cv.canvasx(0), y=y - tG.cv.canvasy(0), state=st))()
@@ -5059,12 +5204,12 @@ def prova():
     casi.append(("Grid snap spento: la carta in cima tirata di poco fuori dalla sua pila se ne stacca, al pixel dove la lasci", tG.pila_di(vc_) is not pm_
                  and abs(rd_[0] - rc_[0] - 61) < 0.05 and abs(rd_[1] - rc_[1] - 23) < 0.05))
     casi.append(("negativa: senza il trascinamento la pila di partenza sotto il mouse contava come bersaglio (la carta tornava indietro)", vecchio_ is pm_))
-    tG.chiudi()
+    tG.salva_tutto(); tG.chiudi()
     tG2 = TavoloCarte(tk, F, root, "Rete", {"Vanilla": 4}, {}, carte_db=dbr, chiave="build:griglia2", file_tavoli=ft, file_mazzi=fm, file_rete=fr, fuori=True, limite=lim)
     root.update()
     casi.append(("la spunta si ricorda per tutti i mazzi", tG2.griglia is False))
     tG2.cambia_griglia(True)
-    tG2.chiudi()
+    tG2.salva_tutto(); tG2.chiudi()
     # il Board in sola lettura (aperto dalla finestra del mazzo): la disposizione di edit, niente strumenti, niente salvato
     tS0 = nuovo_t("build:sola")
     for k_ in (("Token Maker", "Anthem"),):
@@ -5074,7 +5219,7 @@ def prova():
     tS0.disegna(); root.update()
     strumenti = lambda t_: [g_ for g_ in ("nodo", "ctrl", "scambia", "label_x", "label_l", "label_m", "label_r") if t_.cv.find_withtag(g_)]
     con_strumenti = strumenti(tS0)
-    tS0.chiudi()
+    tS0.salva_tutto(); tS0.chiudi()
     prima_file = json.dumps(carica_tavoli(ft).get("build:sola"), sort_keys=True)
     tS = TavoloCarte(tk, F, root, "Rete", {"Token Maker": 4, "Anthem": 2, "Vanilla": 4, "Plains": 10}, {"Side Anthem": 1}, carte_db=dbr, chiave="build:sola",
                      file_tavoli=ft, file_mazzi=fm, file_rete=fr, fuori=True, limite=lim, modificabile=("build", "x"), sola_lettura=True)
@@ -5119,7 +5264,7 @@ def prova():
         tN.cv.after_cancel(tN.clic); tN.clic = None
     pn2 = tN.pila_di(vid_di(tN, "Anthem"))
     casi.append(("negativa: senza il permesso di spostare (All accounts) la carta resta ferma", (pn2["x"], pn2["y"]) == xyn))
-    tN.chiudi()
+    tN.salva_tutto(); tN.chiudi()
     # l'outliner, A e F, le carte nuove isolate, comandi e outliner che si chiudono (10 nov 2026)
     tO = nuovo_t("build:outliner")
     tO.cv.winfo_width = lambda: 1000; tO.cv.winfo_height = lambda: 700
@@ -5189,7 +5334,7 @@ def prova():
     tO.apri_comandi(True)
     tO.apri_comandi(False); tO.apri_outliner(False); root.update()
     chiusi_ = tO.f_comandi.winfo_manager() == "" and tO.out_corpo.winfo_manager() == "" and tO.b_out.cget("text") == "▶" and tO.b_comandi.cget("text") == "▸"
-    tO.chiudi()
+    tO.salva_tutto(); tO.chiudi()
     tO2 = nuovo_t("build:outliner")
     casi.append(("l'outliner chiuso resta chiuso alla riapertura; i comandi ripartono comunque chiusi", chiusi_ and not tO2.comandi_aperti and not tO2.outliner_aperto
                  and tO2.out_corpo.winfo_manager() == ""))
@@ -5200,7 +5345,7 @@ def prova():
     casi.append(("Full page: il Board a tutto schermo e indietro", on_ and pieno_ and tO2.fin.state() == "normal" and "Full page" in tO2.b_pagina.cget("text")))
     tO2.apri_comandi(True); tO2.apri_outliner(True); root.update()
     casi.append(("e si riaprono", tO2.f_comandi.winfo_manager() == "grid" and tO2.out_corpo.winfo_manager() == "pack" and tO2.b_out.cget("text") == "◀"))
-    tO2.chiudi()
+    tO2.salva_tutto(); tO2.chiudi()
     # Arrange network: la rete a livelli, i padri sopra i figli, i giri chiusi rotti, le carte senza connessioni sotto per costo
     tR = nuovo_t("build:rete_ord")
     pile_prima = [(q["x"], q["y"], list(q["carte"])) for q in tR.pile]
@@ -5220,10 +5365,10 @@ def prova():
     disp_ = sorted((q["x"], q["y"], tuple(tR.voci[c_]["nome"] for c_ in q["carte"])) for q in tR.pile)
     tR.disponi_rete()
     casi.append(("rifatto, da' la stessa disposizione", sorted((q["x"], q["y"], tuple(tR.voci[c_]["nome"] for c_ in q["carte"])) for q in tR.pile) == disp_))
-    tR.chiudi()
+    tR.salva_tutto(); tR.chiudi()
     tR2 = nuovo_t("build:rete_ord")
     casi.append(("riaperto, la rete riordinata resta", sorted((q["x"], q["y"], tuple(tR2.voci[c_]["nome"] for c_ in q["carte"])) for q in tR2.pile) == disp_))
-    tR2.chiudi()
+    tR2.salva_tutto(); tR2.chiudi()
     # una disposizione col dot del primo giro (padre e da): si riprende con l'ingresso giusto
     vecchia_d = carica_tavoli(ft).get("build:dot2")
     if vecchia_d and vecchia_d.get("punti"):
@@ -5233,7 +5378,7 @@ def prova():
     tV = nuovo_t("build:dot_vecchio")
     casi.append(("un dot salvato col formato di prima (padre, da) si riprende come dot con quell'ingresso", bool(vecchia_d)
                  and tV.punti.get(q0["id"], {}).get("ingressi") == [["c", "Token Maker"]]))
-    tV.chiudi()
+    tV.salva_tutto(); tV.chiudi()
     # la selezione a riquadro e lo spostamento di gruppo, con le connessioni che seguono; le label
     tB = nuovo_t("build:sel")
     for k_ in (("Token Maker", "Anthem"), ("Vanilla", "Anthem")):
@@ -5344,7 +5489,7 @@ def prova():
                  and (p2["x"] - prima[id(p2)][0], p2["y"] - prima[id(p2)][1]) == dl == (p3["x"] - prima[id(p3)][0], p3["y"] - prima[id(p3)][1])
                  and (pt["x"], pt["y"]) == prima[id(pt)]))
     tB.rinomina_etichetta(0, "Win cons")
-    tB.chiudi()
+    tB.salva_tutto(); tB.chiudi()
     tB2 = nuovo_t("build:sel")
     casi.append(("riaperto, la label c'e' col suo nome e al suo posto, con le pile dentro", len(tB2.etichette) == 1 and tB2.etichette[0]["nome"] == "Win cons"
                  and (tB2.etichette[0]["x"], tB2.etichette[0]["y"]) == (lb["x"], lb["y"]) and len(tB2.membri(0)[0]) == 2))
@@ -5388,7 +5533,7 @@ def prova():
     n_pile = len(tB2.pile)
     tB2.premi_tela(EB2((bx0[0] + bx0[2]) / 2, (bx0[1] + bx0[3]) / 2)); tB2.rilascia(EB2((bx0[0] + bx0[2]) / 2, (bx0[1] + bx0[3]) / 2))
     casi.append(("la ✕ della label la toglie, le carte restano", not tB2.etichette and len(tB2.pile) == n_pile))
-    tB2.chiudi()
+    tB2.salva_tutto(); tB2.chiudi()
     # la barra della fascia non ruba il clic: una label col titolo proprio sulla barra si trascina dal titolo
     tL = nuovo_t("build:barra")
     tL.cv.winfo_width = lambda: 1000; tL.cv.winfo_height = lambda: 700
@@ -5403,7 +5548,44 @@ def prova():
     tL.premi_tela(ELb(980, tL.hs))
     casi.append(("negativa: nel vuoto la barra della fascia si prende ancora", tL.separa is not None))
     tL.rilascia(ELb(980, tL.hs)); root.update()
-    tL.chiudi()
+    tL.salva_tutto(); tL.chiudi()
+    # niente salvataggi automatici, Save, Undo, Redo, la domanda alla chiusura (12 nov 2026, Autore: «la board di editor dei deck non deve autosalvare i
+    # cambiamenti», «nella board editor vogliamo i pulsanti save, undo (ctrl z), redo»)
+    mU = MS.aggiungi("build", dict(nome="Undo", lista={"Lightning Bolt": 2, "Shock": 2, "Mountain": 14}, side={}), f=fm)
+    tU = TavoloCarte(tk, F, root, "Undo", mU["lista"], {}, carte_db=db, chiave="build:" + mU["id"], modificabile=("build", mU["id"]), file_tavoli=ft, file_mazzi=fm,
+                     fuori=True, limite=lim)
+    root.update()
+    sU = lambda: next(x for x in MS.carica(fm)["build"] if x["id"] == mU["id"])["lista"]
+    casi.append(("Save, Undo e Redo nella testata in modalita' edit; appena aperto niente da salvare", bool(getattr(tU, "b_salva", None)) and bool(getattr(tU, "b_undo", None))
+                 and bool(getattr(tU, "b_redo", None)) and not tU.da_salvare))
+    bU = tU.vid_nome("Shock")
+    tU.cambia_copie(bU, +1); root.update()
+    tU.cambia_copie(tU.vid_nome("Shock"), +1); root.update()
+    casi.append(("due + : il Board ha 4 Shock, il file ancora 2 (niente autosalvataggio), da salvare", tU.liste()[0]["Shock"] == 4 and sU()["Shock"] == 2 and tU.da_salvare))
+    tU.annulla(); root.update()
+    casi.append(("Undo: 3 Shock", tU.liste()[0]["Shock"] == 3))
+
+    class EK:
+        def __init__(self, k, st):
+            self.keysym, self.state = k, st
+    tU.tasto(EK("z", 0x4)); root.update()
+    casi.append(("Ctrl+Z: 2 Shock, come all'apertura: niente da salvare", tU.liste()[0]["Shock"] == 2 and not tU.da_salvare))
+    casi.append(("negativa: oltre l'inizio Undo non fa niente", not tU.annulla() and tU.liste()[0]["Shock"] == 2))
+    tU.tasto(EK("y", 0x4)); root.update()
+    tU.tasto(EK("z", 0x5)); root.update()
+    casi.append(("Ctrl+Y e Ctrl+Shift+Z: Redo due volte, 4 Shock", tU.liste()[0]["Shock"] == 4))
+    tU.salva_tutto(); root.update()
+    casi.append(("Save: il file ha 4 Shock, niente piu' da salvare", sU()["Shock"] == 4 and not tU.da_salvare))
+    tU.cambia_copie(tU.vid_nome("Lightning Bolt"), +1); root.update()
+    esito_ = tU.chiudi(); root.update()
+    dom_ = getattr(tU, "domanda", None)
+    casi.append(("chiudendo con modifiche: la domanda, e il Board resta aperto", esito_ is False and dom_ is not None and dom_.winfo_exists() and tU.fin.winfo_exists()))
+    dom_.no(); root.update()
+    casi.append(("Cancel: il Board resta aperto con la modifica", tU.fin.winfo_exists() and tU.liste()[0]["Lightning Bolt"] == 3))
+    tU.chiudi(); root.update()
+    tU.domanda.altro(); root.update()
+    casi.append(("Don't save: il Board si chiude e il file resta all'ultimo Save (negativa: la modifica non c'e')", not tU.fin.winfo_exists()
+                 and sU()["Lightning Bolt"] == 2 and sU()["Shock"] == 4))
     root.destroy()
     ok = sum(1 for _n, v in casi if v)
     for n, v in casi:

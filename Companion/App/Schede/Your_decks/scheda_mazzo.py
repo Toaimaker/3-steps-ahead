@@ -220,7 +220,8 @@ class SchedaMazzo:
         tk.Label(cap, text=nome, bg=C["cap"], fg=C["titolo"], font=F(14, True)).pack(side="left")
         tk.Frame(dentro, bg=C["filo"], height=1).pack(fill="x")
         # a sinistra la lista, in due colonne (Autore, 7 nov 2026: «la lista a sx le terre in una sotto lista e la side a sx / tutto piu' piccolo e meglio organizzato»), a destra i dati dall'alto in basso
-        corpo = tk.Frame(dentro, bg=C["scheda"]); corpo.pack(fill="both", expand=True, padx=10, pady=8)
+        # staccata dal fondo della finestra (12 nov 2026, Autore: «i pulsanti in fondo sono troppo bassi alziamoli un po'»)
+        corpo = tk.Frame(dentro, bg=C["scheda"]); corpo.pack(fill="both", expand=True, padx=10, pady=(8, 22))
         corpo.columnconfigure(0, weight=11, uniform="det"); corpo.columnconfigure(1, weight=10, uniform="det"); corpo.rowconfigure(0, weight=1)
         sx_l = tk.Frame(corpo, bg=C["scheda"]); sx_l.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
         dx_d = tk.Frame(corpo, bg=C["scheda"]); dx_d.grid(row=0, column=1, sticky="nsew")
@@ -228,13 +229,26 @@ class SchedaMazzo:
         # i jolly sopra il nome del mazzo, l'esportazione sotto la lista (Autore, 7 nov 2026: «sposta le wildcards sopra il nome del mazzo / sotto il mazzo invece tutte le opzioni di esportazione compreso magic online»)
         barra_jolly = tk.Frame(sx_l, bg=C["cap"], padx=8, pady=4); barra_jolly.pack(fill="x", pady=(0, 6))
         esporta = tk.Frame(sx_l, bg=C["scheda"]); esporta.pack(side="bottom", fill="x", pady=(6, 0))
-        if main or side or comandante:      # il Board, sotto la lista al centro, da guardare: si personalizza solo in modalita' edit (Autore, 10 nov 2026: «il pulsante per
-            # vedere la lista in carte sara' sotto le pillow al centro ma non avra' i tool di editing del mazzo», «card view cambia nome in lavagna in inglese»)
+        # Board view ed Edit this deck affiancati sotto la lista (Autore, 12 nov 2026: «nelle schede deck normali cambia pulsante: board in Board view / edit in edit
+        # this deck e affiancali»): il Board da guardare (si personalizza solo in modalita' edit) e il builder; tutti e due in arancio
+        azioni_m = self.azioni_mazzo(tipo, chi, nome, main, side, comandante, compagno)
+        edit_m = next((a_ for a_ in azioni_m if a_[0] == "Edit this deck"), None)
+        azioni_m = [a_ for a_ in azioni_m if a_ is not edit_m]
+        if main or side or comandante or edit_m:
             from widget import ARANCIO, pulsante_solido
-            sotto_l = tk.Frame(sx_l, bg=C["scheda"]); sotto_l.pack(side="bottom", fill="x", pady=(6, 0))
-            b_carte = pulsante_solido(tk, F, sotto_l, "Board", False, lambda: self.vista_carte(tipo, chi, nome, main, side, comandante, compagno), alto=28, bg=C["scheda"],
-                                      colori=ARANCIO)       # in arancio come nel builder (10 nov 2026)
-            b_carte.configure(width=150); b_carte.pack(anchor="center")
+            sotto_l = tk.Frame(sx_l, bg=C["scheda"]); sotto_l.pack(side="bottom", fill="x", pady=(8, 2))
+            sotto_l.azioni = []         # per le prove
+            pezzi = []
+            if main or side or comandante:
+                pezzi.append(("Board view", lambda: self.vista_carte(tipo, chi, nome, main, side, comandante, compagno)))
+            if edit_m:
+                pezzi.append((edit_m[0], edit_m[1]))
+            for j, (t_, f_) in enumerate(pezzi):
+                sotto_l.columnconfigure(j, weight=1, uniform="bv")
+                b_ = pulsante_solido(tk, F, sotto_l, t_, False, f_, alto=30, bg=C["scheda"], colori=ARANCIO)
+                b_.grid(row=0, column=j, sticky="ew", padx=(0, 6 if j < len(pezzi) - 1 else 0))
+                sotto_l.azioni.append(t_)
+            self.riga_board = sotto_l
         if not _PREZZI_AGGIORNATI:
             _PREZZI_AGGIORNATI.append(1)
             threading.Thread(target=PZ.aggiorna, daemon=True).start()
@@ -274,7 +288,7 @@ class SchedaMazzo:
             tk.Label(barra_jolly, text="WILDCARDS  ·  link your Untapped profile in Help to see the cards you own and the wildcards you need", bg=C["cap"],
                      fg=C["grigio"], font=F(8), anchor="w").pack(fill="x")
         # l'esportazione, sotto la lista: Arena e Magic Online, da copiare o da salvare in un file
-        self.esportazione(esporta, nome, main, side, comandante, compagno, self.azioni_mazzo(tipo, chi, nome, main, side, comandante, compagno))
+        self.esportazione(esporta, nome, main, side, comandante, compagno, azioni_m)
         if tipo == "meta" and m.get("url"):     # la pagina originale del mazzo (Autore: «sempre linkati ai dati originali»)
             orig = tk.Label(cap, text="MTGGOLDFISH ↗" if "mtggoldfish" in m["url"] else "UNTAPPED ↗", bg=C["cap"], fg=C["accento"], font=F(7, True), cursor="hand2", padx=10)
             orig.pack(side="right"); orig.bind("<Button-1>", lambda e, u=m["url"]: webbrowser.open(u))

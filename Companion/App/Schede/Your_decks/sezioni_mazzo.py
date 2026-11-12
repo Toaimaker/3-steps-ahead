@@ -4,7 +4,6 @@ di quelli messi in tesserine non dei grafici / mettiamoli su tendine espandibili
 Una sezione e' una testata (triangolo, titolo, a destra un riassunto) e un corpo che si apre e si chiude col clic sulla testata; aperta o chiusa resta per tutti i mazzi
 (Log_Arena/scheda_sezioni.json, per questo PC; le prove cambiano FILE). Le tessere sono riquadri tutti uguali su una griglia: il nome sopra, piccolo e spento, il dato
 grande, sotto una riga grigia; a sinistra un filo del colore del dato (verde sopra il 50%, rosso sotto, grigio se neutro)."""
-import json
 import os
 
 import carta_tela
@@ -16,27 +15,29 @@ from tema import CI as C
 FILE = [os.path.join(LOGDIR, "scheda_sezioni.json")]
 
 
+# le sezioni aperte del mazzo mostrato: partono tutte chiuse a ogni mazzo (Autore, 12 nov 2026: «le schede mazzo devono partire con le tendine chiuse»);
+# restano aperte mentre la finestra si rifa' per lo stesso mazzo (un filtro, i dati nuovi). Fino a quel giorno restavano nel file per tutti i mazzi (FILE resta per le prove)
+SESSIONE = {}
+
+
+def nuovo_mazzo():
+    """Un altro mazzo nella finestra: tutte le sezioni tornano chiuse."""
+    SESSIONE.clear()
+
+
 def stato():
-    try:
-        with open(FILE[0], encoding="utf-8") as f:
-            d = json.load(f)
-        return d if isinstance(d, dict) else {}
-    except (OSError, ValueError):
-        return {}
+    return SESSIONE
 
 
 def salva(d):
-    try:
-        with open(FILE[0], "w", encoding="utf-8") as f:
-            json.dump(d, f)
-    except OSError:
-        pass
+    if d is not SESSIONE:
+        SESSIONE.clear(); SESSIONE.update(d)
 
 
 class SezioniMazzo:
     """Le sezioni a tendina e le tessere della finestra del mazzo (mixin di PaginaStandard)."""
 
-    def sezione_tendina(self, padre, chiave, titolo, riassunto="", aperta=True, dopo=None, mini=False, spiega=""):
+    def sezione_tendina(self, padre, chiave, titolo, riassunto="", aperta=False, dopo=None, mini=False, spiega=""):
         """Una sezione a tendina: -> il corpo (un Frame), da riempire. aperta: com'e' la prima volta; poi decide l'ultima scelta. dopo: chiamata dopo ogni apertura o
         chiusura (la finestra rifa' la rotella e lo scorrimento). mini: la tendina piccola dentro una sezione (le categorie dell'analisi: Autore, 10 nov 2026, «metti
         ogni categoria in delle mini tendine espandibili così non abbiamo tutti i dati in un colpo solo»), sul fondo della scheda col filo sotto, accesa sotto il

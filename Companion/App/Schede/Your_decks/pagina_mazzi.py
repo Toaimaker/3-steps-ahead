@@ -31,6 +31,11 @@ def CESTINO(larga):
     return larga - 14 - 26, 10, larga - 14, 36
 
 
+def CLONA(larga):
+    """Il riquadro di Clona sulle schede di Deck builder: accanto al cestino, a sinistra (12 nov 2026). -> (x0, y0, x1, y1)."""
+    return larga - 14 - 26 - 8 - 26, 10, larga - 14 - 26 - 8, 36
+
+
 class PaginaMazzi(PaginaStandard):
     CON_EVENTI = False
 
@@ -461,6 +466,8 @@ class PaginaMazzi(PaginaStandard):
             self.pulsante_scheda(c, dx_, H, "Edit" if sez == "build" and scrivibile else "View deck")
             if sez in ("wish", "build") and scrivibile:
                 self.cestino(c, *CESTINO(L))
+            if sez == "build" and scrivibile:      # clona il mazzo, accanto al cestino (12 nov 2026)
+                c.create_image(CLONA(L)[0], CLONA(L)[1], image=self.icona_clona(False), anchor="nw", tags="clona")
             c.box_vis = self.vis_mazzo(c, m)
         sez = m.get("_sez") or self.sezione
         import account
@@ -469,12 +476,16 @@ class PaginaMazzi(PaginaStandard):
         if m["arte"]:
             self.lista.chiedi_arte(c, m["arte"], disegna)
         c.bind("<Enter>", lambda e: c.itemconfigure("corpo", fill=C["cap"], outline=C["accento"]))
-        c.bind("<Leave>", lambda e: (c.itemconfigure("corpo", fill=C["fondo"], outline=C["filo"]), c.itemconfigure("cestino", image=self.icona_cestino(False))))
+        c.bind("<Leave>", lambda e: (c.itemconfigure("corpo", fill=C["fondo"], outline=C["filo"]), c.itemconfigure("cestino", image=self.icona_cestino(False)),
+                                     c.itemconfigure("clona", image=self.icona_clona(False))))
 
         def sopra(e):
             if sez in ("wish", "build") and scrivibile:
                 x0, y0, x1, y1 = CESTINO(L)
                 c.itemconfigure("cestino", image=self.icona_cestino(x0 <= e.x <= x1 and y0 <= e.y <= y1))
+            if sez == "build" and scrivibile:
+                x0, y0, x1, y1 = CLONA(L)
+                c.itemconfigure("clona", image=self.icona_clona(x0 <= e.x <= x1 and y0 <= e.y <= y1))
         c.bind("<Motion>", sopra)
 
         def clic(e):
@@ -484,7 +495,10 @@ class PaginaMazzi(PaginaStandard):
                 return
             x0, y0, x1, y1 = CESTINO(L)
             if sez in ("wish", "build") and scrivibile and x0 <= e.x <= x1 and y0 <= e.y <= y1:
-                self.cancella(sez, m["id"]); return
+                self.chiedi_cancella(sez, m); return
+            x0, y0, x1, y1 = CLONA(L)
+            if sez == "build" and scrivibile and x0 <= e.x <= x1 and y0 <= e.y <= y1:
+                self.clona(sez, m); return
             # nel Laboratorio il pulsante Edit porta alla Collection col builder del mazzo acceso (Autore, 7 nov 2026: «premendo su edit l'app ti rimanda alla pagina collection con il deck builder del mazzo acceso»)
             if sez == "build" and scrivibile and L - 14 - 104 <= e.x <= L - 14 and H - 44 <= e.y <= H - 10:
                 self.builder("build", MS_dict(m)); return
@@ -536,6 +550,41 @@ class PaginaMazzi(PaginaStandard):
     def icona_cestino(self, acceso, lato=26):
         """Il cestino nitido (disegni.py): sul quadrato scuro, rosso sotto il puntatore."""
         return DG.cestino(lato, C["titolo"], PERSA if acceso else C["fondo"], PERSA if acceso else C["filo"])
+
+    def icona_clona(self, acceso, lato=26):
+        return DG.clona(lato, C["titolo"], C["accento"] if acceso else C["fondo"], C["accento"] if acceso else C["filo"])
+
+    def clona(self, sez, m):
+        """Clona un mazzo di Deck builder (Autore, 12 nov 2026: «in deck builder crea sia sulla deck cover che dentro la possibilita' di clonare il mazzo»): la copia
+        nasce in testa al gruppo, «nome (copy)», con le carte, il formato, i lucchetti delle terre, la disposizione del Board e le connessioni. -> il mazzo nuovo."""
+        orig = next((x for x in MS.carica()[sez] if x["id"] == m["id"]), None) or m
+        campi = {k: orig.get(k) for k in ("formato", "lista", "side", "comandante", "compagno", "colori", "fonte", "lucchetti", "base_fatta") if orig.get(k) is not None}
+        nuovo = MS.aggiungi(sez, dict(campi, nome=f"{orig.get('nome') or 'Deck'} (copy)"))
+        if nuovo is None:
+            return None
+        try:        # il Board del mazzo: la disposizione e la rete passano alla copia
+            import tavolo_carte as TC
+            import rete_sinergie as RS
+            vecchia, nuova = f"{sez}:{m['id']}", f"{sez}:{nuovo['id']}"
+            t_ = TC.carica_tavoli().get(vecchia)
+            if t_:
+                TC.salva_tavolo(nuova, t_)
+            r_ = RS.carica().get(vecchia)
+            if r_:
+                d_ = RS.carica(); d_[nuova] = r_; RS.scrivi(RS.FILE, d_)
+        except Exception:       # noqa: BLE001 - senza Board la copia c'e' lo stesso
+            pass
+        self.sporco = True
+        self.disegna()
+        return nuovo
+
+    def chiedi_cancella(self, sez, m):
+        """Il cestino: prima la domanda, poi via (Autore, 12 nov 2026: «chiediamo sempre prima la conferma di voler cancellare il mazzo»). -> la finestrella."""
+        from widget import conferma
+        dove = "Wishlist" if sez == "wish" else "Deck builder"
+        self.domanda = conferma(self.tk, self.F, self.fr, "Delete this deck?", f"«{m.get('nome') or 'Deck'}» goes out of your {dove}. This cannot be undone.",
+                                "Delete", lambda: self.cancella(sez, m["id"]))
+        return self.domanda
 
     def cancella(self, sez, mid):
         """Toglie un mazzo salvato (Wishlist o Deck building) e ridisegna subito la pagina; se la finestra di quel mazzo e' aperta si chiude."""

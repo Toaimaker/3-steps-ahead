@@ -43,7 +43,9 @@ SEZIONI = (
        "(17lands.com/public_datasets), CC BY 4.0, aggregated by 3 Steps Ahead; not endorsed by 17Lands")]),
     ("mazzi", "Your decks", "Your Arena decks, the decks Arena gave you, your wishlist and your deck building, grouped by format.",
      [("Group title", "opens or closes the group"), ("Show", "only the decks you own, or all"), ("Import", "a list copied from Arena, MTGO or a site goes to the Wishlist"),
-      ("Trash", "on a Wishlist or Deck builder card: removes the deck at once"), ("Click a deck", "the deck window: list, data, starting hands, export"),
+      ("Trash", "on a Wishlist or Deck builder card: asks, then removes the deck"), ("Clone", "on a Deck builder card or in its window: a copy of the deck"),
+      ("Board view · Edit this deck", "under the list: look at the deck as cards, or open it in the builder"),
+      ("Save", "in the builder and on its board nothing is saved by itself; closing with changes asks Save, Don't save or Cancel"), ("Click a deck", "the deck window: list, data, starting hands, export"),
       ("Analysis › Matchups", "the decks you met with this deck, recognized from the cards they showed: record, play and draw; under 5 games it is a hint"),
       ("All games · On the play · On the draw", "the flags on top of Analysis and of the Win rate chart: each one filters its own section"),
       ("Open full analysis", "every card of the deck sortable (seen, cast, win when cast, vs deck, stuck in hand), matchups with the 95% range, mulligans, game length, "

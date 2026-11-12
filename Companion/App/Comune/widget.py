@@ -400,6 +400,72 @@ def a_riposo(w, f, ms=100):
     return gestore
 
 
+ROSSO_P = ("#b8433f", "#d9534f", "#8e322f")     # normale, sotto il mouse, premuto: le azioni che tolgono qualcosa (Delete; 12 nov 2026)
+
+
+def conferma(tk, F, padre, titolo, testo, si, fa, colori=ROSSO_P, altro=None):
+    """Una domanda prima di un'azione che non si torna indietro (Autore, 12 nov 2026: «quando premiamo delete sui cestini in your deck chiediamo sempre
+    prima la conferma di voler cancellare il mazzo»): una finestrella nei colori dell'app al centro della finestra di padre, col titolo, il testo, il pulsante
+    dell'azione (rosso) e Cancel. Invio conferma, Esc o Cancel annullano; finche' e' aperta il resto della finestra non prende clic. altro: (testo, azione) un
+    terzo pulsante fra i due (Don't save, quando si chiude con modifiche non salvate). -> la finestrella, con .si(), .no() e .altro() (anche per le prove)."""
+    radice = padre.winfo_toplevel()
+    f = tk.Toplevel(radice); f.overrideredirect(True); f.configure(bg="#24baff")
+    try:
+        f.transient(radice)
+    except tk.TclError:
+        pass
+    dentro = tk.Frame(f, bg="#202024"); dentro.pack(padx=1, pady=1)
+    tk.Label(dentro, text=titolo, bg="#202024", fg="#ffffff", font=F(11, True), anchor="w").pack(fill="x", padx=18, pady=(16, 4))
+    tk.Label(dentro, text=testo, bg="#202024", fg="#bebec2", font=F(9), anchor="w", justify="left", wraplength=360).pack(fill="x", padx=18, pady=(0, 14))
+    riga = tk.Frame(dentro, bg="#202024"); riga.pack(fill="x", padx=18, pady=(0, 16))
+    fatto = {"v": False}
+
+    def chiudi():
+        try:
+            f.grab_release()
+        except tk.TclError:
+            pass
+        if f.winfo_exists():
+            f.destroy()
+
+    def ok(_e=None):
+        if fatto["v"]:
+            return
+        fatto["v"] = True
+        chiudi()
+        fa()
+
+    def no(_e=None):
+        fatto["v"] = True
+        chiudi()
+    b_no = pulsante_solido(tk, F, riga, "Cancel", False, no, alto=32, bg="#202024", colori=("#3a3a40", "#4a4a52", "#2c2c30"))
+    b_no.configure(width=110); b_no.pack(side="right")
+
+    def terzo(_e=None):
+        if fatto["v"]:
+            return
+        fatto["v"] = True
+        chiudi()
+        altro[1]()
+    if altro:
+        b_al = pulsante_solido(tk, F, riga, altro[0], False, terzo, alto=32, bg="#202024", colori=("#3a3a40", "#4a4a52", "#2c2c30"))
+        b_al.configure(width=110); b_al.pack(side="right", padx=(0, 8))
+    b_si = pulsante_solido(tk, F, riga, si, False, ok, alto=32, bg="#202024", colori=colori)
+    b_si.configure(width=110); b_si.pack(side="right", padx=(0, 8))
+    f.bind("<Return>", ok); f.bind("<Escape>", no)
+    f.update_idletasks()
+    x = radice.winfo_rootx() + (radice.winfo_width() - f.winfo_reqwidth()) // 2
+    y = radice.winfo_rooty() + (radice.winfo_height() - f.winfo_reqheight()) // 3
+    f.geometry(f"+{x}+{y}")
+    try:
+        f.grab_set()
+    except tk.TclError:       # un'altra finestra tiene gia' il mouse: la domanda resta lo stesso
+        pass
+    f.focus_force()
+    f.si, f.no, f.altro = ok, no, terzo
+    return f
+
+
 def pulsante_solido(tk, F, padre, testo, premuto, azione, alto=40, bg="#18181c", colori=None):
     """Un pulsante azzurro pieno, senza sfumature, che si schiarisce al passaggio del mouse (Autore, 6 nov 2026: «i pulsanti non facciamogli la sfumatura ma facciamoli pieni con light hover»;
     dal 5 nov erano sfumati con riflesso). Premuto e' piu' scuro. c.metti(testo, premuto) lo cambia."""

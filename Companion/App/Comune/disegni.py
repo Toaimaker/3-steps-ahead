@@ -279,6 +279,21 @@ def occhio(lato, colore, barrato=False):
     return _icona(("occhio", lato, colore, barrato), fa)
 
 
+def clona(lato, testo, fondo, bordo):
+    """Clona (12 nov 2026, Autore: «in deck builder crea sia sulla deck cover che dentro la possibilita' di clonare il mazzo»): sul quadrato scuro come il
+    cestino, due schede sovrapposte, quella davanti col +."""
+    def fa():
+        d = Disegno(lato, lato)
+        k = lato / 26
+        d.rett(0.5, 0.5, lato - 0.5, lato - 0.5, riempi=fondo, bordo=bordo, larghezza=1, raggio=3 * k)
+        d.rett(6 * k, 5 * k, 16 * k, 17 * k, bordo=testo, larghezza=1.4 * k, raggio=1.6 * k)
+        d.rett(10 * k, 9 * k, 20 * k, 21 * k, riempi=fondo, bordo=testo, larghezza=1.4 * k, raggio=1.6 * k)
+        d.linea([(15 * k, 12 * k), (15 * k, 18 * k)], testo, 1.4 * k)
+        d.linea([(12 * k, 15 * k), (18 * k, 15 * k)], testo, 1.4 * k)
+        return d
+    return _icona(("clona", lato, testo, fondo, bordo), fa)
+
+
 def stellina(lato, stato):
     """La stellina della wishlist sulle schede della Meta (Autore, 12 nov 2026, proposta D fra quattro: «stellina»): un quadrato smussato scuro
     semitrasparente e la stella a cinque punte; stato 0 vuota bianca, 1 (sotto il mouse) vuota d'oro col bordo d'oro, 2 (in wishlist) piena d'oro."""
