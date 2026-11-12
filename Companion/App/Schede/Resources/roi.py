@@ -88,7 +88,7 @@ class Roi:
         self.griglia(r_ot, [("gems", pt(ri["gemme"]), None, "", gem), ("packs", pt(ri["buste"]), None, "", self.icona("busta", 16)), ("rare wc", pt(ri["jolly_r"]), None, "", self.icona_j("R")),
                             ("mythic wc", pt(ri["jolly_m"]), None, "", self.icona_j("M")), ("cards", pt(ri["carte"]), None, "", self.icona("carte", 16))], colonne=3 if self.stretta else 5, grande=12, stretta=True)
         # il dettaglio: la roadmap contro la cassa vera, in una finestra col grafico (9 nov 2026)
-        r_bt = tk.Frame(self.b_roi, bg=C["scheda"]); r_bt.pack(fill="x", pady=(2, 0))
+        r_bt = tk.Frame(self.b_roi, bg=C["scheda"]); r_bt.pack(fill="x", pady=(14, 4))       # aria sopra (12 nov 2026, Autore: «il pulsante qui e' troppo attaccato»)
         self.b_andamento = pulsante_solido(tk, F, r_bt, "Roadmap check", False, self.finestra_andamento, alto=28, bg=C["scheda"])
         self.b_andamento.configure(width=170); self.b_andamento.pack(side="right")
         tk.Label(r_bt, text="Are you above or below the roadmap?" if self.piano else "Create a plan to check it against your real balance", bg=C["scheda"], fg=C["grigio"], font=F(7), anchor="w", justify="left",
