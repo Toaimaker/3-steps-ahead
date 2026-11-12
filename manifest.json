@@ -1,6 +1,6 @@
 {
- "version": "0.1.52",
+ "version": "0.1.53",
  "date": "2026-11-12",
- "notes": "Performance: the board of a game is a replayer, with play and pause, step, first and last, a timeline and the speed.",
+ "notes": "Performance: the games table scrolls with a bar, opens in its own window and lights the row softly; a Result filter (won or lost); more room in the numbers.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

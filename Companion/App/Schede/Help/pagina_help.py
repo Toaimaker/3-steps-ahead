@@ -72,7 +72,7 @@ SEZIONI = (
       ("Chart", "win rate, games, average turns or mulligan rate; by game or by date; cumulative or the last N games; split by a variable"),
       ("Games in this situation", "under the chart, one game per row: deck, opponent, result, start, your opening hand and the board at the end; click the "
                                   "hand or the board to open the table of that game, turn by turn, with a replayer: first, back, play and pause, forward, last, "
-                                  "the timeline and the speed (keys: space, arrows, Home, End)"),
+                                  "the timeline and the speed (keys: space, arrows, Home, End); the bar on the right scrolls the games, the mark on top opens them in their own window"),
       ("Spots", "where you win and where you lose the most, one or two variables at a time; strong when the 95% interval clears your average; click one to filter it"),
       ("Report", "group by a variable; click a row to filter it, a column to sort"),
       ("Matchups", "your decks against the archetypes you met, or only the meta decks; click a cell to filter it"),

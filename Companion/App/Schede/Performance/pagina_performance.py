@@ -41,7 +41,7 @@ FASI = (("BEFORE THE GAME", ("miei_colori",)),
         ("THE END OF THE GAME", ("fine", "sit:io_morti", "sit:lui_morti")),
         ("WHEN", ("giorno", "pausa")))      # i filtri in piu' di ogni fase, nel suo +
 LARGA_FASE = 780
-SEZIONI_FILTRI = (("formato", "evento", "deck"), ("partenza", "mull", "terre"), ("suo", "colori"), ("lunga", "rango"), ("data", "fascia", "sessione"))
+SEZIONI_FILTRI = (("formato", "evento", "deck"), ("partenza", "mull", "terre", "esito"), ("suo", "colori"), ("lunga", "rango"), ("data", "fascia", "sessione"))
 
 
 def _cartella(x0, x1, top, H, sl=6, r=5):
@@ -110,7 +110,8 @@ class PaginaPerformance:
         self.filtri = {}
         self.metrica, self.asse, self.finestra, self.dividi, self.per, self.ordina = "wr", "games", "20", None, "suo", "n"
         self.basso, self.solo_meta, self.vista = "report", False, "chart"       # la vista del pannello: chart, spots, report, matchups o compare
-        self.con, self.staccate, self.vs_modo, self.ord_deck = "rest", {}, "all", "n"        # B del confronto (rest, all, s<i>); le viste staccate: {vista: dict(win, o, l)}
+        self.con, self.staccate, self.vs_modo, self.ord_deck = "rest", {}, "all", "n"
+        self.partite_fuori = None       # la tabella delle partite nella sua finestra: dict(win, lista, l)        # B del confronto (rest, all, s<i>); le viste staccate: {vista: dict(win, o, l)}
         self.righe, self.sporca, self.deciso, self.modo = None, True, False, "Standard"
         self._lavoro = None
         self.costruisci()
@@ -225,7 +226,7 @@ class PaginaPerformance:
         # in sezioni separate da una lineetta (stesso giorno, Autore: «opponent, opponent colors e their card spostale insieme dopo lands in hand in una
         # sezione loro separata da una lineetta / poi tutto cio' che ha a che fare con date e orario uguale in fondo / card in hand prima di lands in hand /
         # format e event in una loro sezione»)
-        nomi_var = {k_: n_ for k_, n_, _f in DA.VARIABILI}
+        nomi_var = dict(DA.NOME)
         riga_g = 0
         self.testate = []
         for j_, sezione in enumerate(SEZIONI_FILTRI):
@@ -254,7 +255,7 @@ class PaginaPerformance:
         # staccare dal quadro e renderla una finestra a se stante»), chiusa torna qui
         dx = tk.Frame(corpo, bg=C["fondo"]); dx.grid(row=0, column=1, sticky="nsew")
         dx.columnconfigure(0, weight=1); dx.rowconfigure(2, weight=1)
-        self.cv_num = tk.Canvas(dx, bg=C["scheda"], highlightthickness=1, highlightbackground=C["filo"], height=96, bd=0)       # le tessere centrate fra la riga in alto e il fondo, con aria sotto (12 nov 2026, Autore: «le barre toccano la base della tabella, voglio le cose centrate»)
+        self.cv_num = tk.Canvas(dx, bg=C["scheda"], highlightthickness=1, highlightbackground=C["filo"], height=108, bd=0)       # le tessere centrate fra la riga in alto e il fondo, con aria sotto (12 nov 2026, Autore: «le barre toccano la base della tabella, voglio le cose centrate»)
         self.cv_num.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         self.cv_num.bind("<Configure>", lambda e: self.disegna_numeri())
         self.cv_tab = tk.Canvas(dx, bg=C["fondo"], highlightthickness=0, bd=0, height=ALTO_TAB)
@@ -340,15 +341,10 @@ class PaginaPerformance:
             c = tk.Canvas(corpo_, bg=C["scheda"], highlightthickness=0, bd=0, height=120)
             c.grid(row=0, column=0, sticky="nsew", padx=8, pady=(4, 2))
             sotto = tk.Frame(corpo_, bg=C["scheda"]); sotto.grid(row=1, column=0, sticky="nsew", padx=8, pady=(2, 6))
-            testa = tk.Canvas(sotto, bg=C["scheda"], highlightthickness=0, bd=0, height=44); testa.pack(fill="x")
-            lista = tk.Canvas(sotto, bg=C["scheda"], highlightthickness=0, bd=0, height=100); lista.pack(fill="both", expand=True)
-            lista.testa = testa
-            lista.configure(yscrollincrement=ALTO_PARTITA)
-            lista.bind("<Configure>", lambda e: self.disegna_partite(e.widget))
-            lista.bind("<MouseWheel>", lambda e: (e.widget.yview_scroll(-2 if e.delta > 0 else 2, "units"), self.righe_partite(e.widget)))
-            lista.bind("<Motion>", self.sopra_partita)
-            lista.bind("<Leave>", lambda e: e.widget.delete("sopra"))
-            lista.bind("<Button-1>", self.clic_partita)
+            lista = self.fai_tabella(sotto)
+            lista.sotto = sotto
+            if self.partite_fuori:      # la tabella sta nella sua finestra: qui il grafico prende tutto
+                sotto.grid_remove()
         else:
             c = tk.Canvas(fr, bg=C["scheda"], highlightthickness=0, bd=0, height=120)
             c.pack(fill="both", expand=True, padx=8, pady=(4, 6))
@@ -529,10 +525,10 @@ class PaginaPerformance:
 
     def aggiorna_fuori(self):
         """Nella testa di ogni finestra staccata: la situazione e quante partite."""
-        if not self.staccate:
+        if not self.staccate and not self.partite_fuori:
             return
         n = len(self.scelte()) if self.righe is not None else 0
-        for s_ in self.staccate.values():
+        for s_ in list(self.staccate.values()) + ([self.partite_fuori] if self.partite_fuori else []):
             s_["l"].configure(text=f"{n} games · " + self.descrivi(self.filtri))
 
     def descrivi(self, filtri, tipo=None):
@@ -646,6 +642,8 @@ class PaginaPerformance:
         for k, _n in VISTE:         # solo le cartelle che si vedono: le altre si disegnano quando si aprono
             if k in self.visibili():
                 self.disegna_vista(k)
+        if self.partite_fuori:
+            self.disegna_partite(self.partite_fuori["lista"])
         self.aggiorna_fuori()
 
     def evidenzia(self, k, on):
@@ -688,10 +686,11 @@ class PaginaPerformance:
         cw = (W - 32) / len(tess)
         for i, (a, v, col, s) in enumerate(tess):
             x = 16 + i * cw
-            c.create_line(x, 32, x, 84, fill=col, width=2)
-            c.create_text(x + 10, 34, text=a, anchor="nw", fill=C["muto"], font=F(7, True))
-            c.create_text(x + 10, 57, text=v, anchor="w", fill=col, font=F(17, True))
-            c.create_text(x + 10, 77, text=s, anchor="w", fill=C["grigio"], font=F(7))
+            # piu' aria fra nome, numero e riga sotto (12 nov 2026, Autore: «i testi qui sono tutti incollati, gestisci meglio le spaziature»)
+            c.create_line(x, 32, x, 96, fill=col, width=2)
+            c.create_text(x + 12, 36, text=a, anchor="nw", fill=C["muto"], font=F(7, True))
+            c.create_text(x + 12, 65, text=v, anchor="w", fill=col, font=F(17, True))
+            c.create_text(x + 12, 89, text=s, anchor="w", fill=C["grigio"], font=F(7))
 
     def traccia(self, c, lin, box, metrica, asse, colori, titolo, vuoto="No games in this situation"):
         """Il grafico a linee su una tela qualsiasi (la cartella Chart, il confronto): assi, griglia, le linee in un'immagine nitida, il nome in fondo a ogni
@@ -759,7 +758,8 @@ class PaginaPerformance:
                 xx = sx(i_)
                 c.create_line(xx, 16, xx, H - 24, fill="#3a3a42", dash=(3, 3))
                 c.create_text(xx + 4, 18, text=rango, anchor="nw", fill=C["grigio"], font=self.F(7, True))
-        self.disegna_partite(self.ospite("chart").get("lista"))
+        if not self.partite_fuori:
+            self.disegna_partite(self.ospite("chart").get("lista"))
 
     # ------------------------------------------------------------ le partite sotto il grafico e la board di ognuna (12 nov 2026, Autore: «proprio come
     # holdem manager, sotto al grafico si dovrebbe generare una tabella che ci permette di vedere la nostra mano in una colonna e il board in un'altra colonna:
@@ -775,6 +775,95 @@ class PaginaPerformance:
         out.append(("board", "THE BOARD AT THE END · you / them", x, resto * 0.55))
         return out
 
+    def fai_tabella(self, padre):
+        """La tabella delle partite dentro padre (sotto il grafico o nella sua finestra): la testa, le righe e a destra la barra per scorrere (12 nov 2026,
+        Autore: «alla tabella dei dati dai lo slider a destra per scorrerla e rendi anche lei staccabile»). -> la tela delle righe."""
+        tk = self.tk
+        testa = tk.Canvas(padre, bg=C["scheda"], highlightthickness=0, bd=0, height=44); testa.pack(fill="x")
+        riga_ = tk.Frame(padre, bg=C["scheda"]); riga_.pack(fill="both", expand=True)
+        barra = tk.Canvas(riga_, width=10, bg=C["traccia"], highlightthickness=0, bd=0, cursor="hand2"); barra.pack(side="right", fill="y", padx=(4, 0))
+        lista = tk.Canvas(riga_, bg=C["scheda"], highlightthickness=0, bd=0, height=100); lista.pack(side="left", fill="both", expand=True)
+
+        def segna(a, b_):
+            barra.delete("all")
+            a, b_ = float(a), float(b_)
+            if b_ - a < 0.999:
+                H_ = barra.winfo_height()
+                barra.create_rectangle(1, H_ * a, 9, max(H_ * a + 18, H_ * b_), fill=C["grigio"], width=0)
+
+        def vai(e):
+            lista.yview_moveto(max(0.0, e.y / max(barra.winfo_height(), 1) - (lista.yview()[1] - lista.yview()[0]) / 2))
+            self.righe_partite(lista)
+        lista.configure(yscrollincrement=ALTO_PARTITA, yscrollcommand=segna)
+        barra.bind("<Button-1>", vai)
+        barra.bind("<B1-Motion>", vai)
+        barra.bind("<MouseWheel>", lambda e: (lista.yview_scroll(-2 if e.delta > 0 else 2, "units"), self.righe_partite(lista)))
+        lista.testa, lista.barra = testa, barra
+        testa.bind("<Button-1>", self.clic_testa_partite)
+        testa.bind("<Motion>", lambda e: e.widget.configure(cursor="hand2" if e.x >= e.widget.winfo_width() - 34 and e.y < 22 else ""))
+        lista.bind("<Configure>", lambda e: self.disegna_partite(e.widget))
+        lista.bind("<MouseWheel>", lambda e: (e.widget.yview_scroll(-2 if e.delta > 0 else 2, "units"), self.righe_partite(e.widget)))
+        lista.bind("<Motion>", self.sopra_partita)
+        lista.bind("<Leave>", lambda e: e.widget.delete("sopra"))
+        lista.bind("<Button-1>", self.clic_partita)
+        return lista
+
+    def tabella_partite(self):
+        """La tabella delle partite che si vede: nella sua finestra se staccata, se no sotto il grafico."""
+        if self.partite_fuori:
+            return self.partite_fuori["lista"]
+        return self.ospite("chart").get("lista")
+
+    def clic_testa_partite(self, e):
+        """Il segno in alto a destra della tabella: la stacca in una finestra sua, o la rimette sotto il grafico."""
+        if e.x >= e.widget.winfo_width() - 34 and e.y < 22:
+            if self.partite_fuori:
+                self.riattacca_partite()
+            else:
+                self.stacca_partite()
+
+    def stacca_partite(self):
+        """La tabella delle partite in una finestra sua (non sopra la grande: anche sull'altro schermo); sotto il grafico il posto va al grafico. Chiusa, torna."""
+        if self.partite_fuori:
+            w = self.partite_fuori["win"]
+            w.deiconify(); w.lift()
+            return w
+        tk, F = self.tk, self.F
+        w = tk.Toplevel(self.fr)
+        w.title("Performance · Games")
+        w.configure(bg=C["scheda"])
+        w.geometry(f"{max(self.pan.winfo_width(), 1000)}x560+{self.pan.winfo_rootx() + 40}+{self.pan.winfo_rooty() + 60}")
+        testa = tk.Frame(w, bg=C["cap"]); testa.pack(fill="x")
+        tk.Label(testa, text="PERFORMANCE · GAMES", bg=C["cap"], fg=C["titolo"], font=F(10, True)).pack(side="left", padx=(16, 10), pady=10)
+        l_ = tk.Label(testa, text="", bg=C["cap"], fg=C["grigio"], font=F(8), anchor="w"); l_.pack(side="left", fill="x", expand=True)
+        b = pulsante_solido(tk, F, testa, "Bring it back", False, self.riattacca_partite, alto=26, bg=C["cap"], colori=GRIGI)
+        b.configure(width=120); b.pack(side="right", padx=(8, 16), pady=8)
+        corpo_ = tk.Frame(w, bg=C["scheda"]); corpo_.pack(fill="both", expand=True, padx=12, pady=(8, 12))
+        lista = self.fai_tabella(corpo_)
+        self.partite_fuori = dict(win=w, lista=lista, l=l_)
+        w.protocol("WM_DELETE_WINDOW", self.riattacca_partite)
+        for o in self.copie("chart"):       # sotto il grafico il posto va al grafico
+            if o.get("lista") is not None:
+                o["lista"].sotto.grid_remove()
+        self.aggiorna_fuori()
+        if self.righe is not None:
+            w.after(60, lambda: w.winfo_exists() and self.disegna_partite(lista))
+        return w
+
+    def riattacca_partite(self):
+        s_ = self.partite_fuori
+        self.partite_fuori = None
+        if s_:
+            try:
+                s_["win"].destroy()
+            except Exception:      # noqa: BLE001 - gia' chiusa
+                pass
+        for o in self.copie("chart"):
+            if o.get("lista") is not None:
+                o["lista"].sotto.grid()
+        if self.righe is not None:
+            self.disegna_partite(self.tabella_partite())
+
     def disegna_partite(self, c):
         if c is None or not c.winfo_exists() or self.righe is None:
             return
@@ -783,9 +872,14 @@ class PaginaPerformance:
         c._col = self.colonne_partite(max(c.winfo_width(), 700))
         t = c.testa
         t.delete("all")
+        Wt = max(t.winfo_width(), 700)
         t.create_text(2, 10, text=f"GAMES IN THIS SITUATION · {len(c._partite)}", anchor="w", fill=C["muto"], font=F(7, True))
-        t.create_text(max(t.winfo_width(), 700) - 4, 10, text="click a hand or a board: it opens the table of that game, turn by turn", anchor="e",
+        t.create_text(Wt - 40, 10, text="click a hand or a board: it opens the table of that game, turn by turn", anchor="e",
                       fill=C["muto"], font=F(7))
+        d = DG.Disegno(28, 22)       # il segno per staccarla (o rimetterla sotto il grafico), come le cartelle
+        _segno_stacca(d, 14, 11, C["accento"] if self.partite_fuori else C["grigio"], bool(self.partite_fuori))
+        c._img_segno = d.foto()
+        t.create_image(Wt - 30, 0, image=c._img_segno, anchor="nw")
         for _k, tit, x, _w in c._col:
             t.create_text(x, 33, text=tit, anchor="w", fill=C["titolo"], font=F(7, True))
         t.create_line(0, 43, max(t.winfo_width(), 700), 43, fill=C["filo"])
@@ -809,7 +903,7 @@ class PaginaPerformance:
             x_ = partite[i]
             y = i * ALTO_PARTITA
             if i % 2 == 0:
-                c.create_rectangle(0, y, W, y + ALTO_PARTITA, fill="#202024", outline="", tags="riga")
+                c.create_rectangle(0, y, W, y + ALTO_PARTITA, fill="#202024", outline="", tags=("riga", "fondo"))
             fo = DA.foto_partita(x_)
             for k, _t, x, w in c._col:
                 col, testo, font = C["testo"], "", F(8)
@@ -867,14 +961,19 @@ class PaginaPerformance:
         c.configure(cursor="hand2" if x_ is not None else "")
         if x_ is None:
             return
+        # la riga si schiarisce appena, senza cornice (12 nov 2026, Autore: «togli la cornice di selezione blu attorno alla riga sulla quale appoggiamo il
+        # mouse, caso mai evidenziala delicatamente»); la mano o la board sotto il puntatore un filo di piu'
         i = int(c.canvasy(e.y) // ALTO_PARTITA)
-        c.create_rectangle(1, i * ALTO_PARTITA + 1, max(c.winfo_width(), 700) - 2, (i + 1) * ALTO_PARTITA - 1, outline=C["accento"], tags="sopra")
+        c.create_rectangle(0, i * ALTO_PARTITA, max(c.winfo_width(), 700), (i + 1) * ALTO_PARTITA, fill="#2a2a31", outline="", tags="sopra")
         if k in ("mano", "board"):
             x, w = next((x, w) for k_, _t, x, w in c._col if k_ == k)
-            c.create_rectangle(x - 4, i * ALTO_PARTITA + 2, x + w - 4, (i + 1) * ALTO_PARTITA - 2, outline=C["titolo"], tags="sopra")
+            c.create_rectangle(x - 6, i * ALTO_PARTITA, x + w - 4, (i + 1) * ALTO_PARTITA, fill="#33333c", outline="", tags="sopra")
+        c.tag_lower("sopra")        # sotto i testi, sopra le fasce alterne
+        if c.find_withtag("fondo"):
+            c.tag_raise("sopra", "fondo")
 
     def clic_partita(self, e):
-        c = getattr(e, "widget", None) or self.ospite("chart")["lista"]
+        c = getattr(e, "widget", None) or self.tabella_partite()
         x_, k = self.partita_a(c, e)
         if x_ is not None:
             self.apri_board(x_, "mano" if k == "mano" else "fine")

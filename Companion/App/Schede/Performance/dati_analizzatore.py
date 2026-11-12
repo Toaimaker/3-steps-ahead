@@ -341,7 +341,10 @@ EXTRA = [("miei_colori", "Your deck's colors", lambda x: x.get("miei_colori")),
          ("pausa", "Break before this game", lambda x: x.get("pausa"))]
 for _k, _n, _f in EXTRA:
     NOME[_k], LEGGI[_k] = _n, _f
-ORDINE_VALORI.update(miei_colori=VARIANTI, economiche=("0", "1", "2+"), crea_mano=("Yes", "No"),
+# vinta o persa come tendina della fase Opening and first turns (12 nov 2026, Autore: «aggiungiamo la tendina di partita vinta o persa nella sezione opening
+# hands and first turns»): non entra negli Spots (spiegherebbe tutto il win rate da sola)
+NOME["esito"], LEGGI["esito"] = "Result", (lambda x: "Won" if x["vinta"] else "Lost")
+ORDINE_VALORI.update(esito=("Won", "Lost"), miei_colori=VARIANTI, economiche=("0", "1", "2+"), crea_mano=("Yes", "No"),
                      fine=("You conceded", "They conceded", "Played to the end", "Timeout"), giorno=GIORNI,
                      pausa=("Under 15 minutes", "15-60 minutes", "Over 1 hour (new session)"))
 
