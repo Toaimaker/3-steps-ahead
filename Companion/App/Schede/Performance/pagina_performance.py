@@ -29,6 +29,7 @@ DISEGNI = {"chart": "disegna_grafico", "spots": "disegna_spot", "report": "diseg
 GRIGI = ("#2a2a30", "#3a3a42", "#0f86cc")       # i pulsanti a pillola grigi, azzurri se scelti
 ALTO_TAB, LARGA_TAB = 34, 132                   # le cartelle
 LARGA_DECK = 1000                               # la finestra By deck
+ALTO_PARTITA = 24                               # una riga della tabella delle partite
 # per fasi della partita (12 nov 2026, Autore: «il menu a tendine creiamolo per macro fasi partita: formato evento e deck - poi start e mulligan - lands in
 # hand / cards in hand possiamo toglierlo, their card anche»): prima della partita (con By deck), l'apertura, l'avversario, com'e' finita, quando.
 # «deck» e' il pulsante By deck; Card in hand e Their card non sono tendine (restano in Split by, Group by e negli Spots)
@@ -331,8 +332,25 @@ class PaginaPerformance:
             ctl["con"] = Tendina(tk, riga, "Compare A with (B)", F, larga=260, bg=C["scheda"]); ctl["con"].fr.pack(side="left")
             ctl["con"].opzioni(["rest"], lambda v: self.cambia("con", v), etichette={"rest": "Everything else"}); ctl["con"].set(self.con)
             asse_e_finestra()
-        c = tk.Canvas(fr, bg=C["scheda"], highlightthickness=0, bd=0, height=120)
-        c.pack(fill="both", expand=True, padx=8, pady=(4, 6))
+        lista = None
+        if k == "chart":       # sotto il grafico le partite della situazione, una per riga, con la mano e la board (12 nov 2026, «proprio come holdem manager»)
+            corpo_ = tk.Frame(fr, bg=C["scheda"]); corpo_.pack(fill="both", expand=True)
+            corpo_.columnconfigure(0, weight=1); corpo_.rowconfigure(0, weight=3); corpo_.rowconfigure(1, weight=2)
+            c = tk.Canvas(corpo_, bg=C["scheda"], highlightthickness=0, bd=0, height=120)
+            c.grid(row=0, column=0, sticky="nsew", padx=8, pady=(4, 2))
+            sotto = tk.Frame(corpo_, bg=C["scheda"]); sotto.grid(row=1, column=0, sticky="nsew", padx=8, pady=(2, 6))
+            testa = tk.Canvas(sotto, bg=C["scheda"], highlightthickness=0, bd=0, height=44); testa.pack(fill="x")
+            lista = tk.Canvas(sotto, bg=C["scheda"], highlightthickness=0, bd=0, height=100); lista.pack(fill="both", expand=True)
+            lista.testa = testa
+            lista.configure(yscrollincrement=ALTO_PARTITA)
+            lista.bind("<Configure>", lambda e: self.disegna_partite(e.widget))
+            lista.bind("<MouseWheel>", lambda e: (e.widget.yview_scroll(-2 if e.delta > 0 else 2, "units"), self.righe_partite(e.widget)))
+            lista.bind("<Motion>", self.sopra_partita)
+            lista.bind("<Leave>", lambda e: e.widget.delete("sopra"))
+            lista.bind("<Button-1>", self.clic_partita)
+        else:
+            c = tk.Canvas(fr, bg=C["scheda"], highlightthickness=0, bd=0, height=120)
+            c.pack(fill="both", expand=True, padx=8, pady=(4, 6))
         c.bind("<Configure>", lambda e, k=k: self.tela(k) is e.widget and self.disegna_vista(k))
         if k in ("chart", "compare"):
             c.bind("<Motion>", self.punta)
@@ -346,7 +364,7 @@ class PaginaPerformance:
         elif k == "matchups":
             c.bind("<Button-1>", self.clic_matchup)
             c.bind("<MouseWheel>", lambda e: e.widget.yview_scroll(-2 if e.delta > 0 else 2, "units"))
-        return dict(fr=fr, tela=c, ctl=ctl)
+        return dict(fr=fr, tela=c, ctl=ctl, lista=lista)
 
     def ospite(self, k):
         """La copia della vista che si vede: quella della sua finestra se e' staccata, se no quella del pannello."""
@@ -740,6 +758,288 @@ class PaginaPerformance:
                 xx = sx(i_)
                 c.create_line(xx, 16, xx, H - 24, fill="#3a3a42", dash=(3, 3))
                 c.create_text(xx + 4, 18, text=rango, anchor="nw", fill=C["grigio"], font=self.F(7, True))
+        self.disegna_partite(self.ospite("chart").get("lista"))
+
+    # ------------------------------------------------------------ le partite sotto il grafico e la board di ognuna (12 nov 2026, Autore: «proprio come
+    # holdem manager, sotto al grafico si dovrebbe generare una tabella che ci permette di vedere la nostra mano in una colonna e il board in un'altra colonna:
+    # premendo su quello specifico dato si apre una board dedicata che ci mostra le carte in quello spot in mano o sul tavolo»)
+    def colonne_partite(self, W):
+        """Le colonne della tabella delle partite: (chiave, titolo, x, larghezza); mano e board si dividono quel che resta."""
+        fisse = (("data", "DATE", 96), ("mio", "YOUR DECK", 150), ("suo", "OPPONENT", 150), ("esito", "RESULT", 70), ("via", "START", 86))
+        out, x = [], 8
+        for k, t, w in fisse:
+            out.append((k, t, x, w)); x += w
+        resto = max(300, W - x - 8)
+        out.append(("mano", "YOUR OPENING HAND", x, resto * 0.45)); x += resto * 0.45
+        out.append(("board", "THE BOARD AT THE END · you / them", x, resto * 0.55))
+        return out
+
+    def disegna_partite(self, c):
+        if c is None or not c.winfo_exists() or self.righe is None:
+            return
+        F = self.F
+        c._partite = sorted(self.scelte(), key=lambda x: x["quando"], reverse=True)
+        c._col = self.colonne_partite(max(c.winfo_width(), 700))
+        t = c.testa
+        t.delete("all")
+        t.create_text(2, 10, text=f"GAMES IN THIS SITUATION · {len(c._partite)}", anchor="w", fill=C["muto"], font=F(7, True))
+        t.create_text(max(t.winfo_width(), 700) - 4, 10, text="click a hand or a board: it opens the table of that game, turn by turn", anchor="e",
+                      fill=C["muto"], font=F(7))
+        for _k, tit, x, _w in c._col:
+            t.create_text(x, 33, text=tit, anchor="w", fill=C["titolo"], font=F(7, True))
+        t.create_line(0, 43, max(t.winfo_width(), 700), 43, fill=C["filo"])
+        c.configure(scrollregion=(0, 0, max(c.winfo_width(), 700), max(1, len(c._partite)) * ALTO_PARTITA))
+        self.righe_partite(c)
+
+    def righe_partite(self, c):
+        """Solo le righe in vista (le partite possono essere centinaia)."""
+        c.delete("riga")
+        F = self.F
+        partite = getattr(c, "_partite", [])
+        if not partite:
+            c.create_text(8, 16, text="No games in this situation", anchor="w", fill=C["grigio"], font=F(8), tags="riga")
+            return
+        corto = lambda t_, n: t_ if len(t_) <= n else t_[:n - 1] + "…"
+        top = c.canvasy(0)
+        a = max(0, int(top // ALTO_PARTITA) - 1)
+        b = min(len(partite), int((top + max(c.winfo_height(), 100)) // ALTO_PARTITA) + 2)
+        W = max(c.winfo_width(), 700)
+        for i in range(a, b):
+            x_ = partite[i]
+            y = i * ALTO_PARTITA
+            if i % 2 == 0:
+                c.create_rectangle(0, y, W, y + ALTO_PARTITA, fill="#202024", outline="", tags="riga")
+            fo = DA.foto_partita(x_)
+            for k, _t, x, w in c._col:
+                col, testo, font = C["testo"], "", F(8)
+                if k == "data":
+                    testo = x_["quando"].strftime("%d %b %H:%M")
+                elif k == "mio":
+                    testo, col = (x_.get("mio") or "-").strip(), C["titolo"]
+                elif k == "suo":
+                    testo = x_.get("suo") or "-"
+                elif k == "esito":
+                    testo = ("Won" if x_["vinta"] else "Lost") + (f" · T{x_['turno']}" if x_.get("turno") else "")
+                    col, font = (C["azzurro"] if x_["vinta"] else C["rosso"]), F(8, True)
+                elif k == "via":
+                    testo = (x_.get("partenza") or "-") + (f" · mull {x_['mull']}" if x_.get("mull") not in (None, "0") else "")
+                elif k == "mano":
+                    testo, col = self.testo_mano(fo), C["titolo"] if fo else C["muto"]
+                elif k == "board":
+                    testo, col = self.testo_board(fo), C["titolo"] if fo else C["muto"]
+                c.create_text(x, y + ALTO_PARTITA / 2, text=corto(testo, int((w - 10) / 6.2)), anchor="w", fill=col, font=font, tags="riga")
+
+    def testo_mano(self, fo):
+        """La mano tenuta in una riga: le magie, poi quante terre."""
+        if not fo or not fo["mano0"]:
+            return "not in the logs"
+        import mazzi_salvati as MS
+        mano = fo["mano0"]["mano"]
+        magie = [n for n in mano if not MS.e_terra(n)]
+        terre = len(mano) - len(magie)
+        return ", ".join(magie) + (f"  ·  {terre} land{'s' if terre != 1 else ''}" if terre or not magie else "")
+
+    def testo_board(self, fo):
+        """La board all'ultimo stato: le tue magie in campo, poi quante sue."""
+        if not fo or not fo["ultima"] or not fo["ultima"][2]:
+            return "not in the logs"
+        import mazzi_salvati as MS
+        f = fo["ultima"][2]
+        mie = [n for n, _t, _p in f["mio"] if not MS.e_terra(n)]
+        sue = [n for n, _t, _p in f["suo"] if not MS.e_terra(n)]
+        return (", ".join(mie) or "no permanents") + f"  /  them: {len(sue)} permanent{'s' if len(sue) != 1 else ''}"
+
+    def partita_a(self, c, e):
+        """(partita, colonna) sotto il puntatore, o (None, None)."""
+        y = c.canvasy(e.y)
+        i = int(y // ALTO_PARTITA)
+        partite = getattr(c, "_partite", [])
+        if not 0 <= i < len(partite):
+            return None, None
+        k = next((k for k, _t, x, w in getattr(c, "_col", []) if x <= e.x < x + w), None)
+        return partite[i], k
+
+    def sopra_partita(self, e):
+        c = e.widget
+        c.delete("sopra")
+        x_, k = self.partita_a(c, e)
+        c.configure(cursor="hand2" if x_ is not None else "")
+        if x_ is None:
+            return
+        i = int(c.canvasy(e.y) // ALTO_PARTITA)
+        c.create_rectangle(1, i * ALTO_PARTITA + 1, max(c.winfo_width(), 700) - 2, (i + 1) * ALTO_PARTITA - 1, outline=C["accento"], tags="sopra")
+        if k in ("mano", "board"):
+            x, w = next((x, w) for k_, _t, x, w in c._col if k_ == k)
+            c.create_rectangle(x - 4, i * ALTO_PARTITA + 2, x + w - 4, (i + 1) * ALTO_PARTITA - 2, outline=C["titolo"], tags="sopra")
+
+    def clic_partita(self, e):
+        c = getattr(e, "widget", None) or self.ospite("chart")["lista"]
+        x_, k = self.partita_a(c, e)
+        if x_ is not None:
+            self.apri_board(x_, "mano" if k == "mano" else "fine")
+
+    def passi_board(self, fo):
+        """I momenti di una partita da guardare: la mano tenuta, la fine di ogni turno, l'ultimo stato (se e' dopo l'ultima fine di turno)."""
+        passi = []
+        if fo["mano0"]:
+            passi.append(("Opening hand", fo["mano0"]))
+        for t, mio_, f in fo["turni"]:      # Arena conta i turni dei due giocatori insieme: qui il turno di ognuno, come in partita
+            passi.append((f"{'You' if mio_ else 'Them'} T{(t + 1) // 2}", f))
+        if fo["ultima"] and fo["ultima"][2] and (not fo["turni"] or fo["ultima"][2] != fo["turni"][-1][2]):
+            passi.append(("End", fo["ultima"][2]))
+        return passi
+
+    def apri_board(self, x_, dove="fine"):
+        """La board di una partita: in alto i momenti (la mano tenuta, la fine di ogni turno, la fine), sotto la tavola: le sue carte in campo, le tue, la tua
+        mano, con le vite; le carte tappate girate. Frecce o clic per muoversi. Una finestra sola: un'altra partita la riempie."""
+        tk, F = self.tk, self.F
+        fo = DA.foto_partita(x_)
+        if not fo:
+            return None
+        passi = self.passi_board(fo)
+        if not passi:
+            return None
+        f = getattr(self, "fin_board", None)
+        if f is None or not f.winfo_exists():
+            f = self.fin_board = tk.Toplevel(self.fr); f.configure(bg=C["scheda"])
+            f.title("The board")
+            f.geometry(f"1200x860+{self.cv_sx.winfo_rootx() + 60}+{max(0, self.cv_sx.winfo_rooty() - 90)}")
+            f.bind("<Escape>", lambda e: f.destroy())
+            f.bind("<Left>", lambda e: self.passo_board(-1))
+            f.bind("<Right>", lambda e: self.passo_board(1))
+            self.l_board = tk.Label(f, text="", bg=C["cap"], fg=C["titolo"], font=F(10, True), anchor="w", padx=16, pady=10); self.l_board.pack(fill="x")
+            self.cv_passi = tk.Canvas(f, bg=C["scheda"], highlightthickness=0, bd=0, height=40); self.cv_passi.pack(fill="x", padx=12, pady=(10, 4))
+            self.cv_passi.bind("<Button-1>", self.clic_passo)
+            self.cv_board = tk.Canvas(f, bg="#141418", highlightthickness=1, highlightbackground=C["filo"], bd=0)
+            self.cv_board.pack(fill="both", expand=True, padx=12, pady=(4, 12))
+            self.cv_board.bind("<Configure>", lambda e: self.disegna_board())
+        self._board = dict(x=x_, passi=passi, i=0 if dove == "mano" else len(passi) - 1)
+        esito = "won" if x_["vinta"] else "lost"
+        self.l_board.configure(text=f"{x_['quando']:%d %b %Y %H:%M}  ·  {(x_.get('mio') or '-').strip()} vs {x_.get('suo') or '-'}  ·  {esito}"
+                               + (f" on turn {x_['turno']}" if x_.get("turno") else "") + (f"  ·  {x_['partenza'].lower()}" if x_.get("partenza") else ""))
+        f.title(f"The board · {(x_.get('mio') or '').strip()} vs {x_.get('suo') or ''}")
+        self.disegna_board()
+        f.lift(); f.focus_force()
+        return f
+
+    def passo_board(self, d):
+        b = getattr(self, "_board", None)
+        if b:
+            b["i"] = max(0, min(len(b["passi"]) - 1, b["i"] + d))
+            self.disegna_board()
+
+    def clic_passo(self, e):
+        for x0, x1, i in getattr(self, "_box_passi", []):
+            if x0 <= e.x <= x1:
+                self._board["i"] = i
+                self.disegna_board()
+                return
+
+    def immagine_carta(self, nome, w, tappata):
+        """La carta in piccolo dalla miniatura cotta (capsule.cuoci), girata se tappata; None se la miniatura non c'e'."""
+        cache = self.__dict__.setdefault("_img_carte", {})
+        k = (nome, w, tappata)
+        if k not in cache:
+            try:
+                import capsule
+                from PIL import Image, ImageTk
+                im = Image.open(capsule.file_mini(nome)).convert("RGBA")
+                im = im.resize((w, round(w * im.height / im.width)), Image.LANCZOS)
+                if tappata:
+                    im = im.rotate(90, expand=True)
+                cache[k] = ImageTk.PhotoImage(im)
+            except Exception:      # noqa: BLE001 - senza miniatura il riquadro col nome
+                cache[k] = None
+        return cache[k]
+
+    def disegna_board(self):
+        c = getattr(self, "cv_board", None)
+        b = getattr(self, "_board", None)
+        if c is None or not c.winfo_exists() or not b:
+            return
+        F = self.F
+        import mazzi_salvati as MS
+        # i momenti
+        cp = self.cv_passi
+        cp.delete("all")
+        self._box_passi = []
+        x = 0
+        for i, (nome, _f) in enumerate(b["passi"]):
+            w = max(64, len(nome) * 7 + 20)
+            on = i == b["i"]
+            mio_ = nome.startswith("You") or nome == "Opening hand"
+            cp.create_rectangle(x, 4, x + w, 32, fill="#0f86cc" if on else "#202024", outline="#0f86cc" if on else ("#3a3a40" if mio_ else "#2c2c32"))
+            cp.create_text(x + w / 2, 18, text=nome, fill="#ffffff" if on else (C["testo"] if mio_ else C["grigio"]), font=F(7, True))
+            self._box_passi.append((x, x + w, i))
+            x += w + 4
+        cp.configure(scrollregion=(0, 0, x, 36))
+        if self._box_passi:     # il passo scelto resta in vista
+            x0, x1, _i = self._box_passi[b["i"]]
+            W_ = max(cp.winfo_width(), 400)
+            if x > W_:
+                cp.xview_moveto(max(0, (x0 - W_ / 2) / x))
+        # la tavola
+        c.delete("all")
+        W, H = max(c.winfo_width(), 800), max(c.winfo_height(), 600)
+        nome, f = b["passi"][b["i"]]
+
+        def misura(ordine, alto):
+            """La carta piu' grande (larghezza) con cui le carte della zona ci stanno tutte, a capo compreso; le tappate occupano l'altezza in larghezza."""
+            for w in range(min(150, int((alto - 40) * 200 / 279)), 44, -4):
+                h = round(w * 279 / 200)
+                x, righe_ = 16, 1
+                for _n, tap, _p in ordine:
+                    ww = h if tap else w
+                    if x + ww > W - 16:
+                        x, righe_ = 16, righe_ + 1
+                    x += ww + 8
+                if righe_ * (h + 10) <= alto - 30:
+                    return w
+            return 44
+
+        def zona(tit, carte, y, alto, colore, destra=""):
+            c.create_text(16, y + 12, text=tit, anchor="w", fill=colore, font=F(8, True))
+            if destra:
+                c.create_text(W - 16, y + 12, text=destra, anchor="e", fill=C["titolo"], font=F(9, True))
+            # le stesse carte insieme, con quante; le terre in fondo
+            gruppi = {}
+            for n, tap, ped in carte:
+                gruppi.setdefault((n, tap, ped), 0)
+                gruppi[(n, tap, ped)] += 1
+            ordine = sorted(gruppi, key=lambda g: (MS.e_terra(g[0]), g[2], g[0]))
+            w_carta = misura(ordine, alto)
+            h_carta = round(w_carta * 279 / 200)
+            x, yy = 16, y + 28
+            for n, tap, ped in ordine:
+                ww, hh = (h_carta, w_carta) if tap else (w_carta, h_carta)
+                if x + ww > W - 16:
+                    x, yy = 16, yy + h_carta + 10
+                if yy + hh > y + alto:
+                    c.create_text(W - 16, y + alto - 8, text="…", anchor="e", fill=C["grigio"], font=F(10, True))
+                    break
+                img = None if ped else self.immagine_carta(n, w_carta, tap)
+                cy = yy + (h_carta - hh)        # le tappate appoggiate in basso
+                if img is not None:
+                    c.create_image(x, cy, image=img, anchor="nw")
+                else:
+                    c.create_rectangle(x, cy, x + ww, cy + hh, fill="#26262c", outline="#4a4a52")
+                    c.create_text(x + ww / 2, cy + hh / 2, text=n, width=ww - 10, fill=C["titolo"], font=F(7, True), justify="center")
+                if gruppi[(n, tap, ped)] > 1:
+                    c.create_rectangle(x + ww - 28, cy + 4, x + ww - 4, cy + 22, fill="#101014", outline=C["accento"])
+                    c.create_text(x + ww - 16, cy + 13, text=f"×{gruppi[(n, tap, ped)]}", fill=C["titolo"], font=F(7, True))
+                x += ww + 8
+            if not carte:
+                c.create_text(16, y + 44, text="nothing", anchor="w", fill=C["muto"], font=F(8))
+        vite = f.get("vite") or (None, None)
+        terzo = (H - 20) / 3
+        c.create_rectangle(0, 0, W, terzo, fill="#18161a", outline="")
+        zona("THEIR BATTLEFIELD", f["suo"], 4, terzo - 8, C["arancio"], f"life {vite[1] if vite[1] is not None else '-'}   ·   {f['n_suo']} card{'s' if f['n_suo'] != 1 else ''} in hand")
+        c.create_line(0, terzo, W, terzo, fill=C["filo"])
+        zona("YOUR BATTLEFIELD", f["mio"], terzo + 4, terzo - 8, C["azzurro"], f"life {vite[0] if vite[0] is not None else '-'}")
+        c.create_line(0, 2 * terzo, W, 2 * terzo, fill=C["filo"])
+        zona("YOUR HAND" + ("  ·  the hand you kept" if nome == "Opening hand" else ""), [(n, False, False) for n in f["mano"]], 2 * terzo + 4, terzo + 12,
+             C["titolo"], f"{len(f['mano'])} card{'s' if len(f['mano']) != 1 else ''}")
+        c.create_text(W - 16, H - 8, text=f"{nome}   ·   left and right arrow keys to move", anchor="e", fill=C["muto"], font=F(7))
 
     def punta(self, e):
         """Il puntatore su un grafico (Chart o Compare): la linea verticale e il valore di ogni linea in quel punto."""

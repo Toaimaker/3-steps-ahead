@@ -181,13 +181,46 @@ def riga(p, r):
     turni = r.get("turni")
     econ, crea = dalla_mano(tenuta)
     lista = condividi.nomi(p.get("carte") or []) or {}
-    return dict(r, economiche=econ, crea_mano=crea, miei_colori=colori_mazzo(lista), fine=come_finita(p.get("motivo"), r["vinta"]),
+    return dict(r, seat=p.get("seat"), economiche=econ, crea_mano=crea, miei_colori=colori_mazzo(lista), fine=come_finita(p.get("motivo"), r["vinta"]),
                 giorno=GIORNI[quando.weekday()], tipo="Limited" if r["formato"] == "limited" else "Constructed", quando=quando, ora=quando.hour, fascia=_fascia(quando.hour),
                 terre=terre, mano=sorted(tenuta or {}), sue_viste=sorted(n for n in sue if not MS.e_terra(n)),
                 turno=math.ceil(turni / 2) if turni else None, lunga=_lunga(math.ceil(turni / 2) if turni else None),
                 partenza=None if r.get("inizia") is None else ("Play" if r["inizia"] else "Draw"),
                 mull="0" if r["mulligan"] == 0 else "1" if r["mulligan"] == 1 else "2+",
                 sit=dict(situazioni_partita(scheda(r.get("partita")), r.get("inizia")), **_mana_sit(r.get("partita"), p.get("seat"))))
+
+
+_NOMI_GRP = {}
+
+
+def nome_grp(g):
+    """Il nome di una carta di Arena dal suo grpId (una volta per grpId); None se il database non la conosce."""
+    if g not in _NOMI_GRP:
+        try:
+            import condividi
+            _NOMI_GRP[g] = next(iter(condividi.nomi([g]) or {}), None)
+        except Exception:      # noqa: BLE001 - senza database niente nomi
+            _NOMI_GRP[g] = None
+    return _NOMI_GRP[g]
+
+
+def foto_partita(x):
+    """Le foto di una partita dal tuo posto (mano_aperto): dict(mano0, turni=[(turno, tuo turno?, foto)], ultima) con le foto girate cosi' che [0] sia il tuo
+    lato; None se la partita non ha il log. Una foto: dict(mio=[(nome, tappata, pedina)], suo=[...], mano=[nomi], n_suo=carte nella sua mano, vite=(tu, lui))."""
+    d = _MANA.get(x.get("partita"))
+    seat = x.get("seat")
+    if not d or seat not in (1, 2) or "foto" not in d:
+        return None
+    a, b = seat - 1, 2 - seat
+
+    def gira(f):
+        if not f:
+            return None
+        carte = lambda lst: [(nome_grp(g) or ("Token" if p_ else f"#{g}"), bool(t_), bool(p_)) for g, t_, p_ in lst]
+        return dict(mio=carte(f["c"][a]), suo=carte(f["c"][b]), mano=[nome_grp(g) or f"#{g}" for g in f["m"][a]], n_suo=f["n"][b], vite=(f["v"][a], f["v"][b]))
+    turni = [(t, att == seat, gira(f)) for t, att, f in d.get("foto") or []]
+    ult = d.get("ultima")
+    return dict(mano0=gira(d.get("mano0")), turni=turni, ultima=(ult[0], ult[1] == seat, gira(ult[2])) if ult else None)
 
 
 def _mana_sit(match_id, seat):

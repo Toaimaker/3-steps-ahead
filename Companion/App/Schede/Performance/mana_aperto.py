@@ -1,7 +1,10 @@
 """Il mana aperto nelle partite (Autore, 12 nov 2026: «situazioni piu' specifiche, come x esempio vs mana untapped / with mana untapped»): dai pezzi di log di
 ogni partita (Log_Arena/partite/<ID>/arena.log, partite_separate) si segue lo stato del gioco di Arena (oggetti, zone, turno) e si annota:
 - a ogni turno con un attacco, le terre stappate di chi difende quando gli attaccanti sono dichiarati (la prima volta nel turno);
-- alla fine di ogni turno (passo End), le terre stappate di chi era di turno.
+- alla fine di ogni turno (passo End), le terre stappate di chi era di turno;
+- le foto della partita (12 nov 2026, Autore: «proprio come holdem manager, sotto al grafico una tabella con la nostra mano in una colonna e il board in
+  un'altra: premendo su quel dato si apre una board dedicata che ci mostra le carte in quello spot in mano o sul tavolo»): la mano tenuta all'inizio del primo
+  turno, la board alla fine di ogni turno e all'ultimo stato: per ogni posto le carte in campo [grpId, tappata, pedina], la mano (la sua: solo quante), le vite.
 Le terre sono gli oggetti in campo col tipo Land; stappate = senza isTapped. Una copia su disco (Log_Arena/mana_aperto.json, VERSIONE) evita di rileggere: una partita
 si legge una volta sola. Le partite senza il pezzo di log (l'app pubblica non li scrive: costano centinaia di MB) si leggono dai log archiviati
 (Log_Arena/20*_Player*.log, archivia_log), ritagliate in memoria come fa partite_separate; ogni archivio si guarda una volta (la copia ricorda nome e misura).
@@ -21,15 +24,34 @@ import re  # noqa: E402
 
 from ambiente import LOGDIR  # noqa: E402
 
-VERSIONE = 1
+VERSIONE = 2        # 2: le foto della partita
 CARTELLA = os.path.join(LOGDIR, "partite")
 COPIA = os.path.join(LOGDIR, "mana_aperto.json")
 
 
 def leggi(righe):
-    """Le righe di un pezzo di log -> dict(attacchi=[[turno, chi attacca, terre stappate di chi difende, sue terre]], fine=[[turno, chi, stappate, terre]])."""
+    """Le righe di un pezzo di log -> dict(attacchi=[[turno, chi attacca, terre stappate di chi difende, sue terre]], fine=[[turno, chi, stappate, terre]],
+    mano0=foto all'inizio del primo turno, foto=[[turno, chi e' di turno, foto]] alla fine di ogni turno, ultima=[turno, chi, foto] all'ultimo stato).
+    Una foto: dict(c=[campo del posto 1, del posto 2] con [grpId, tappata, pedina], m=[mano 1, mano 2] coi grpId che si vedono, n=[carte in mano], v=[vite])."""
     obj, zone, ti = {}, {}, {}
+    zown, zids, vite = {}, {}, {}
     attacchi, fine, visti_att, visti_fine = [], [], set(), set()
+    foto_t, mano0 = [], None
+
+    def foto():
+        c, m, n = [[], []], [[], []], [0, 0]
+        for zid, tp in zone.items():
+            ids = zids.get(zid, [])
+            if tp == "ZoneType_Battlefield":
+                for i in ids:
+                    o = obj.get(i)
+                    if o and o.get("grpId") and o.get("type") in ("GameObjectType_Card", "GameObjectType_Token") and o.get("controllerSeatId") in (1, 2):
+                        c[o["controllerSeatId"] - 1].append([o["grpId"], 1 if o.get("isTapped") else 0, 1 if o["type"] == "GameObjectType_Token" else 0])
+            elif tp == "ZoneType_Hand" and zown.get(zid) in (1, 2):
+                k = zown[zid] - 1
+                n[k] = len(ids)
+                m[k] = [obj[i]["grpId"] for i in ids if i in obj and obj[i].get("grpId")]
+        return dict(c=c, m=m, n=n, v=[vite.get(1), vite.get(2)])
 
     def terre(seat):
         tot = stap = 0
@@ -53,9 +75,14 @@ def leggi(righe):
             if not gs:
                 continue
             if gs.get("type") == "GameStateType_Full":
-                obj, zone = {}, {}
+                obj, zone, zown, zids = {}, {}, {}, {}
             for z in gs.get("zones") or []:
                 zone[z.get("zoneId")] = z.get("type")
+                zown[z.get("zoneId")] = z.get("ownerSeatId")
+                zids[z.get("zoneId")] = z.get("objectInstanceIds") or []     # una zona vuota arriva senza la lista
+            for pl in gs.get("players") or []:
+                if pl.get("systemSeatNumber") in (1, 2) and pl.get("lifeTotal") is not None:
+                    vite[pl["systemSeatNumber"]] = pl["lifeTotal"]
             for o in gs.get("gameObjects") or []:
                 obj[o.get("instanceId")] = o
             for x in gs.get("deletedInstanceIds") or []:
@@ -71,11 +98,15 @@ def leggi(righe):
                 difende = 2 if att == 1 else 1
                 s, n = terre(difende)
                 attacchi.append([t, att, s, n])
+            if t == 1 and mano0 is None:
+                mano0 = foto()
             if ti.get("step") == "Step_End" and t not in visti_fine:
                 visti_fine.add(t)
                 s, n = terre(att)
                 fine.append([t, att, s, n])
-    return dict(attacchi=attacchi, fine=fine)
+                foto_t.append([t, att, foto()])
+    ultima = [ti.get("turnNumber"), ti.get("activePlayer"), foto()] if ti.get("turnNumber") else None
+    return dict(attacchi=attacchi, fine=fine, mano0=mano0, foto=foto_t, ultima=ultima)
 
 
 def indice():
@@ -196,7 +227,22 @@ def prova():
     casi.append(("situazioni dal tuo posto: attacchi contro 2 aperte, lui attacca contro te tappato, passi con 2 aperte", s["io_att_aperto"] and not s["io_att_chiuso"]
                  and not s["lui_att_aperto"] and s["io_passa_aperto"] and not s["lui_passa_aperto"]))
     casi.append(("negativa: senza log niente situazioni", all(v is None for v in situazioni(None, 1).values())))
-    casi.append(("negativa: le righe senza stato del gioco non contano", leggi(["niente", "{rotto"]) == dict(attacchi=[], fine=[])))
+    vuoto = leggi(["niente", "{rotto"])
+    casi.append(("negativa: le righe senza stato del gioco non contano", vuoto["attacchi"] == [] and vuoto["fine"] == [] and not vuoto["foto"] and vuoto["ultima"] is None))
+    # le foto: la mano tenuta al primo turno, la board alla fine del turno (la pedina, la carta tappata), le vite; la sua mano solo contata
+    carta = lambda i, g, z, seat, **k: dict(instanceId=i, grpId=g, type=k.pop("tipo", "GameObjectType_Card"), zoneId=z, controllerSeatId=seat, ownerSeatId=seat, **k)
+    fz = [gs(type="GameStateType_Full", zones=[dict(zoneId=28, type="ZoneType_Battlefield"), dict(zoneId=31, type="ZoneType_Hand", ownerSeatId=1, objectInstanceIds=[1, 2]),
+                                               dict(zoneId=35, type="ZoneType_Hand", ownerSeatId=2, objectInstanceIds=[7, 8, 9])],
+             players=[dict(systemSeatNumber=1, lifeTotal=20), dict(systemSeatNumber=2, lifeTotal=20)], turnInfo=dict(turnNumber=1, activePlayer=1, step="Step_Upkeep"),
+             gameObjects=[carta(1, 100, 31, 1), carta(2, 200, 31, 1)]),
+          gs(type="GameStateType_Diff", zones=[dict(zoneId=28, type="ZoneType_Battlefield", objectInstanceIds=[3, 4]), dict(zoneId=31, type="ZoneType_Hand", ownerSeatId=1,
+                                                objectInstanceIds=[2])], players=[dict(systemSeatNumber=2, lifeTotal=17)], turnInfo=dict(step="Step_End"),
+             gameObjects=[carta(3, 100, 28, 1, isTapped=True), carta(4, 900, 28, 1, tipo="GameObjectType_Token")])]
+    df = leggi(fz)
+    casi.append(("le foto: la mano tenuta al primo turno (la sua solo contata), la board a fine turno con tappata e pedina, le vite",
+                 df["mano0"]["m"] == [[100, 200], []] and df["mano0"]["n"] == [2, 3] and df["foto"][0][:2] == [1, 1]
+                 and df["foto"][0][2]["c"] == [[[100, 1, 0], [900, 0, 1]], []] and df["foto"][0][2]["m"][0] == [200] and df["foto"][0][2]["v"] == [20, 17]
+                 and df["ultima"][0] == 1))
     # dagli archivi: un archivio finto con due partite, ritagliate per matchId; guardato una volta sola
     import tempfile
     global LOGDIR

@@ -1,6 +1,6 @@
 {
- "version": "0.1.50",
+ "version": "0.1.51",
  "date": "2026-11-12",
- "notes": "Performance: the numbers on top are centered, with room under them.",
+ "notes": "Performance: under the chart the games of the situation with your opening hand and the board; click one to see the table of that game, turn by turn.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }
