@@ -81,7 +81,10 @@ SEZIONI = (
       ("Compare", "A, the situation of your filters, against B: everything else, all your games or a saved situation; the difference, and whether it holds "
                   "(p under 5%) or how many games would tell"),
       ("The folders", "the mark on the right of each folder opens it in its own window, even on another screen; close it, or Bring it back, to dock it again"),
-      ("Save this situation", "keep a set of filters and come back to it; saved situations are also a B of Compare")]),
+      ("Save as my filter", "keep a set of filters: it goes to the My filters folder, one under the other with its numbers; click to apply it, ✕ to "
+                            "remove it; your filters are also a B of Compare"),
+      ("Clear all filters", "the button under it: back to all your games, the chart and the folder stay as they are"),
+      ("The board", "hover a card to see it big; the heart is the life, the two cards the cards in hand")]),
     ("risorse", "Resources", "Gold, gems, packs, cards and wildcards: what you earn and spend, the Farmer that plans how to spend them, the roadmap and the ROI.",
      [("Period · Range · Resource", "what the chart and the income show"), ("Farmer", "goal sliders; Create makes the roadmap, Dismiss ends it"),
       ("Gold value", "My win rate or Pack price"), ("Spend gold on packs", "off: gold never buys packs"), ("Roadmap check", "above or below the plan, day by day")]),

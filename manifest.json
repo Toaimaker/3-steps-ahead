@@ -1,6 +1,6 @@
 {
- "version": "0.1.55",
+ "version": "0.1.56",
  "date": "2026-11-12",
- "notes": "Replayer: graveyard and exile, what happened in each moment, new cards marked, power and toughness, the chart of the game and its turning point; never Other, only colors.",
+ "notes": "Performance: My filters folder with your saved filters and their numbers, Clear all filters button, card zoom on hover and life and hand icons in the replayer.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

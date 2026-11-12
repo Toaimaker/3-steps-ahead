@@ -13,6 +13,7 @@ finestra a se stante»). Compare mette la situazione (A) contro il resto, tutte 
 I dati: dati_analizzatore (i nostri log, dal 22 set 2026)."""
 import datetime
 import math
+import os
 import threading
 
 import dati_analizzatore as DA
@@ -24,8 +25,10 @@ LINEE = ("#d8d8dc", "#24baff", "#f0ad4e", "#a58cff", "#5cb85c", "#ee8a87")      
 COLONNE = (("nome", "", 250), ("n", "GAMES", 70), ("wl", "W-L", 80), ("wr", "WIN RATE", 180), ("play", "PLAY", 70), ("draw", "DRAW", 70), ("mull", "MULL.", 70),
            ("turni", "AVG T", 70), ("delta", "Δ VS ALL", 90))
 TIPI = ("Constructed", "Limited")
-VISTE = (("chart", "Chart"), ("spots", "Spots"), ("report", "Report"), ("matchups", "Matchups"), ("compare", "Compare"))
-DISEGNI = {"chart": "disegna_grafico", "spots": "disegna_spot", "report": "disegna_report", "matchups": "disegna_matchup", "compare": "disegna_confronto"}
+VISTE = (("chart", "Chart"), ("spots", "Spots"), ("report", "Report"), ("matchups", "Matchups"), ("compare", "Compare"), ("mine", "My filters"))
+DISEGNI = {"chart": "disegna_grafico", "spots": "disegna_spot", "report": "disegna_report", "matchups": "disegna_matchup", "compare": "disegna_confronto",
+           "mine": "disegna_miei"}
+ALTO_MIO = 58                                   # una riga dei filtri personali
 GRIGI = ("#2a2a30", "#3a3a42", "#0f86cc")       # i pulsanti a pillola grigi, azzurri se scelti
 ALTO_TAB, LARGA_TAB = 34, 132                   # le cartelle
 LARGA_DECK = 1000                               # la finestra By deck
@@ -196,8 +199,6 @@ class PaginaPerformance:
         # «Smart filters» (12 nov 2026, Autore: «i filtri a sinistra potremmo chiamarli smart filters»); il pulsante Add filters (le situazioni) non c'e' piu':
         # le situazioni stanno nel + della loro fase
         tk.Label(rs, text="SMART FILTERS", bg=C["scheda"], fg=C["muto"], font=F(7, True)).pack(side="left")
-        via = tk.Label(rs, text="Clear all", bg=C["scheda"], fg=C["accento"], font=F(7, True), cursor="hand2"); via.pack(side="right")
-        via.bind("<Button-1>", lambda e: self.pulisci())
         # la colonna scorre: con la rotella sopra qualunque sua parte, e con la barra sottile a destra (fino al 12 nov la rotella andava solo sul fondo vuoto e
         # le ultime tendine e le situazioni salvate restavano tagliate in fondo: Autore, «la finestra degli smart filters e' tagliata sul fondo»)
         riga_sx = tk.Frame(sx, bg=C["scheda"]); riga_sx.pack(fill="both", expand=True)
@@ -249,10 +250,14 @@ class PaginaPerformance:
                     self.riga_filtro(griglia, riga_g, k, nomi_var[k])
                 riga_g += 1
         tk.Frame(self.col_sx, bg=C["filo"], height=1).pack(fill="x", padx=12, pady=(10, 8))
-        tk.Label(self.col_sx, text="SAVED SITUATIONS", bg=C["scheda"], fg=C["muto"], font=F(7, True)).pack(anchor="w", padx=12)
-        self.b_salva_sit = pulsante_solido(tk, F, self.col_sx, "Save this situation", False, self.salva_situazione, alto=26, bg=C["scheda"])
-        self.b_salva_sit.configure(width=262); self.b_salva_sit.pack(anchor="w", padx=12, pady=(6, 6))
-        self.f_sit = tk.Frame(self.col_sx, bg=C["scheda"]); self.f_sit.pack(fill="x", padx=12, pady=(0, 12))
+        # le situazioni salvate sono i tuoi filtri personali, nella cartella My filters (12 nov 2026, Autore: «le situazioni salvate diventano filtri
+        # personali che vanno in una nuova chart dopo compare e li si incolonnano»); sotto, Clear all ben visibile («clear all lo mettiamo sotto save this
+        # situation bello visibile come pulsante»)
+        self.b_salva_sit = pulsante_solido(tk, F, self.col_sx, "Save as my filter", False, self.salva_situazione, alto=28, bg=C["scheda"])
+        self.b_salva_sit.configure(width=262); self.b_salva_sit.pack(anchor="w", padx=12, pady=(4, 6))
+        self.b_pulisci = pulsante_solido(tk, F, self.col_sx, "Clear all filters", False, self.pulisci, alto=28, bg=C["scheda"],
+                                         colori=("#3a2a2a", "#5a3434", "#2a1c1c"))
+        self.b_pulisci.configure(width=262); self.b_pulisci.pack(anchor="w", padx=12, pady=(0, 12))
         # a destra: i numeri in alto, sotto le cartelle (12 nov 2026, Autore: «questi falli a modo di cartelle e poi tira via il sotto testo»): Chart, Spots,
         # Report, Matchups e Compare, una alla volta; il segno a destra di ogni linguetta la stacca in una finestra sua («ogni sezione di ogni cartella si puo'
         # staccare dal quadro e renderla una finestra a se stante»), chiusa torna qui
@@ -361,6 +366,9 @@ class PaginaPerformance:
             c.bind("<Button-1>", self.clic_report)
             c.configure(yscrollincrement=24)       # la rotella scorre di una riga intera
             c.bind("<MouseWheel>", lambda e: (e.widget.yview_scroll(-1 if e.delta > 0 else 1, "units"), self.maschera_rp(e.widget)))
+        elif k == "mine":
+            c.bind("<Button-1>", self.clic_miei)
+            c.bind("<MouseWheel>", lambda e: e.widget.yview_scroll(-2 if e.delta > 0 else 2, "units"))
         elif k == "matchups":
             c.bind("<Button-1>", self.clic_matchup)
             c.bind("<MouseWheel>", lambda e: e.widget.yview_scroll(-2 if e.delta > 0 else 2, "units"))
@@ -1069,11 +1077,14 @@ class PaginaPerformance:
             f.bind("<Home>", lambda e: self.vai_board(0))
             f.bind("<End>", lambda e: self.vai_board(10 ** 6))
             f.bind("<t>", lambda e: self.vai_svolta())
+            f.bind("<Destroy>", lambda e: e.widget is f and self.via_hover(), add="+")
             f.bind("<Destroy>", lambda e: e.widget is f and self.ferma_board(), add="+")
             self.cv_board = tk.Canvas(f, bg="#141418", highlightthickness=1, highlightbackground=C["filo"], bd=0)
             self.cv_board.pack(fill="both", expand=True, padx=12, pady=(4, 8))
             self.cv_board.bind("<Configure>", lambda e: self.disegna_board())
             self.cv_board.bind("<Button-1>", self.clic_pila)
+            self.cv_board.bind("<Motion>", self.sopra_carta_board)
+            self.cv_board.bind("<Leave>", self.via_hover)
         self.ferma_board()
         self._board = dict(x=x_, passi=passi, i=0 if dove == "mano" else len(passi) - 1, play=False, vel=getattr(self, "_vel_board", 1.0))
         self._board["svolta"] = self.svolta(passi, x_["vinta"])
@@ -1411,7 +1422,8 @@ class PaginaPerformance:
                 cp.xview_moveto(max(0, (x0 - W_ / 2) / x))
         # la tavola
         c.delete("all")
-        self._box_pile = []
+        self._box_pile, self._box_carte = [], []
+        self.via_hover()
         W, H = max(c.winfo_width(), 900), max(c.winfo_height(), 560)
         Wt = W - LARGA_RACCONTO - 12          # la tavola; a destra il racconto
         nome, f, _t = b["passi"][b["i"]]
@@ -1448,6 +1460,7 @@ class PaginaPerformance:
                 cx_ = x0 + larga / 2 - w / 2
                 if img is not None:
                     c.create_image(cx_, y0 + 22, image=img, anchor="nw")
+                    self._box_carte.append((cx_, y0 + 22, cx_ + w, y0 + 22 + round(w * 1.395), carte[-1]))
                 else:
                     c.create_rectangle(cx_, y0 + 22, cx_ + w, y0 + 22 + round(w * 1.395), fill="#26262c", outline="#4a4a52")
                     c.create_text(cx_ + w / 2, y0 + 22 + w * 0.7, text=carte[-1], width=w - 8, fill=C["titolo"], font=F(7, True), justify="center")
@@ -1455,9 +1468,21 @@ class PaginaPerformance:
             else:
                 c.create_text(x0 + larga / 2, y0 + alta / 2 + 6, text="empty", fill=C["muto"], font=F(7))
 
+        def info(xd, y, voci):
+            """A destra della testa di una zona: [(icona, testo)] da destra a sinistra, l'icona grigia accanto al numero (12 nov 2026, Autore: «accanto a
+            life e cards in hand metti i loghi del cuore e due carte in mano grigetti»)."""
+            for ic, t_ in voci:
+                i_ = c.create_text(xd, y, text=t_, anchor="e", fill=C["titolo"], font=F(10, True))
+                bb = c.bbox(i_)
+                xd = (bb[0] if bb else xd - 30) - 6
+                c.create_image(xd, y, image=self.icona_board(ic), anchor="e")
+                xd -= 30
+
         def zona(tit, carte, y, alto, colore, destra="", vecchie=None, largo=Wt):
             c.create_text(16, y + 12, text=tit, anchor="w", fill=colore, font=F(8, True))
-            if destra:
+            if isinstance(destra, list):
+                info(largo - 16, y + 12, destra)
+            elif destra:
                 c.create_text(largo - 16, y + 12, text=destra, anchor="e", fill=C["titolo"], font=F(9, True))
             # le stesse carte insieme, con quante; le terre in fondo; nuove = piu' copie di prima
             gruppi = {}
@@ -1482,6 +1507,8 @@ class PaginaPerformance:
                 cy = yy + (h_carta - hh)        # le tappate appoggiate in basso
                 if img is not None:
                     c.create_image(x, cy, image=img, anchor="nw")
+                    if not ped:
+                        self._box_carte.append((x, cy, x + ww, cy + hh, n))
                     if ped:     # il nome della pedina sul disegno di default
                         c.create_text(x + ww / 2, cy + (hh - 16 if tap else hh * 0.80), text=n, width=ww - 12, fill=C["titolo"], font=F(7, True), justify="center")
                 else:
@@ -1506,18 +1533,19 @@ class PaginaPerformance:
         terzo = (H - 20) / 3
         largo_campo = Wt - 2 * LARGA_PILE - 20
         c.create_rectangle(0, 0, Wt, terzo, fill="#18161a", outline="")
-        zona("OPPONENT'S BATTLEFIELD", f["suo"], 4, terzo - 8, C["arancio"], f"life {vite[1] if vite[1] is not None else '-'}   ·   {f['n_suo']} "
-             f"card{'s' if f['n_suo'] != 1 else ''} in hand", [c_[0] for c_ in prima["suo"]] if prima else None, largo_campo)
+        vv = lambda v: str(v) if v is not None else "-"
+        zona("OPPONENT'S BATTLEFIELD", f["suo"], 4, terzo - 8, C["arancio"], [("carte", str(f["n_suo"])), ("cuore", vv(vite[1]))],
+             [c_[0] for c_ in prima["suo"]] if prima else None, largo_campo)
         pila(largo_campo + 4, 8, LARGA_PILE - 4, terzo - 16, "GRAVEYARD", cim[1], C["arancio"], "cim_suo")
         pila(largo_campo + LARGA_PILE + 8, 8, LARGA_PILE - 4, terzo - 16, "EXILE", esi[1], C["arancio"], "esi_suo")
         c.create_line(0, terzo, Wt, terzo, fill=C["filo"])
-        zona("YOUR BATTLEFIELD", f["mio"], terzo + 4, terzo - 8, C["azzurro"], f"life {vite[0] if vite[0] is not None else '-'}",
+        zona("YOUR BATTLEFIELD", f["mio"], terzo + 4, terzo - 8, C["azzurro"], [("carte", str(len(f["mano"]))), ("cuore", vv(vite[0]))],
              [c_[0] for c_ in prima["mio"]] if prima else None, largo_campo)
         pila(largo_campo + 4, terzo + 8, LARGA_PILE - 4, terzo - 16, "GRAVEYARD", cim[0], C["azzurro"], "cim_mio")
         pila(largo_campo + LARGA_PILE + 8, terzo + 8, LARGA_PILE - 4, terzo - 16, "EXILE", esi[0], C["azzurro"], "esi_mio")
         c.create_line(0, 2 * terzo, Wt, 2 * terzo, fill=C["filo"])
         zona("YOUR HAND" + ("  ·  the hand you kept" if nome == "Opening hand" else ""), [(n, False, False) for n in f["mano"]], 2 * terzo + 4, terzo + 12,
-             C["titolo"], f"{len(f['mano'])} card{'s' if len(f['mano']) != 1 else ''}", prima["mano"] if prima else None, Wt)
+             C["titolo"], [("carte", str(len(f["mano"])))], prima["mano"] if prima else None, Wt)
         # il racconto del momento
         xr = Wt + 12
         c.create_rectangle(xr, 0, W, H, fill="#18181e", outline="")
@@ -1539,6 +1567,86 @@ class PaginaPerformance:
             bb = c.bbox(i_)
             y = (bb[3] if bb else y + 10) + 12
         self.disegna_controlli()
+
+    def icona_board(self, k):
+        """Le icone grigie della tavola: il cuore delle vite, due carte per la mano. Disegnate nitide, una volta."""
+        cache = self.__dict__.setdefault("_icone_board", {})
+        if k not in cache:
+            L = 20
+            d = DG.Disegno(L, L)
+            grigio = "#9a9aa2"
+            if k == "cuore":
+                d.cerchio(L * 0.31, L * 0.36, L * 0.24, riempi=grigio)
+                d.cerchio(L * 0.69, L * 0.36, L * 0.24, riempi=grigio)
+                d.poligono([(L * 0.09, L * 0.45), (L * 0.91, L * 0.45), (L * 0.5, L * 0.92)], riempi=grigio)
+            else:
+                d.rett(L * 0.10, L * 0.08, L * 0.62, L * 0.78, riempi="#3a3a42", bordo=grigio, larghezza=1.3, raggio=2)
+                d.rett(L * 0.36, L * 0.20, L * 0.90, L * 0.92, riempi=grigio, bordo="#141418", larghezza=1.3, raggio=2)
+            cache[k] = d.foto()
+        return cache[k]
+
+    def sopra_carta_board(self, e):
+        """Il puntatore su una carta della tavola (o in cima a una pila): la carta grande accanto, come nelle liste dell'app (12 nov 2026, Autore: «lascia
+        l'hover delle carte per poter vedere la versione grande sul replayer»)."""
+        c = self.cv_board
+        n = next((b_[4] for b_ in getattr(self, "_box_carte", []) if b_[0] <= e.x <= b_[2] and b_[1] <= e.y <= b_[3]), None)
+        if n == getattr(self, "_hover_nome", None):
+            if n is not None and getattr(self, "_hover", None) is not None:
+                self.metti_hover(e)
+            return
+        self.via_hover()
+        self._hover_nome = n
+        c.configure(cursor="hand2" if n or any(b_[0] <= e.x <= b_[2] and b_[1] <= e.y <= b_[3] for b_ in getattr(self, "_box_pile", [])) else "")
+        if n is None:
+            return
+        img = self.immagine_grande(n)
+        if img is None:
+            return
+        tk = self.tk
+        h = self._hover = tk.Toplevel(self.fin_board)
+        h.overrideredirect(True)
+        h.configure(bg="#101014")
+        try:
+            h.attributes("-topmost", True)
+        except Exception:      # noqa: BLE001 - non serve fuori da Windows
+            pass
+        tk.Label(h, image=img, bg="#101014", bd=0).pack(padx=2, pady=2)
+        self.metti_hover(e)
+
+    def metti_hover(self, e):
+        h = self._hover
+        w, hh = h.winfo_reqwidth(), h.winfo_reqheight()
+        x, y = e.x_root + 24, e.y_root - hh // 2
+        sw, sh = h.winfo_screenwidth(), h.winfo_screenheight()
+        if x + w > self.fin_board.winfo_rootx() + self.fin_board.winfo_width():
+            x = e.x_root - w - 24
+        h.geometry(f"+{max(0, x)}+{max(0, min(y, sh - hh - 40))}")
+
+    def via_hover(self, e=None):
+        h = getattr(self, "_hover", None)
+        if h is not None:
+            try:
+                h.destroy()
+            except Exception:      # noqa: BLE001 - gia' chiusa
+                pass
+        self._hover, self._hover_nome = None, None
+
+    def immagine_grande(self, nome):
+        """La carta grande (360 pixel) dall'immagine intera scaricata, se no dalla miniatura."""
+        cache = self.__dict__.setdefault("_img_grandi", {})
+        if nome not in cache:
+            try:
+                import capsule
+                from PIL import Image, ImageTk
+                f = capsule.file_immagine(nome)
+                im = Image.open(f if os.path.exists(f) else capsule.file_mini(nome)).convert("RGBA")
+                im = im.resize((360, round(360 * im.height / im.width)), Image.LANCZOS)
+                cache[nome] = ImageTk.PhotoImage(im)
+            except Exception:      # noqa: BLE001 - senza immagine niente hover
+                cache[nome] = None
+            if len(cache) > 60:
+                cache.pop(next(iter(cache)))
+        return cache.get(nome)
 
     def clic_pila(self, e):
         """Il clic su un cimitero o un esilio: tutte le sue carte in una finestrella."""
@@ -2196,28 +2304,87 @@ class PaginaPerformance:
     def salva_situazione(self):
         DA.salva_situazione(self.tipo, dict(self.filtri))
         self.disegna_situazioni()
-        if "compare" in self.visibili():       # le situazioni salvate sono anche i B del confronto
+        if "compare" in self.visibili():       # i filtri personali sono anche i B del confronto
             self.disegna_confronto()
-        self.b_salva_sit.metti("Saved", False); self.b_salva_sit.after(1800, lambda: self.b_salva_sit.winfo_exists() and self.b_salva_sit.metti("Save this situation", False))
+        self.b_salva_sit.metti("Saved in My filters", False)
+        self.b_salva_sit.after(1800, lambda: self.b_salva_sit.winfo_exists() and self.b_salva_sit.metti("Save as my filter", False))
 
     def disegna_situazioni(self):
-        tk, F = self.tk, self.F
-        for w in self.f_sit.winfo_children():
-            w.destroy()
+        """I filtri personali si vedono nella cartella My filters: si ridisegna se si vede."""
+        if "mine" in self.visibili() and self.righe is not None:
+            self.disegna_miei()
+
+    def disegna_miei(self):
+        """La cartella My filters: i filtri personali uno sotto l'altro, ognuno coi suoi numeri di adesso (partite, record, win rate con l'intervallo e lo
+        scarto da tutte, play e draw); il clic lo mette, la ✕ lo toglie; quello uguale ai filtri di adesso ha il bordo azzurro."""
+        c = self.tela("mine")
+        c.delete("all")
+        c._box_miei = []
+        if self.righe is None:
+            return
+        F = self.F
+        W = max(c.winfo_width(), 700)
         sit = DA.situazioni()
         if not sit:
-            tk.Label(self.f_sit, text="Set some filters, then save the situation to come back to it.", bg=C["scheda"], fg=C["grigio"], font=F(7), wraplength=250,
-                     justify="left").pack(anchor="w")
+            c.create_text(16, 30, text="No personal filters yet.", anchor="w", fill=C["titolo"], font=F(9, True))
+            c.create_text(16, 52, text="Set some smart filters, then press «Save as my filter»: it comes here, with its numbers, ready to be applied again.",
+                          anchor="w", fill=C["grigio"], font=F(8))
             return
-        for i, s in enumerate(sit):
-            r = tk.Frame(self.f_sit, bg="#101014", highlightthickness=1, highlightbackground=C["filo"]); r.pack(fill="x", pady=(0, 4))
-            n = s.get("nome") or "Situation"
-            lab = tk.Label(r, text=(n if len(n) <= 38 else n[:37] + "…"), bg="#101014", fg=C["testo"], font=F(8), anchor="w", cursor="hand2", padx=8, pady=4)
-            lab.pack(side="left", fill="x", expand=True)
-            lab.bind("<Button-1>", lambda e, s=s: self.applica(s))
-            x = tk.Label(r, text="✕", bg="#101014", fg=C["grigio"], font=F(8, True), cursor="hand2", padx=8)
-            x.pack(side="right")
-            x.bind("<Button-1>", lambda e, i=i: (DA.togli_situazione(i), self.disegna_situazioni()))
+        corto = lambda t, n: t if len(t) <= n else t[:n - 1] + "…"
+        attuali = {k: v for k, v in self.filtri.items() if v is not None}
+        y = 4
+        for i, s_ in enumerate(sit):
+            tipo = s_.get("tipo") or self.tipo
+            fl = s_.get("filtri") or {}
+            r = DA.filtra(self.righe, fl, tipo)
+            k_ = DA.conti(r)
+            tot = DA.conti([x for x in self.righe if x["tipo"] == tipo])
+            on = tipo == self.tipo and fl == attuali
+            c.create_rectangle(0, y, W - 2, y + ALTO_MIO - 6, fill="#0f2a38" if on else ("#202024" if i % 2 == 0 else "#1c1c20"),
+                               outline=C["accento"] if on else "#2c2c32")
+            c.create_text(14, y + 16, text=corto(f"{tipo} · " + self.descrivi(fl, tipo), int((W - 640) / 6.4)), anchor="w", fill=C["titolo"], font=F(9, True))
+            c.create_text(14, y + 36, text=f"{k_['n']} games · {k_['vinte']}-{k_['perse']}" + (f" · 95% CI {k_['ic'][0]}–{k_['ic'][1]}%" if k_["ic"] else ""),
+                          anchor="w", fill=C["grigio"], font=F(7))
+            xw = W - 600
+            wr = k_["wr"]
+            col = C["muto"] if wr is None else (C["azzurro"] if wr >= 50 else C["rosso"])
+            c.create_rectangle(xw, y + 20, xw + 140, y + 32, fill="#2c2c32", outline="")
+            if wr is not None:
+                c.create_rectangle(xw, y + 20, xw + 1.4 * wr, y + 32, fill=col, outline="")
+            c.create_line(xw + 70, y + 16, xw + 70, y + 36, fill="#d8d8dc")
+            c.create_text(xw + 150, y + 26, text=f"{wr:.0f}%" if wr is not None else "-", anchor="w", fill=col, font=F(11, True))
+            if wr is not None and tot["wr"] is not None:
+                d_ = wr - tot["wr"]
+                c.create_text(xw + 215, y + 26, text=f"{d_:+.1f} vs all", anchor="w", fill=C["azzurro"] if d_ > 0 else C["rosso"] if d_ < 0 else C["testo"],
+                              font=F(8, True))
+            pc = lambda v: f"{v:.0f}%" if v is not None else "-"
+            c.create_text(xw + 310, y + 18, text="PLAY", anchor="w", fill=C["muto"], font=F(6, True))
+            c.create_text(xw + 310, y + 34, text=pc(k_["play"]), anchor="w", fill=C["testo"], font=F(8, True))
+            c.create_text(xw + 370, y + 18, text="DRAW", anchor="w", fill=C["muto"], font=F(6, True))
+            c.create_text(xw + 370, y + 34, text=pc(k_["draw"]), anchor="w", fill=C["testo"], font=F(8, True))
+            c.create_text(xw + 430, y + 18, text="TURNS", anchor="w", fill=C["muto"], font=F(6, True))
+            c.create_text(xw + 430, y + 34, text=f"T{k_['turni']}" if k_["turni"] else "-", anchor="w", fill=C["testo"], font=F(8, True))
+            c.create_text(W - 60, y + 26, text="applied" if on else "apply", anchor="e", fill=C["accento"], font=F(8, True))
+            c.create_text(W - 22, y + 26, text="✕", fill=C["grigio"], font=F(10, True))
+            c._box_miei.append((0, y, W - 44, y + ALTO_MIO - 6, "metti", i))
+            c._box_miei.append((W - 40, y, W - 2, y + ALTO_MIO - 6, "togli", i))
+            y += ALTO_MIO
+        c.configure(scrollregion=(0, 0, W, y + 8))
+
+    def clic_miei(self, e):
+        c = getattr(e, "widget", None) or self.tela("mine")
+        y = c.canvasy(e.y)
+        for x0, y0, x1, y1, cosa, i in getattr(c, "_box_miei", []):
+            if x0 <= e.x <= x1 and y0 <= y <= y1:
+                sit = DA.situazioni()
+                if cosa == "togli":
+                    DA.togli_situazione(i)
+                    self.disegna_miei()
+                    if "compare" in self.visibili():
+                        self.disegna_confronto()
+                elif i < len(sit):
+                    self.applica(sit[i])
+                return
 
     def applica(self, s):
         self.tipo = s.get("tipo") or self.tipo
