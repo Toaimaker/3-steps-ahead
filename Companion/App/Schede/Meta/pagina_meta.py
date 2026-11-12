@@ -11,6 +11,8 @@ from dati_app import RANGHI_META, nome_rango, rango_da_nome
 from dati_meta import FORMATI_META, formati_con_dati, meta_mazzi, ranghi_formato
 from pagina_base import Pagina, prepara_capsule
 from pagina_mazzi import PaginaMazzi
+import disegni as DG
+import mazzi_salvati as MS
 import dati_grafici as DGR
 from icone import icona_set, nome_set
 from vista_grafici import VistaGrafici
@@ -345,10 +347,68 @@ class PaginaMeta(PaginaMazzi):
                 c.create_text(xc, H - 52, text=t, anchor="w", fill=C["muto"], font=F(7, True))
                 c.create_text(xc, H - 27, text=v, anchor="w", fill=col, font=F(15, True))
             self.pulsante_scheda(c, dx_, H, "View deck")
+            c.in_wish = None        # la wishlist si rilegge a ogni disegno della scheda, non a ogni movimento del mouse
+            self.metti_stella(c, m, 0)
         disegna()
         if m["arte"]:
             self.lista.chiedi_arte(c, m["arte"], disegna)
         c.bind("<Enter>", lambda e: c.itemconfigure("corpo", fill=C["cap"], outline=C["accento"]))
-        c.bind("<Leave>", lambda e: c.itemconfigure("corpo", fill=C["fondo"], outline=C["filo"]))
-        c.bind("<Button-1>", lambda e: self.apri(("meta", m)))
+        c.bind("<Leave>", lambda e: (c.itemconfigure("corpo", fill=C["fondo"], outline=C["filo"]), self.metti_stella(c, m, 0)))
+        c.bind("<Motion>", lambda e: self.metti_stella(c, m, 1 if self.su_stella(e) else 0))
+
+        def clic(e):
+            if self.su_stella(e):
+                return self.cambia_wishlist(c, m)
+            self.apri(("meta", m))
+        c.bind("<Button-1>", clic)
         return c
+
+    # la stellina della wishlist in alto a destra sulla copertina (Autore, 12 nov 2026: «sulle schede meta mettiamo in alto a destra un pulsante per wishlist»,
+    # proposta D, «stellina»): vuota se il mazzo non e' in wishlist, piena d'oro se c'e'; il clic lo mette o lo toglie, senza aprire la finestra del mazzo
+    STELLA = 30
+
+    def box_stella(self):
+        L = self.LARGA
+        return L - 12 - self.STELLA, 10, L - 12, 10 + self.STELLA
+
+    def su_stella(self, e):
+        x0, y0, x1, y1 = self.box_stella()
+        return x0 <= e.x <= x1 and y0 <= e.y <= y1
+
+    def base_wishlist(self, m):
+        """Il mazzo del meta come lo salva Add to wishlist della finestra del mazzo: lista, sideboard, comandante, compagno, formato, la pagina d'origine."""
+        fmt = self.t_fmt.get()
+        base = dict(nome=m["nome"], lista=dict(m.get("lista") or {}), side=dict(m.get("side") or {}), comandante=dict(m.get("comandante") or {}),
+                    compagno=dict(m.get("compagno") or {}), formato=fmt if fmt in MS.FORMATI else "Standard")
+        if m.get("url"):
+            base["fonte"] = m["url"]
+        return base
+
+    def metti_stella(self, c, m, sotto):
+        import account
+        if account.sola_lettura() or not (m.get("lista") or {}):        # All accounts: la wishlist e' in sola lettura; senza lista non c'e' niente da salvare
+            return
+        if getattr(c, "in_wish", None) is None:
+            c.in_wish = MS.in_wishlist(self.base_wishlist(m)) is not None
+        stato = 2 if c.in_wish else sotto
+        if stato == getattr(c, "stato_stella", None) and c.find_withtag("stella"):
+            return
+        c.stato_stella = stato
+        x0, y0, _x1, _y1 = self.box_stella()
+        c.delete("stella")
+        c.create_image(x0, y0, image=DG.stellina(self.STELLA, stato), anchor="nw", tags="stella")
+
+    def cambia_wishlist(self, c, m):
+        """Il clic sulla stellina: il mazzo entra nella wishlist, o ne esce se c'era. -> True se ora e' in wishlist."""
+        import account
+        if account.sola_lettura():
+            return None
+        base = self.base_wishlist(m)
+        w = MS.in_wishlist(base)
+        if w is not None:
+            MS.togli("wish", w["id"])
+        else:
+            MS.aggiungi("wish", base)
+        c.in_wish = w is None
+        self.metti_stella(c, m, 1)
+        return w is None

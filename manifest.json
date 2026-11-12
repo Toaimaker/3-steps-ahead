@@ -1,6 +1,6 @@
 {
- "version": "0.1.33",
+ "version": "0.1.34",
  "date": "2026-11-12",
- "notes": "Meta and Your decks: the top border of the first row of deck cards now lights up on hover.",
+ "notes": "Meta: a star at the top right of every deck card adds it to your Wishlist, or takes it out.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

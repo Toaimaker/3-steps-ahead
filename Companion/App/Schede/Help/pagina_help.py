@@ -36,6 +36,7 @@ SEZIONI = (
      else "The most played decks of every format: Arena formats from Untapped, paper and MTGO formats from MTGGoldfish.",
      [("Format", "the format to show"), ("Sort by", "meta share, win rate, price, cards you own, name"),
       ("Click a deck", "opens its deck window, with the sideboard and the link to the original page"),
+      ("Star on a deck", "adds it to your Wishlist (gold when it is there); click again to take it out"),
       ("Rank", "the meta at one league, or Diamond + Mythic"), ("View", "switches between the deck cards (Grid) and the Charts"),
       ("Charts", "the top 10 on the left: tick a deck to draw its line, double-click opens it; meta share or win rate, daily or by season (a month)"),
       ("Premier Draft charts", "the whole history of the format and the matchups of the color pairs. Data: 17Lands public datasets "

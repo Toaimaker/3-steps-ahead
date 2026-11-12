@@ -279,6 +279,28 @@ def occhio(lato, colore, barrato=False):
     return _icona(("occhio", lato, colore, barrato), fa)
 
 
+def stellina(lato, stato):
+    """La stellina della wishlist sulle schede della Meta (Autore, 12 nov 2026, proposta D fra quattro: «stellina»): un quadrato smussato scuro
+    semitrasparente e la stella a cinque punte; stato 0 vuota bianca, 1 (sotto il mouse) vuota d'oro col bordo d'oro, 2 (in wishlist) piena d'oro."""
+    def fa():
+        d = Disegno(lato, lato)
+        oro = (240, 190, 60, 255)
+        d.rett(0.5, 0.5, lato - 0.5, lato - 0.5, riempi=(14, 14, 18, 215 if stato != 1 else 240), bordo=oro if stato == 1 else None, larghezza=1.3,
+               raggio=lato * 0.2)
+        cx, cy, r1 = lato / 2, lato / 2 + lato * 0.03, lato * 0.34
+        pts = []
+        for i in range(10):
+            r = r1 if i % 2 == 0 else r1 / 2.3
+            a = -math.pi / 2 + i * math.pi / 5
+            pts.append((cx + r * math.cos(a), cy + r * math.sin(a)))
+        if stato == 2:
+            d.poligono(pts, riempi=oro)
+        else:
+            d.poligono(pts, bordo=oro if stato == 1 else (240, 240, 244, 255), larghezza=lato * 0.055)
+        return d
+    return _icona(("stellina", lato, stato), fa)
+
+
 def pillola(l, h, bordo, fondo, larghezza=1.2):
     """Una pillola arrotondata (raggio meta' altezza) col bordo, in antialias: il fondo della pillola pubblico/privato."""
     def fa():
