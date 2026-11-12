@@ -1,6 +1,6 @@
 {
- "version": "0.1.23",
+ "version": "0.1.24",
  "date": "2026-11-12",
- "notes": "Deck window: Matchups in Analysis, the decks you met recognized from the cards they showed, with record, play and draw.",
+ "notes": "Meta Charts redesigned: the top 10 on the left with tick boxes, one trend chart on the right, meta share or win rate, daily or by season.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

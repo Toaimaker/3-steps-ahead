@@ -35,7 +35,10 @@ SEZIONI = (
                       "formats), 11 Nov 2026; from now on it grows from the games players choose to share.") if PUBBLICA
      else "The most played decks of every format: Arena formats from Untapped, paper and MTGO formats from MTGGoldfish.",
      [("Format", "the format to show"), ("Sort by", "meta share, win rate, price, cards you own, name"),
-      ("Click a deck", "opens its deck window, with the sideboard and the link to the original page")]),
+      ("Click a deck", "opens its deck window, with the sideboard and the link to the original page"),
+      ("Rank", "the meta at one league, or Diamond + Mythic"), ("View", "switches between the deck cards (Grid) and the Charts"),
+      ("Charts", "the top 10 on the left: tick a deck to draw its line, double-click opens it; meta share or win rate, daily or by season (a month)"),
+      ("Premier Draft charts", "the whole history of the format and the matchups of the color pairs, from 17Lands public data")]),
     ("mazzi", "Your decks", "Your Arena decks, the decks Arena gave you, your wishlist and your deck building, grouped by format.",
      [("Group title", "opens or closes the group"), ("Show", "only the decks you own, or all"), ("Import", "a list copied from Arena, MTGO or a site goes to the Wishlist"),
       ("Trash", "on a Wishlist or Deck builder card: removes the deck at once"), ("Click a deck", "the deck window: list, data, starting hands, export"),

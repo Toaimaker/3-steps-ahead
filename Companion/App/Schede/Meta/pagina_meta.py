@@ -203,13 +203,18 @@ class PaginaMeta(PaginaMazzi):
     def disegna_grafici(self):
         """La vista a elenco coi grafici (vista_grafici.py): costruito con le righe della vista a schede, limited con le coppie del set."""
         fmt, lim = self.t_fmt.get(), self.limited()
+        self.alto_carte = 0
         if lim:
             s = self.t_set.get()
             righe = DGR.righe_limited(s, lim)
             st = DGR.storico(DGR.chiave_storico(fmt, s))
+            self.storia_l = DGR.storia_17lands(s) if lim == "premier" else None      # 12 nov 2026: il Premier ha la storia intera dai dati pubblici di 17Lands
+            if self.storia_l:
+                st = DGR.storico("17lands_premier_" + s) or st
             self.sotto = f"{nome_set(s) or s} · {sum(r['partite'] for r in righe):,} games" if righe else ""
             self.mazzi = []
         else:
+            self.storia_l = None
             righe, self.sotto = DGR.righe_costruito(fmt)
             st = DGR.storico(DGR.chiave_storico(fmt))
             self.mazzi = righe
@@ -223,6 +228,9 @@ class PaginaMeta(PaginaMazzi):
         self.larga_g = self.cv.winfo_width()
         self.vista_g = VistaGrafici(self, righe, not lim, st, self.larga_g)
         self.vista_g.disegna()
+        self.alto_carte = 0         # 12 nov 2026: l'altezza delle schede della vista a griglia non vale qui (la pagina scorreva nel vuoto)
+        self.griglia_b.update_idletasks()
+        self.regione()
 
     def disponi(self, larga, forza=False):
         """In vista Charts i grafici si rifanno quando la larghezza cambia di molto; nelle schede la griglia di sempre."""

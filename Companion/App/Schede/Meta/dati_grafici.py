@@ -122,6 +122,64 @@ def serie(st, nome):
     return [(g, st[g][nome][0]) for g in sorted(st) if isinstance(st[g], dict) and nome in st[g]]
 
 
+def storia_17lands(set_):
+    """La storia del Premier di un set dai dati pubblici di 17Lands (Motore/limited_17lands.py): {coppie, nomi, dal, al, partite...}, None se non c'e'."""
+    d = _json(os.path.join(ROOT, "Espansioni", set_, "Premier", "storia_17lands.json"))
+    return d if isinstance(d, dict) and isinstance(d.get("coppie"), dict) else None
+
+
+def matrice(storia, nomi):
+    """{(riga, colonna): (partite, vinte)} fra le coppie coi nomi dati: la coppia della riga contro i colori principali dell'avversario uguali alla colonna."""
+    if not storia:
+        return {}
+    chiave = {v: k for k, v in (storia.get("nomi") or {}).items()}
+    out = {}
+    for a in nomi:
+        c = storia["coppie"].get(chiave.get(a)) or {}
+        for b in nomi:
+            n, w = (c.get("contro") or {}).get(chiave.get(b), (0, 0))
+            if n:
+                out[(a, b)] = (n, w)
+    return out
+
+
+MESI = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
+def nome_stagione(k):
+    """«2026-10» -> «Oct 2026»: la stagione classificata di Arena e' un mese."""
+    return f"{MESI[int(k[5:7]) - 1]} {k[:4]}"
+
+
+def per_stagione(st):
+    """Lo storico giorno per giorno raccolto per stagione (12 nov 2026, Autore: «gli stessi dati per season»; la stagione classificata di Arena, un mese):
+    {«AAAA-MM»: {nome: [quota, wr]}}, la media dei giorni in cui il mazzo c'era (il win rate solo dei giorni che lo hanno)."""
+    acc = {}
+    for g, d in st.items():
+        if not isinstance(d, dict) or len(g) < 7:
+            continue
+        for nome, v in d.items():
+            if not isinstance(v, (list, tuple)) or not v:
+                continue
+            a = acc.setdefault(g[:7], {}).setdefault(nome, [[], []])
+            if v[0] is not None:
+                a[0].append(v[0])
+            if len(v) > 1 and v[1] is not None:
+                a[1].append(v[1])
+    media = lambda x: round(sum(x) / len(x), 3) if x else None
+    return {k: {n: [media(q), media(w)] for n, (q, w) in d.items()} for k, d in sorted(acc.items())}
+
+
+def serie_di(st, nome, metrica=0):
+    """[(chiave, valore)] di un mazzo per la metrica (0 quota, 1 win rate), dal piu' vecchio; i punti senza il valore non contano."""
+    out = []
+    for g in sorted(st):
+        v = st[g].get(nome) if isinstance(st[g], dict) else None
+        if isinstance(v, (list, tuple)) and len(v) > metrica and v[metrica] is not None:
+            out.append((g, v[metrica]))
+    return out
+
+
 def prova():
     """I conti del limited su un file finto (quota, win rate, ranghi sotto 100 partite fuori, combinazioni sotto lo 0,5% fuori, file rotto vuoto) e
     sui file veri di FRA; lo storico e la serie."""
@@ -145,6 +203,13 @@ def prova():
     casi.append(("i set del limited per data di uscita", "FRA" in set_limited("quick")))
     st = {"2026-11-09": {"Mono-White": [10.0, 55.0]}, "2026-11-10": {"Mono-White": [11.0, 54.0], "Dimir": [5.0, 50.0]}}
     casi.append(("la serie dello storico", serie(st, "Mono-White") == [("2026-11-09", 10.0), ("2026-11-10", 11.0)] and serie(st, "Dimir") == [("2026-11-10", 5.0)]))
+    stg = per_stagione({"2026-10-01": {"A": [10.0, 50.0]}, "2026-10-02": {"A": [14.0, None]}, "2026-11-01": {"A": [8.0, 52.0], "B": [3.0, 48.0]}})
+    casi.append(("per stagione: la media dei giorni, il win rate solo dove c'e'", stg == {"2026-10": {"A": [12.0, 50.0]}, "2026-11": {"A": [8.0, 52.0], "B": [3.0, 48.0]}}))
+    casi.append(("negativa: la serie del win rate salta i giorni senza", serie_di({"d1": {"A": [1.0, None]}, "d2": {"A": [2.0, 51.0]}}, "A", 1) == [("d2", 51.0)]
+                 and nome_stagione("2026-10") == "Oct 2026"))
+    sto = {"nomi": {"UB": "Dimir", "WU": "Azorius"}, "coppie": {"UB": {"contro": {"WU": [10, 6], "BR": [5, 1]}}, "WU": {"contro": {"UB": [10, 4]}}}}
+    casi.append(("la matrice coppia contro coppia, solo fra le coppie chieste", matrice(sto, ["Dimir", "Azorius"]) == {("Dimir", "Azorius"): (10, 6), ("Azorius", "Dimir"): (10, 4)}
+                 and matrice(None, ["Dimir"]) == {}))
     casi.append(("le chiavi dello storico", chiave_storico("Quick Draft", "FRA") == "quick_FRA" and chiave_storico("Standard") == "standard"))
     for n, e in casi:
         print(("  ok    " if e else "  ROSSO ") + n)
