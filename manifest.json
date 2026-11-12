@@ -1,6 +1,6 @@
 {
- "version": "0.1.40",
+ "version": "0.1.41",
  "date": "2026-11-12",
- "notes": "Performance: Smart filters scroll to the end; new Situations in the game window (missed land drops, curve, first creature, spells on the other turn, who attacked first, and more), also in Spots, Split by and Group by.",
+ "notes": "Performance: Reset all back to every game; Smart filters scroll to the end; Situations in the game window (also in Spots, Split by and Group by); dropdowns show only the choices.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

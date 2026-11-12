@@ -129,8 +129,12 @@ class PaginaPerformance:
                                 colori=("#2a2a30", "#3a3a42", "#0f86cc"))
             b.configure(width=118); b.pack(side="left", padx=(0, 6), pady=8)
             self.b_tipi[t] = b
+        # il reset globale (12 nov 2026, Autore: «aggiungiamo anche un reset global che ci porta a tutte le partite di default»): filtri, situazioni, grafico e
+        # vista in basso come all'apertura; Constructed o Limited resta
+        self.b_reset = pulsante_solido(tk, F, testa, "Reset all", False, self.reset, alto=26, bg=C["cap"], colori=("#2a2a30", "#3a3a42", "#0f86cc"))
+        self.b_reset.configure(width=100); self.b_reset.pack(side="right", padx=(8, 16), pady=8)
         self.l_info = tk.Label(testa, text="Reading your logs…", bg=C["cap"], fg=C["grigio"], font=F(8))
-        self.l_info.pack(side="right", padx=16)
+        self.l_info.pack(side="right", padx=(16, 4))
         corpo = tk.Frame(self.fr, bg=C["fondo"]); corpo.pack(fill="both", expand=True, padx=10, pady=10)
         corpo.columnconfigure(0, weight=0, minsize=300); corpo.columnconfigure(1, weight=1); corpo.rowconfigure(0, weight=1)
         # a sinistra: le variabili e le situazioni salvate, in una colonna che scorre
@@ -237,6 +241,22 @@ class PaginaPerformance:
 
     def pulisci(self):
         self.filtri = {}
+        self.disegna()
+
+    PARTENZA = dict(metrica="wr", asse="games", finestra="20", dividi=None, per="suo", ordina="n", basso="spots", solo_meta=False)
+
+    def reset(self):
+        """Tutte le partite, come all'apertura: niente filtri ne' situazioni, il grafico e la vista in basso di partenza."""
+        self.filtri = {}
+        for k, v in self.PARTENZA.items():
+            setattr(self, k, v)
+        for k, b in self.b_metr.items():
+            b.metti(dict(DA.METRICHE)[k], k == self.metrica)
+        for k, b in self.b_basso.items():
+            b.metti(dict(spots="Spots", report="Report", matchups="Matchups")[k], k == self.basso)
+        self.b_meta.metti("Meta decks only", False)
+        self.t_asse.set(self.asse); self.t_fin.set(self.finestra); self.t_dividi.set("None"); self.t_per.set(self.per)
+        self.cv_sx.yview_moveto(0)
         self.disegna()
 
     def cambia(self, cosa, v):
