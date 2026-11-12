@@ -59,8 +59,15 @@ SEZIONI = (
       ("Chat", "a title per pack, a line per pick: the crown is the pick, the shields the next best"), ("Possible decks", "the three color pairs the drafter sees"),
       ("Select deck", "lights the overlay on Arena's deck builder: green keep or add, red remove"), ("Fix", "with a red gate: the swaps that fix the deck"),
       ("Closed session", "closes the draft by hand: two clicks")]),
-    ("performance", "Performance", "Your numbers in limited and constructed: win rate, records, decks, the chart with the leagues.",
-     [("Mode", "Limited or Standard"), ("Set · Format · Event", "filter the numbers, the decks and the chart"), ("Chart", "the win rate game after game, league steps, trophies")]),
+    ("performance", "Performance", "An analyzer of your games and situations, from your Arena logs: pick any variables, and the numbers, the chart, the spots "
+     "and the matchups follow.",
+     [("Constructed · Limited", "which games"), ("Filters", "format, event, your deck, their archetype and colors, play or draw, mulligans, lands in hand, length, "
+                                                  "rank, date, time of day, game in the session, a card in your hand, a card they showed; each shows its games"),
+      ("Chart", "win rate, games, average turns or mulligan rate; by game or by date; cumulative or the last N games; split by a variable"),
+      ("Spots", "where you win and where you lose the most, one or two variables at a time; strong when the 95% interval clears your average; click one to filter it"),
+      ("Report", "group by a variable; click a row to filter it, a column to sort"),
+      ("Matchups", "your decks against the archetypes you met, or only the meta decks; click a cell to filter it"),
+      ("Save this situation", "keep a set of filters and come back to it")]),
     ("risorse", "Resources", "Gold, gems, packs, cards and wildcards: what you earn and spend, the Farmer that plans how to spend them, the roadmap and the ROI.",
      [("Period · Range · Resource", "what the chart and the income show"), ("Farmer", "goal sliders; Create makes the roadmap, Dismiss ends it"),
       ("Gold value", "My win rate or Pack price"), ("Spend gold on packs", "off: gold never buys packs"), ("Roadmap check", "above or below the plan, day by day")]),
@@ -74,7 +81,9 @@ SEZIONI = (
             "(from the spells it has shown and the meta lists), the cards likely still in its 60, what it plays on its turns 2-4, the instants its open mana "
             "can pay, and your record against it on the play and on the draw. In limited: its color pair with the public 17Lands numbers. Nothing about "
             "the opponent is saved, and it stays off in sanctioned competitive events.",
-     [("Deck HUD", "in the tab bar: opens the HUD window; during a game it shows a dot"), ("Mouse wheel", "scrolls the HUD"), ("Esc", "closes it")]),
+     [("Deck HUD", "in the tab bar: opens the HUD window; during a game it shows a dot"),
+      ("On Arena", "in the HUD window: a small panel at the top left of Arena during your games (on by default); clicks pass through it"),
+      ("Mouse wheel", "scrolls the HUD"), ("Esc", "closes it")]),
     ("social", "Social column", "On the right of every tab: your profile and the friends you follow, read from their public Untapped profile.",
      [("Avatar", "click: a card art or a file"), ("+", "adds a friend by the link of the Untapped profile"), ("✕", "on a friend: removes it")]),
 )
