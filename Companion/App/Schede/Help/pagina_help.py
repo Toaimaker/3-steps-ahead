@@ -38,7 +38,8 @@ SEZIONI = (
       ("Click a deck", "opens its deck window, with the sideboard and the link to the original page"),
       ("Rank", "the meta at one league, or Diamond + Mythic"), ("View", "switches between the deck cards (Grid) and the Charts"),
       ("Charts", "the top 10 on the left: tick a deck to draw its line, double-click opens it; meta share or win rate, daily or by season (a month)"),
-      ("Premier Draft charts", "the whole history of the format and the matchups of the color pairs, from 17Lands public data")]),
+      ("Premier Draft charts", "the whole history of the format and the matchups of the color pairs. Data: 17Lands public datasets "
+       "(17lands.com/public_datasets), CC BY 4.0, aggregated by 3 Steps Ahead; not endorsed by 17Lands")]),
     ("mazzi", "Your decks", "Your Arena decks, the decks Arena gave you, your wishlist and your deck building, grouped by format.",
      [("Group title", "opens or closes the group"), ("Show", "only the decks you own, or all"), ("Import", "a list copied from Arena, MTGO or a site goes to the Wishlist"),
       ("Trash", "on a Wishlist or Deck builder card: removes the deck at once"), ("Click a deck", "the deck window: list, data, starting hands, export"),

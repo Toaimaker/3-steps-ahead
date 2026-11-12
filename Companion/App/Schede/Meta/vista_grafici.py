@@ -24,6 +24,8 @@ SPUNTATI = 3
 LINEE = ("#24baff", "#f0ad4e", "#5cb85c", "#ee8a87", "#c39bd3", "#e8d36a", "#4fd1b5", "#ff8fc8", "#9fa8ff", "#d0a070")   # una per posto, distinte sul fondo scuro
 ALTA_RIGA = 50
 LARGA_LISTA = 300
+CITAZIONE = "Data: 17Lands public datasets ↗ (CC BY 4.0), aggregated by 3 Steps Ahead · not endorsed by 17Lands"
+URL_17LANDS = "https://www.17lands.com/public_datasets"
 ETICHETTE = 150         # lo spazio a destra del grafico per i nomi in fondo alle linee
 
 
@@ -94,6 +96,15 @@ class VistaGrafici:
         if self.matrice_c is not None:
             self.disegna_matrice()
 
+    def cita(self, c, x, y, coda=""):
+        """La citazione di 17Lands, in vista e col link (le loro linee guida, 17lands.com/usage_guidelines, e la licenza CC BY 4.0 dei dati pubblici: la
+        fonte, la licenza, il link; senza far credere che ci appoggino). Il clic apre la pagina dei dati pubblici."""
+        t = c.create_text(x, y, text=CITAZIONE + coda, anchor="e", fill=C["link"] if "link" in C else C["accento"], font=self.F(8), tags=("cita",))
+        c.tag_bind("cita", "<Button-1>", lambda e: __import__("webbrowser").open(URL_17LANDS))
+        c.tag_bind("cita", "<Enter>", lambda e: c.configure(cursor="hand2"))
+        c.tag_bind("cita", "<Leave>", lambda e: c.configure(cursor=""))
+        return t
+
     def disegna_matrice(self):
         """La matrice coppia contro coppia dei 10 in testa, dai dati pubblici di 17Lands (12 nov 2026): il win rate della riga contro la colonna; sotto 200
         partite la cella e' grigia (rumore)."""
@@ -107,8 +118,8 @@ class VistaGrafici:
         cel_l = (self.lg - x0 - 14) / max(n, 1)
         c.configure(height=y0 + cel_h * n + 34)
         c.create_text(16, 18, text="MATCHUPS · ROW VS COLUMN", anchor="w", fill=C["titolo"], font=F(10, True))
-        c.create_text(self.lg - 14, 18, text=f"17Lands public data · Premier · {self.storia.get('dal', '')[8:10]}/{self.storia.get('dal', '')[5:7]}"
-                      f"–{self.storia.get('al', '')[8:10]}/{self.storia.get('al', '')[5:7]} · {self.storia.get('partite', 0):,} games", anchor="e", fill=C["grigio"], font=F(8))
+        self.cita(c, self.lg - 14, 18, f" · Premier · {self.storia.get('dal', '')[8:10]}/{self.storia.get('dal', '')[5:7]}"
+                  f"–{self.storia.get('al', '')[8:10]}/{self.storia.get('al', '')[5:7]} · {self.storia.get('partite', 0):,} games")
         cc = self.storia["coppie"].values()
         media = 100 * sum(x.get("w", 0) for x in cc) / max(sum(x.get("n", 0) for x in cc), 1)      # chi usa 17Lands vince piu' della media: i colori partono da qui
         self.media_matrice = media
@@ -246,7 +257,7 @@ class VistaGrafici:
         nome_m = "WIN RATE" if self.metrica else "META SHARE"
         c.create_text(16, 18, text=f"{nome_m} · {'BY SEASON' if self.periodo == 'season' else 'DAILY'}", anchor="w", fill=C["titolo"], font=F(10, True))
         if getattr(self, "storia", None):
-            c.create_text(l - 14, 18, text="history: 17Lands public data (CC BY 4.0)", anchor="e", fill=C["grigio"], font=F(8))
+            self.cita(c, l - 14, 18)
         ss = {n: s for n, s in self.dati().items() if s}
         self.serie_disegnate = ss
         if not self.spuntati:

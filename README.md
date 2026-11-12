@@ -1,4 +1,4 @@
-# 3 Steps Ahead · free MTG Arena deck tracker and deck builder (alpha 0.1.24)
+# 3 Steps Ahead · free MTG Arena deck tracker and deck builder (alpha 0.1.25)
 
 A free desktop companion for MTG Arena on Windows (Mac: experimental, see below). It reads your own Arena log (Player.log) and shows your decks with their real record,
 on the play and on the draw, a card-by-card analysis of why they win and lose, a deck builder over your collection with a mana base calculator,
@@ -43,3 +43,8 @@ The Help tab checks for new versions and shows a download button.
 ## Support
 
 The app is 100% free, for everyone: no plans, nothing locked. If it helps you, you can donate any amount: the support page is coming soon.
+
+## Credits
+
+Card data and images from Scryfall. Premier Draft history and color-pair matchups from the [17Lands public datasets](https://www.17lands.com/public_datasets),
+licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), aggregated by 3 Steps Ahead. Not affiliated with or endorsed by Scryfall, Untapped.gg or 17Lands.
