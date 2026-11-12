@@ -33,6 +33,74 @@ NOMI_FMT = {"standard": "Standard", "alchemy": "Alchemy", "explorer": "Explorer"
             "standard_brawl": "Standard Brawl", "precon": "Dual Color Precons", "limited": "Limited"}
 
 
+# ------------------------------------------------------------------ le situazioni dentro la partita (12 nov 2026, Autore: «una finestra di filtri da flaggare
+# che aggiungono agli smart situazioni piu' specifiche»). Dalle schede delle partite (Partite/, archivio_partite: turno, fase, chi, terre, magie coi bersagli,
+# attacchi, morti): per ogni partita si' o no, o None se non si puo' dire (la partita e' finita prima, o non si sa chi ha cominciato).
+SIT = [("io_terra", "You missed a land drop (by your 4th turn)"), ("lui_terra", "They missed a land drop (by their 4th turn)"),
+       ("io_curva", "You cast a spell on each of your turns 2, 3 and 4"), ("io_crea2", "Your first creature by your turn 2"),
+       ("lui_crea2", "Their first creature by their turn 2"), ("io_nel_suo", "You cast a spell on their turn"), ("lui_nel_mio", "They cast a spell on your turn"),
+       ("io_primo", "You attacked first"), ("lui_bersagli", "They targeted your permanents with a spell"), ("io_morti", "You lost 3+ creatures"),
+       ("lui_morti", "They lost 3+ creatures")]
+NOME_SIT = dict(SIT)
+_SCHEDE = {}
+
+
+def indice_schede():
+    """{prime 8 lettere del matchId: file} delle schede in Partite/ (il nome finisce con _<8 lettere>.json)."""
+    if "indice" not in _SCHEDE:
+        import glob
+        d = {}
+        for f in glob.glob(os.path.join(percorsi.ROOT, "Partite", "*.json")):
+            k = os.path.basename(f)[:-5].rsplit("_", 1)[-1]
+            d[k] = f
+        _SCHEDE["indice"] = d
+    return _SCHEDE["indice"]
+
+
+def scheda(match_id):
+    f = indice_schede().get((match_id or "")[:8])
+    if not f:
+        return None
+    if f not in _SCHEDE:
+        try:
+            with open(f, encoding="utf-8") as h:
+                s = json.load(h)
+            _SCHEDE[f] = s if s.get("matchId") == match_id else None
+        except (OSError, ValueError):
+            _SCHEDE[f] = None
+    return _SCHEDE[f]
+
+
+def situazioni_partita(s, io_inizia):
+    """Le situazioni di una partita dalla sua scheda: {chiave: True, False o None}."""
+    out = {k: None for k, _n in SIT}
+    if not s or io_inizia is None:
+        return out
+    ev = s.get("eventi") or []
+    turni = int(s.get("turni") or max([e.get("t", 0) for e in ev] or [0]))
+    mio = lambda t: (t % 2 == 1) == bool(io_inizia)         # il turno t e' tuo?
+    turno_k = lambda chi, k: (2 * k - 1) if (chi == "io") == bool(io_inizia) else 2 * k      # il k-esimo turno di chi
+    for chi, chiave in (("io", "io_terra"), ("lui", "lui_terra")):
+        t4 = turno_k(chi, 4)
+        if turni >= t4:
+            terre = sum(1 for e in ev if e.get("tipo") == "terra" and e.get("chi") == chi and e.get("t", 0) <= t4)
+            out[chiave] = terre < 4
+    if turni >= turno_k("io", 4):
+        out["io_curva"] = all(any(e.get("tipo") == "lancia" and e.get("chi") == "io" and e.get("t") == turno_k("io", k) for e in ev) for k in (2, 3, 4))
+    for chi, chiave in (("io", "io_crea2"), ("lui", "lui_crea2")):
+        t2 = turno_k(chi, 2)
+        if turni >= t2:
+            out[chiave] = any(e.get("tipo") == "lancia" and e.get("chi") == chi and "Creature" in (e.get("tipi") or []) and e.get("t", 99) <= t2 for e in ev)
+    out["io_nel_suo"] = any(e.get("tipo") == "lancia" and e.get("chi") == "io" and not mio(e.get("t", 0)) for e in ev)
+    out["lui_nel_mio"] = any(e.get("tipo") == "lancia" and e.get("chi") == "lui" and mio(e.get("t", 0)) for e in ev)
+    primo = next((e for e in ev if e.get("tipo") == "attacca"), None)
+    out["io_primo"] = None if primo is None else primo.get("chi") == "io"
+    out["lui_bersagli"] = any(e.get("tipo") == "lancia" and e.get("chi") == "lui" and "io" in (e.get("bersagli_di") or []) for e in ev)
+    out["io_morti"] = sum(1 for e in ev if e.get("tipo") == "muore" and e.get("chi") == "io") >= 3
+    out["lui_morti"] = sum(1 for e in ev if e.get("tipo") == "muore" and e.get("chi") == "lui") >= 3
+    return out
+
+
 # ------------------------------------------------------------------ le righe
 def _fascia(h):
     return next(n for n, a, b in FASCE if a <= h < b)
@@ -56,7 +124,8 @@ def riga(p, r):
                 terre=terre, mano=sorted(tenuta or {}), sue_viste=sorted(n for n in sue if not MS.e_terra(n)),
                 turno=math.ceil(turni / 2) if turni else None, lunga=_lunga(math.ceil(turni / 2) if turni else None),
                 partenza=None if r.get("inizia") is None else ("Play" if r["inizia"] else "Draw"),
-                mull="0" if r["mulligan"] == 0 else "1" if r["mulligan"] == 1 else "2+")
+                mull="0" if r["mulligan"] == 0 else "1" if r["mulligan"] == 1 else "2+",
+                sit=situazioni_partita(scheda(r.get("partita")), r.get("inizia")))
 
 
 def sessioni(righe):
@@ -124,7 +193,10 @@ NOMI_COLORI = {"W": "White", "U": "Blue", "B": "Black", "R": "Red", "G": "Green"
 
 
 def valori_di(k, x):
-    """I valori della variabile k per la riga x (una lista: una carta in mano o un colore possono essere piu' d'uno)."""
+    """I valori della variabile k per la riga x (una lista: una carta in mano o un colore possono essere piu' d'uno). «sit:chiave»: una situazione, «Yes» o «No»."""
+    if k.startswith("sit:"):
+        v = (x.get("sit") or {}).get(k[4:])
+        return [] if v is None else ["Yes" if v else "No"]
     if k == "colori":
         return list(x.get("colori_suoi") or "")
     if k == "mano":
@@ -151,10 +223,19 @@ def valori(righe_, k, massimo=80):
     c = collections.Counter(v for x in righe_ for v in set(valori_di(k, x)))
     if k in ORDINE_VALORI:
         return [(v, c[v]) for v in ORDINE_VALORI[k] if c[v]]
+    if k.startswith("sit:"):
+        return [(v, c[v]) for v in ("Yes", "No") if c[v]]
     return c.most_common(massimo)
 
 
+def nome_var(k):
+    """Il nome di una variabile o di una situazione («sit:chiave»)."""
+    return NOME_SIT.get(k[4:], k[4:]) if k.startswith("sit:") else NOME.get(k, k)
+
+
 def etichetta(k, v):
+    if k.startswith("sit:"):
+        return NOME_SIT.get(k[4:], k[4:]) if v == "Yes" else "Not: " + NOME_SIT.get(k[4:], k[4:])
     return f"{v} · {NOMI_COLORI[v]}" if k == "colori" and v in NOMI_COLORI else str(v)
 
 
@@ -269,7 +350,7 @@ def report(r, per, ordina="n", minimo=15):
 # condizioni di una variabile e le coppie di due variabili (fra quelle di COPPIE), sulle partite della situazione; resta chi ha almeno `minimo` partite. L'ordine
 # non e' lo scarto grezzo, che premia il rumore: e' quanto l'intervallo di Wilson sta sopra (o sotto) il win rate di tutte, cosi' in testa ci sono gli spot che
 # reggono. «forte»: l'intervallo intero sta dalla sua parte.
-COPPIE = ("mio", "suo", "colori", "partenza", "mull", "terre", "lunga", "rango", "fascia", "sessione")
+COPPIE = ("mio", "suo", "colori", "partenza", "mull", "terre", "lunga", "rango", "fascia", "sessione") + tuple("sit:" + s for s, _n in SIT)
 
 
 def spot(r, minimo=15, quanti=8, coppie=True, gia=None):
@@ -279,7 +360,7 @@ def spot(r, minimo=15, quanti=8, coppie=True, gia=None):
     if not base["n"] or base["wr"] is None:
         return [], []
     insiemi = {}
-    for k, _n, _f in VARIABILI:
+    for k in [k for k, _n, _f in VARIABILI] + ["sit:" + s for s, _n in SIT]:
         if k in gia or k == "data":
             continue
         per = collections.defaultdict(set)
@@ -307,7 +388,8 @@ def spot(r, minimo=15, quanti=8, coppie=True, gia=None):
         n = len(sub)
         lo, hi = wilson(v, n)
         wr = round(100 * v / n, 1)
-        out.append(dict(condizioni=list(cond), nome=" · ".join(f"{NOME[k]}: {etichetta(k, v_)}" for k, v_ in cond), n=n, vinte=v, perse=n - v, wr=wr, ic=(lo, hi),
+        out.append(dict(condizioni=list(cond), nome=" · ".join(etichetta(k, v_) if k.startswith("sit:") else f"{NOME[k]}: {etichetta(k, v_)}" for k, v_ in cond),
+                        n=n, vinte=v, perse=n - v, wr=wr, ic=(lo, hi),
                         delta=round(wr - base["wr"], 1), su=lo - base["wr"], giu=base["wr"] - hi))
     meglio = sorted((x for x in out if x["delta"] > 0), key=lambda x: -x["su"])[:quanti]
     peggio = sorted((x for x in out if x["delta"] < 0), key=lambda x: -x["giu"])[:quanti]
@@ -451,6 +533,23 @@ def prova():
     casi.append(("matrice: i tuoi mazzi in riga, gli archetipi in colonna, ogni cella con partite e win rate", set(mz) == {"UW", "Red"} and set(ar) == {"Mono-White Auras", "Other"}
                  and sum(ce[(m, a)][0] for m in mz for a in ar if (m, a) in ce) == 40))
     casi.append(("matrice: solo i mazzi del meta toglie Other e Unknown", matrice(righe_, solo_meta=True)[1] == ["Mono-White Auras"]))
+    # le situazioni da una scheda finta: tu cominci (i tuoi turni sono i dispari)
+    sch = dict(matchId="x", turni=9, eventi=[dict(t=1, chi="io", tipo="terra"), dict(t=2, chi="lui", tipo="terra"), dict(t=3, chi="io", tipo="terra"),
+                                              dict(t=3, chi="io", tipo="lancia", tipi=["Creature"]), dict(t=4, chi="lui", tipo="terra"), dict(t=5, chi="io", tipo="terra"),
+                                              dict(t=5, chi="io", tipo="lancia", tipi=["Instant"]), dict(t=6, chi="io", tipo="lancia", tipi=["Instant"]),
+                                              dict(t=6, chi="lui", tipo="lancia", tipi=["Sorcery"], bersagli_di=["io"]), dict(t=7, chi="io", tipo="lancia", tipi=["Creature"]),
+                                              dict(t=7, chi="io", tipo="attacca"), dict(t=8, chi="lui", tipo="muore"), dict(t=8, chi="io", tipo="muore")])
+    s_ = situazioni_partita(sch, True)
+    casi.append(("situazioni: tu 3 terre entro il tuo 4o turno (saltata), lui 2 entro il suo (saltata), curva piena, prima creatura al tuo T2",
+                 s_["io_terra"] is True and s_["lui_terra"] is True and s_["io_curva"] is True and s_["io_crea2"] is True and s_["lui_crea2"] is False))
+    casi.append(("situazioni: la tua magia nel suo turno, attacchi per primo, lui bersaglia il tuo, meno di 3 morti", s_["io_nel_suo"] and not s_["lui_nel_mio"]
+                 and s_["io_primo"] and s_["lui_bersagli"] and s_["io_morti"] is False and s_["lui_morti"] is False))
+    casi.append(("negativa: chi comincia non si sa, nessuna situazione", all(v is None for v in situazioni_partita(sch, None).values())))
+    s_corta = situazioni_partita(dict(sch, turni=4), True)
+    casi.append(("negativa: una partita finita prima del 4o turno non dice se hai saltato una terra", s_corta["io_terra"] is None))
+    x_ = dict(righe_[0], sit=dict(io_terra=True))
+    casi.append(("il filtro di una situazione: Yes, No, e None non passa", passa(x_, {"sit:io_terra": "Yes"}) and not passa(x_, {"sit:io_terra": "No"})
+                 and not passa(x_, {"sit:io_curva": "Yes"}) and not passa(x_, {"sit:io_curva": "No"})))
     vere = righe()
     casi.append(("i log veri: righe con le variabili (se ci sono partite)", not vere or all(k in vere[0] for k in ("tipo", "partenza", "terre", "sessione", "fascia"))))
     for n, ok in casi:

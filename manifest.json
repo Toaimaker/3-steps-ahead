@@ -1,6 +1,6 @@
 {
  "version": "0.1.40",
  "date": "2026-11-12",
- "notes": "Deck HUD on Arena: a small panel at the top left of Arena during your games (archetype with confidence, likely cards, instants its open mana can pay, your record against it). Clicks pass through it; turn it off with On Arena in the Deck HUD window.",
+ "notes": "Performance: Smart filters scroll to the end; new Situations in the game window (missed land drops, curve, first creature, spells on the other turn, who attacked first, and more), also in Spots, Split by and Group by.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

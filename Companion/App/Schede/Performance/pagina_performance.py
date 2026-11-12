@@ -136,14 +136,33 @@ class PaginaPerformance:
         # a sinistra: le variabili e le situazioni salvate, in una colonna che scorre
         sx = tk.Frame(corpo, bg=C["scheda"], highlightthickness=1, highlightbackground=C["filo"]); sx.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
         rs = tk.Frame(sx, bg=C["scheda"]); rs.pack(fill="x", padx=12, pady=(10, 4))
-        tk.Label(rs, text="FILTERS", bg=C["scheda"], fg=C["muto"], font=F(7, True)).pack(side="left")
+        # «Smart filters» (12 nov 2026, Autore: «i filtri a sinistra potremmo chiamarli smart filters»), e sotto il pulsante della finestra delle situazioni
+        tk.Label(rs, text="SMART FILTERS", bg=C["scheda"], fg=C["muto"], font=F(7, True)).pack(side="left")
         via = tk.Label(rs, text="Clear all", bg=C["scheda"], fg=C["accento"], font=F(7, True), cursor="hand2"); via.pack(side="right")
         via.bind("<Button-1>", lambda e: self.pulisci())
-        self.cv_sx = tk.Canvas(sx, bg=C["scheda"], highlightthickness=0, bd=0, width=286); self.cv_sx.pack(fill="both", expand=True)
+        self.b_sit = pulsante_solido(tk, F, sx, "Situations in the game  ·  none", False, self.apri_situazioni, alto=30, bg=C["scheda"])
+        self.b_sit.pack(fill="x", padx=12, pady=(2, 8))
+        # la colonna scorre: con la rotella sopra qualunque sua parte, e con la barra sottile a destra (fino al 12 nov la rotella andava solo sul fondo vuoto e
+        # le ultime tendine e le situazioni salvate restavano tagliate in fondo: Autore, «la finestra degli smart filters e' tagliata sul fondo»)
+        riga_sx = tk.Frame(sx, bg=C["scheda"]); riga_sx.pack(fill="both", expand=True)
+        barra = tk.Canvas(riga_sx, width=6, bg=C["traccia"], highlightthickness=0, cursor="hand2"); barra.pack(side="right", fill="y", padx=(0, 4), pady=4)
+
+        def segna(a, b_):
+            barra.delete("all"); a, b_ = float(a), float(b_)
+            if b_ - a < 0.999:
+                H_ = barra.winfo_height(); barra.create_rectangle(0, H_ * a, 6, H_ * b_, fill=C["grigio"], width=0)
+        self.cv_sx = tk.Canvas(riga_sx, bg=C["scheda"], highlightthickness=0, bd=0, width=280, yscrollcommand=segna); self.cv_sx.pack(side="left", fill="both", expand=True)
+        barra.bind("<Button-1>", lambda e: self.cv_sx.yview_moveto(e.y / max(barra.winfo_height(), 1)))
+        barra.bind("<B1-Motion>", lambda e: self.cv_sx.yview_moveto(e.y / max(barra.winfo_height(), 1)))
         self.col_sx = tk.Frame(self.cv_sx, bg=C["scheda"])
         self.cv_sx.create_window(0, 0, window=self.col_sx, anchor="nw")
-        self.col_sx.bind("<Configure>", lambda e: self.cv_sx.configure(scrollregion=(0, 0, 0, self.col_sx.winfo_reqheight())))
-        self.cv_sx.bind("<MouseWheel>", lambda e: self.cv_sx.yview_scroll(-2 if e.delta > 0 else 2, "units"))
+        self.col_sx.bind("<Configure>", lambda e: self.cv_sx.configure(scrollregion=(0, 0, 0, self.col_sx.winfo_reqheight() + 16)))
+
+        def rotella(e):
+            w = str(e.widget)
+            if (w.startswith(str(self.cv_sx)) or w.startswith(str(barra))) and self.col_sx.winfo_reqheight() > self.cv_sx.winfo_height():
+                self.cv_sx.yview_scroll(-2 if e.delta > 0 else 2, "units")
+        self.cv_sx.bind_all("<MouseWheel>", rotella, add="+")
         self.tendine = {}
         for k, nome, _f in DA.VARIABILI:
             t = Tendina(tk, self.col_sx, nome, F, larga=262, bg=C["scheda"])
@@ -170,8 +189,9 @@ class PaginaPerformance:
             b.configure(width=112); b.pack(side="left", padx=(0, 6), pady=(14, 0))
             self.b_metr[k] = b
         self.t_dividi = Tendina(tk, bar, "Split by", F, larga=190, bg=C["scheda"]); self.t_dividi.fr.pack(side="right")
-        self.t_dividi.opzioni(["None"] + [k for k, _n, _f in DA.VARIABILI if k not in ("data",)], lambda v: self.cambia("dividi", None if v == "None" else v),
-                              etichette={"None": "None", **DA.NOME}); self.t_dividi.set("None")
+        sit_k = ["sit:" + s for s, _n in DA.SIT]
+        self.t_dividi.opzioni(["None"] + [k for k, _n, _f in DA.VARIABILI if k not in ("data",)] + sit_k, lambda v: self.cambia("dividi", None if v == "None" else v),
+                              etichette={"None": "None", **DA.NOME, **{k: DA.nome_var(k) for k in sit_k}}); self.t_dividi.set("None")
         self.t_fin = Tendina(tk, bar, "Window", F, larga=150, bg=C["scheda"]); self.t_fin.fr.pack(side="right", padx=(0, 10))
         self.t_fin.opzioni([k for k, _n in DA.FINESTRE], lambda v: self.cambia("finestra", v), etichette=dict(DA.FINESTRE)); self.t_fin.set(self.finestra)
         self.t_asse = Tendina(tk, bar, "X axis", F, larga=110, bg=C["scheda"]); self.t_asse.fr.pack(side="right", padx=(0, 10))
@@ -190,7 +210,8 @@ class PaginaPerformance:
             b.configure(width=104); b.pack(side="left", padx=(0, 6), pady=(14, 0))
             self.b_basso[k] = b
         self.t_per = Tendina(tk, bar2, "Group by", F, larga=220, bg=C["scheda"])
-        self.t_per.opzioni([k for k, _n, _f in DA.VARIABILI if k != "data"], lambda v: self.cambia("per", v), etichette=DA.NOME); self.t_per.set(self.per)
+        self.t_per.opzioni([k for k, _n, _f in DA.VARIABILI if k != "data"] + sit_k, lambda v: self.cambia("per", v),
+                           etichette={**DA.NOME, **{k: DA.nome_var(k) for k in sit_k}}); self.t_per.set(self.per)
         self.b_meta = pulsante_solido(tk, F, bar2, "Meta decks only", self.solo_meta, self.cambia_meta, alto=26, bg=C["scheda"], colori=("#2a2a30", "#3a3a42", "#0f86cc"))
         self.b_meta.configure(width=140)
         self.l_basso = tk.Label(bar2, text="", bg=C["scheda"], fg=C["grigio"], font=F(7)); self.l_basso.pack(side="right", pady=(14, 0))
@@ -260,9 +281,13 @@ class PaginaPerformance:
             voci = ["Any"] + [v for v, _n in vv]
             if sc is not None and sc not in voci:
                 voci.append(sc)
-            t.opzioni(voci, lambda v, k=k: self.metti_filtro(k, v), etichette={"Any": "Any", **{v: f"{DA.etichetta(k, v)}  ·  {n}" for v, n in vv}})
+            # solo le voci, senza i conti (12 nov 2026, Autore: «nei menu a tendina non mettere anche i numeri solo le voci, i numeri li vogliamo come risultato
+            # sui dati»): i valori restano quelli che hanno partite sotto gli altri filtri
+            t.opzioni(voci, lambda v, k=k: self.metti_filtro(k, v), etichette={"Any": "Any", **{v: DA.etichetta(k, v) for v, _n in vv}})
             t.set(sc if sc is not None else "Any")
             t.campo.configure(highlightbackground=C["accento"] if sc is not None else "#3a3a40")
+        self.aggiorna_bottone_sit()
+        self.disegna_finestra_sit()
         self.disegna_numeri()
         self.disegna_grafico()
         self.disegna_basso()
@@ -354,7 +379,7 @@ class PaginaPerformance:
                 c.create_text(xx + 4, y0 + 2, text=rango, anchor="nw", fill=C["grigio"], font=F(7, True))
         tit = {"wr": "win rate", "n": "games", "turni": "average length in your turns", "mull": "mulligan rate"}[self.metrica]
         fin = "" if self.metrica == "n" else (", cumulative" if self.finestra == "cum" else f", last {self.finestra} games")
-        c.create_text((x0 + x1) / 2, 4, text=f"{tit}{fin}" + (f" · split by {DA.NOME[self.dividi].lower()}" if self.dividi else ""), anchor="n", fill=C["grigio"], font=F(7))
+        c.create_text((x0 + x1) / 2, 4, text=f"{tit}{fin}" + (f" · split by {DA.nome_var(self.dividi).lower()}" if self.dividi else ""), anchor="n", fill=C["grigio"], font=F(7))
 
     def punta(self, e):
         """Il puntatore sul grafico: la linea verticale e il valore di ogni linea in quel punto."""
@@ -481,7 +506,7 @@ class PaginaPerformance:
         x = 8
         self._col_x = []
         for k, t, w in COLONNE:
-            c.create_text(x, 10, text=t or DA.NOME[self.per].upper(), anchor="w", fill=C["accento"] if k == self.ordina else C["titolo"], font=F(7, True))
+            c.create_text(x, 10, text=t or DA.nome_var(self.per).upper()[:32], anchor="w", fill=C["accento"] if k == self.ordina else C["titolo"], font=F(7, True))
             self._col_x.append((x, x + w, k))
             x += w
         y = 26
@@ -544,6 +569,60 @@ class PaginaPerformance:
                 self.filtri[self.per] = v
                 self.disegna()
                 return
+
+    # ------------------------------------------------------------ le situazioni dentro la partita (12 nov 2026)
+    def apri_situazioni(self):
+        """La finestra delle situazioni (Autore, 12 nov 2026: «una finestra di filtri da flaggare che aggiungono agli smart situazioni piu' specifiche»): per
+        ognuna Any, Yes o No, coi conti delle partite sotto gli altri filtri; si applica subito. Accanto alla colonna dei filtri, sopra la finestra grande."""
+        tk, F = self.tk, self.F
+        f = getattr(self, "fin_sit", None)
+        if f is not None and f.winfo_exists():
+            f.lift(); return f
+        f = self.fin_sit = tk.Toplevel(self.fr); f.title("Situations in the game"); f.configure(bg=C["scheda"])
+        f.transient(self.fr.winfo_toplevel())
+        f.geometry(f"+{self.cv_sx.winfo_rootx() + self.cv_sx.winfo_width() + 16}+{self.cv_sx.winfo_rooty()}")
+        f.bind("<Escape>", lambda e: f.destroy())
+        tk.Label(f, text="SITUATIONS IN THE GAME", bg=C["scheda"], fg=C["titolo"], font=F(9, True)).pack(anchor="w", padx=14, pady=(12, 2))
+        tk.Label(f, text="From the games' turn by turn records. Yes: only the games where it happened; No: only those where it did not.", bg=C["scheda"],
+                 fg=C["grigio"], font=F(7), wraplength=470, justify="left").pack(anchor="w", padx=14, pady=(0, 8))
+        self.cv_fsit = tk.Canvas(f, bg=C["scheda"], highlightthickness=0, bd=0, width=500, height=40 + 34 * len(DA.SIT))
+        self.cv_fsit.pack(padx=8, pady=(0, 12))
+        self.cv_fsit.bind("<Button-1>", self.clic_situazione)
+        self.disegna_finestra_sit()
+        return f
+
+    def disegna_finestra_sit(self):
+        c = getattr(self, "cv_fsit", None)
+        if c is None or not c.winfo_exists():
+            return
+        F = self.F
+        c.delete("all")
+        self._box_sit = []
+        y = 6
+        for k, nome in DA.SIT:
+            kk = "sit:" + k
+            sc = self.filtri.get(kk)
+            c.create_text(8, y + 14, text=nome, anchor="w", fill=C["titolo"] if sc else C["testo"], font=F(8, bool(sc)))
+            x = 300
+            for v, t in ((None, "Any"), ("Yes", "Yes"), ("No", "No")):     # senza i conti, come le tendine (12 nov 2026)
+                on = sc == v
+                w = 50 if v is None else 66
+                c.create_rectangle(x, y + 3, x + w, y + 25, fill="#0f86cc" if on else "#202024", outline="#0f86cc" if on else "#3a3a40")
+                c.create_text(x + w / 2, y + 14, text=t, fill="#ffffff" if on else C["grigio"], font=F(7, True))
+                self._box_sit.append((x, y + 3, x + w, y + 25, kk, v))
+                x += w + 6
+            y += 34
+
+    def clic_situazione(self, e):
+        for x0, y0, x1, y1, kk, v in getattr(self, "_box_sit", []):
+            if x0 <= e.x <= x1 and y0 <= e.y <= y1:
+                self.filtri[kk] = v
+                self.disegna()
+                return
+
+    def aggiorna_bottone_sit(self):
+        on = [(k, v) for k, v in self.filtri.items() if k.startswith("sit:") and v is not None]
+        self.b_sit.metti("Situations in the game  ·  " + (f"{len(on)} on" if on else "none"), bool(on))
 
     # ------------------------------------------------------------ le situazioni salvate
     def salva_situazione(self):
