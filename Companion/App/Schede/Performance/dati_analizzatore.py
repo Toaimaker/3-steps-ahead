@@ -36,15 +36,16 @@ NOMI_FMT = {"standard": "Standard", "alchemy": "Alchemy", "explorer": "Explorer"
 # ------------------------------------------------------------------ le situazioni dentro la partita (12 nov 2026, Autore: «una finestra di filtri da flaggare
 # che aggiungono agli smart situazioni piu' specifiche»). Dalle schede delle partite (Partite/, archivio_partite: turno, fase, chi, terre, magie coi bersagli,
 # attacchi, morti): per ogni partita si' o no, o None se non si puo' dire (la partita e' finita prima, o non si sa chi ha cominciato).
-SIT = [("io_terra", "You missed a land drop (by your 4th turn)"), ("lui_terra", "They missed a land drop (by their 4th turn)"),
+SIT = [("io_terra", "You missed a land drop (by your 4th turn)"), ("lui_terra", "Opponent missed a land drop (by the opponent's 4th turn)"),
        ("io_curva", "You cast a spell on each of your turns 2, 3 and 4"), ("io_crea2", "Your first creature by your turn 2"),
-       ("lui_crea2", "Their first creature by their turn 2"), ("io_nel_suo", "You cast a spell on their turn"), ("lui_nel_mio", "They cast a spell on your turn"),
-       ("io_primo", "You attacked first"), ("lui_bersagli", "They targeted your permanents with a spell"), ("io_morti", "You lost 3+ creatures"),
-       ("lui_morti", "They lost 3+ creatures"),
+       ("lui_crea2", "Opponent's first creature by the opponent's turn 2"), ("io_nel_suo", "You cast a spell on the opponent's turn"),
+       ("lui_nel_mio", "Opponent cast a spell on your turn"),
+       ("io_primo", "You attacked first"), ("lui_bersagli", "Opponent targeted your permanents with a spell"), ("io_morti", "You lost 3+ creatures"),
+       ("lui_morti", "Opponent lost 3+ creatures"),
        # il mana aperto (stesso giorno, «vs mana untapped / with mana untapped»): dai pezzi di log di ogni partita (mana_aperto.py)
-       ("io_att_aperto", "You attacked into 2+ untapped lands"), ("io_att_chiuso", "You attacked when they were tapped out"),
-       ("lui_att_aperto", "They attacked into your 2+ untapped lands"), ("io_passa_aperto", "You passed your turn with 2+ lands untapped"),
-       ("lui_passa_aperto", "They passed their turn with 2+ lands untapped")]
+       ("io_att_aperto", "You attacked into 2+ untapped lands"), ("io_att_chiuso", "You attacked when the opponent was tapped out"),
+       ("lui_att_aperto", "Opponent attacked into your 2+ untapped lands"), ("io_passa_aperto", "You passed your turn with 2+ lands untapped"),
+       ("lui_passa_aperto", "Opponent passed the turn with 2+ lands untapped")]
 _MANA = {}      # {matchId: dato di mana_aperto}, riempito da righe()
 NOME_SIT = dict(SIT)
 _SCHEDE = {}
@@ -165,7 +166,7 @@ def come_finita(motivo, vinta):
     """Come e' finita: la concessione di chi, giocata fino in fondo, il tempo."""
     m = (motivo or "").replace("ResultReason_", "")
     if m == "Concede":
-        return "They conceded" if vinta else "You conceded"
+        return "Opponent conceded" if vinta else "You conceded"
     return {"Game": "Played to the end", "Timeout": "Timeout"}.get(m)
 
 
@@ -279,7 +280,7 @@ VARIABILI = [       # (chiave, nome, come si legge il valore dalla riga, test pe
     ("evento", "Event", lambda x: x.get("evento")),
     ("mio", "My deck", lambda x: x.get("mio")),
     ("suo", "Opponent", lambda x: x.get("suo")),
-    ("colori", "Opp. colors (contains)", None),
+    ("colori", "Opponent colors (contains)", None),
     ("partenza", "Start", lambda x: x.get("partenza")),
     ("mull", "Mulligans", lambda x: x.get("mull")),
     ("terre", "Lands in opening hand", lambda x: None if x.get("terre") is None else str(x["terre"])),
@@ -289,7 +290,7 @@ VARIABILI = [       # (chiave, nome, come si legge il valore dalla riga, test pe
     ("fascia", "Time of day", lambda x: x.get("fascia")),
     ("sessione", "Game in session", lambda x: x.get("sessione")),
     ("mano", "Card in opening hand", None),
-    ("sue", "Their card seen", None),
+    ("sue", "Opponent card seen", None),
 ]
 NOME = {k: n for k, n, _f in VARIABILI}
 LEGGI = {k: f for k, _n, f in VARIABILI}
@@ -345,7 +346,7 @@ for _k, _n, _f in EXTRA:
 # hands and first turns»): non entra negli Spots (spiegherebbe tutto il win rate da sola)
 NOME["esito"], LEGGI["esito"] = "Result", (lambda x: "Won" if x["vinta"] else "Lost")
 ORDINE_VALORI.update(esito=("Won", "Lost"), miei_colori=VARIANTI, economiche=("0", "1", "2+"), crea_mano=("Yes", "No"),
-                     fine=("You conceded", "They conceded", "Played to the end", "Timeout"), giorno=GIORNI,
+                     fine=("You conceded", "Opponent conceded", "Played to the end", "Timeout"), giorno=GIORNI,
                      pausa=("Under 15 minutes", "15-60 minutes", "Over 1 hour (new session)"))
 
 
@@ -819,7 +820,7 @@ def prova():
                  and dalla_mano(None) == (None, None)))
     casi.append(("negativa: le terre non contano fra le magie da 1-2 mana", dalla_mano({"Mountain": 5}) == ("0", False)))
     casi.append(("i colori del tuo mazzo dalle magie (le terre no), come e' finita", colori_mazzo(["Goblin", "Owl", "Mountain"]) == "UR"
-                 and colori_mazzo(["Mountain"]) == "C" and come_finita("ResultReason_Concede", True) == "They conceded"
+                 and colori_mazzo(["Mountain"]) == "C" and come_finita("ResultReason_Concede", True) == "Opponent conceded"
                  and come_finita("ResultReason_Concede", False) == "You conceded" and come_finita("ResultReason_Game", True) == "Played to the end"))
     _TAB.clear()
     vere = righe()

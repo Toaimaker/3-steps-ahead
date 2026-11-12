@@ -41,6 +41,7 @@ FASI = (("BEFORE THE GAME", ("miei_colori",)),
         ("THE END OF THE GAME", ("fine", "sit:io_morti", "sit:lui_morti")),
         ("WHEN", ("giorno", "pausa")))      # i filtri in piu' di ogni fase, nel suo +
 LARGA_FASE = 780
+VALORI_FISSI = {"mull": ("0", "1", "2+"), "partenza": ("Play", "Draw"), "esito": ("Won", "Lost")}      # le tendine con le voci fisse
 SEZIONI_FILTRI = (("formato", "evento", "deck"), ("partenza", "mull", "terre", "esito"), ("suo", "colori"), ("lunga", "rango"), ("data", "fascia", "sessione"))
 
 
@@ -286,8 +287,8 @@ class PaginaPerformance:
     def riga_filtro(self, griglia, i, k, nome):
         """Una riga degli smart filters: il nome a sinistra e la tendina a destra."""
         tk, F = self.tk, self.F
-        corto = {"Opp. colors (contains)": "Opp. colors", "Lands in opening hand": "Lands in hand", "Game length (your turns)": "Game length",
-                 "Card in opening hand": "Card in hand", "Their card seen": "Their card"}.get(nome, nome)
+        corto = {"Opponent colors (contains)": "Opp. colors", "Lands in opening hand": "Lands in hand", "Game length (your turns)": "Game length",
+                 "Card in opening hand": "Card in hand", "Opponent card seen": "Opponent card"}.get(nome, nome)
         lab = tk.Label(griglia, text=corto.upper(), bg=C["scheda"], fg=C["grigio"], font=F(7, True), anchor="w"); lab.grid(row=i, column=0, sticky="w", pady=2)
         self.lab_filtri = getattr(self, "lab_filtri", {}); self.lab_filtri[k] = lab
         t = Tendina(tk, griglia, "", F, larga=156, bg=C["scheda"])
@@ -626,6 +627,9 @@ class PaginaPerformance:
             vv = DA.valori(DA.filtra(self.righe, altri, self.tipo), k)
             sc = self.filtri.get(k)
             voci = ["Any"] + [v for v, _n in vv]
+            if k in VALORI_FISSI:     # sempre le stesse voci, qualunque filtro ci sia (12 nov 2026, Autore: «la tendina mulligans vedo che e' variabile, no deve
+                voci = ["Any"] + list(VALORI_FISSI[k])      # sempre in ogni caso avere any, 0, 1, 2+»)
+                vv = [(v, 0) for v in VALORI_FISSI[k]]
             if sc is not None and sc not in voci:
                 voci.append(sc)
             # solo le voci, senza i conti (12 nov 2026, Autore: «nei menu a tendina non mettere anche i numeri solo le voci, i numeri li vogliamo come risultato
@@ -766,13 +770,13 @@ class PaginaPerformance:
     # premendo su quello specifico dato si apre una board dedicata che ci mostra le carte in quello spot in mano o sul tavolo»)
     def colonne_partite(self, W):
         """Le colonne della tabella delle partite: (chiave, titolo, x, larghezza); mano e board si dividono quel che resta."""
-        fisse = (("data", "DATE", 96), ("mio", "YOUR DECK", 150), ("suo", "OPPONENT", 150), ("esito", "RESULT", 70), ("via", "START", 86))
+        fisse = (("data", "DATE", 96), ("mio", "YOUR DECK", 150), ("suo", "OPPONENT", 150), ("esito", "RESULT", 76), ("via", "START", 60), ("mull", "MULLIGAN", 76))
         out, x = [], 8
         for k, t, w in fisse:
             out.append((k, t, x, w)); x += w
         resto = max(300, W - x - 8)
         out.append(("mano", "YOUR OPENING HAND", x, resto * 0.45)); x += resto * 0.45
-        out.append(("board", "THE BOARD AT THE END · you / them", x, resto * 0.55))
+        out.append(("board", "THE BOARD AT THE END · you / opponent", x, resto * 0.55))
         return out
 
     def fai_tabella(self, padre):
@@ -911,13 +915,26 @@ class PaginaPerformance:
                     testo = x_["quando"].strftime("%d %b %H:%M")
                 elif k == "mio":
                     testo, col = (x_.get("mio") or "-").strip(), C["titolo"]
-                elif k == "suo":
-                    testo = x_.get("suo") or "-"
+                elif k == "suo":       # contro chi: la combinazione di colori, coi simboli (12 nov 2026, Autore: «opponent usiamo la combinazione colori»)
+                    v = DA.vs_di(x_)
+                    if v:
+                        for j, ch in enumerate(v):
+                            img = self.lista().simbolo(ch, 14)
+                            if img is not None:
+                                c.create_image(x + 7 + j * 15, y + ALTO_PARTITA / 2, image=img, tags="riga")
+                        x, w = x + 8 + len(v) * 15 + 4, w - 8 - len(v) * 15 - 4
+                        testo = DA.nome_vs(v)
+                    else:
+                        testo, col = "Unknown", C["muto"]
                 elif k == "esito":
                     testo = ("Won" if x_["vinta"] else "Lost") + (f" · T{x_['turno']}" if x_.get("turno") else "")
                     col, font = (C["azzurro"] if x_["vinta"] else C["rosso"]), F(8, True)
                 elif k == "via":
-                    testo = (x_.get("partenza") or "-") + (f" · mull {x_['mull']}" if x_.get("mull") not in (None, "0") else "")
+                    testo = x_.get("partenza") or "-"
+                elif k == "mull":       # la sua colonna (12 nov 2026, Autore: «aggiungi anche la colonna mulligan cosi' esce dallo start»)
+                    n_ = x_.get("mulligan")
+                    testo = "-" if n_ is None else str(n_)
+                    col = C["muto"] if not n_ else C["arancio"]
                 elif k == "mano":
                     testo, col = self.testo_mano(fo), C["titolo"] if fo else C["muto"]
                 elif k == "board":
@@ -942,7 +959,7 @@ class PaginaPerformance:
         f = fo["ultima"][2]
         mie = [n for n, _t, _p in f["mio"] if not MS.e_terra(n)]
         sue = [n for n, _t, _p in f["suo"] if not MS.e_terra(n)]
-        return (", ".join(mie) or "no permanents") + f"  /  them: {len(sue)} permanent{'s' if len(sue) != 1 else ''}"
+        return (", ".join(mie) or "no permanents") + f"  /  opponent: {len(sue)} permanent{'s' if len(sue) != 1 else ''}"
 
     def partita_a(self, c, e):
         """(partita, colonna) sotto il puntatore, o (None, None)."""
@@ -961,16 +978,17 @@ class PaginaPerformance:
         c.configure(cursor="hand2" if x_ is not None else "")
         if x_ is None:
             return
-        # la riga si schiarisce appena, senza cornice (12 nov 2026, Autore: «togli la cornice di selezione blu attorno alla riga sulla quale appoggiamo il
-        # mouse, caso mai evidenziala delicatamente»); la mano o la board sotto il puntatore un filo di piu'
+        # la riga si schiarisce appena, senza cornice e trasparente (12 nov 2026, Autore: «togli la cornice di selezione blu ... evidenziala
+        # delicatamente», poi «la selezione sulla riga deve essere trasparente»): un velo bianco al 7% sopra la riga, la mano o la board al 12%
         i = int(c.canvasy(e.y) // ALTO_PARTITA)
-        c.create_rectangle(0, i * ALTO_PARTITA, max(c.winfo_width(), 700), (i + 1) * ALTO_PARTITA, fill="#2a2a31", outline="", tags="sopra")
+        W = max(c.winfo_width(), 700)
+        d = DG.Disegno(W, ALTO_PARTITA)
+        d.rett(0, 0, W, ALTO_PARTITA, riempi=(255, 255, 255, 18))
         if k in ("mano", "board"):
             x, w = next((x, w) for k_, _t, x, w in c._col if k_ == k)
-            c.create_rectangle(x - 6, i * ALTO_PARTITA, x + w - 4, (i + 1) * ALTO_PARTITA, fill="#33333c", outline="", tags="sopra")
-        c.tag_lower("sopra")        # sotto i testi, sopra le fasce alterne
-        if c.find_withtag("fondo"):
-            c.tag_raise("sopra", "fondo")
+            d.rett(x - 6, 0, x + w - 4, ALTO_PARTITA, riempi=(255, 255, 255, 14), raggio=3)
+        c._img_sopra = d.foto(veloce=True)
+        c.create_image(0, i * ALTO_PARTITA, image=c._img_sopra, anchor="nw", tags="sopra")
 
     def clic_partita(self, e):
         c = getattr(e, "widget", None) or self.tabella_partite()
@@ -984,7 +1002,7 @@ class PaginaPerformance:
         if fo["mano0"]:
             passi.append(("Opening hand", fo["mano0"]))
         for t, mio_, f in fo["turni"]:      # Arena conta i turni dei due giocatori insieme: qui il turno di ognuno, come in partita
-            passi.append((f"{'You' if mio_ else 'Them'} T{(t + 1) // 2}", f))
+            passi.append((f"{'You' if mio_ else 'Opponent'} T{(t + 1) // 2}", f))
         if fo["ultima"] and fo["ultima"][2] and (not fo["turni"] or fo["ultima"][2] != fo["turni"][-1][2]):
             passi.append(("End", fo["ultima"][2]))
         return passi
@@ -1207,6 +1225,34 @@ class PaginaPerformance:
                 cache[k] = None
         return cache[k]
 
+    def immagine_token(self, w, tappata):
+        """Il disegno di default delle pedine, che non hanno un'immagine loro (12 nov 2026, Autore: «i token nei replayer non hanno disegni associati,
+        attacca un disegno token di default»): una carta scura col bordo, la barra del nome, nel riquadro dell'arte un emblema d'oro (cerchio e stella a sei
+        punte) e sotto lo spazio per il nome; girata se tappata. Disegnata nitida (disegni), una volta per misura."""
+        cache = self.__dict__.setdefault("_img_token", {})
+        k = (w, tappata)
+        if k not in cache:
+            h = round(w * 279 / 200)
+            d = DG.Disegno(w, h)
+            d.rett(0, 0, w, h, riempi="#1b1b22", bordo="#8a8a94", larghezza=1.4, raggio=max(4, w * 0.06))
+            m = max(4, w * 0.06)
+            d.rett(m, m, w - m, m + h * 0.07, riempi="#2c2c35", raggio=2)                       # la barra del nome
+            a0, a1 = m + h * 0.09, h * 0.66                                                     # il riquadro dell'arte
+            d.rett(m, a0, w - m, a1, riempi="#24242d", bordo="#3a3a44", larghezza=1, raggio=2)
+            cx, cy, r = w / 2, (a0 + a1) / 2, min(w, a1 - a0) * 0.30
+            d.cerchio(cx, cy, r, bordo="#c9a24a", larghezza=max(1.2, w * 0.018))
+            import math as _m
+            punte = lambda fase: [(cx + r * 0.78 * _m.cos(fase + i * 2 * _m.pi / 3), cy + r * 0.78 * _m.sin(fase + i * 2 * _m.pi / 3)) for i in range(3)]
+            d.poligono(punte(-_m.pi / 2), riempi="#c9a24a")
+            d.poligono(punte(_m.pi / 2), riempi="#a8853a")
+            d.rett(m, h * 0.69, w - m, h * 0.76, riempi="#2c2c35", raggio=2)                   # la riga del tipo
+            im = d.immagine()
+            if tappata:
+                im = im.rotate(90, expand=True)
+            from PIL import ImageTk
+            cache[k] = ImageTk.PhotoImage(im)
+        return cache[k]
+
     def disegna_board(self):
         c = getattr(self, "cv_board", None)
         b = getattr(self, "_board", None)
@@ -1272,10 +1318,12 @@ class PaginaPerformance:
                 if yy + hh > y + alto:
                     c.create_text(W - 16, y + alto - 8, text="…", anchor="e", fill=C["grigio"], font=F(10, True))
                     break
-                img = None if ped else self.immagine_carta(n, w_carta, tap)
+                img = self.immagine_token(w_carta, tap) if ped else self.immagine_carta(n, w_carta, tap)
                 cy = yy + (h_carta - hh)        # le tappate appoggiate in basso
                 if img is not None:
                     c.create_image(x, cy, image=img, anchor="nw")
+                    if ped:     # il nome della pedina sul disegno di default
+                        c.create_text(x + ww / 2, cy + (hh - 16 if tap else hh * 0.80), text=n, width=ww - 12, fill=C["titolo"], font=F(7, True), justify="center")
                 else:
                     c.create_rectangle(x, cy, x + ww, cy + hh, fill="#26262c", outline="#4a4a52")
                     c.create_text(x + ww / 2, cy + hh / 2, text=n, width=ww - 10, fill=C["titolo"], font=F(7, True), justify="center")
@@ -1288,7 +1336,7 @@ class PaginaPerformance:
         vite = f.get("vite") or (None, None)
         terzo = (H - 20) / 3
         c.create_rectangle(0, 0, W, terzo, fill="#18161a", outline="")
-        zona("THEIR BATTLEFIELD", f["suo"], 4, terzo - 8, C["arancio"], f"life {vite[1] if vite[1] is not None else '-'}   ·   {f['n_suo']} card{'s' if f['n_suo'] != 1 else ''} in hand")
+        zona("OPPONENT'S BATTLEFIELD", f["suo"], 4, terzo - 8, C["arancio"], f"life {vite[1] if vite[1] is not None else '-'}   ·   {f['n_suo']} card{'s' if f['n_suo'] != 1 else ''} in hand")
         c.create_line(0, terzo, W, terzo, fill=C["filo"])
         zona("YOUR BATTLEFIELD", f["mio"], terzo + 4, terzo - 8, C["azzurro"], f"life {vite[0] if vite[0] is not None else '-'}")
         c.create_line(0, 2 * terzo, W, 2 * terzo, fill=C["filo"])
@@ -1725,7 +1773,7 @@ class PaginaPerformance:
         f.geometry(f"+{self.cv_sx.winfo_rootx() + self.cv_sx.winfo_width() + 16}+{max(0, self.cv_sx.winfo_rooty() - 80)}")
         f.bind("<Escape>", lambda e: f.destroy())
         tk.Label(f, text="BY DECK", bg=C["scheda"], fg=C["titolo"], font=F(9, True)).pack(anchor="w", padx=14, pady=(12, 2))
-        tk.Label(f, text="One of your decks against everyone, or against one exact color variant of their deck: mono-color to five colors, or colorless. "
+        tk.Label(f, text="One of your decks against everyone, or against one exact color variant of the opponent's deck: mono-color to five colors, or colorless. "
                  "The table below is your deck against every variant you met: click a row to pick it.", bg=C["scheda"], fg=C["grigio"], font=F(7),
                  wraplength=960, justify="left").pack(anchor="w", padx=14, pady=(0, 8))
         self.cv_deck = tk.Canvas(f, bg=C["scheda"], highlightthickness=0, bd=0, width=LARGA_DECK, height=560)
@@ -1828,7 +1876,7 @@ class PaginaPerformance:
             c.create_text(x, y + 28, text=f"{kk['n']} games · {kk['vinte']}-{kk['perse']} · {pc(kk['wr'])}"
                           + (f"  (95% CI {kk['ic'][0]}–{kk['ic'][1]}%)" if kk["ic"] else ""), anchor="w", fill=C["accento"], font=F(8, True))
         elif modo == "colors":
-            c.create_text(x, y + 18, text="Flag the colors of their deck: exactly those, one variant.", anchor="w", fill=C["grigio"], font=F(8))
+            c.create_text(x, y + 18, text="Flag the colors of the opponent's deck: exactly those, one variant.", anchor="w", fill=C["grigio"], font=F(8))
         else:
             kk = DA.conti(base_vs)
             c.create_text(x, y + 10, text=f"{(mio or 'All decks').strip()} vs everyone", anchor="w", fill=C["titolo"], font=F(9, True))
@@ -1843,7 +1891,7 @@ class PaginaPerformance:
         y += 18
         gruppi = DA.per_varianti(base_vs)
         if not gruppi:
-            c.create_text(X, y + 16, text="No games with their colors in this situation", anchor="w", fill=C["grigio"], font=F(8))
+            c.create_text(X, y + 16, text="No games with the opponent's colors in this situation", anchor="w", fill=C["grigio"], font=F(8))
             y += 34
 
         def barra(x, yy, wr, colore):

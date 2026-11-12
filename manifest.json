@@ -1,6 +1,6 @@
 {
- "version": "0.1.53",
+ "version": "0.1.54",
  "date": "2026-11-12",
- "notes": "Performance: the games table scrolls with a bar, opens in its own window and lights the row softly; a Result filter (won or lost); more room in the numbers.",
+ "notes": "Performance: the opponent is always called opponent, tokens have a default drawing in the replayer, the games table shows the opponent colors and a mulligan column, fixed Mulligans, Start and Result filters.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

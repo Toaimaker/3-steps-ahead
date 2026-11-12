@@ -65,9 +65,9 @@ SEZIONI = (
                                              "the first turns (missed land drops, curve, first creature); the fight (who attacked first, spells on the other turn, targeted, "
                                              "attacks into untapped lands, passing with lands up); how it ended (who conceded) and creatures lost; the day of the week and "
                                              "the break before the game"),
-      ("Smart filters", "by phase of the game: format, event and your deck (By deck); play or draw, mulligans, lands in hand; their archetype and colors; "
+      ("Smart filters", "by phase of the game: format, event and your deck (By deck); play or draw, mulligans, lands in hand, result; the opponent's archetype and colors; "
                         "length and rank; date, time of day and game in the session"),
-      ("By deck", "pick one of your decks (one box each, with its colors; sorted by most played, win rate or name), against everyone or against one exact color variant of their deck (vs colors: flag the colors, mono-color to "
+      ("By deck", "pick one of your decks (one box each, with its colors; sorted by most played, win rate or name), against everyone or against one exact color variant of the opponent's deck (vs colors: flag the colors, mono-color to "
                   "five colors or colorless); the table is your deck against every variant you met, click a row to pick it"),
       ("Chart", "win rate, games, average turns or mulligan rate; by game or by date; cumulative or the last N games; split by a variable"),
       ("Games in this situation", "under the chart, one game per row: deck, opponent, result, start, your opening hand and the board at the end; click the "
