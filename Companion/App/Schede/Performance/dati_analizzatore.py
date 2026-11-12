@@ -40,7 +40,12 @@ SIT = [("io_terra", "You missed a land drop (by your 4th turn)"), ("lui_terra", 
        ("io_curva", "You cast a spell on each of your turns 2, 3 and 4"), ("io_crea2", "Your first creature by your turn 2"),
        ("lui_crea2", "Their first creature by their turn 2"), ("io_nel_suo", "You cast a spell on their turn"), ("lui_nel_mio", "They cast a spell on your turn"),
        ("io_primo", "You attacked first"), ("lui_bersagli", "They targeted your permanents with a spell"), ("io_morti", "You lost 3+ creatures"),
-       ("lui_morti", "They lost 3+ creatures")]
+       ("lui_morti", "They lost 3+ creatures"),
+       # il mana aperto (stesso giorno, «vs mana untapped / with mana untapped»): dai pezzi di log di ogni partita (mana_aperto.py)
+       ("io_att_aperto", "You attacked into 2+ untapped lands"), ("io_att_chiuso", "You attacked when they were tapped out"),
+       ("lui_att_aperto", "They attacked into your 2+ untapped lands"), ("io_passa_aperto", "You passed your turn with 2+ lands untapped"),
+       ("lui_passa_aperto", "They passed their turn with 2+ lands untapped")]
+_MANA = {}      # {matchId: dato di mana_aperto}, riempito da righe()
 NOME_SIT = dict(SIT)
 _SCHEDE = {}
 
@@ -125,7 +130,12 @@ def riga(p, r):
                 turno=math.ceil(turni / 2) if turni else None, lunga=_lunga(math.ceil(turni / 2) if turni else None),
                 partenza=None if r.get("inizia") is None else ("Play" if r["inizia"] else "Draw"),
                 mull="0" if r["mulligan"] == 0 else "1" if r["mulligan"] == 1 else "2+",
-                sit=situazioni_partita(scheda(r.get("partita")), r.get("inizia")))
+                sit=dict(situazioni_partita(scheda(r.get("partita")), r.get("inizia")), **_mana_sit(r.get("partita"), p.get("seat"))))
+
+
+def _mana_sit(match_id, seat):
+    import mana_aperto
+    return mana_aperto.situazioni(_MANA.get(match_id), seat)
 
 
 def sessioni(righe):
@@ -151,6 +161,11 @@ def righe(partite=None):
     firma = (len(partite), partite[-1].get("matchId") if partite else None)       # partite_log da' gia' le partite dell'account mostrato
     if _CACHE.get("firma") == firma:
         return _CACHE["righe"]
+    try:        # il mana aperto: dalla copia su disco, e le partite nuove lette adesso (la prima volta ~10 s per 450 partite)
+        import mana_aperto
+        _MANA.clear(); _MANA.update(mana_aperto.tutti())
+    except Exception:       # noqa: BLE001 - senza i pezzi di log le situazioni del mana restano None
+        _MANA.clear()
     out = []
     for p in partite:
         r = MU.record(p)

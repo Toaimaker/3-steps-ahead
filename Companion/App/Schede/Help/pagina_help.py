@@ -62,7 +62,7 @@ SEZIONI = (
     ("performance", "Performance", "An analyzer of your games and situations, from your Arena logs: pick any variables, and the numbers, the chart, the spots "
      "and the matchups follow.",
      [("Constructed · Limited", "which games"), ("Situations in the game", "flags from the turn by turn records: missed land drops, curve, first creature, "
-                                                  "spells on the other turn, who attacked first, targeted, creatures lost; Yes or No each"),
+                                                  "spells on the other turn, who attacked first, targeted, creatures lost, attacks into untapped lands, passing with lands up; Yes or No each"),
       ("Smart filters", "format, event, your deck, their archetype and colors, play or draw, mulligans, lands in hand, length, "
                                                   "rank, date, time of day, game in the session, a card in your hand, a card they showed; each shows its games"),
       ("Chart", "win rate, games, average turns or mulligan rate; by game or by date; cumulative or the last N games; split by a variable"),
@@ -84,7 +84,9 @@ SEZIONI = (
             "can pay, and your record against it on the play and on the draw. In limited: its color pair with the public 17Lands numbers. Nothing about "
             "the opponent is saved, and it stays off in sanctioned competitive events.",
      [("Deck HUD", "in the tab bar: opens the HUD window; during a game it shows a dot"),
-      ("On Arena", "in the HUD window: a small panel at the top left of Arena during your games (on by default); clicks pass through it"),
+      ("Two columns", "its deck on the left, yours on the right: your next draws, lands left, your deck's record"),
+      ("On Arena", "on top of each column: its panel on Arena during your games, your deck on the left edge (every card: copies left / in the deck, chance "
+                   "to draw it next), its deck on the right edge (on by default); clicks pass through"),
       ("Mouse wheel", "scrolls the HUD"), ("Esc", "closes it")]),
     ("social", "Social column", "On the right of every tab: your profile and the friends you follow, read from their public Untapped profile.",
      [("Avatar", "click: a card art or a file"), ("+", "adds a friend by the link of the Untapped profile"), ("✕", "on a friend: removes it")]),
