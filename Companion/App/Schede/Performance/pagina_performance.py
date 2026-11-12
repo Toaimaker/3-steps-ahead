@@ -342,7 +342,8 @@ class PaginaPerformance:
             pts = [(sx(x), sy(y)) for x, y in p]
             if len(pts) == 1:
                 pts = [pts[0], (pts[0][0] + 1, pts[0][1])]
-            tratti.append((pts, col, 2.4 if n == "All" and len(lin) == 1 else 2.0 if n != "All" else 1.6, None))
+            # sottili (12 nov 2026, Autore: «le linee dei grafici le voglio piu' sottili»; erano 2,4 / 2,0 / 1,6)
+            tratti.append((pts, col, 1.4 if n == "All" and len(lin) == 1 else 1.2 if n != "All" else 1.0, None))
             c.create_text(x1 + 8, pts[-1][1], text=f"{n}  {p[-1][1]:.0f}{'%' if self.metrica in ('wr', 'mull') else ''}", anchor="w", fill=col, font=F(7, True))
         self._img = DG.tratti(W, H, linee=tratti)
         c.create_image(0, 0, image=self._img, anchor="nw")
