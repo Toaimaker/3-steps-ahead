@@ -51,7 +51,7 @@ def nome_grp(g):
 
 def nuovo(mid=None):
     return dict(matchId=mid, evento="", seat=None, mazzo=None, turno=0, attivo=None, inizia=None, finita=False, vinta=None, gioco=1,
-                sue=[], terre=0, aperte=0, mano_sua=None, _ogg={}, _zone={}, _visti=set())
+                sue=[], terre=0, aperte=0, mano_sua=None, mie_fuori={}, grimorio=None, _ogg={}, _zone={}, _visti=set())
 
 
 class Seguito:
@@ -225,6 +225,18 @@ class Seguito:
         s["terre"] = len(terre)
         s["aperte"] = sum(1 for o in terre if not o.get("isTapped"))
         s["mano_sua"] = next((len(ids) for t, own, ids in s["_zone"].values() if t == "ZoneType_Hand" and own not in (None, s["seat"])), s["mano_sua"])
+        # le tue carte fuori dal grimorio (mano, campo, cimitero, esilio, pila: quelle che le zone elencano adesso, cosi' una carta che cambia zona e id non
+        # si conta due volte) e quante ne restano nel grimorio: servono al pannello del tuo mazzo
+        fuori = {}
+        for t, own, ids in s["_zone"].values():
+            if t in (None, "ZoneType_Library", "ZoneType_Limbo", "ZoneType_Sideboard"):
+                continue
+            for i in ids:
+                o = s["_ogg"].get(i)
+                if o and o.get("type") == "GameObjectType_Card" and o.get("ownerSeatId") == s["seat"] and o.get("grpId"):
+                    fuori[o["grpId"]] = fuori.get(o["grpId"], 0) + 1
+        s["mie_fuori"] = fuori
+        s["grimorio"] = next((len(ids) for t, own, ids in s["_zone"].values() if t == "ZoneType_Library" and own == s["seat"]), s.get("grimorio"))
 
     def stato(self):
         """Lo stato pubblico: senza le tabelle interne e senza niente dell'avversario oltre alle sue carte e alle sue terre."""
@@ -268,7 +280,8 @@ def prova():
     log1 = (auth + setdeck + connetti + stanza("m1", "Ladder", "Playing")
             + gs(zona(10, "ZoneType_Battlefield", 1, [5, 6, 7]) + ", " + zona(11, "ZoneType_Hand", 2, [20, 21, 22]) + ", " + zona(12, "ZoneType_Library", 2, [30]),
                  ogg(5, 900, 2, 10, terra=True) + ", " + ogg(6, 901, 2, 10, terra=True, tappata=True) + ", " + ogg(7, 902, 2, 10) + ", " + ogg(30, 903, 2, 12)
-                 + ", " + ogg(40, 904, 1, 10), turno=1, attivo=2))
+                 + ", " + ogg(40, 904, 1, 10) + ", " + ogg(41, 801, 1, 14) + ", " + ogg(42, 801, 1, 15) + ", " + ogg(43, 802, 1, 15), turno=1, attivo=2)
+            + gs(zona(14, "ZoneType_Hand", 1, [41]) + ", " + zona(15, "ZoneType_Library", 1, [42, 43]), ""))
     log2 = (gs(zona(13, "ZoneType_Graveyard", 2, [8]), ogg(8, 905, 2, 13) + ", " + ogg(6, 901, 2, 10, terra=True), turno=3, attivo=1)
             + stanza("m1", "Ladder", "MatchCompleted", vince=1))
     d = tempfile.mkdtemp()
@@ -282,7 +295,8 @@ def prova():
             ("chi comincia: lui (sei sul draw), turno 1", a["inizia"] == 2 and a["sul_play"] is False and a["turno"] == 1),
             ("le sue carte in campo nell'ordine, non quella nel grimorio ne' la tua", a["sue"] == [900, 901, 902]),
             ("le sue terre: 2, una aperta", a["terre"] == 2 and a["aperte"] == 1),
-            ("negativa: la sua mano non si vede, solo il numero", a["mano_sua"] == 3 and 20 not in a["sue"])]
+            ("negativa: la sua mano non si vede, solo il numero", a["mano_sua"] == 3 and 20 not in a["sue"]),
+            ("le tue carte fuori dal grimorio (la mano) e quante ne restano dentro", a["mie_fuori"] == {801: 1} and a["grimorio"] == 2)]
     with open(f, "a", encoding="utf-8") as fh:
         fh.write(log2)
     b = S.aggiorna()

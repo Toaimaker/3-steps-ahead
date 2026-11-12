@@ -314,6 +314,43 @@ def istantanee_limited(set_, colori, aperte, quante=5):
     return [x[:3] for x in out[:quante]]
 
 
+# --------------------------------------------------------------------------------------------------------------- il tuo mazzo
+def nostro(s, recs, quante=6):
+    """Il pannello del tuo mazzo (Autore, 12 nov 2026: «sulla sinistra mettiamo il suo mazzo sulla destra il nostro»): il nome, quante carte restano nel
+    grimorio, le magie che peschi piu' probabilmente alla prossima pescata (copie rimaste / grimorio: le carte fuori dal grimorio si leggono dalle zone), le
+    terre rimaste, e il record del mazzo (banca dati). None senza la lista del mazzo nel log."""
+    mazzo = {}
+    for g in s.get("mio_mazzo") or []:
+        mazzo[g] = mazzo.get(g, 0) + 1
+    if not mazzo:
+        return None
+    import hud_partita
+    fuori = s.get("mie_fuori") or {}
+    resto, totali = {}, {}
+    for g, q in mazzo.items():
+        n = hud_partita.nome_grp(g)
+        if n:
+            resto[n] = resto.get(n, 0) + max(0, q - fuori.get(g, 0))
+            totali[n] = totali.get(n, 0) + q
+    tot = sum(resto.values())
+    N = s.get("grimorio") or tot
+    if not N:
+        return None
+    terre = sum(q for n, q in resto.items() if info(n)["terra"])
+    carte = sorted(((n, q, round(min(1.0, q / N), 3)) for n, q in resto.items() if q and not info(n)["terra"]), key=lambda z: (-z[2], z[0]))[:quante]
+    fmt = ML.formato(s.get("evento"))
+    tutte = s.get("mio_mazzo_nomi") or []
+    nome = s.get("mazzo") if fmt not in ("limited", None) else None
+    if fmt == "limited":
+        nome = ML.nome_colori(colori_mazzo(tutte))
+    rr = [r for r in recs or [] if r["formato"] == fmt and nome and r["mio"] == nome]
+    # la lista intera (Autore, 12 nov 2026: «il mio deck deve dirmi quante carte mie ho in quante copie, man mano che scendono mi aggiorna il numero e mi da la %
+    # di trovarle alla prossima pescata»): (nome, costo, rimaste, nel mazzo, P alla prossima pescata, terra), le magie per costo e le terre in fondo
+    lista = sorted(((n, info(n)["cmc"], resto[n], totali[n], round(min(1.0, resto[n] / N), 3), info(n)["terra"]) for n in totali),
+                   key=lambda z: (z[5], z[1], z[0]))
+    return dict(nome=nome or "Your deck", grimorio=N, carte=carte, terre=terre, p_terra=round(terre / N, 3), record=ML._conta(rr) if rr else None, lista=lista)
+
+
 # --------------------------------------------------------------------------------------------------------------- l'HUD
 def scheda(stato, recs=None, meta=None, storia=None, archivio=None):
     """Tutto quello che l'HUD mostra, da uno stato di hud_partita (o un dict con evento, sue_nomi, aperte, sul_play, mazzo, mio_mazzo_nomi)."""
@@ -331,6 +368,7 @@ def scheda(stato, recs=None, meta=None, storia=None, archivio=None):
             recs = ML.records()
         except Exception:       # noqa: BLE001 - senza le tue partite l'HUD dice solo il mazzo
             recs = []
+    out["mio"] = nostro(s, recs)
     visti = out["visti"]
     if fmt == "limited":
         set_ = set_evento(ev)
@@ -489,6 +527,18 @@ def prova():
     casi.append(("limited: un verde visto, Selesnya in testa e Azorius fuori", cc[0][1] == "Selesnya" and all(k_ != "WU" for k_, _n, _p in cc)))
     hl = scheda(dict(evento="QuickDraft_XXX_20261112", sue_nomi=[], aperte=2), recs=[], storia=storia)
     casi.append(("negativa: limited senza magie viste, nessuna coppia", hl["tipo"] == "limited" and hl["coppie"] == []))
+    import hud_partita
+    hud_partita.nome_grp(0)
+    gid = {n.lower(): g for g, n in hud_partita._NOMI.items()}
+    mm = [gid["lightning strike"]] * 4 + [gid["opt"]] * 2 + [gid["island"]] * 4
+    nn = nostro(dict(evento="Ladder", mazzo="Izzet Test", mio_mazzo=mm, mie_fuori={gid["lightning strike"]: 1, gid["island"]: 1}, grimorio=7),
+                [dict(r, formato="standard", mio="Izzet Test") for r in recs])
+    casi.append(("il tuo mazzo: 3 Lightning Strike su 7 nel grimorio (43%), 3 terre, il record del mazzo", nn["carte"][0] == ("Lightning Strike", 3, 0.429)
+                 and nn["terre"] == 3 and nn["record"]["partite"] == 4 and nn["nome"] == "Izzet Test"))
+    ls = {x[0]: x for x in nn["lista"]}
+    casi.append(("la lista intera: copie rimaste su quelle del mazzo e la P, le terre in fondo", ls["Lightning Strike"][2:5] == (3, 4, 0.429)
+                 and ls["Opt"][2:4] == (2, 2) and nn["lista"][-1][0] == "Island" and ls["Island"][2:4] == (3, 4)))
+    casi.append(("negativa: senza la lista del mazzo nel log, niente pannello", nostro(dict(evento="Ladder"), []) is None))
     tutti = json.dumps(h, default=str) + json.dumps(hl, default=str)
     casi.append(("negativa: nell'HUD nessun campo del giocatore (nome, id)", not re.search(r'"(avversario|playerName|userId|opponent)"', tutti)))
     for n_, ok in casi:

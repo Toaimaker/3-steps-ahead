@@ -22,7 +22,7 @@ import hud_partita as HP  # noqa: E402
 import matchup_log as ML  # noqa: E402
 from tema import CI  # noqa: E402
 
-LARGO, ALTO = 420, 700
+LARGO, ALTO = 780, 720
 OGNI = 1500         # ms fra una lettura e l'altra del Player.log
 PIEDE = "Decks only, never players: nothing about the opponent is saved."
 ARENA = sys.platform == "win32"     # il pannello sopra Arena c'e' solo su Windows (Distribuzione/Mac.md)
@@ -66,7 +66,7 @@ class FinestraHud:
         else:
             x = root.winfo_rootx() + max(0, root.winfo_width() - LARGO - 300)
             f.geometry(f"{LARGO}x{ALTO}+{x}+{root.winfo_rooty() + 60}")
-        f.minsize(340, 300)
+        f.minsize(620, 300)
         self.c = tk.Canvas(f, bg=CI["scheda"], highlightthickness=0, bd=0)
         self.c.pack(fill="both", expand=True)
         self.c.bind("<Configure>", lambda e: self.disegna())
@@ -112,12 +112,23 @@ class FinestraHud:
 
     # ------------------------------------------------------------------------------------------------- il disegno
     def disegna(self):
+        """Due colonne (Autore, 12 nov 2026: «sulla sinistra mettiamo il suo mazzo sulla destra il nostro / in cima la possibilita' di accendere o spegnere
+        la visibility», «in cima a ognuno»): a sinistra il suo mazzo, a destra il tuo, ognuna col suo interruttore «On Arena» in cima."""
         c = self.c
         c.delete("all")
-        W = max(300, c.winfo_width() if c.winfo_width() > 1 else LARGO)
-        x0, x1 = 16, W - 16
+        W = max(600, c.winfo_width() if c.winfo_width() > 1 else LARGO)
+        mezzo = W // 2
+        c.create_line(mezzo, 12, mezzo, 4000, fill=CI["filo"])
+        y1 = self._colonna("suo", 16, mezzo - 14)
+        y2 = self._colonna("mio", mezzo + 14, W - 16)
+        y = max(y1, y2) + 12
+        c.create_text(16, y, text=PIEDE, anchor="nw", font=self.F(7), fill=CI["muto"], width=W - 32, tags="piede")
+        c.configure(scrollregion=(0, 0, W, y + 30))
+
+    def _strumenti(self, x0, x1):
+        """Le funzioni di disegno di una colonna, con la sua y."""
+        c, F = self.c, self.F
         y = [14]
-        F = self.F
 
         def testo(t, x=x0, f=None, col=None, ancora="nw", tag=None):
             return c.create_text(x, y[0], text=t, anchor=ancora, font=f or F(9), fill=col or CI["testo"], tags=tag or "riga")
@@ -140,34 +151,71 @@ class FinestraHud:
             if dx:
                 testo(dx, x=x1, col=col_dx or CI["titolo"], ancora="ne", f=f)
             y[0] += alto
+        return testo, titolo, barra, riga, y
 
-        h = self.h
-        testo("OPPONENT DECK", f=F(11, True), col=CI["titolo"], tag="testa")
-        if ARENA:       # «On Arena»: il pannello sopra Arena (Overlay/hud_arena.py), acceso o spento da qui
-            acc = HA.preferenza()
-            y[0] += 22
-            testo(f"On Arena: {'on' if acc else 'off'}", f=F(8, True), col=CI["azzurro"] if acc else CI["grigio"], tag="arena")
-            c.tag_bind("arena", "<Button-1>", lambda e: self.cambia_arena())
-            c.tag_bind("arena", "<Enter>", lambda e: c.configure(cursor="hand2"))
-            c.tag_bind("arena", "<Leave>", lambda e: c.configure(cursor=""))
-            y[0] -= 22
-        if h and h.get("tipo") != "spento":
-            pp = "on the play" if h.get("sul_play") else "on the draw" if h.get("sul_play") is False else ""
-            testo(" · ".join(x for x in (f"T{h['turno']}" if h.get("turno") else "", pp, f"{h.get('aperte', 0)} open") if x), x=x1, ancora="ne", col=CI["grigio"])
-        y[0] += 26 + (20 if ARENA else 0)
-        if h is None:
-            riga("No game in the Arena log yet.", col_sx=CI["grigio"])
-        elif h.get("tipo") == "spento":
-            riga(h.get("motivo") or "", col_sx=CI["grigio"])
-        else:
-            if h.get("finita"):
-                riga("Last game (finished).", col_sx=CI["muto"])
-            riga(f"from {h.get('magie_viste', 0)} spell{'s' if h.get('magie_viste') != 1 else ''} seen", col_sx=CI["muto"], f=F(7), alto=15)
-            self._corpo(h, testo, titolo, barra, riga, F, x0, x1, y)
-        y[0] += 12
-        c.create_text(x0, y[0], text=PIEDE, anchor="nw", font=F(7), fill=CI["muto"], width=x1 - x0, tags="piede")
-        y[0] += 30
-        c.configure(scrollregion=(0, 0, W, y[0]))
+    def _interruttore(self, chi, x0, y):
+        """In cima alla colonna: «On Arena» acceso o spento, il pannello di questa colonna sopra Arena (Overlay/hud_arena.py)."""
+        c, F = self.c, self.F
+        acc = HA.preferenza(chi)
+        tag = "arena_" + chi
+        larg = 118
+        c.create_rectangle(x0, y, x0 + larg, y + 20, fill=CI["azzurro_s"] if acc else CI["fondo"], outline=CI["azzurro"] if acc else CI["filo"], tags=tag)
+        c.create_oval(x0 + 8, y + 6, x0 + 16, y + 14, fill=CI["azzurro"] if acc else "", outline=CI["azzurro"] if acc else CI["grigio"], tags=tag)
+        c.create_text(x0 + 24, y + 10, text="On Arena: on" if acc else "On Arena: off", anchor="w", font=F(8, True),
+                      fill=CI["titolo"] if acc else CI["grigio"], tags=(tag, "riga"))
+        c.tag_bind(tag, "<Button-1>", lambda e: self.cambia_arena(chi))
+        c.tag_bind(tag, "<Enter>", lambda e: c.configure(cursor="hand2"))
+        c.tag_bind(tag, "<Leave>", lambda e: c.configure(cursor=""))
+
+    def _colonna(self, chi, x0, x1):
+        testo, titolo, barra, riga, y = self._strumenti(x0, x1)
+        F, h = self.F, self.h
+        if ARENA:
+            self._interruttore(chi, x0, y[0])
+            y[0] += 32
+        if chi == "suo":
+            testo("OPPONENT DECK", f=F(11, True), col=CI["titolo"], tag="testa")
+            if h and h.get("tipo") != "spento":
+                pp = "on the play" if h.get("sul_play") else "on the draw" if h.get("sul_play") is False else ""
+                testo(" · ".join(x for x in (f"T{h['turno']}" if h.get("turno") else "", pp, f"{h.get('aperte', 0)} open") if x), x=x1, ancora="ne", col=CI["grigio"])
+            y[0] += 26
+            if h is None:
+                riga("No game in the Arena log yet.", col_sx=CI["grigio"])
+            elif h.get("tipo") == "spento":
+                riga(h.get("motivo") or "", col_sx=CI["grigio"])
+            else:
+                if h.get("finita"):
+                    riga("Last game (finished).", col_sx=CI["muto"])
+                riga(f"from {h.get('magie_viste', 0)} spell{'s' if h.get('magie_viste') != 1 else ''} seen", col_sx=CI["muto"], f=F(7), alto=15)
+                self._corpo(h, testo, titolo, barra, riga, F, x0, x1, y)
+            return y[0]
+        m = (h or {}).get("mio") if h and h.get("tipo") != "spento" else None
+        testo("YOUR DECK", f=F(11, True), col=CI["titolo"], tag="testa")
+        if m:
+            testo(f"{m['grimorio']} in library", x=x1, ancora="ne", col=CI["grigio"])
+        y[0] += 26
+        if not m:
+            if not (h and h.get("tipo") == "spento"):
+                riga("No deck list in the Arena log yet.", col_sx=CI["grigio"])
+            return y[0]
+        riga(m["nome"], f=F(14, True), col_sx=CI["titolo"], alto=26)
+        r = m.get("record")
+        if r:
+            col = CI["muto"] if r["poche"] else (CI["azzurro"] if (r["wr"] or 0) >= 50 else CI["rosso"])
+            pl, dr = r["play"], r["draw"]
+            riga(f"Record {r['vinte']}-{r['perse']}", f"{r['wr']}%", col_dx=col)
+            riga(f"   play {pl[1]}-{pl[0] - pl[1]} · draw {dr[1]}-{dr[0] - dr[1]}", col_sx=CI["grigio"], alto=17)
+        titolo("Next draw")
+        for n, q, p in m["carte"]:
+            riga(f"{n}  ·  {q} left", f"{round(100 * p)}%", col_dx=CI["azzurro"] if p >= 0.1 else CI["testo"])
+        riga(f"Lands  ·  {m['terre']} left", f"{round(100 * m['p_terra'])}%", col_sx=CI["grigio"], col_dx=CI["grigio"])
+        k = (h.get("contro") or {}).get("mazzo")
+        if k:
+            titolo("This deck vs it")
+            pl, dr = k["play"], k["draw"]
+            riga(f"{k['vinte']}-{k['perse']}", f"{k['wr']}%", col_dx=CI["muto"] if k["poche"] else (CI["azzurro"] if (k["wr"] or 0) >= 50 else CI["rosso"]))
+            riga(f"   play {pl[1]}-{pl[0] - pl[1]} · draw {dr[1]}-{dr[0] - dr[1]}" + ("  (few games)" if k["poche"] else ""), col_sx=CI["grigio"], alto=17)
+        return y[0]
 
     def _corpo(self, h, testo, titolo, barra, riga, F, x0, x1, y):
         if h["tipo"] == "limited":
@@ -233,15 +281,13 @@ class FinestraHud:
                 riga(f"{etichetta}  {t['vinte']}-{t['perse']}", f"{t['wr']}%", col_dx=col)
                 riga(f"   play {pl[1]}-{pl[0] - pl[1]} · draw {dr[1]}-{dr[0] - dr[1]}" + ("  (few games)" if t["poche"] else ""), col_sx=CI["grigio"], alto=17)
             conti("All your decks", t)
-            if k.get("mazzo"):
-                conti("This deck", k["mazzo"])
             if k.get("chiude"):
-                riga(f"It beat you on its turn {k['chiude']:.1f} on average ({k['perse']} losses)", col_sx=CI["grigio"], alto=17)
+                riga(f"It beat you on its turn {k['chiude']:.1f} on average ({k['perse']} loss{'es' if k['perse'] != 1 else ''})", col_sx=CI["grigio"], alto=17)
 
-    def cambia_arena(self):
-        """Accende o spegne il pannello sopra Arena: spento, il processo si chiude da solo al giro dopo; acceso, la finestra grande lo lancia."""
-        acc = not HA.preferenza()
-        HA.imposta(acc)
+    def cambia_arena(self, chi="suo"):
+        """Accende o spegne un pannello sopra Arena: spenti tutti e due, il processo si chiude da solo al giro dopo; acceso uno, la finestra grande lo lancia."""
+        acc = not HA.preferenza(chi)
+        HA.imposta(acc, chi)
         if acc and self.lancia:
             avvia_arena()
         self.disegna()
@@ -293,7 +339,7 @@ def pulsante(fin, tk, file=None, io=None):
         if ancora:
             fin.root.after(3000, guarda)
     lab.guarda = guarda
-    if file is None and HA.preferenza():        # il pannello sopra Arena parte con la finestra grande (si vede solo durante una partita)
+    if file is None and HA.acceso():        # il pannello sopra Arena parte con la finestra grande (si vede solo durante una partita)
         avvia_arena()
     threading.Thread(target=seg.aggiorna, daemon=True).start()     # la prima lettura (il log intero) in un filo: poi si leggono solo i byte nuovi
     fin.root.after(5000, guarda)
@@ -344,7 +390,7 @@ def prova():
     casi.append(("costruito: Mono-White Auras in testa con la confidenza", "Mono-White Auras" in tt and w.h["archetipi"][0][0] == "Mono-White Auras"
                  and w.h["archetipi"][0][1] > 0.8))
     casi.append(("le sezioni: probabili, T2-T4, istantanee col mana aperto, tu contro", all(any(s.lower() in x.lower() for x in tt) for s in
-                                                                                        ("LIKELY IN ITS 60", "ITS TURNS 2", "WITH 2 OPEN", "YOU VS IT"))))
+                                                                                        ("LIKELY IN ITS 60", "ITS TURNS 2", "WITH 2 OPEN", "YOU VS IT", "YOUR DECK"))))
     casi.append(("negativa: il nome e l'id dell'avversario non sono disegnati", not any("NomeAvversario" in x or "OPPID" in x for x in tt)))
     casi.append(("niente di nuovo nel log: non si ridisegna", w.aggiorna() is False))
     with open(f1, "a", encoding="utf-8") as fh:
@@ -355,12 +401,12 @@ def prova():
     if ARENA:       # «On Arena»: il clic cambia la preferenza (in un file della prova) e la scritta
         vecchio = HA.PREF
         HA.PREF = os.path.join(d, "hud_arena.json")
-        prima = any(x == "On Arena: on" for x in w.testi())
-        w.cambia_arena()
-        dopo = any(x == "On Arena: off" for x in w.testi()) and HA.preferenza() is False
+        prima = sum(1 for x in w.testi() if x == "On Arena: on") == 2
+        w.cambia_arena("mio")
+        dopo = sum(1 for x in w.testi() if x == "On Arena: off") == 1 and HA.preferenza("mio") is False and HA.preferenza("suo") is True
         HA.PREF = vecchio
         os.remove(os.path.join(d, "hud_arena.json"))
-        casi.append(("«On Arena»: acceso di partenza, il clic lo spegne (e non lancia niente dalle prove)", prima and dopo))
+        casi.append(("«On Arena» in cima a ogni colonna: accesi di partenza, il clic spegne solo il suo (e non lancia niente dalle prove)", prima and dopo))
     w.chiudi()
     # una seconda finestra mentre c'e' la prima: una sola
     w2 = FinestraHud(tk, root, F, file=f1, **kw)

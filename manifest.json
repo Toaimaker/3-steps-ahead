@@ -1,6 +1,6 @@
 {
- "version": "0.1.43",
+ "version": "0.1.44",
  "date": "2026-11-12",
- "notes": "Performance: the open-mana situations also read your archived Arena logs, so every game counts, in the public app too.",
+ "notes": "Performance on one page: compact smart filters (the ones in use in blue), one panel with Chart, Spots, Report and Matchups tabs, nothing cut.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

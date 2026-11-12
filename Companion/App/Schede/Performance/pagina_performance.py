@@ -20,6 +20,11 @@ LINEE = ("#d8d8dc", "#24baff", "#f0ad4e", "#a58cff", "#5cb85c", "#ee8a87")      
 COLONNE = (("nome", "", 250), ("n", "GAMES", 70), ("wl", "W-L", 80), ("wr", "WIN RATE", 180), ("play", "PLAY", 70), ("draw", "DRAW", 70), ("mull", "MULL.", 70),
            ("turni", "AVG T", 70), ("delta", "Δ VS ALL", 90))
 TIPI = ("Constructed", "Limited")
+VISTE = (("chart", "Chart"), ("spots", "Spots"), ("report", "Report"), ("matchups", "Matchups"))
+SUGGERIMENTI = {"chart": "point at the chart for the numbers of every line · split by a variable: one line for each of its values",
+                "spots": "found by themselves in this situation, one or two variables, at least 15 games · strong: the 95% interval is all on its side · click one: filter it",
+                "report": "click a row: add it as a filter · click a column: sort · grey: under 15 games",
+                "matchups": "your decks against the archetypes you met · click a cell: filter it · grey: under 5 games"}
 
 
 def _colore_wr(w):
@@ -61,7 +66,7 @@ class PaginaPerformance:
         self.tipo = "Constructed"
         self.filtri = {}
         self.metrica, self.asse, self.finestra, self.dividi, self.per, self.ordina = "wr", "games", "20", None, "suo", "n"
-        self.basso, self.solo_meta = "spots", False       # la parte bassa: spots, report o matchups
+        self.basso, self.solo_meta, self.vista = "report", False, "chart"       # la vista del pannello: chart, spots, report o matchups
         self.righe, self.sporca, self.deciso, self.modo = None, True, False, "Standard"
         self._lavoro, self._img = None, None
         self.costruisci()
@@ -145,7 +150,7 @@ class PaginaPerformance:
         via = tk.Label(rs, text="Clear all", bg=C["scheda"], fg=C["accento"], font=F(7, True), cursor="hand2"); via.pack(side="right")
         via.bind("<Button-1>", lambda e: self.pulisci())
         self.b_sit = pulsante_solido(tk, F, sx, "Situations in the game  ·  none", False, self.apri_situazioni, alto=30, bg=C["scheda"])
-        self.b_sit.pack(fill="x", padx=12, pady=(2, 8))
+        self.b_sit.configure(width=260); self.b_sit.pack(fill="x", padx=12, pady=(2, 8))      # la larghezza di partenza di una tela (380) allargava la colonna
         # la colonna scorre: con la rotella sopra qualunque sua parte, e con la barra sottile a destra (fino al 12 nov la rotella andava solo sul fondo vuoto e
         # le ultime tendine e le situazioni salvate restavano tagliate in fondo: Autore, «la finestra degli smart filters e' tagliata sul fondo»)
         riga_sx = tk.Frame(sx, bg=C["scheda"]); riga_sx.pack(fill="both", expand=True)
@@ -167,62 +172,80 @@ class PaginaPerformance:
             if (w.startswith(str(self.cv_sx)) or w.startswith(str(barra))) and self.col_sx.winfo_reqheight() > self.cv_sx.winfo_height():
                 self.cv_sx.yview_scroll(-2 if e.delta > 0 else 2, "units")
         self.cv_sx.bind_all("<MouseWheel>", rotella, add="+")
+        # una riga per filtro, il nome a sinistra e il campo a destra (12 nov 2026, Autore: «impaginiamo meglio, holdem manager tiene tutto non tagliato e
+        # sulla stessa pagina»): 15 filtri in ~440 pixel invece di ~870, tutti a vista senza scorrere
         self.tendine = {}
-        for k, nome, _f in DA.VARIABILI:
-            t = Tendina(tk, self.col_sx, nome, F, larga=262, bg=C["scheda"])
-            t.fr.pack(anchor="w", padx=12, pady=(0, 8))
+        griglia = tk.Frame(self.col_sx, bg=C["scheda"]); griglia.pack(fill="x", padx=(12, 4))
+        griglia.columnconfigure(0, minsize=104)
+        for i, (k, nome, _f) in enumerate(DA.VARIABILI):
+            corto = {"Opp. colors (contains)": "Opp. colors", "Lands in opening hand": "Lands in hand", "Game length (your turns)": "Game length",
+                     "Card in opening hand": "Card in hand", "Their card seen": "Their card"}.get(nome, nome)
+            lab = tk.Label(griglia, text=corto.upper(), bg=C["scheda"], fg=C["grigio"], font=F(7, True), anchor="w"); lab.grid(row=i, column=0, sticky="w", pady=2)
+            self.lab_filtri = getattr(self, "lab_filtri", {}); self.lab_filtri[k] = lab
+            t = Tendina(tk, griglia, "", F, larga=156, bg=C["scheda"])
+            t.fr.winfo_children()[0].pack_forget()        # il nome sta a sinistra, sulla stessa riga
+            t.campo.configure(height=24)
+            t.fr.grid(row=i, column=1, sticky="w", pady=2)
             t.opzioni(["Any"], lambda v, k=k: self.metti_filtro(k, v)); t.set("Any")
             self.tendine[k] = t
-        tk.Frame(self.col_sx, bg=C["filo"], height=1).pack(fill="x", padx=12, pady=(6, 8))
+        tk.Frame(self.col_sx, bg=C["filo"], height=1).pack(fill="x", padx=12, pady=(8, 8))
         tk.Label(self.col_sx, text="SAVED SITUATIONS", bg=C["scheda"], fg=C["muto"], font=F(7, True)).pack(anchor="w", padx=12)
-        self.b_salva_sit = pulsante_solido(tk, F, self.col_sx, "Save this situation", False, self.salva_situazione, alto=28, bg=C["scheda"])
+        self.b_salva_sit = pulsante_solido(tk, F, self.col_sx, "Save this situation", False, self.salva_situazione, alto=26, bg=C["scheda"])
         self.b_salva_sit.configure(width=262); self.b_salva_sit.pack(anchor="w", padx=12, pady=(6, 6))
         self.f_sit = tk.Frame(self.col_sx, bg=C["scheda"]); self.f_sit.pack(fill="x", padx=12, pady=(0, 12))
-        # a destra: i numeri, il grafico, il report
+        # a destra: i numeri in alto, sotto un pannello solo con quattro viste (12 nov 2026, Autore: «grafico spots reports e matchups mettili nello stesso
+        # spazio con la possibilita' di selezionare la vista»): ogni vista ha tutto lo spazio, i suoi comandi stanno accanto alle linguette
         dx = tk.Frame(corpo, bg=C["fondo"]); dx.grid(row=0, column=1, sticky="nsew")
-        dx.columnconfigure(0, weight=1); dx.rowconfigure(1, weight=3); dx.rowconfigure(2, weight=2)
-        self.cv_num = tk.Canvas(dx, bg=C["scheda"], highlightthickness=1, highlightbackground=C["filo"], height=96, bd=0)
-        self.cv_num.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        dx.columnconfigure(0, weight=1); dx.rowconfigure(1, weight=1)
+        self.cv_num = tk.Canvas(dx, bg=C["scheda"], highlightthickness=1, highlightbackground=C["filo"], height=86, bd=0)
+        self.cv_num.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         self.cv_num.bind("<Configure>", lambda e: self.disegna_numeri())
-        gr = tk.Frame(dx, bg=C["scheda"], highlightthickness=1, highlightbackground=C["filo"]); gr.grid(row=1, column=0, sticky="nsew", pady=(0, 10))
-        bar = tk.Frame(gr, bg=C["scheda"]); bar.pack(fill="x", padx=12, pady=(8, 2))
-        self.b_metr = {}
-        for k, n in DA.METRICHE:
-            b = pulsante_solido(tk, F, bar, n, k == self.metrica, lambda k=k: self.cambia("metrica", k), alto=26, bg=C["scheda"],
-                                colori=("#2a2a30", "#3a3a42", "#0f86cc"))
-            b.configure(width=112); b.pack(side="left", padx=(0, 6), pady=(14, 0))
-            self.b_metr[k] = b
-        self.t_dividi = Tendina(tk, bar, "Split by", F, larga=190, bg=C["scheda"]); self.t_dividi.fr.pack(side="right")
-        sit_k = ["sit:" + s for s, _n in DA.SIT]
+        pan = tk.Frame(dx, bg=C["scheda"], highlightthickness=1, highlightbackground=C["filo"]); pan.grid(row=1, column=0, sticky="nsew")
+        bar = tk.Frame(pan, bg=C["scheda"]); bar.pack(fill="x", padx=12, pady=(6, 0))
+        self.b_viste = {}
+        for k, n in VISTE:
+            b = pulsante_solido(tk, F, bar, n, k == self.vista, lambda k=k: self.cambia_vista(k), alto=28, bg=C["scheda"], colori=("#2a2a30", "#3a3a42", "#0f86cc"))
+            b.configure(width=110); b.pack(side="left", padx=(0, 6), pady=(14, 0))
+            self.b_viste[k] = b
+        sit_k = ["sit:" + s_ for s_, _n in DA.SIT]
+        # i comandi di ogni vista, a destra delle linguette
+        self.cmd = {k: tk.Frame(bar, bg=C["scheda"]) for k, _n in VISTE}
+        self.t_dividi = Tendina(tk, self.cmd["chart"], "Split by", F, larga=180, bg=C["scheda"]); self.t_dividi.fr.pack(side="right")
         self.t_dividi.opzioni(["None"] + [k for k, _n, _f in DA.VARIABILI if k not in ("data",)] + sit_k, lambda v: self.cambia("dividi", None if v == "None" else v),
                               etichette={"None": "None", **DA.NOME, **{k: DA.nome_var(k) for k in sit_k}}); self.t_dividi.set("None")
-        self.t_fin = Tendina(tk, bar, "Window", F, larga=150, bg=C["scheda"]); self.t_fin.fr.pack(side="right", padx=(0, 10))
+        self.t_fin = Tendina(tk, self.cmd["chart"], "Window", F, larga=140, bg=C["scheda"]); self.t_fin.fr.pack(side="right", padx=(0, 10))
         self.t_fin.opzioni([k for k, _n in DA.FINESTRE], lambda v: self.cambia("finestra", v), etichette=dict(DA.FINESTRE)); self.t_fin.set(self.finestra)
-        self.t_asse = Tendina(tk, bar, "X axis", F, larga=110, bg=C["scheda"]); self.t_asse.fr.pack(side="right", padx=(0, 10))
+        self.t_asse = Tendina(tk, self.cmd["chart"], "X axis", F, larga=100, bg=C["scheda"]); self.t_asse.fr.pack(side="right", padx=(0, 10))
         self.t_asse.opzioni(["games", "date"], lambda v: self.cambia("asse", v), etichette={"games": "Games", "date": "Date"}); self.t_asse.set(self.asse)
-        self.cv_gr = tk.Canvas(gr, bg=C["scheda"], highlightthickness=0, bd=0, height=220); self.cv_gr.pack(fill="both", expand=True, padx=8, pady=(4, 8))
+        self.t_per = Tendina(tk, self.cmd["report"], "Group by", F, larga=220, bg=C["scheda"]); self.t_per.fr.pack(side="right")
+        self.t_per.opzioni([k for k, _n, _f in DA.VARIABILI if k != "data"] + sit_k, lambda v: self.cambia("per", v),
+                           etichette={**DA.NOME, **{k: DA.nome_var(k) for k in sit_k}}); self.t_per.set(self.per)
+        self.b_meta = pulsante_solido(tk, F, self.cmd["matchups"], "Meta decks only", self.solo_meta, self.cambia_meta, alto=26, bg=C["scheda"],
+                                      colori=("#2a2a30", "#3a3a42", "#0f86cc"))
+        self.b_meta.configure(width=140); self.b_meta.pack(side="right", pady=(14, 0))
+        self.l_basso = tk.Label(pan, text="", bg=C["scheda"], fg=C["grigio"], font=F(7), anchor="w"); self.l_basso.pack(fill="x", padx=12, pady=(4, 0))
+        # le quattro viste, una alla volta
+        self.f_viste = {k: tk.Frame(pan, bg=C["scheda"]) for k in ("chart", "spots", "tabella")}
+        bar_m = tk.Frame(self.f_viste["chart"], bg=C["scheda"]); bar_m.pack(fill="x", padx=12, pady=(4, 0))
+        self.b_metr = {}
+        for k, n in DA.METRICHE:
+            b = pulsante_solido(tk, F, bar_m, n, k == self.metrica, lambda k=k: self.cambia("metrica", k), alto=24, bg=C["scheda"],
+                                colori=("#2a2a30", "#3a3a42", "#0f86cc"))
+            b.configure(width=104); b.pack(side="left", padx=(0, 6))
+            self.b_metr[k] = b
+        self.cv_gr = tk.Canvas(self.f_viste["chart"], bg=C["scheda"], highlightthickness=0, bd=0, height=160); self.cv_gr.pack(fill="both", expand=True, padx=8, pady=(4, 6))
         self.cv_gr.bind("<Configure>", lambda e: self.disegna_grafico())
         self.cv_gr.bind("<Motion>", self.punta)
         self.cv_gr.bind("<Leave>", lambda e: self.cv_gr.delete("punta"))
-        rp = tk.Frame(dx, bg=C["scheda"], highlightthickness=1, highlightbackground=C["filo"]); rp.grid(row=2, column=0, sticky="nsew")
-        bar2 = tk.Frame(rp, bg=C["scheda"]); bar2.pack(fill="x", padx=12, pady=(8, 2))
-        # tre viste (12 nov 2026, Autore: «aiutare i giocatori a leggere gli spot dove vincono di piu' dove perdono di piu' e potranno incastrare anche i mazzi che
-        # utilizzano vs i mazzi del meta o trovati in partite»): gli spot trovati da soli, il report per una variabile, la matrice dei matchup
-        self.b_basso = {}
-        for k, n in (("spots", "Spots"), ("report", "Report"), ("matchups", "Matchups")):
-            b = pulsante_solido(tk, F, bar2, n, k == self.basso, lambda k=k: self.cambia_basso(k), alto=26, bg=C["scheda"], colori=("#2a2a30", "#3a3a42", "#0f86cc"))
-            b.configure(width=104); b.pack(side="left", padx=(0, 6), pady=(14, 0))
-            self.b_basso[k] = b
-        self.t_per = Tendina(tk, bar2, "Group by", F, larga=220, bg=C["scheda"])
-        self.t_per.opzioni([k for k, _n, _f in DA.VARIABILI if k != "data"] + sit_k, lambda v: self.cambia("per", v),
-                           etichette={**DA.NOME, **{k: DA.nome_var(k) for k in sit_k}}); self.t_per.set(self.per)
-        self.b_meta = pulsante_solido(tk, F, bar2, "Meta decks only", self.solo_meta, self.cambia_meta, alto=26, bg=C["scheda"], colori=("#2a2a30", "#3a3a42", "#0f86cc"))
-        self.b_meta.configure(width=140)
-        self.l_basso = tk.Label(bar2, text="", bg=C["scheda"], fg=C["grigio"], font=F(7)); self.l_basso.pack(side="right", pady=(14, 0))
-        self.cv_rp = tk.Canvas(rp, bg=C["scheda"], highlightthickness=0, bd=0, height=160); self.cv_rp.pack(fill="both", expand=True, padx=8, pady=(4, 8))
+        self.cv_sp = tk.Canvas(self.f_viste["spots"], bg=C["scheda"], highlightthickness=0, bd=0); self.cv_sp.pack(fill="both", expand=True, padx=8, pady=(4, 6))
+        self.cv_sp.bind("<Configure>", lambda e: self.disegna_spot())
+        self.cv_sp.bind("<Button-1>", self.clic_spot)
+        self.cv_rp = tk.Canvas(self.f_viste["tabella"], bg=C["scheda"], highlightthickness=0, bd=0, height=120); self.cv_rp.pack(fill="both", expand=True, padx=8, pady=(4, 6))
         self.cv_rp.bind("<Configure>", lambda e: self.disegna_basso())
         self.cv_rp.bind("<Button-1>", self.clic_report)
-        self.cv_rp.bind("<MouseWheel>", lambda e: self.cv_rp.yview_scroll(-2 if e.delta > 0 else 2, "units"))
+        self.cv_rp.configure(yscrollincrement=24)       # la rotella scorre di una riga intera
+        self.cv_rp.bind("<MouseWheel>", lambda e: (self.cv_rp.yview_scroll(-1 if e.delta > 0 else 1, "units"), self.maschera_rp()))
+        self.mostra_vista()
         self.disegna_situazioni()
 
     # ------------------------------------------------------------ i comandi
@@ -243,7 +266,7 @@ class PaginaPerformance:
         self.filtri = {}
         self.disegna()
 
-    PARTENZA = dict(metrica="wr", asse="games", finestra="20", dividi=None, per="suo", ordina="n", basso="spots", solo_meta=False)
+    PARTENZA = dict(metrica="wr", asse="games", finestra="20", dividi=None, per="suo", ordina="n", basso="report", solo_meta=False, vista="chart")
 
     def reset(self):
         """Tutte le partite, come all'apertura: niente filtri ne' situazioni, il grafico e la vista in basso di partenza."""
@@ -252,9 +275,8 @@ class PaginaPerformance:
             setattr(self, k, v)
         for k, b in self.b_metr.items():
             b.metti(dict(DA.METRICHE)[k], k == self.metrica)
-        for k, b in self.b_basso.items():
-            b.metti(dict(spots="Spots", report="Report", matchups="Matchups")[k], k == self.basso)
         self.b_meta.metti("Meta decks only", False)
+        self.mostra_vista()
         self.t_asse.set(self.asse); self.t_fin.set(self.finestra); self.t_dividi.set("None"); self.t_per.set(self.per)
         self.cv_sx.yview_moveto(0)
         self.disegna()
@@ -269,11 +291,28 @@ class PaginaPerformance:
         else:
             self.disegna_basso()
 
-    def cambia_basso(self, k):
-        self.basso = k
-        for k2, b in self.b_basso.items():
-            b.metti(dict(spots="Spots", report="Report", matchups="Matchups")[k2], k2 == k)
-        self.disegna_basso()
+    def cambia_vista(self, k):
+        self.vista = k
+        if k in ("report", "matchups"):
+            self.basso = k
+        self.mostra_vista()
+        if k in ("report", "matchups"):
+            self.disegna_basso()
+
+    def cambia_basso(self, k):      # il nome di prima (le prove, il reset): Report o Matchups
+        self.cambia_vista(k)
+
+    def mostra_vista(self):
+        """La vista scelta nel pannello, i suoi comandi accanto alle linguette e la sua riga d'aiuto."""
+        for k, b in self.b_viste.items():
+            b.metti(dict(VISTE)[k], k == self.vista)
+        for k, f in self.cmd.items():
+            f.pack_forget()
+        self.cmd[self.vista].pack(side="right")
+        for f in self.f_viste.values():
+            f.pack_forget()
+        self.f_viste["tabella" if self.vista in ("report", "matchups") else self.vista].pack(fill="both", expand=True)
+        self.l_basso.configure(text=SUGGERIMENTI[self.vista])
 
     def cambia_meta(self):
         self.solo_meta = not self.solo_meta
@@ -305,12 +344,24 @@ class PaginaPerformance:
             # sui dati»): i valori restano quelli che hanno partite sotto gli altri filtri
             t.opzioni(voci, lambda v, k=k: self.metti_filtro(k, v), etichette={"Any": "Any", **{v: DA.etichetta(k, v) for v, _n in vv}})
             t.set(sc if sc is not None else "Any")
-            t.campo.configure(highlightbackground=C["accento"] if sc is not None else "#3a3a40")
+            self.evidenzia(k, sc is not None)
         self.aggiorna_bottone_sit()
         self.disegna_finestra_sit()
         self.disegna_numeri()
         self.disegna_grafico()
+        self.disegna_spot()
         self.disegna_basso()
+
+    def evidenzia(self, k, on):
+        """Una tendina con un valore scelto: il campo azzurro scuro col bordo azzurro e il nome in azzurro (12 nov 2026, Autore: «le tendine dove ho dati
+        inseriti le evidenzi in azzurro»); il bordo resta azzurro anche quando il puntatore se ne va."""
+        t = self.tendine[k]
+        bordo = C["accento"] if on else "#3a3a40"
+        t.campo.configure(bg="#0f2a38" if on else "#101014", highlightbackground=bordo)
+        t.campo.bind("<Leave>", lambda e, b=bordo: t.campo.configure(highlightbackground=b))
+        lab = getattr(self, "lab_filtri", {}).get(k)
+        if lab is not None:
+            lab.configure(fg=C["accento"] if on else C["grigio"])
 
     def disegna_numeri(self):
         c = self.cv_num
@@ -424,52 +475,61 @@ class PaginaPerformance:
             c.create_text(bx + 8, y0 + 27 + 15 * j, text=t, anchor="w", fill=col, font=self.F(7), tags="punta")
 
     def disegna_basso(self):
-        """La parte bassa: la vista scelta, coi suoi comandi accanto alle linguette."""
-        self.t_per.fr.pack_forget(); self.b_meta.pack_forget()
+        """La tabella del pannello: Report o Matchups."""
         if self.basso == "report":
-            self.t_per.fr.pack(side="left", padx=(16, 0), after=self.b_basso["matchups"])
-            self.l_basso.configure(text="click a row: add it as a filter · click a column: sort")
             self.disegna_report()
-        elif self.basso == "matchups":
-            self.b_meta.pack(side="left", padx=(16, 0), pady=(14, 0), after=self.b_basso["matchups"])
-            self.l_basso.configure(text="your decks against the archetypes you met · click a cell: filter it · grey: under 5 games")
-            self.disegna_matchup()
         else:
-            self.l_basso.configure(text="found by themselves in this situation, one or two variables, at least 15 games · click one: filter it")
-            self.disegna_spot()
+            self.disegna_matchup()
 
     def disegna_spot(self):
-        """Dove vinci e dove perdi di piu': due colonne, gli spot che reggono in testa (l'intervallo sta tutto dalla loro parte: «strong»)."""
-        c = self.cv_rp
+        """Dove vinci e dove perdi di piu', accanto al grafico: due elenchi uno sopra l'altro, quanti ne stanno nell'altezza (niente si taglia), gli spot che
+        reggono in testa (l'intervallo sta tutto dalla loro parte: «strong»). Il clic mette le condizioni fra i filtri."""
+        c = self.cv_sp
         c.delete("all")
         self._spot_box = []
         if self.righe is None:
             return
         F = self.F
         r = self.scelte()
+        W, H = max(c.winfo_width(), 300), max(c.winfo_height(), 200)
+        alto = 38
+        affiancati = W >= 800        # a tutta larghezza: dove vinci a sinistra, dove perdi a destra
+        per_lista = max(1, int((H - 22 - 8) // (alto + 4))) if affiancati else max(1, int((H - 2 * 22 - 8) // 2 // (alto + 4)))
         minimo = 15 if len(r) >= 90 else max(6, len(r) // 6)
-        meglio, peggio = DA.spot(r, minimo=minimo, quanti=7, gia=self.filtri)
+        meglio, peggio = DA.spot(r, minimo=minimo, quanti=per_lista, gia=self.filtri)
         base = DA.conti(r)["wr"]
-        W = max(c.winfo_width(), 700)
-        meta = (W - 24) / 2
-        for j, (tit, lista, col) in enumerate((("WHERE YOU WIN MOST", meglio, C["azzurro"]), ("WHERE YOU LOSE MOST", peggio, C["rosso"]))):
-            x = 8 + j * (meta + 8)
-            c.create_text(x, 10, text=tit, anchor="w", fill=col, font=F(7, True))
-            c.create_text(x + meta - 8, 10, text=f"vs {base:.0f}% in this situation" if base is not None else "", anchor="e", fill=C["muto"], font=F(7))
-            y = 26
+        corto = lambda t, n: t if len(t) <= n else t[:n - 1] + "…"
+        y = 2
+        larga = (W - 12) / 2 if affiancati else W
+        for j_, (tit, lista, col) in enumerate((("WHERE YOU WIN MOST", meglio, C["azzurro"]), ("WHERE YOU LOSE MOST", peggio, C["rosso"]))):
+            x0 = j_ * (larga + 12) if affiancati else 0
+            if affiancati:
+                y = 2
+            c.create_text(x0 + 4, y + 8, text=tit, anchor="w", fill=col, font=F(7, True))
+            c.create_text(x0 + larga - 4, y + 8, text=f"vs {base:.0f}% here" if base is not None else "", anchor="e", fill=C["muto"], font=F(7))
+            y += 20
             if not lista:
-                c.create_text(x, y + 12, text=f"nothing yet: no spot with {minimo}+ games that stands out", anchor="w", fill=C["grigio"], font=F(8))
+                c.create_text(x0 + 4, y + 12, text=f"nothing yet: no spot with {minimo}+ games that stands out", anchor="w", fill=C["grigio"], font=F(7))
+                y += 28
             for s in lista:
-                c.create_rectangle(x, y, x + meta - 8, y + 40, fill="#202024", outline=col if s["forte"] else "#2c2c32")
-                nome = s["nome"] if len(s["nome"]) <= 70 else s["nome"][:69] + "…"
-                c.create_text(x + 10, y + 13, text=nome, anchor="w", fill=C["titolo"], font=F(8, True))
-                c.create_text(x + 10, y + 29, text=f"{s['n']} games · {s['vinte']}-{s['perse']} · 95% CI {s['ic'][0]}–{s['ic'][1]}%"
+                c.create_rectangle(x0, y, x0 + larga - 1, y + alto, fill="#202024", outline=col if s["forte"] else "#2c2c32")
+                c.create_text(x0 + 10, y + 12, text=corto(s["nome"], int((larga - 90) / 6.4)), anchor="w", fill=C["titolo"], font=F(8, True))
+                c.create_text(x0 + 10, y + 27, text=f"{s['n']} games · {s['vinte']}-{s['perse']} · 95% CI {s['ic'][0]}–{s['ic'][1]}%"
                               + ("  ·  strong" if s["forte"] else "  ·  a hint"), anchor="w", fill=C["grigio"] if s["forte"] else C["muto"], font=F(7))
-                c.create_text(x + meta - 20, y + 13, text=f"{s['wr']:.0f}%", anchor="e", fill=col, font=F(12, True))
-                c.create_text(x + meta - 20, y + 30, text=f"{s['delta']:+.0f}", anchor="e", fill=col, font=F(8, True))
-                self._spot_box.append((x, y, x + meta - 8, y + 40, s))
-                y += 46
-        c.configure(scrollregion=(0, 0, W, 26 + 46 * max(len(meglio), len(peggio), 1) + 10))
+                c.create_text(x0 + larga - 12, y + 12, text=f"{s['wr']:.0f}%", anchor="e", fill=col, font=F(11, True))
+                c.create_text(x0 + larga - 12, y + 28, text=f"{s['delta']:+.0f}", anchor="e", fill=col, font=F(7, True))
+                self._spot_box.append((x0, y, x0 + larga, y + alto, s))
+                y += alto + 4
+            y += 6
+
+    def clic_spot(self, e):
+        """Uno spot: le sue condizioni fra i filtri."""
+        for x0, y0, x1, y1, s in getattr(self, "_spot_box", []):
+            if x0 <= e.x <= x1 and y0 <= e.y <= y1:
+                for k, v in s["condizioni"]:
+                    self.filtri[k] = v
+                self.disegna()
+                return
 
     def disegna_matchup(self):
         """La matrice: i tuoi mazzi in riga, gli archetipi incontrati in colonna (o solo quelli del meta), in ogni cella win rate e partite."""
@@ -559,17 +619,25 @@ class PaginaPerformance:
             c.create_text(12, 40, text="No games in this situation", anchor="w", fill=C["grigio"], font=F(8))
         c.create_text(8, y + 10, text="grey: under 15 games, a hint", anchor="w", fill=C["muto"], font=F(7))
         c.configure(scrollregion=(0, 0, W, y + 24))
+        visibili = max(0, int((max(c.winfo_height(), 60) - 26) // 24))       # le righe che stanno intere: le altre si dicono, non si lasciano a meta'
+        if len(rep) > visibili and self.vista == "report":
+            self.l_basso.configure(text=f"{len(rep) - visibili} more rows below: scroll · " + SUGGERIMENTI["report"])
+        self.maschera_rp()
+
+    def maschera_rp(self):
+        """La riga che in fondo starebbe a meta' si copre: in vista solo righe intere (12 nov 2026: «tutto non tagliato»)."""
+        c = self.cv_rp
+        c.delete("maschera")
+        if self.basso != "report":
+            return
+        top, h = c.canvasy(0), max(c.winfo_height(), 60)
+        fondo = top + h
+        ultimo = 24 + int((fondo - 24) // 24) * 24       # le righe cominciano a 24 e sono alte 24
+        if ultimo < fondo:
+            c.create_rectangle(0, ultimo, max(c.winfo_width(), 700) + 10, fondo + 2, fill=C["scheda"], outline="", tags="maschera")
 
     def clic_report(self, e):
         y = self.cv_rp.canvasy(e.y)
-        if self.basso == "spots":       # uno spot: le sue condizioni fra i filtri
-            for x0, y0, x1, y1, s in getattr(self, "_spot_box", []):
-                if x0 <= e.x <= x1 and y0 <= y <= y1:
-                    for k, v in s["condizioni"]:
-                        self.filtri[k] = v
-                    self.disegna()
-                    return
-            return
         if self.basso == "matchups":        # una cella: il tuo mazzo e il suo archetipo fra i filtri
             for x0, y0, x1, y1, m, a in getattr(self, "_celle", []):
                 if x0 <= e.x <= x1 and y0 <= y <= y1:
