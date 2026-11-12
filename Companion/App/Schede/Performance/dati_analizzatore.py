@@ -115,6 +115,60 @@ def _lunga(t):
     return next((n for n, a, b in LUNGHE if a <= t <= b), None) if t else None
 
 
+_TAB = {}
+
+
+def _tabella():
+    """Le carte di Arena per nome (costo, tipo, colori), una volta."""
+    if "t" not in _TAB:
+        try:
+            import dati_mazzo as DM
+            _TAB["t"] = DM.tabella_carte()
+        except Exception:      # noqa: BLE001 - senza il database i filtri della mano restano vuoti
+            _TAB["t"] = {}
+    return _TAB["t"]
+
+
+def _carta(nome):
+    t = _tabella()
+    return t.get(nome) or t.get(nome.split(" // ")[0].strip())
+
+
+def dalla_mano(tenuta):
+    """La mano tenuta {nome: copie} -> (magie da 1-2 mana «0»/«1»/«2+», una creatura da 1-2 mana True/False); None se la mano non si conosce."""
+    if not tenuta:
+        return None, None
+    econ, crea = 0, False
+    for n, q in tenuta.items():
+        c = _carta(n)
+        if not c or "Land" in (c.get("tipo") or "").split(" // ")[0]:
+            continue
+        if 0 < (c.get("cmc") or 0) <= 2:
+            econ += q
+            crea = crea or "Creature" in (c.get("tipo") or "")
+    return ("0" if econ == 0 else "1" if econ == 1 else "2+"), crea
+
+
+def colori_mazzo(nomi_):
+    """La variante di colore del tuo mazzo (WUBRG, «C» senza colori) dalle magie della lista; None senza lista."""
+    if not nomi_:
+        return None
+    trovati = set()
+    for n in nomi_:
+        c = _carta(n)
+        if c and "Land" not in (c.get("tipo") or "").split(" // ")[0]:
+            trovati |= set(c.get("colori") or "")
+    return "".join(k for k in "WUBRG" if k in trovati) or "C"
+
+
+def come_finita(motivo, vinta):
+    """Come e' finita: la concessione di chi, giocata fino in fondo, il tempo."""
+    m = (motivo or "").replace("ResultReason_", "")
+    if m == "Concede":
+        return "They conceded" if vinta else "You conceded"
+    return {"Game": "Played to the end", "Timeout": "Timeout"}.get(m)
+
+
 def riga(p, r):
     """Una partita: il record di matchup_log piu' le variabili dell'analizzatore. p e' la partita di partite_log."""
     import condividi
@@ -125,7 +179,10 @@ def riga(p, r):
     terre = sum(q for n, q in tenuta.items() if MS.e_terra(n)) if tenuta else None
     sue = condividi.nomi(p.get("sue") or []) or {}
     turni = r.get("turni")
-    return dict(r, tipo="Limited" if r["formato"] == "limited" else "Constructed", quando=quando, ora=quando.hour, fascia=_fascia(quando.hour),
+    econ, crea = dalla_mano(tenuta)
+    lista = condividi.nomi(p.get("carte") or []) or {}
+    return dict(r, economiche=econ, crea_mano=crea, miei_colori=colori_mazzo(lista), fine=come_finita(p.get("motivo"), r["vinta"]),
+                giorno=GIORNI[quando.weekday()], tipo="Limited" if r["formato"] == "limited" else "Constructed", quando=quando, ora=quando.hour, fascia=_fascia(quando.hour),
                 terre=terre, mano=sorted(tenuta or {}), sue_viste=sorted(n for n in sue if not MS.e_terra(n)),
                 turno=math.ceil(turni / 2) if turni else None, lunga=_lunga(math.ceil(turni / 2) if turni else None),
                 partenza=None if r.get("inizia") is None else ("Play" if r["inizia"] else "Draw"),
@@ -144,6 +201,8 @@ def sessioni(righe):
     for x in sorted(righe, key=lambda x: x["quando"]):
         x["n_sessione"] = 1 if prima is None or (x["quando"] - prima["quando"]).total_seconds() > SESSIONE_ORE * 3600 else prima["n_sessione"] + 1
         x["sessione"] = "1st game" if x["n_sessione"] == 1 else "2nd-3rd game" if x["n_sessione"] <= 3 else "4th game or later"
+        minuti = None if prima is None else (x["quando"] - prima["quando"]).total_seconds() / 60
+        x["pausa"] = "Over 1 hour (new session)" if minuti is None or minuti > 60 else "Under 15 minutes" if minuti < 15 else "15-60 minutes"
         prima = x
     return righe
 
@@ -238,6 +297,22 @@ def nome_vs(v):
     return NOMI_VS.get(v, v)
 
 
+# i filtri in piu' di ogni fase (12 nov 2026, Autore: «aggiungere a ogni tendina un set di filtri aggiuntivi per ogni step», «Sì, costruiscili»): non sono
+# tendine, si scelgono dal + della fase; valgono come le altre variabili (filtri, Split by, Group by, Spots)
+GIORNI = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+EXTRA = [("miei_colori", "Your deck's colors", lambda x: x.get("miei_colori")),
+         ("economiche", "1-2 mana spells in your opening hand", lambda x: x.get("economiche")),
+         ("crea_mano", "A 1-2 mana creature in your opening hand", lambda x: None if x.get("crea_mano") is None else ("Yes" if x["crea_mano"] else "No")),
+         ("fine", "How it ended", lambda x: x.get("fine")),
+         ("giorno", "Day of the week", lambda x: x.get("giorno")),
+         ("pausa", "Break before this game", lambda x: x.get("pausa"))]
+for _k, _n, _f in EXTRA:
+    NOME[_k], LEGGI[_k] = _n, _f
+ORDINE_VALORI.update(miei_colori=VARIANTI, economiche=("0", "1", "2+"), crea_mano=("Yes", "No"),
+                     fine=("You conceded", "They conceded", "Played to the end", "Timeout"), giorno=GIORNI,
+                     pausa=("Under 15 minutes", "15-60 minutes", "Over 1 hour (new session)"))
+
+
 def per_varianti(r):
     """La tabella di By deck: per gruppo (mono, due ... cinque colori, incolore) i conti del gruppo e di ogni variante esatta che ha partite.
     -> [dict(gruppo, conti, varianti=[(variante, conti)])]."""
@@ -301,7 +376,7 @@ def nome_var(k):
 def etichetta(k, v):
     if k.startswith("sit:"):
         return NOME_SIT.get(k[4:], k[4:]) if v == "Yes" else "Not: " + NOME_SIT.get(k[4:], k[4:])
-    if k == "vs":
+    if k in ("vs", "miei_colori"):
         return nome_vs(v) if v == "C" else f"{v} · {nome_vs(v)}"
     return f"{v} · {NOMI_COLORI[v]}" if k == "colori" and v in NOMI_COLORI else str(v)
 
@@ -492,7 +567,7 @@ def spot(r, minimo=15, quanti=8, coppie=True, gia=None):
     if not base["n"] or base["wr"] is None:
         return [], []
     insiemi = {}
-    for k in [k for k, _n, _f in VARIABILI] + ["vs"] + ["sit:" + s for s, _n in SIT]:
+    for k in [k for k, _n, _f in VARIABILI] + ["vs"] + [k for k, _n, _f in EXTRA] + ["sit:" + s for s, _n in SIT]:
         if k in gia or k == "data":
             continue
         per = collections.defaultdict(set)
@@ -699,6 +774,18 @@ def prova():
     pv = per_varianti(rv)
     casi.append(("per_varianti: mono, due, tre colori e incolore, ognuno coi suoi", [g["gruppo"] for g in pv] == ["Mono-color", "Two colors", "Three colors", "Colorless"]
                  and all(g["conti"]["n"] == 10 for g in pv) and nome_vs("WUBG") == "Four-color, no red" and etichetta("vs", "BR") == "BR · Rakdos"))
+    # i filtri in piu' delle fasi: la mano, i colori del tuo mazzo, come e' finita
+    _TAB["t"] = {"Shock": dict(tipo="Instant", cmc=1, colori="R"), "Goblin": dict(tipo="Creature — Goblin", cmc=2, colori="R"),
+                 "Dragon": dict(tipo="Creature — Dragon", cmc=5, colori="R"), "Mountain": dict(tipo="Basic Land — Mountain", cmc=0, colori="R"),
+                 "Owl": dict(tipo="Creature — Bird", cmc=2, colori="U")}
+    casi.append(("la mano: 2 magie da 1-2 mana con una creatura; senza creatura economica No; mano sconosciuta None",
+                 dalla_mano({"Shock": 1, "Goblin": 1, "Mountain": 3}) == ("2+", True) and dalla_mano({"Shock": 1, "Dragon": 1}) == ("1", False)
+                 and dalla_mano(None) == (None, None)))
+    casi.append(("negativa: le terre non contano fra le magie da 1-2 mana", dalla_mano({"Mountain": 5}) == ("0", False)))
+    casi.append(("i colori del tuo mazzo dalle magie (le terre no), come e' finita", colori_mazzo(["Goblin", "Owl", "Mountain"]) == "UR"
+                 and colori_mazzo(["Mountain"]) == "C" and come_finita("ResultReason_Concede", True) == "They conceded"
+                 and come_finita("ResultReason_Concede", False) == "You conceded" and come_finita("ResultReason_Game", True) == "Played to the end"))
+    _TAB.clear()
     vere = righe()
     casi.append(("i log veri: righe con le variabili (se ci sono partite)", not vere or all(k in vere[0] for k in ("tipo", "partenza", "terre", "sessione", "fascia"))))
     for n, ok in casi:

@@ -61,8 +61,10 @@ SEZIONI = (
       ("Closed session", "closes the draft by hand: two clicks")]),
     ("performance", "Performance", "An analyzer of your games and situations, from your Arena logs: pick any variables, and the numbers, the chart, the spots "
      "and the matchups follow.",
-     [("Constructed · Limited", "which games"), ("Add filters", "situations in the game, as flags from the turn by turn records: missed land drops, curve, first creature, "
-                                                  "spells on the other turn, who attacked first, targeted, creatures lost, attacks into untapped lands, passing with lands up; Yes or No each"),
+     [("Constructed · Limited", "which games"), ("+ more", "on each phase of the game, its extra filters: your deck's colors; the 1-2 mana spells and creatures in your opening hand and "
+                                             "the first turns (missed land drops, curve, first creature); the fight (who attacked first, spells on the other turn, targeted, "
+                                             "attacks into untapped lands, passing with lands up); how it ended (who conceded) and creatures lost; the day of the week and "
+                                             "the break before the game"),
       ("Smart filters", "by phase of the game: format, event and your deck (By deck); play or draw, mulligans, lands in hand; their archetype and colors; "
                         "length and rank; date, time of day and game in the session"),
       ("By deck", "pick one of your decks, against everyone or against one exact color variant of their deck (vs colors: flag the colors, mono-color to "

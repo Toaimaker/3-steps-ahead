@@ -32,6 +32,13 @@ LARGA_DECK = 1000                               # la finestra By deck
 # per fasi della partita (12 nov 2026, Autore: «il menu a tendine creiamolo per macro fasi partita: formato evento e deck - poi start e mulligan - lands in
 # hand / cards in hand possiamo toglierlo, their card anche»): prima della partita (con By deck), l'apertura, l'avversario, com'e' finita, quando.
 # «deck» e' il pulsante By deck; Card in hand e Their card non sono tendine (restano in Split by, Group by e negli Spots)
+FASI = (("BEFORE THE GAME", ("miei_colori",)),
+        ("OPENING AND FIRST TURNS", ("economiche", "crea_mano", "sit:io_terra", "sit:lui_terra", "sit:io_curva", "sit:io_crea2", "sit:lui_crea2")),
+        ("THE OPPONENT AND THE FIGHT", ("sit:io_primo", "sit:io_nel_suo", "sit:lui_nel_mio", "sit:lui_bersagli", "sit:io_att_aperto", "sit:io_att_chiuso",
+                                        "sit:lui_att_aperto", "sit:io_passa_aperto", "sit:lui_passa_aperto")),
+        ("THE END OF THE GAME", ("fine", "sit:io_morti", "sit:lui_morti")),
+        ("WHEN", ("giorno", "pausa")))      # i filtri in piu' di ogni fase, nel suo +
+LARGA_FASE = 780
 SEZIONI_FILTRI = (("formato", "evento", "deck"), ("partenza", "mull", "terre"), ("suo", "colori"), ("lunga", "rango"), ("data", "fascia", "sessione"))
 
 
@@ -180,12 +187,11 @@ class PaginaPerformance:
         # a sinistra: le variabili e le situazioni salvate, in una colonna che scorre
         sx = tk.Frame(corpo, bg=C["scheda"], highlightthickness=1, highlightbackground=C["filo"]); sx.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
         rs = tk.Frame(sx, bg=C["scheda"]); rs.pack(fill="x", padx=12, pady=(10, 4))
-        # «Smart filters» (12 nov 2026, Autore: «i filtri a sinistra potremmo chiamarli smart filters»), e sotto il pulsante della finestra delle situazioni
+        # «Smart filters» (12 nov 2026, Autore: «i filtri a sinistra potremmo chiamarli smart filters»); il pulsante Add filters (le situazioni) non c'e' piu':
+        # le situazioni stanno nel + della loro fase
         tk.Label(rs, text="SMART FILTERS", bg=C["scheda"], fg=C["muto"], font=F(7, True)).pack(side="left")
         via = tk.Label(rs, text="Clear all", bg=C["scheda"], fg=C["accento"], font=F(7, True), cursor="hand2"); via.pack(side="right")
         via.bind("<Button-1>", lambda e: self.pulisci())
-        self.b_sit = pulsante_solido(tk, F, sx, "Add filters  ·  none", False, self.apri_situazioni, alto=30, bg=C["scheda"])        # «Add filters» (12 nov 2026, Autore: «situations in the game chiamalo add filters»)
-        self.b_sit.configure(width=260); self.b_sit.pack(fill="x", padx=12, pady=(2, 8))      # la larghezza di partenza di una tela (380) allargava la colonna
         # la colonna scorre: con la rotella sopra qualunque sua parte, e con la barra sottile a destra (fino al 12 nov la rotella andava solo sul fondo vuoto e
         # le ultime tendine e le situazioni salvate restavano tagliate in fondo: Autore, «la finestra degli smart filters e' tagliata sul fondo»)
         riga_sx = tk.Frame(sx, bg=C["scheda"]); riga_sx.pack(fill="both", expand=True)
@@ -219,10 +225,16 @@ class PaginaPerformance:
         # format e event in una loro sezione»)
         nomi_var = {k_: n_ for k_, n_, _f in DA.VARIABILI}
         riga_g = 0
+        self.testate = []
         for j_, sezione in enumerate(SEZIONI_FILTRI):
-            if j_:
-                tk.Frame(griglia, bg=C["filo"], height=1).grid(row=riga_g, column=0, columnspan=2, sticky="ew", pady=5)
-                riga_g += 1
+            # la testa della fase: la lineetta, il nome e il + dei suoi filtri in piu' (12 nov 2026, Autore: «aggiungere a ogni tendina un set di filtri
+            # aggiuntivi per ogni step», «Sì, costruiscili»)
+            t_ = tk.Canvas(griglia, bg=C["scheda"], highlightthickness=0, bd=0, width=262, height=24 if j_ == 0 else 34, cursor="hand2")
+            t_.grid(row=riga_g, column=0, columnspan=2, sticky="ew", pady=(0, 2))
+            t_.bind("<Button-1>", lambda e, j=j_: self.apri_fase(j))
+            t_.bind("<Configure>", lambda e, j=j_: self.disegna_testata(j))
+            self.testate.append(t_)
+            riga_g += 1
             for k in sezione:
                 if k == "deck":
                     self.b_deck = pulsante_solido(tk, F, griglia, "By deck  ·  all decks vs all", False, self.apri_deck, alto=28, bg=C["scheda"])
@@ -304,13 +316,13 @@ class PaginaPerformance:
                 b.configure(width=104); b.pack(side="left", padx=(0, 6), anchor="s", pady=(0, 2))
                 ctl["metr"][m] = b
             ctl["dividi"] = Tendina(tk, riga, "Split by", F, larga=180, bg=C["scheda"]); ctl["dividi"].fr.pack(side="right", padx=(10, 0))
-            ctl["dividi"].opzioni(["None"] + [k_ for k_, _n, _f in DA.VARIABILI if k_ not in ("data",)] + ["vs"] + sit_k,
+            ctl["dividi"].opzioni(["None"] + [k_ for k_, _n, _f in DA.VARIABILI if k_ not in ("data",)] + ["vs"] + [k_ for k_, _n, _f in DA.EXTRA] + sit_k,
                                   lambda v: self.cambia("dividi", None if v == "None" else v), etichette={"None": "None", **et_var})
             ctl["dividi"].set(self.dividi or "None")
             asse_e_finestra()
         elif k == "report":
             ctl["per"] = Tendina(tk, riga, "Group by", F, larga=220, bg=C["scheda"]); ctl["per"].fr.pack(side="right")
-            ctl["per"].opzioni([k_ for k_, _n, _f in DA.VARIABILI if k_ != "data"] + ["vs"] + sit_k, lambda v: self.cambia("per", v), etichette=et_var)
+            ctl["per"].opzioni([k_ for k_, _n, _f in DA.VARIABILI if k_ != "data"] + ["vs"] + [k_ for k_, _n, _f in DA.EXTRA] + sit_k, lambda v: self.cambia("per", v), etichette=et_var)
             ctl["per"].set(self.per)
         elif k == "matchups":
             ctl["meta"] = pulsante_solido(tk, F, riga, "Meta decks only", self.solo_meta, self.cambia_meta, alto=26, bg=C["scheda"], colori=GRIGI)
@@ -606,8 +618,9 @@ class PaginaPerformance:
             t.opzioni(voci, lambda v, k=k: self.metti_filtro(k, v), etichette={"Any": "Any", **{v: DA.etichetta(k, v) for v, _n in vv}})
             t.set(sc if sc is not None else "Any")
             self.evidenzia(k, sc is not None)
-        self.aggiorna_bottone_sit()
-        self.disegna_finestra_sit()
+        for j_ in range(len(FASI)):
+            self.disegna_testata(j_)
+        self.disegna_finestra_fase()
         self.aggiorna_bottone_deck()
         self.disegna_finestra_deck()
         self.disegna_numeri()
@@ -981,7 +994,7 @@ class PaginaPerformance:
         W, H = max(c.winfo_width(), 600), max(c.winfo_height(), 240)
         n_f = sum(1 for v in self.filtri.values() if v is not None)
         if not n_f and self.con in ("rest", "all"):
-            c.create_text(16, 30, text="A is the situation you build with the smart filters and the situations in the game.", anchor="w", fill=C["titolo"], font=F(9, True))
+            c.create_text(16, 30, text="A is the situation you build with the smart filters (and the + of each phase).", anchor="w", fill=C["titolo"], font=F(9, True))
             c.create_text(16, 52, text="Set some, then compare it here with everything else, with all your games or with a saved situation.", anchor="w",
                           fill=C["grigio"], font=F(8))
             return
@@ -1053,59 +1066,82 @@ class PaginaPerformance:
             fin = "cumulative" if self.finestra == "cum" else f"last {self.finestra} games"
             self.traccia(c, lin, (52, y + 18, W - 120, H - 24), "wr", self.asse, (C["azzurro"], C["arancio"]), f"win rate of A and B, {fin}")
 
-    # ------------------------------------------------------------ le situazioni dentro la partita (12 nov 2026)
-    def apri_situazioni(self):
-        """La finestra delle situazioni (Autore, 12 nov 2026: «una finestra di filtri da flaggare che aggiungono agli smart situazioni piu' specifiche»): per
-        ognuna Any, Yes o No, coi conti delle partite sotto gli altri filtri; si applica subito. Accanto alla colonna dei filtri, sopra la finestra grande."""
+    # ------------------------------------------------------------ i filtri in piu' di ogni fase (12 nov 2026: le situazioni di Add filters stanno qui)
+    def disegna_testata(self, j):
+        """La testa di una fase: la lineetta (non sulla prima), il nome e a destra il «+ more», azzurro con quanti ne sono accesi."""
+        c = self.testate[j]
+        c.delete("all")
+        F = self.F
+        W = max(c.winfo_width(), 262)
+        H = int(c.cget("height"))
+        if j:
+            c.create_line(0, 5, W, 5, fill=C["filo"])
+        nome, chiavi = FASI[j]
+        on = sum(1 for k in chiavi if self.filtri.get(k) is not None)
+        c.create_text(0, H - 10, text=nome, anchor="w", fill=C["accento"] if on else C["muto"], font=F(7, True))
+        t = f"+ {on} on" if on else "+ more"
+        c.create_rectangle(W - 62, H - 19, W - 2, H - 1, fill="#0f86cc" if on else "#202024", outline="#0f86cc" if on else "#3a3a40")
+        c.create_text(W - 32, H - 10, text=t, fill="#ffffff" if on else C["grigio"], font=F(7, True))
+
+    def apri_fase(self, j):
+        """La finestra dei filtri in piu' di una fase: per ognuno Any o un valore (per le situazioni Yes o No), si applica subito. Una finestra sola: un'altra fase
+        la riempie."""
         tk, F = self.tk, self.F
-        f = getattr(self, "fin_sit", None)
-        if f is not None and f.winfo_exists():
-            f.lift(); return f
-        f = self.fin_sit = tk.Toplevel(self.fr); f.title("Add filters"); f.configure(bg=C["scheda"])
-        f.transient(self.fr.winfo_toplevel())
-        f.geometry(f"+{self.cv_sx.winfo_rootx() + self.cv_sx.winfo_width() + 16}+{self.cv_sx.winfo_rooty()}")
-        f.bind("<Escape>", lambda e: f.destroy())
-        tk.Label(f, text="ADD FILTERS · SITUATIONS IN THE GAME", bg=C["scheda"], fg=C["titolo"], font=F(9, True)).pack(anchor="w", padx=14, pady=(12, 2))
-        tk.Label(f, text="From the games' turn by turn records. Yes: only the games where it happened; No: only those where it did not.", bg=C["scheda"],
-                 fg=C["grigio"], font=F(7), wraplength=470, justify="left").pack(anchor="w", padx=14, pady=(0, 8))
-        self.cv_fsit = tk.Canvas(f, bg=C["scheda"], highlightthickness=0, bd=0, width=500, height=40 + 34 * len(DA.SIT))
-        self.cv_fsit.pack(padx=8, pady=(0, 12))
-        self.cv_fsit.bind("<Button-1>", self.clic_situazione)
-        self.disegna_finestra_sit()
+        self.fase = j
+        f = getattr(self, "fin_fase", None)
+        if f is None or not f.winfo_exists():
+            f = self.fin_fase = tk.Toplevel(self.fr); f.configure(bg=C["scheda"])
+            f.transient(self.fr.winfo_toplevel())
+            f.geometry(f"+{self.cv_sx.winfo_rootx() + self.cv_sx.winfo_width() + 16}+{self.cv_sx.winfo_rooty()}")
+            f.bind("<Escape>", lambda e: f.destroy())
+            self.l_fase = tk.Label(f, text="", bg=C["scheda"], fg=C["titolo"], font=F(9, True)); self.l_fase.pack(anchor="w", padx=14, pady=(12, 2))
+            tk.Label(f, text="More filters for this phase of the game. Yes: only the games where it happened; No: only those where it did not. "
+                     "They apply at once, like the smart filters.", bg=C["scheda"], fg=C["grigio"], font=F(7), wraplength=LARGA_FASE - 20,
+                     justify="left").pack(anchor="w", padx=14, pady=(0, 8))
+            self.cv_fase = tk.Canvas(f, bg=C["scheda"], highlightthickness=0, bd=0, width=LARGA_FASE, height=200)
+            self.cv_fase.pack(padx=8, pady=(0, 12))
+            self.cv_fase.bind("<Button-1>", self.clic_fase)
+        f.title("More filters · " + FASI[j][0].capitalize())
+        self.l_fase.configure(text="MORE FILTERS · " + FASI[j][0])
+        self.disegna_finestra_fase()
+        f.lift()
         return f
 
-    def disegna_finestra_sit(self):
-        c = getattr(self, "cv_fsit", None)
+    def disegna_finestra_fase(self):
+        c = getattr(self, "cv_fase", None)
         if c is None or not c.winfo_exists():
             return
         F = self.F
         c.delete("all")
-        self._box_sit = []
-        y = 6
-        for k, nome in DA.SIT:
-            kk = "sit:" + k
-            sc = self.filtri.get(kk)
-            c.create_text(8, y + 14, text=nome, anchor="w", fill=C["titolo"] if sc else C["testo"], font=F(8, bool(sc)))
-            x = 300
-            for v, t in ((None, "Any"), ("Yes", "Yes"), ("No", "No")):     # senza i conti, come le tendine (12 nov 2026)
+        self._box_fase = []
+        tutte = [x for x in (self.righe or []) if x["tipo"] == self.tipo]
+        from tkinter import font as tkfont
+        misura = tkfont.Font(font=F(7, True))
+        y = 4
+        for k in FASI[getattr(self, "fase", 0)][1]:
+            sc = self.filtri.get(k)
+            vv = ["Yes", "No"] if k.startswith("sit:") else [v for v, _n in DA.valori(tutte, k)]
+            c.create_text(8, y + 13, text=DA.nome_var(k), anchor="w", fill=C["titolo"] if sc else C["testo"], font=F(8, bool(sc)), width=290)
+            x = 310
+            for v in [None] + vv:
+                t = "Any" if v is None else DA.etichetta(k, v) if k in ("miei_colori",) else v
+                w = max(50, misura.measure(t) + 22)
+                if x + w > LARGA_FASE - 6:      # va a capo: i valori restano tutti leggibili
+                    x, y = 310, y + 30
                 on = sc == v
-                w = 50 if v is None else 66
-                c.create_rectangle(x, y + 3, x + w, y + 25, fill="#0f86cc" if on else "#202024", outline="#0f86cc" if on else "#3a3a40")
-                c.create_text(x + w / 2, y + 14, text=t, fill="#ffffff" if on else C["grigio"], font=F(7, True))
-                self._box_sit.append((x, y + 3, x + w, y + 25, kk, v))
+                c.create_rectangle(x, y + 2, x + w, y + 24, fill="#0f86cc" if on else "#202024", outline="#0f86cc" if on else "#3a3a40")
+                c.create_text(x + w / 2, y + 13, text=t, fill="#ffffff" if on else C["grigio"], font=F(7, True))
+                self._box_fase.append((x, y + 2, x + w, y + 24, k, v))
                 x += w + 6
             y += 34
+        c.configure(height=y + 4)
 
-    def clic_situazione(self, e):
-        for x0, y0, x1, y1, kk, v in getattr(self, "_box_sit", []):
+    def clic_fase(self, e):
+        for x0, y0, x1, y1, k, v in getattr(self, "_box_fase", []):
             if x0 <= e.x <= x1 and y0 <= e.y <= y1:
-                self.filtri[kk] = v
+                self.filtri[k] = v
                 self.disegna()
                 return
-
-    def aggiorna_bottone_sit(self):
-        on = [(k, v) for k, v in self.filtri.items() if k.startswith("sit:") and v is not None]
-        self.b_sit.metti("Add filters  ·  " + (f"{len(on)} on" if on else "none"), bool(on))
 
     # ------------------------------------------------------------ By deck (12 nov 2026, Autore: «crea un pulsante in fondo: by deck: si apre una finestra e
     # scegli il tuo deck, sempre nella finestra di default e' vs all - si puo' spuntare vs colors e flaggare i colori di vs - da qui troviamo un modo intelligente
