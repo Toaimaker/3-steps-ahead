@@ -24,8 +24,9 @@ import re  # noqa: E402
 
 from ambiente import LOGDIR  # noqa: E402
 
-VERSIONE = 5        # 2: le foto della partita; 3: cimitero, esilio, forza e costituzione; 4: i momenti del combattimento e delle magie coi bersagli;
-#                    5: ogni istantaneo e stregoneria in pila (anche senza bersagli) e i permanenti che ha tolto dal campo (i board wipe)
+VERSIONE = 6        # 2: le foto della partita; 3: cimitero, esilio, forza e costituzione; 4: i momenti del combattimento e delle magie coi bersagli;
+#                    5: ogni istantaneo e stregoneria in pila (anche senza bersagli) e i permanenti che ha tolto dal campo (i board wipe);
+#                    6: per le partite lette dagli archivi, dove stanno («dove»: archivio, byte di inizio e di fine), per il replay azione per azione
 CARTELLA = os.path.join(LOGDIR, "partite")
 COPIA = os.path.join(LOGDIR, "mana_aperto.json")
 
@@ -228,6 +229,7 @@ def dagli_archivi(dati, letti, ids):
             j = data.rfind(m); j = data.find(b"\n", j); j = len(data) if j < 0 else j + 1
             d = leggi(data[i:j].decode("utf-8", "replace").splitlines())
             if d["attacchi"] or d["fine"]:
+                d["dove"] = [chiave, i, j]      # il replay azione per azione rilegge solo questo pezzo (replay_log.righe_partita)
                 dati[mid] = d
                 nuove += 1
         letti[chiave] = misura
@@ -331,6 +333,10 @@ def prova():
         dati, letti = {}, {}
         n1 = dagli_archivi(dati, letti, None)
         casi.append(("dagli archivi: la partita col gioco ritagliata e letta, quella vuota no", n1 == 1 and dati[a]["attacchi"] == [[3, 1, 2, 2], [4, 2, 0, 3]] and b not in dati))
+        ar, i0, j0 = dati[a]["dove"]
+        with open(os.path.join(LOGDIR, ar), "rb") as h_:
+            pezzo = h_.read()[i0:j0].decode("utf-8")
+        casi.append(("dagli archivi: «dove» porta al pezzo della partita", ar == "2026-11-01_Player.log" and a in pezzo and b not in pezzo))
         casi.append(("negativa: un archivio gia' guardato non si rilegge", dagli_archivi(dati, letti, None) == 0 and "2026-11-01_Player.log" in letti))
     finally:
         LOGDIR = vecchio

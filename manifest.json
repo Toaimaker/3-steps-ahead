@@ -1,6 +1,6 @@
 {
- "version": "0.1.59",
+ "version": "0.1.60",
  "date": "2026-11-12",
- "notes": "Replayer: every instant and sorcery has its moment on the stack, sweepers show the permanents they removed with red arrows; the last card in is on top of graveyard and exile.",
+ "notes": "Replayer: Every action, the game action by action with damage on the cards hit, next to Moments; a faster replayer bar.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

@@ -247,6 +247,55 @@ def foto_partita(x):
     return dict(mano0=gira(d.get("mano0")), turni=turni, ultima=(ult[0], ult[1] == seat, gira(ult[2])) if ult else None)
 
 
+def gira_foto(f, seat):
+    """Una foto di mana_aperto o di replay_log girata dal tuo posto, coi nomi (come in foto_partita)."""
+    if not f:
+        return None
+    a, b = seat - 1, 2 - seat
+    carte = lambda lst: [(nome_grp(c[0]) or ("Token" if c[2] else f"#{c[0]}"), bool(c[1]), bool(c[2]), *(list(c[3:6]) + [None, None, None])[:3]) for c in lst]
+    nomi = lambda lst: [nome_grp(g) or f"#{g}" for g in lst]
+    vuoto = [[], []]
+    return dict(mio=carte(f["c"][a]), suo=carte(f["c"][b]), mano=nomi(f["m"][a]), n_suo=f["n"][b], vite=(f["v"][a], f["v"][b]),
+                cim=(nomi((f.get("g") or vuoto)[a]), nomi((f.get("g") or vuoto)[b])), esi=(nomi((f.get("e") or vuoto)[a]), nomi((f.get("e") or vuoto)[b])))
+
+
+VERBI = ("played", "cast", "drew", "gained", "lost", "created", "attacked", "discarded", "sacrificed", "turn")
+
+
+def azioni_partita(x):
+    """Il replay azione per azione di una partita dal tuo posto (replay_log, 12 nov 2026): [(nome, foto, turno, relazioni, eventi, danni)], o None senza log.
+    Gli eventi: [(tuo?, testo)] col soggetto («You», «Opponent») e i giocatori nei testi («you», «the opponent»)."""
+    import replay_log as RL
+    seat = x.get("seat")
+    mid = x.get("partita")
+    if seat not in (1, 2) or not mid:
+        return None
+    righe = RL.righe_partita(mid, (_MANA.get(mid) or {}).get("dove"))
+    if not righe:
+        return None
+    lato = lambda b_: ("vita_mio" if b_ == seat else "vita_suo") if b_ in (1, 2) else b_
+    altro = 2 if seat == 1 else 1
+    out = []
+    for fr in RL.azioni(righe, nome_grp):
+        ev = []
+        for chi, testo in fr["ev"]:
+            testo = testo.replace(f"{{P{seat}}}", "you").replace(f"{{P{altro}}}", "the opponent")
+            if testo.split(" ")[0] in VERBI:
+                testo = ("You " if chi == seat else "Opponent " if chi else "") + testo
+                if testo.startswith("You turn") or testo.startswith("Opponent turn"):
+                    testo = testo.replace("You turn", "Your turn").replace("Opponent turn", "Opponent's turn")
+            ev.append((chi == seat, testo[:1].upper() + testo[1:]))
+        r_ = fr["rel"]
+        rel = None
+        if r_ and r_["k"] == "comb":
+            rel = dict(tipo="comb", att=[(i, lato(tg)) for i, tg in r_["att"]], blocchi=[(i, list(a_)) for i, a_ in r_["blocchi"]])
+        elif r_ and r_["k"] == "spell" and nome_grp(r_["g"]):
+            rel = dict(tipo="spell", nome=nome_grp(r_["g"]), mio=r_["chi"] == seat, ab=r_["ab"], bers=[lato(b_) for b_ in r_["bers"]], colpiti=[])
+        nome = f"{'You' if fr['att'] == seat else 'Opponent'} T{(fr['t'] + 1) // 2} · {fr['step'] or '-'}"
+        out.append((nome, gira_foto(fr["foto"], seat), fr["t"], rel, ev, [(lato(b_), q) for b_, q in fr["danni"]]))
+    return out
+
+
 def _mana_sit(match_id, seat):
     import mana_aperto
     return mana_aperto.situazioni(_MANA.get(match_id), seat)

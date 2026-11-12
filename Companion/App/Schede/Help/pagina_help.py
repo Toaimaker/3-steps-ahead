@@ -88,7 +88,8 @@ SEZIONI = (
                     "blocker to its attacker (yellow) and from each unblocked attacker to the player (red); the spells and abilities with targets show the card "
                     "on the stack with an arrow to each target (purple); every instant and sorcery has its moment on the stack, before it resolves, with red "
                     "arrows to the permanents it removed (a sweeper shows everything it wiped, marked REMOVED); on top of each graveyard and exile the last "
-                    "card in")]),
+                    "card in; Moments or Every action on top: every action is the game action by action (each draw, land, spell, damage, life change, token, "
+                    "counter, attack), with the damage on the card it hits; PgUp and PgDn jump a turn")]),
     ("risorse", "Resources", "Gold, gems, packs, cards and wildcards: what you earn and spend, the Farmer that plans how to spend them, the roadmap and the ROI.",
      [("Period · Range · Resource", "what the chart and the income show"), ("Farmer", "goal sliders; Create makes the roadmap, Dismiss ends it"),
       ("Gold value", "My win rate or Pack price"), ("Spend gold on packs", "off: gold never buys packs"), ("Roadmap check", "above or below the plan, day by day")]),

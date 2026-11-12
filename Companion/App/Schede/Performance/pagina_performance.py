@@ -76,6 +76,13 @@ def _segno_stacca(d, cx, cy, colore, fuori):
         d.linea([(cx + 1.5, cy - 6), (cx + 6, cy - 6), (cx + 6, cy - 1.5)], colore, 1.3)
 
 
+class _Nulla:
+    """Un disegno che non disegna: la barra del replayer gia' pronta (le stesse chiamate, nessun lavoro)."""
+
+    def __getattr__(self, k):
+        return lambda *a, **kw: None
+
+
 def _colore_wr(w):
     """Il fondo di una cella della matrice: dal rosso (sotto il 50%) all'azzurro (sopra), scuro vicino al 50."""
     t = max(-1.0, min(1.0, (w - 50) / 25))
@@ -1110,7 +1117,18 @@ class PaginaPerformance:
             f.bind("<Escape>", lambda e: self.chiudi_pila() if getattr(self, "_pila_aperta", None) else f.destroy())
             f.bind("<Left>", lambda e: self.passo_board(-1))
             f.bind("<Right>", lambda e: self.passo_board(1))
-            self.l_board = tk.Label(f, text="", bg=C["cap"], fg=C["titolo"], font=F(10, True), anchor="w", padx=16, pady=10); self.l_board.pack(fill="x")
+            testa_b = tk.Frame(f, bg=C["cap"]); testa_b.pack(fill="x")
+            self.l_board = tk.Label(testa_b, text="", bg=C["cap"], fg=C["titolo"], font=F(10, True), anchor="w", padx=16, pady=10)
+            self.l_board.pack(side="left", fill="x", expand=True)
+            # Moments (quello di sempre) o Every action, azione per azione (12 nov 2026, Autore: «il replayer migliore in circolazione ... basta che non
+            # perdiamo assolutamente cio' che abbiamo adesso»)
+            self.b_modi = {}
+            for k_, n_ in (("azioni", "Every action"), ("momenti", "Moments")):
+                b_ = pulsante_solido(tk, F, testa_b, n_, False, lambda k_=k_: self.cambia_modo_board(k_), alto=26, bg=C["cap"], colori=GRIGI)
+                b_.configure(width=120); b_.pack(side="right", padx=(0, 8), pady=8)
+                self.b_modi[k_] = b_
+            f.bind("<Prior>", lambda e: self.turno_board(-1))
+            f.bind("<Next>", lambda e: self.turno_board(1))
             self.cv_passi = tk.Canvas(f, bg=C["scheda"], highlightthickness=0, bd=0, height=40); self.cv_passi.pack(fill="x", padx=12, pady=(10, 4))
             self.cv_passi.bind("<Button-1>", self.clic_passo)
             # in fondo i comandi di un replayer (12 nov 2026, Autore: «visto che abbiamo costruito una board che e' un player, metti in fondo le classiche
@@ -1134,8 +1152,13 @@ class PaginaPerformance:
             self.cv_board.bind("<Leave>", self.via_hover)
         self.ferma_board()
         self._pila_aperta = None
-        self._board = dict(x=x_, passi=passi, i=0 if dove == "mano" else len(passi) - 1, play=False, vel=getattr(self, "_vel_board", 1.0))
+        self._board = dict(x=x_, passi=passi, i=0 if dove == "mano" else len(passi) - 1, play=False, vel=getattr(self, "_vel_board", 1.0), modo="momenti",
+                           momenti_passi=passi)
         self._board["svolta"] = self.svolta(passi, x_["vinta"])
+        if getattr(self, "_modo_board", "momenti") == "azioni":      # resta la scelta dell'ultima volta
+            self.cambia_modo_board("azioni", ridisegna=False)
+        for k_, b_ in self.b_modi.items():
+            b_.metti({"azioni": "Every action", "momenti": "Moments"}[k_], k_ == self._board["modo"])
         esito = "won" if x_["vinta"] else "lost"
         self.l_board.configure(text=f"{x_['quando']:%d %b %Y %H:%M}  ·  {(x_.get('mio') or '-').strip()} vs {x_.get('suo') or '-'}  ·  {esito}"
                                + (f" on turn {x_['turno']}" if x_.get("turno") else "") + (f"  ·  {x_['partenza'].lower()}" if x_.get("partenza") else ""))
@@ -1207,8 +1230,12 @@ class PaginaPerformance:
         c.delete("all")
         W, H = max(c.winfo_width(), 800), ALTO_CTRL
         cy = ALTO_GRAF + (H - ALTO_GRAF) / 2
-        d = DG.Disegno(W, H)
         sopra = getattr(self, "_ctrl_sopra", None)
+        # la parte ferma (pulsanti, grafico, timeline coi pallini, velocita') si disegna nitida una volta sola; a ogni passo si muovono solo la riga del
+        # momento, il riempimento della timeline, i pallini passati e il cursore (12 nov 2026: un passo da 119 ms, quasi tutti qui, a pochi ms)
+        chiave = (W, id(b["passi"]), b.get("svolta"), b["play"], sopra, b["vel"])
+        rifai = chiave != getattr(self, "_chiave_ctrl", None)
+        d = DG.Disegno(W, H) if rifai else _Nulla()
         bianco, grigio = "#e6e6ea", "#9a9aa2"
         self._box_ctrl = []
         x = 22
@@ -1264,7 +1291,6 @@ class PaginaPerformance:
         if n > 1:
             d.linea([(pos(i), sy(z["vite"][1])) for i, z in enumerate(m)], "#f0ad4e", 1.6)
             d.linea([(pos(i), sy(z["vite"][0])) for i, z in enumerate(m)], "#24baff", 1.8)
-        d.linea([(pos(b["i"]), 6), (pos(b["i"]), ALTO_GRAF - 2)], "#ffffff", 1)
         if sv is not None:      # la stella del punto di svolta
             import math as _m
             sx_, sy_ = pos(sv), 10
@@ -1273,14 +1299,12 @@ class PaginaPerformance:
             d.poligono(pts, riempi="#ffd23f")
         d.linea([(0, ALTO_GRAF), (W, ALTO_GRAF)], "#26262c", 1)
         d.linea([(t0, cy), (t1, cy)], "#3a3a42", 4)
-        d.linea([(t0, cy), (pos(b["i"]), cy)], "#0f86cc", 4)
         for i, p_ in enumerate(b["passi"]):
             nome = p_[0]
             mio_ = nome.startswith("You") or nome == "Opening hand"
-            d.cerchio(pos(i), cy, 3.2, riempi=("#24baff" if mio_ else "#8a8a92") if i > b["i"] else "#ffffff")
+            d.cerchio(pos(i), cy, 3.2 if n <= 60 else 1.6, riempi="#24baff" if mio_ else "#8a8a92")
             if i == sv:
                 d.cerchio(pos(i), cy, 5.5, bordo="#ffd23f", larghezza=1.6)
-        d.cerchio(pos(b["i"]), cy, 8, riempi="#ffffff", bordo="#0f86cc", larghezza=2)
         # il punto di svolta e la velocita'
         self._box_vel, self._box_svolta = [], None
         vx = W - 150
@@ -1292,8 +1316,17 @@ class PaginaPerformance:
         if sv is not None:
             d.rett(W - 150, 8, W - 12, 32, riempi="#2a2416", bordo="#ffd23f", larghezza=1, raggio=4)
             self._box_svolta = (W - 150, 8, W - 12, 32)
-        self._img_ctrl = d.foto()
+        if rifai:
+            self._img_ctrl, self._chiave_ctrl = d.foto(), chiave
         c.create_image(0, 0, image=self._img_ctrl, anchor="nw")
+        # la parte che si muove
+        xi = pos(b["i"])
+        c.create_line(xi, 6, xi, ALTO_GRAF - 2, fill="#ffffff")
+        c.create_line(t0, cy, xi, cy, fill="#0f86cc", width=4, capstyle="round")
+        punto_ = DG.punto(round(2 * (3.2 if n <= 60 else 1.6)) + 1, "#ffffff")
+        for j in range(b["i"]):
+            c.create_image(pos(j), cy, image=punto_)
+        c.create_image(xi, cy, image=DG.punto(17, "#ffffff", "#0f86cc", 2))
         c.create_text(t0 - 10, sy(m[0]["vite"][0]) if m else 20, text="LIFE", anchor="e", fill=grigio, font=F(6, True))
         c.create_text(t0 - 10, (f0 + f1) / 2, text="POWER", anchor="e", fill=grigio, font=F(6, True))
         if m:
@@ -1308,7 +1341,7 @@ class PaginaPerformance:
             c.create_text((x0_ + x1_) / 2, cy, text=("0.5×" if v == 0.5 else f"{v:.0f}×"), fill="#ffffff" if on else grigio, font=F(7, True))
         nome = b["passi"][b["i"]][0]
         c.create_text(W - 166, cy - 7, text=nome + ("   ★" if b["i"] == sv else ""), anchor="e", fill=bianco, font=F(9, True))
-        c.create_text(W - 166, cy + 10, text=f"{b['i'] + 1} / {n}   ·   keys: space, arrows, Home, End, T", anchor="e", fill=grigio, font=F(7))
+        c.create_text(W - 166, cy + 10, text=f"{b['i'] + 1} / {n}   ·   keys: space, arrows, PgUp/PgDn turn, Home, End, T", anchor="e", fill=grigio, font=F(7))
 
     def clic_controlli(self, e):
         b = getattr(self, "_board", None)
@@ -1343,6 +1376,43 @@ class PaginaPerformance:
             if i != self._board["i"]:
                 self.ferma_board()
                 self.vai_board(i)
+
+    def cambia_modo_board(self, modo, ridisegna=True):
+        """Moments (i momenti di sempre) o Every action (replay_log: ogni azione). Si resta sullo stesso turno."""
+        b = getattr(self, "_board", None)
+        if not b:
+            return
+        if modo == "azioni":
+            if b.get("azioni_passi") is None:
+                b["azioni_passi"] = DA.azioni_partita(b["x"]) or []
+            nuovi = b["azioni_passi"]
+            if not nuovi:       # senza log non c'e' il replay azione per azione: si resta sui momenti
+                modo, nuovi = "momenti", b["momenti_passi"]
+        else:
+            nuovi = b["momenti_passi"]
+        t_ora = b["passi"][b["i"]][2] if b["passi"] else 0
+        self.ferma_board()
+        b["modo"], b["passi"] = modo, nuovi
+        self._modo_board = modo
+        dentro = [i for i, p_ in enumerate(nuovi) if p_[2] <= t_ora]
+        b["i"] = dentro[-1] if dentro else 0
+        b["svolta"] = self.svolta(nuovi, b["x"]["vinta"])
+        for k_, b_ in getattr(self, "b_modi", {}).items():
+            b_.metti({"azioni": "Every action", "momenti": "Moments"}[k_], k_ == modo)
+        if ridisegna:
+            self.disegna_board()
+
+    def turno_board(self, d):
+        """Pagina su e giu': il turno prima o dopo (il primo momento o la prima azione di quel turno)."""
+        b = getattr(self, "_board", None)
+        if not b:
+            return
+        t_ora = b["passi"][b["i"]][2]
+        turni = sorted({p_[2] for p_ in b["passi"]})
+        k = turni.index(t_ora) + d if t_ora in turni else 0
+        if 0 <= k < len(turni):
+            self.ferma_board()
+            self.vai_board(next(i for i, p_ in enumerate(b["passi"]) if p_[2] == turni[k]))
 
     def clic_passo(self, e):
         x = self.cv_passi.canvasx(e.x)
@@ -1454,10 +1524,19 @@ class PaginaPerformance:
         cp.delete("all")
         self._box_passi = []
         x = 0
-        for i, p_ in enumerate(b["passi"]):
-            nome = p_[0]
+        azioni_ = b.get("modo") == "azioni"
+        if azioni_:     # in Every action la striscia sono i turni: il clic porta alla prima azione del turno
+            visti_, voci = set(), []
+            for i, p_ in enumerate(b["passi"]):
+                if p_[2] not in visti_:
+                    visti_.add(p_[2])
+                    voci.append((i, p_[0].split(" · ")[0]))
+        else:
+            voci = [(i, p_[0]) for i, p_ in enumerate(b["passi"])]
+        t_ora = b["passi"][b["i"]][2]
+        for i, nome in voci:
             w = max(64, len(nome) * 7 + 20)
-            on = i == b["i"]
+            on = (b["passi"][i][2] == t_ora) if azioni_ else i == b["i"]
             mio_ = nome.startswith("You") or nome == "Opening hand"
             cp.create_rectangle(x, 4, x + w, 32, fill="#0f86cc" if on else "#202024", outline="#ffd23f" if i == b.get("svolta") else
                                 ("#0f86cc" if on else ("#3a3a40" if mio_ else "#2c2c32")))
@@ -1465,8 +1544,9 @@ class PaginaPerformance:
             self._box_passi.append((x, x + w, i))
             x += w + 4
         cp.configure(scrollregion=(0, 0, x, 36))
-        if self._box_passi:     # il passo scelto resta in vista
-            x0, x1, _i = self._box_passi[b["i"]]
+        scelto = next((bp for bp in self._box_passi if (b["passi"][bp[2]][2] == t_ora if azioni_ else bp[2] == b["i"])), None)
+        if scelto:     # il passo scelto resta in vista
+            x0, x1, _i = scelto
             W_ = max(cp.winfo_width(), 400)
             if x > W_:
                 cp.xview_moveto(max(0, (x0 - W_ / 2) / x))
@@ -1476,7 +1556,7 @@ class PaginaPerformance:
         self.via_hover()
         W, H = max(c.winfo_width(), 900), max(c.winfo_height(), 560)
         Wt = W - LARGA_RACCONTO - 12          # la tavola; a destra il racconto
-        nome, f, _t, rel = b["passi"][b["i"]]
+        nome, f, _t, rel = b["passi"][b["i"]][:4]
         prima = b["passi"][b["i"] - 1][1] if b["i"] > 0 else None
         self._pos_id, self._pos_vita = {}, {}       # dove stanno le carte (per id di Arena) e i cuori delle vite: le frecce partono e arrivano li'
         LARGA_PILE = 150
@@ -1638,7 +1718,14 @@ class PaginaPerformance:
                           font=F(7, True))
             y += 22
         self.frecce_board(c, rel, pila_box, W, H)
-        righe_r = self.racconto(b["i"])
+        if b.get("modo") == "azioni":
+            self.danni_board(c, b["passi"][b["i"]][5])
+            righe_r = [(m_, "▸ " + t_) for m_, t_ in b["passi"][b["i"]][4]]       # quest'azione, in testa
+            prima_ = [ev_ for p_ in b["passi"][:b["i"]] if p_[2] == b["passi"][b["i"]][2] for ev_ in p_[4]]
+            if prima_:
+                righe_r += [(None, "EARLIER THIS TURN")] + list(reversed(prima_))
+        else:
+            righe_r = self.racconto(b["i"])
         if righe_r is None:
             c.create_text(xr + 14, y, text="No turn record for this game.", anchor="w", fill=C["grigio"], font=F(8))
         elif not righe_r:
@@ -1647,12 +1734,29 @@ class PaginaPerformance:
             if y > H - 24:
                 c.create_text(xr + 14, y, text="…", anchor="w", fill=C["grigio"], font=F(9, True))
                 break
+            if mio_ is None:        # un titoletto
+                c.create_text(xr + 14, y + 6, text=testo, anchor="w", fill=C["muto"], font=F(7, True))
+                y += 20
+                continue
             c.create_oval(xr + 14, y + 4, xr + 22, y + 12, fill="#24baff" if mio_ else "#f0ad4e", outline="")
-            i_ = c.create_text(xr + 30, y, text=testo, anchor="nw", fill=C["testo"], font=F(8), width=LARGA_RACCONTO - 46)      # dall'alto: a capo non copre la riga dopo
+            forte = testo.startswith("▸ ")
+            i_ = c.create_text(xr + 30, y, text=testo[2:] if forte else testo, anchor="nw", fill=C["titolo"] if forte else C["testo"], font=F(8, forte),
+                               width=LARGA_RACCONTO - 46)      # dall'alto: a capo non copre la riga dopo
             bb = c.bbox(i_)
             y = (bb[3] if bb else y + 16) + 6
         self.disegna_pila_aperta(c, f, W, H)
         self.disegna_controlli()
+
+    def danni_board(self, c, danni):
+        """I danni dell'azione: un tondo rosso col «-N» sulla carta o sul cuore colpito (la carta morta non c'e' piu': lo dice il racconto)."""
+        F = self.F
+        for bers, q in danni or []:
+            r_ = self._pos_id.get(bers) or self._pos_vita.get(bers)
+            if not r_ or not q:
+                continue
+            cx, cy = (r_[0] - 22, (r_[1] + r_[3]) / 2) if bers in ("vita_mio", "vita_suo") else (r_[2] - 4, r_[1] + 4)      # sul cuore: accanto, non sopra
+            c.create_oval(cx - 17, cy - 17, cx + 17, cy + 17, fill="#d9534f", outline="#ffffff", width=2)
+            c.create_text(cx, cy, text=f"-{q}", fill="#ffffff", font=F(10, True))
 
     def frecce_board(self, c, rel, pila_box, W, H):
         """Le frecce di chi interagisce con chi (12 nov 2026, Autore: «una freccia che definisce quali carte interagiscono con quali altre, per vedere
