@@ -493,17 +493,19 @@ class PaginaMazzi(PaginaStandard):
         return c
 
     def pillola_vis(self, c, x0, y0, stato, eccezione, tag, alta=26, sopra=False):
-        """La pillola pubblico/privato (12 nov 2026, Autore): il globo azzurro e PUBLIC, o il lucchetto e PRIVATE; il bordo arancio quando il mazzo viola
-        la regola del suo gruppo. Disegnata su c (una tela o una scheda della griglia) coi tag dati. -> la larghezza."""
+        """La pillola pubblico/privato (12 nov 2026, Autore; ridisegnata lo stesso giorno, la proposta A: «le icone public / private: dammi un redesign»):
+        una pillola arrotondata col bordo del suo colore, l'occhio aperto azzurro e PUBLIC, o l'occhio barrato grigio e PRIVATE; il bordo arancio e un punto
+        arancio in fondo quando il mazzo viola la regola del suo gruppo. Disegnata su c (una tela o una scheda della griglia) coi tag dati. -> la larghezza."""
         pub = stato == VM.PUBBLICO
-        testo = ("PUBLIC" if pub else "PRIVATE") + (" ·  own rule" if eccezione else "")
+        testo = "PUBLIC" if pub else "PRIVATE"
         col = C["accento"] if pub else C["grigio"]
-        lg = 38 + 7 * len(testo)
-        bordo = ARANCIO[1] if eccezione else (C["accento"] if sopra else C["filo"])
-        c.create_rectangle(x0, y0, x0 + lg, y0 + alta, fill=C["fondo"], outline=bordo, width=1, tags=tag)
-        img = DG.globo(16, col) if pub else DG.lucchetto(16, True, col)
-        c.create_image(x0 + 8, y0 + (alta - 16) / 2, image=img, anchor="nw", tags=tag)
-        c.create_text(x0 + 30, y0 + alta / 2, text=testo, anchor="w", fill=col, font=self.F(7, True), tags=tag)
+        lg = round(38 + 7 * len(testo) + (14 if eccezione else 0))
+        bordo = ARANCIO[1] if eccezione else col
+        c.create_image(x0, y0, image=DG.pillola(lg, alta, bordo, C["fondo"]), anchor="nw", tags=tag)
+        c.create_image(x0 + 9, y0 + (alta - 18) / 2, image=DG.occhio(18, col, barrato=not pub), anchor="nw", tags=tag)
+        c.create_text(x0 + 31, y0 + alta / 2, text=testo, anchor="w", fill=col, font=self.F(7, True), tags=tag)
+        if eccezione:       # il punto arancio: «own rule», la regola del mazzo e non quella del gruppo
+            c.create_image(x0 + lg - 15, y0 + alta / 2 - 3.5, image=DG.punto(7, ARANCIO[1]), anchor="nw", tags=tag)
         return lg
 
     def vis_mazzo(self, c, m):

@@ -1,6 +1,6 @@
 {
- "version": "0.1.29",
+ "version": "0.1.30",
  "date": "2026-11-12",
- "notes": "The window always opens maximized, on the screen where you left it.",
+ "notes": "Your decks: redesigned public/private pills (open eye for public, crossed-out eye for private, orange dot for a deck with its own rule).",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

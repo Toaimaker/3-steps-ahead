@@ -259,18 +259,33 @@ def lucchetto(lato, chiuso, colore):
     return _icona(("lucchetto2", lato, chiuso, colore), fa)
 
 
-def globo(lato, colore):
-    """Il globo di «pubblico» (12 nov 2026, la regola pubblico/privato dei mazzi): il cerchio, l'equatore e un meridiano a ellisse."""
+def occhio(lato, colore, barrato=False):
+    """L'occhio di pubblico/privato (Autore, 12 nov 2026, scelta A fra cinque proposte: «le icone public / private ... cosi' non mi piacciono»): la mandorla
+    e la pupilla piena; barrato (privato) con la barra in diagonale e lo stacco trasparente intorno. Su una griglia di 20 unita'."""
     def fa():
         d = Disegno(lato, lato)
-        k = lato / 18
-        d.cerchio(9 * k, 9 * k, 7.2 * k, bordo=colore, larghezza=1.6 * k)
-        d.linea([(1.8 * k, 9 * k), (16.2 * k, 9 * k)], colore, 1.3 * k)
-        d.arco(5.6 * k, 1.8 * k, 12.4 * k, 16.2 * k, 0, 360, colore, 1.3 * k)
-        d.linea([(3 * k, 5.4 * k), (15 * k, 5.4 * k)], colore, 1.0 * k)
-        d.linea([(3 * k, 12.6 * k), (15 * k, 12.6 * k)], colore, 1.0 * k)
+        k = lato / 20
+        s = SCALA
+        cx, cy, w, h = 10 * k, 10 * k, 8.6 * k, 5.4 * k
+        pts = [(cx + w * math.cos(t), cy - h * math.sin(t)) for t in [i * math.pi / 24 for i in range(25)]]
+        pts += [(cx + w * math.cos(t), cy + h * math.sin(t)) for t in [math.pi - i * math.pi / 24 for i in range(25)]]
+        d.linea(pts, colore, 1.7 * k)
+        d.cerchio(cx, cy, 2.7 * k, riempi=colore)
+        if barrato:
+            a, b = (3.0 * k, 17.0 * k), (17.0 * k, 3.0 * k)
+            d.d.line([(a[0] * s, a[1] * s), (b[0] * s, b[1] * s)], fill=(0, 0, 0, 0), width=round(4.6 * k * s))
+            d.linea([a, b], colore, 1.8 * k)
         return d
-    return _icona(("globo", lato, colore), fa)
+    return _icona(("occhio", lato, colore, barrato), fa)
+
+
+def pillola(l, h, bordo, fondo, larghezza=1.2):
+    """Una pillola arrotondata (raggio meta' altezza) col bordo, in antialias: il fondo della pillola pubblico/privato."""
+    def fa():
+        d = Disegno(l, h)
+        d.rett(0.5, 0.5, l - 0.5, h - 0.5, riempi=fondo, bordo=bordo, larghezza=larghezza, raggio=(h - 1) / 2)
+        return d
+    return _icona(("pillola", l, h, bordo, fondo, larghezza), fa)
 
 
 def punto(diametro, colore, bordo=None, larghezza=0.0):
