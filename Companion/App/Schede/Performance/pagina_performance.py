@@ -7,8 +7,12 @@ In testa Constructed o Limited. A sinistra le variabili: ogni tendina filtra (An
 situazioni salvate. A destra i numeri della situazione (win rate con l'intervallo di Wilson, record, turni, mulligan, play e draw, quante partite), il grafico
 (win rate, partite, turni medi, mulligan; per partite o per data; cumulativo o sulle ultime N; diviso per una variabile, una linea per valore), e il report
 raggruppato per una variabile: il clic su una riga la mette fra i filtri, il clic su una colonna ordina. Sotto 15 partite una riga e' grigia: un indizio.
+Le viste stanno in cartelle (Chart, Spots, Report, Matchups, Compare), e ognuna si stacca in una finestra sua (12 nov 2026, Autore: «questi falli a modo di
+cartelle e poi tira via il sotto testo / poi procedi con i confronti situazionali / ogni sezione di ogni cartella si puo' staccare dal quadro e renderla una
+finestra a se stante»). Compare mette la situazione (A) contro il resto, tutte le partite o una situazione salvata (B), con la significativita'.
 I dati: dati_analizzatore (i nostri log, dal 22 set 2026)."""
 import datetime
+import math
 import threading
 
 import dati_analizzatore as DA
@@ -20,11 +24,36 @@ LINEE = ("#d8d8dc", "#24baff", "#f0ad4e", "#a58cff", "#5cb85c", "#ee8a87")      
 COLONNE = (("nome", "", 250), ("n", "GAMES", 70), ("wl", "W-L", 80), ("wr", "WIN RATE", 180), ("play", "PLAY", 70), ("draw", "DRAW", 70), ("mull", "MULL.", 70),
            ("turni", "AVG T", 70), ("delta", "Δ VS ALL", 90))
 TIPI = ("Constructed", "Limited")
-VISTE = (("chart", "Chart"), ("spots", "Spots"), ("report", "Report"), ("matchups", "Matchups"))
-SUGGERIMENTI = {"chart": "point at the chart for the numbers of every line · split by a variable: one line for each of its values",
-                "spots": "found by themselves in this situation, one or two variables, at least 15 games · strong: the 95% interval is all on its side · click one: filter it",
-                "report": "click a row: add it as a filter · click a column: sort · grey: under 15 games",
-                "matchups": "your decks against the archetypes you met · click a cell: filter it · grey: under 5 games"}
+VISTE = (("chart", "Chart"), ("spots", "Spots"), ("report", "Report"), ("matchups", "Matchups"), ("compare", "Compare"))
+DISEGNI = {"chart": "disegna_grafico", "spots": "disegna_spot", "report": "disegna_report", "matchups": "disegna_matchup", "compare": "disegna_confronto"}
+GRIGI = ("#2a2a30", "#3a3a42", "#0f86cc")       # i pulsanti a pillola grigi, azzurri se scelti
+ALTO_TAB, LARGA_TAB = 34, 132                   # le cartelle
+
+
+def _cartella(x0, x1, top, H, sl=6, r=5):
+    """Il contorno di una linguetta da cartella: i fianchi un po' inclinati e gli angoli in alto arrotondati, da (x0, H) a (x1, H)."""
+    pts = [(x0, H)]
+    cx, cy = x0 + sl + r, top + r
+    for i in range(7):
+        a = math.pi - (math.pi / 2) * i / 6
+        pts.append((cx + r * math.cos(a), cy - r * math.sin(a)))
+    cx = x1 - sl - r
+    for i in range(7):
+        a = math.pi / 2 - (math.pi / 2) * i / 6
+        pts.append((cx + r * math.cos(a), cy - r * math.sin(a)))
+    pts.append((x1, H))
+    return pts
+
+
+def _segno_stacca(d, cx, cy, colore, fuori):
+    """Il segno per staccare una cartella: un riquadro con la freccia che esce in alto a destra; staccata, la freccia rientra."""
+    d.rett(cx - 6, cy - 3, cx + 4, cy + 7, bordo=colore, larghezza=1.2, raggio=1.5)
+    if fuori:
+        d.linea([(cx + 6, cy - 6), (cx, cy)], colore, 1.3)
+        d.linea([(cx - 0.5, cy - 4), (cx, cy), (cx + 4, cy + 0.5)], colore, 1.3)
+    else:
+        d.linea([(cx - 1, cy + 1), (cx + 6, cy - 6)], colore, 1.3)
+        d.linea([(cx + 1.5, cy - 6), (cx + 6, cy - 6), (cx + 6, cy - 1.5)], colore, 1.3)
 
 
 def _colore_wr(w):
@@ -66,9 +95,10 @@ class PaginaPerformance:
         self.tipo = "Constructed"
         self.filtri = {}
         self.metrica, self.asse, self.finestra, self.dividi, self.per, self.ordina = "wr", "games", "20", None, "suo", "n"
-        self.basso, self.solo_meta, self.vista = "report", False, "chart"       # la vista del pannello: chart, spots, report o matchups
+        self.basso, self.solo_meta, self.vista = "report", False, "chart"       # la vista del pannello: chart, spots, report, matchups o compare
+        self.con, self.staccate = "rest", {}        # B del confronto (rest, all, s<i>); le viste staccate: {vista: dict(win, o, l)}
         self.righe, self.sporca, self.deciso, self.modo = None, True, False, "Standard"
-        self._lavoro, self._img = None, None
+        self._lavoro = None
         self.costruisci()
         self.fr.bind("<<Davanti>>", lambda e: self.se_sporca(), add="+")
         self.fr.bind("<Map>", lambda e: self.se_sporca(), add="+")
@@ -193,60 +223,266 @@ class PaginaPerformance:
         self.b_salva_sit = pulsante_solido(tk, F, self.col_sx, "Save this situation", False, self.salva_situazione, alto=26, bg=C["scheda"])
         self.b_salva_sit.configure(width=262); self.b_salva_sit.pack(anchor="w", padx=12, pady=(6, 6))
         self.f_sit = tk.Frame(self.col_sx, bg=C["scheda"]); self.f_sit.pack(fill="x", padx=12, pady=(0, 12))
-        # a destra: i numeri in alto, sotto un pannello solo con quattro viste (12 nov 2026, Autore: «grafico spots reports e matchups mettili nello stesso
-        # spazio con la possibilita' di selezionare la vista»): ogni vista ha tutto lo spazio, i suoi comandi stanno accanto alle linguette
+        # a destra: i numeri in alto, sotto le cartelle (12 nov 2026, Autore: «questi falli a modo di cartelle e poi tira via il sotto testo»): Chart, Spots,
+        # Report, Matchups e Compare, una alla volta; il segno a destra di ogni linguetta la stacca in una finestra sua («ogni sezione di ogni cartella si puo'
+        # staccare dal quadro e renderla una finestra a se stante»), chiusa torna qui
         dx = tk.Frame(corpo, bg=C["fondo"]); dx.grid(row=0, column=1, sticky="nsew")
-        dx.columnconfigure(0, weight=1); dx.rowconfigure(1, weight=1)
+        dx.columnconfigure(0, weight=1); dx.rowconfigure(2, weight=1)
         self.cv_num = tk.Canvas(dx, bg=C["scheda"], highlightthickness=1, highlightbackground=C["filo"], height=86, bd=0)
         self.cv_num.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         self.cv_num.bind("<Configure>", lambda e: self.disegna_numeri())
-        pan = tk.Frame(dx, bg=C["scheda"], highlightthickness=1, highlightbackground=C["filo"]); pan.grid(row=1, column=0, sticky="nsew")
-        bar = tk.Frame(pan, bg=C["scheda"]); bar.pack(fill="x", padx=12, pady=(6, 0))
-        self.b_viste = {}
-        for k, n in VISTE:
-            b = pulsante_solido(tk, F, bar, n, k == self.vista, lambda k=k: self.cambia_vista(k), alto=28, bg=C["scheda"], colori=("#2a2a30", "#3a3a42", "#0f86cc"))
-            b.configure(width=110); b.pack(side="left", padx=(0, 6), pady=(14, 0))
-            self.b_viste[k] = b
-        sit_k = ["sit:" + s_ for s_, _n in DA.SIT]
-        # i comandi di ogni vista, a destra delle linguette
-        self.cmd = {k: tk.Frame(bar, bg=C["scheda"]) for k, _n in VISTE}
-        self.t_dividi = Tendina(tk, self.cmd["chart"], "Split by", F, larga=180, bg=C["scheda"]); self.t_dividi.fr.pack(side="right")
-        self.t_dividi.opzioni(["None"] + [k for k, _n, _f in DA.VARIABILI if k not in ("data",)] + sit_k, lambda v: self.cambia("dividi", None if v == "None" else v),
-                              etichette={"None": "None", **DA.NOME, **{k: DA.nome_var(k) for k in sit_k}}); self.t_dividi.set("None")
-        self.t_fin = Tendina(tk, self.cmd["chart"], "Window", F, larga=140, bg=C["scheda"]); self.t_fin.fr.pack(side="right", padx=(0, 10))
-        self.t_fin.opzioni([k for k, _n in DA.FINESTRE], lambda v: self.cambia("finestra", v), etichette=dict(DA.FINESTRE)); self.t_fin.set(self.finestra)
-        self.t_asse = Tendina(tk, self.cmd["chart"], "X axis", F, larga=100, bg=C["scheda"]); self.t_asse.fr.pack(side="right", padx=(0, 10))
-        self.t_asse.opzioni(["games", "date"], lambda v: self.cambia("asse", v), etichette={"games": "Games", "date": "Date"}); self.t_asse.set(self.asse)
-        self.t_per = Tendina(tk, self.cmd["report"], "Group by", F, larga=220, bg=C["scheda"]); self.t_per.fr.pack(side="right")
-        self.t_per.opzioni([k for k, _n, _f in DA.VARIABILI if k != "data"] + sit_k, lambda v: self.cambia("per", v),
-                           etichette={**DA.NOME, **{k: DA.nome_var(k) for k in sit_k}}); self.t_per.set(self.per)
-        self.b_meta = pulsante_solido(tk, F, self.cmd["matchups"], "Meta decks only", self.solo_meta, self.cambia_meta, alto=26, bg=C["scheda"],
-                                      colori=("#2a2a30", "#3a3a42", "#0f86cc"))
-        self.b_meta.configure(width=140); self.b_meta.pack(side="right", pady=(14, 0))
-        self.l_basso = tk.Label(pan, text="", bg=C["scheda"], fg=C["grigio"], font=F(7), anchor="w"); self.l_basso.pack(fill="x", padx=12, pady=(4, 0))
-        # le quattro viste, una alla volta
-        self.f_viste = {k: tk.Frame(pan, bg=C["scheda"]) for k in ("chart", "spots", "tabella")}
-        bar_m = tk.Frame(self.f_viste["chart"], bg=C["scheda"]); bar_m.pack(fill="x", padx=12, pady=(4, 0))
-        self.b_metr = {}
-        for k, n in DA.METRICHE:
-            b = pulsante_solido(tk, F, bar_m, n, k == self.metrica, lambda k=k: self.cambia("metrica", k), alto=24, bg=C["scheda"],
-                                colori=("#2a2a30", "#3a3a42", "#0f86cc"))
-            b.configure(width=104); b.pack(side="left", padx=(0, 6))
-            self.b_metr[k] = b
-        self.cv_gr = tk.Canvas(self.f_viste["chart"], bg=C["scheda"], highlightthickness=0, bd=0, height=160); self.cv_gr.pack(fill="both", expand=True, padx=8, pady=(4, 6))
-        self.cv_gr.bind("<Configure>", lambda e: self.disegna_grafico())
-        self.cv_gr.bind("<Motion>", self.punta)
-        self.cv_gr.bind("<Leave>", lambda e: self.cv_gr.delete("punta"))
-        self.cv_sp = tk.Canvas(self.f_viste["spots"], bg=C["scheda"], highlightthickness=0, bd=0); self.cv_sp.pack(fill="both", expand=True, padx=8, pady=(4, 6))
-        self.cv_sp.bind("<Configure>", lambda e: self.disegna_spot())
-        self.cv_sp.bind("<Button-1>", self.clic_spot)
-        self.cv_rp = tk.Canvas(self.f_viste["tabella"], bg=C["scheda"], highlightthickness=0, bd=0, height=120); self.cv_rp.pack(fill="both", expand=True, padx=8, pady=(4, 6))
-        self.cv_rp.bind("<Configure>", lambda e: self.disegna_basso())
-        self.cv_rp.bind("<Button-1>", self.clic_report)
-        self.cv_rp.configure(yscrollincrement=24)       # la rotella scorre di una riga intera
-        self.cv_rp.bind("<MouseWheel>", lambda e: (self.cv_rp.yview_scroll(-1 if e.delta > 0 else 1, "units"), self.maschera_rp()))
+        self.cv_tab = tk.Canvas(dx, bg=C["fondo"], highlightthickness=0, bd=0, height=ALTO_TAB)
+        self.cv_tab.grid(row=1, column=0, sticky="ew")
+        self.cv_tab.bind("<Configure>", lambda e: self.disegna_cartelle())
+        self.cv_tab.bind("<Button-1>", self.clic_cartella)
+        self.cv_tab.bind("<Motion>", self.sopra_cartella)
+        self.cv_tab.bind("<Leave>", lambda e: self.sopra_cartella(None))
+        bordo = tk.Frame(dx, bg=C["filo"]); bordo.grid(row=2, column=0, sticky="nsew")      # il bordo del pannello sui fianchi e sotto: sopra lo fanno le cartelle
+        self.pan = pan = tk.Frame(bordo, bg=C["scheda"]); pan.pack(fill="both", expand=True, padx=1, pady=(0, 1))
+        self.ospiti = {k: self.fai_vista(k, pan) for k, _n in VISTE}
+        o = self.ospiti
+        self.cv_gr, self.cv_sp, self.cv_rp, self.cv_mt, self.cv_cf = (o[k]["tela"] for k in ("chart", "spots", "report", "matchups", "compare"))
+        self.b_metr = o["chart"]["ctl"]["metr"]
+        self.t_asse, self.t_fin, self.t_dividi = (o["chart"]["ctl"][k] for k in ("asse", "fin", "dividi"))
+        self.t_per, self.b_meta = o["report"]["ctl"]["per"], o["matchups"]["ctl"]["meta"]
+        # la cartella che sta nella sua finestra: qui lo si dice, coi due pulsanti
+        self.f_fuori = tk.Frame(pan, bg=C["scheda"])
+        self.l_fuori = tk.Label(self.f_fuori, text="", bg=C["scheda"], fg=C["grigio"], font=F(10, True)); self.l_fuori.pack(pady=(70, 14))
+        rb = tk.Frame(self.f_fuori, bg=C["scheda"]); rb.pack()
+        b = pulsante_solido(tk, F, rb, "Show its window", False, lambda: self.stacca(self.vista), alto=28, bg=C["scheda"], colori=GRIGI)
+        b.configure(width=150); b.pack(side="left", padx=4)
+        b = pulsante_solido(tk, F, rb, "Bring it back here", False, lambda: self.riattacca(self.vista), alto=28, bg=C["scheda"])
+        b.configure(width=170); b.pack(side="left", padx=4)
         self.mostra_vista()
         self.disegna_situazioni()
+
+    def fai_vista(self, k, padre):
+        """Una vista dentro padre (il pannello o la sua finestra): la riga dei comandi e la tela. -> dict(fr, tela, ctl). Le scelte sono della pagina: due copie
+        della stessa vista dicono le stesse cose (sincronizza)."""
+        tk, F = self.tk, self.F
+        fr = tk.Frame(padre, bg=C["scheda"])
+        riga = tk.Frame(fr, bg=C["scheda"]); riga.pack(fill="x", padx=12, pady=(8, 0))
+        ctl = {}
+        sit_k = ["sit:" + s_ for s_, _n in DA.SIT]
+        et_var = {**DA.NOME, **{k_: DA.nome_var(k_) for k_ in sit_k}}
+
+        def asse_e_finestra():
+            ctl["fin"] = Tendina(tk, riga, "Window", F, larga=140, bg=C["scheda"]); ctl["fin"].fr.pack(side="right", padx=(10, 0))
+            ctl["fin"].opzioni([k_ for k_, _n in DA.FINESTRE], lambda v: self.cambia("finestra", v), etichette=dict(DA.FINESTRE)); ctl["fin"].set(self.finestra)
+            ctl["asse"] = Tendina(tk, riga, "X axis", F, larga=100, bg=C["scheda"]); ctl["asse"].fr.pack(side="right", padx=(10, 0))
+            ctl["asse"].opzioni(["games", "date"], lambda v: self.cambia("asse", v), etichette={"games": "Games", "date": "Date"}); ctl["asse"].set(self.asse)
+        if k == "chart":
+            ctl["metr"] = {}
+            for m, n in DA.METRICHE:
+                b = pulsante_solido(tk, F, riga, n, m == self.metrica, lambda m=m: self.cambia("metrica", m), alto=26, bg=C["scheda"], colori=GRIGI)
+                b.configure(width=104); b.pack(side="left", padx=(0, 6), anchor="s", pady=(0, 2))
+                ctl["metr"][m] = b
+            ctl["dividi"] = Tendina(tk, riga, "Split by", F, larga=180, bg=C["scheda"]); ctl["dividi"].fr.pack(side="right", padx=(10, 0))
+            ctl["dividi"].opzioni(["None"] + [k_ for k_, _n, _f in DA.VARIABILI if k_ not in ("data",)] + sit_k,
+                                  lambda v: self.cambia("dividi", None if v == "None" else v), etichette={"None": "None", **et_var})
+            ctl["dividi"].set(self.dividi or "None")
+            asse_e_finestra()
+        elif k == "report":
+            ctl["per"] = Tendina(tk, riga, "Group by", F, larga=220, bg=C["scheda"]); ctl["per"].fr.pack(side="right")
+            ctl["per"].opzioni([k_ for k_, _n, _f in DA.VARIABILI if k_ != "data"] + sit_k, lambda v: self.cambia("per", v), etichette=et_var)
+            ctl["per"].set(self.per)
+        elif k == "matchups":
+            ctl["meta"] = pulsante_solido(tk, F, riga, "Meta decks only", self.solo_meta, self.cambia_meta, alto=26, bg=C["scheda"], colori=GRIGI)
+            ctl["meta"].configure(width=140); ctl["meta"].pack(side="right", anchor="s", pady=(0, 2))
+        elif k == "compare":
+            ctl["con"] = Tendina(tk, riga, "Compare A with (B)", F, larga=260, bg=C["scheda"]); ctl["con"].fr.pack(side="left")
+            ctl["con"].opzioni(["rest"], lambda v: self.cambia("con", v), etichette={"rest": "Everything else"}); ctl["con"].set(self.con)
+            asse_e_finestra()
+        c = tk.Canvas(fr, bg=C["scheda"], highlightthickness=0, bd=0, height=120)
+        c.pack(fill="both", expand=True, padx=8, pady=(4, 6))
+        c.bind("<Configure>", lambda e, k=k: self.tela(k) is e.widget and self.disegna_vista(k))
+        if k in ("chart", "compare"):
+            c.bind("<Motion>", self.punta)
+            c.bind("<Leave>", lambda e: e.widget.delete("punta"))
+        elif k == "spots":
+            c.bind("<Button-1>", self.clic_spot)
+        elif k == "report":
+            c.bind("<Button-1>", self.clic_report)
+            c.configure(yscrollincrement=24)       # la rotella scorre di una riga intera
+            c.bind("<MouseWheel>", lambda e: (e.widget.yview_scroll(-1 if e.delta > 0 else 1, "units"), self.maschera_rp(e.widget)))
+        elif k == "matchups":
+            c.bind("<Button-1>", self.clic_matchup)
+            c.bind("<MouseWheel>", lambda e: e.widget.yview_scroll(-2 if e.delta > 0 else 2, "units"))
+        return dict(fr=fr, tela=c, ctl=ctl)
+
+    def ospite(self, k):
+        """La copia della vista che si vede: quella della sua finestra se e' staccata, se no quella del pannello."""
+        s_ = self.staccate.get(k)
+        return s_["o"] if s_ else self.ospiti[k]
+
+    def tela(self, k):
+        return self.ospite(k)["tela"]
+
+    def copie(self, k=None):
+        """Tutte le copie vive delle viste (o della vista k): nel pannello e nelle finestre."""
+        out = [o for k_, o in self.ospiti.items() if k in (None, k_)]
+        return out + [s_["o"] for k_, s_ in self.staccate.items() if k in (None, k_)]
+
+    def visibili(self):
+        return {self.vista} | set(self.staccate)
+
+    def disegna_vista(self, k):
+        getattr(self, DISEGNI[k])()
+
+    def sincronizza(self):
+        """I comandi di ogni copia di ogni vista dicono le scelte di adesso."""
+        for o in self.copie():
+            ctl = o["ctl"]
+            for m, b in ctl.get("metr", {}).items():
+                b.metti(dict(DA.METRICHE)[m], m == self.metrica)
+            for k, v in (("asse", self.asse), ("fin", self.finestra), ("dividi", self.dividi or "None"), ("per", self.per), ("con", self.con)):
+                if k in ctl:
+                    ctl[k].set(v)
+            if "meta" in ctl:
+                ctl["meta"].metti("Meta decks only", self.solo_meta)
+
+    # ------------------------------------------------------------ le cartelle
+    def disegna_cartelle(self):
+        """Le linguette da cartella sopra il pannello: quella scelta si fonde col pannello, le altre piu' scure; a destra di ognuna il segno per staccarla."""
+        c = self.cv_tab
+        c.delete("all")
+        F = self.F
+        W, H = max(c.winfo_width(), 600), ALTO_TAB
+        d = DG.Disegno(W, H)
+        sopra = getattr(self, "_tab_sopra", None)
+        self._box_tab, att, testi, segni = [], None, [], []
+        x = 0
+        for k, n in VISTE:
+            x0, x1 = x, x + LARGA_TAB
+            fuori = k in self.staccate
+            top = 3 if k == self.vista else 8
+            if k == self.vista:
+                att = (x0, x1)
+            else:
+                pts = _cartella(x0, x1, top, H + 1)
+                d.poligono(pts, riempi="#202026" if sopra and sopra[0] == k else "#18181c")
+                d.linea(pts, "#2e2e34", 1.0)
+            su_segno = sopra == (k, "segno")
+            segni.append((x1 - 22, (top + H) / 2, C["titolo"] if su_segno else C["accento"] if fuori else C["muto"], fuori))
+            testi.append(((x0 + x1 - 26) / 2, (top + H) / 2 + 1, n + ("  ↗" if fuori else ""), k == self.vista))
+            self._box_tab.append((x0, top, x1, H, k, (x1 - 34, top, x1 - 6, H)))
+            x = x1 + 3
+        if att:
+            x0, x1 = att
+            d.linea([(0, H - 0.5), (x0 + 0.5, H - 0.5)], C["filo"], 1.0)       # il bordo alto del pannello, aperto sotto la cartella scelta
+            d.linea([(x1 - 0.5, H - 0.5), (W, H - 0.5)], C["filo"], 1.0)
+            pts = _cartella(x0, x1, 3, H + 1)
+            d.poligono(pts, riempi=C["scheda"])
+            d.linea(pts, C["filo"], 1.0)
+        else:
+            d.linea([(0, H - 0.5), (W, H - 0.5)], C["filo"], 1.0)
+        for sx_, sy_, col, fuori in segni:        # sopra le cartelle, anche su quella aperta
+            _segno_stacca(d, sx_, sy_, col, fuori)
+        self._img_tab = d.foto()
+        c.create_image(0, 0, image=self._img_tab, anchor="nw")
+        for tx, ty, t, on in testi:
+            c.create_text(tx, ty, text=t, fill=C["titolo"] if on else C["grigio"], font=F(8, True))
+
+    def _cartella_a(self, x, y):
+        """(vista, «segno» o «tab») sotto il punto, o None."""
+        for x0, y0, x1, y1, k, (a, b, c_, d_) in getattr(self, "_box_tab", []):
+            if a <= x <= c_ and b <= y <= d_:
+                return k, "segno"
+            if x0 <= x <= x1 and y0 <= y <= y1:
+                return k, "tab"
+        return None
+
+    def sopra_cartella(self, e):
+        q = None if e is None else self._cartella_a(e.x, e.y)
+        self.cv_tab.configure(cursor="hand2" if q else "")
+        if q != getattr(self, "_tab_sopra", None):
+            self._tab_sopra = q
+            self.disegna_cartelle()
+
+    def clic_cartella(self, e):
+        q = self._cartella_a(e.x, e.y)
+        if q is None:
+            return
+        k, dove = q
+        if dove == "segno":
+            if k in self.staccate:
+                self.riattacca(k)
+            else:
+                self.stacca(k)
+        elif k in self.staccate:      # una cartella staccata: qui il segnaposto, e la sua finestra davanti
+            self.vista = k
+            self.mostra_vista()
+            self.staccate[k]["win"].lift()
+        else:
+            self.cambia_vista(k)
+
+    # ------------------------------------------------------------ staccare una cartella in una finestra sua
+    def stacca(self, k):
+        """La vista k in una finestra sua (non sopra la grande: si porta anche su un altro schermo), coi suoi comandi e la situazione di adesso; chiusa, torna
+        nel pannello. Nel pannello passa alla prima cartella rimasta."""
+        if k in self.staccate:
+            w = self.staccate[k]["win"]
+            w.deiconify(); w.lift()
+            return w
+        tk, F = self.tk, self.F
+        nome = dict(VISTE)[k]
+        w = tk.Toplevel(self.fr)
+        w.title(f"Performance · {nome}")
+        w.configure(bg=C["scheda"])
+        pw, ph = max(self.pan.winfo_width(), 900), max(self.pan.winfo_height(), 520) + 60
+        w.geometry(f"{pw}x{ph}+{self.pan.winfo_rootx() + 40}+{max(0, self.pan.winfo_rooty() - 40)}")
+        testa = tk.Frame(w, bg=C["cap"]); testa.pack(fill="x")
+        tk.Label(testa, text=f"PERFORMANCE · {nome.upper()}", bg=C["cap"], fg=C["titolo"], font=F(10, True)).pack(side="left", padx=(16, 10), pady=10)
+        l_ = tk.Label(testa, text="", bg=C["cap"], fg=C["grigio"], font=F(8), anchor="w"); l_.pack(side="left", fill="x", expand=True)
+        b = pulsante_solido(tk, F, testa, "Bring it back", False, lambda: self.riattacca(k), alto=26, bg=C["cap"], colori=GRIGI)
+        b.configure(width=120); b.pack(side="right", padx=(8, 16), pady=8)
+        o = self.fai_vista(k, w)
+        o["fr"].pack(fill="both", expand=True)
+        self.staccate[k] = dict(win=w, o=o, l=l_)
+        w.protocol("WM_DELETE_WINDOW", lambda: self.riattacca(k, scegli=self.vista == k))
+        if self.vista == k:
+            libere = [k_ for k_, _n in VISTE if k_ not in self.staccate]
+            if libere:
+                self.vista = libere[0]
+                if self.vista in ("report", "matchups"):
+                    self.basso = self.vista
+        self.sincronizza()
+        self.mostra_vista()
+        self.aggiorna_fuori()
+        if self.righe is not None:
+            self.disegna_vista(self.vista)
+            w.after(60, lambda: w.winfo_exists() and self.disegna_vista(k))
+        return w
+
+    def riattacca(self, k, scegli=True):
+        """La finestra si chiude e la vista torna nel pannello (scegli: e diventa la cartella aperta)."""
+        s_ = self.staccate.pop(k, None)
+        if s_ is not None:
+            try:
+                s_["win"].destroy()
+            except Exception:      # noqa: BLE001 - gia' chiusa
+                pass
+        if scegli:
+            self.vista = k
+            if k in ("report", "matchups"):
+                self.basso = k
+        self.mostra_vista()
+        if self.righe is not None and self.vista == k:
+            self.disegna_vista(k)
+
+    def aggiorna_fuori(self):
+        """Nella testa di ogni finestra staccata: la situazione e quante partite."""
+        if not self.staccate:
+            return
+        n = len(self.scelte()) if self.righe is not None else 0
+        for s_ in self.staccate.values():
+            s_["l"].configure(text=f"{n} games · " + self.descrivi(self.filtri))
+
+    def descrivi(self, filtri, tipo=None):
+        on = [(k, v) for k, v in filtri.items() if v is not None]
+        if not on:
+            return f"all your {(tipo or self.tipo).lower()} games"
+        return " · ".join(DA.etichetta(k, v) if k.startswith("sit:") else f"{DA.nome_var(k)}: {DA.etichetta(k, v)}" for k, v in on)
 
     # ------------------------------------------------------------ i comandi
     def cambia_tipo(self, t):
@@ -266,58 +502,57 @@ class PaginaPerformance:
         self.filtri = {}
         self.disegna()
 
-    PARTENZA = dict(metrica="wr", asse="games", finestra="20", dividi=None, per="suo", ordina="n", basso="report", solo_meta=False, vista="chart")
+    PARTENZA = dict(metrica="wr", asse="games", finestra="20", dividi=None, per="suo", ordina="n", basso="report", solo_meta=False, vista="chart", con="rest")
 
     def reset(self):
-        """Tutte le partite, come all'apertura: niente filtri ne' situazioni, il grafico e la vista in basso di partenza."""
+        """Tutte le partite, come all'apertura: niente filtri ne' situazioni, il grafico e la cartella di partenza (le finestre staccate restano)."""
         self.filtri = {}
         for k, v in self.PARTENZA.items():
             setattr(self, k, v)
-        for k, b in self.b_metr.items():
-            b.metti(dict(DA.METRICHE)[k], k == self.metrica)
-        self.b_meta.metti("Meta decks only", False)
+        self.sincronizza()
         self.mostra_vista()
-        self.t_asse.set(self.asse); self.t_fin.set(self.finestra); self.t_dividi.set("None"); self.t_per.set(self.per)
         self.cv_sx.yview_moveto(0)
         self.disegna()
 
     def cambia(self, cosa, v):
         setattr(self, cosa, v)
-        if cosa == "metrica":
-            for k, b in self.b_metr.items():
-                b.metti(dict(DA.METRICHE)[k], k == v)
+        self.sincronizza()
         if cosa in ("metrica", "asse", "finestra", "dividi"):
             self.disegna_grafico()
+            if cosa in ("asse", "finestra") and "compare" in self.visibili():
+                self.disegna_confronto()
+        elif cosa == "con":
+            self.disegna_confronto()
         else:
-            self.disegna_basso()
+            self.disegna_report()
 
     def cambia_vista(self, k):
         self.vista = k
         if k in ("report", "matchups"):
             self.basso = k
         self.mostra_vista()
-        if k in ("report", "matchups"):
-            self.disegna_basso()
+        if self.righe is not None:
+            self.disegna_vista(k)
 
     def cambia_basso(self, k):      # il nome di prima (le prove, il reset): Report o Matchups
         self.cambia_vista(k)
 
     def mostra_vista(self):
-        """La vista scelta nel pannello, i suoi comandi accanto alle linguette e la sua riga d'aiuto."""
-        for k, b in self.b_viste.items():
-            b.metti(dict(VISTE)[k], k == self.vista)
-        for k, f in self.cmd.items():
-            f.pack_forget()
-        self.cmd[self.vista].pack(side="right")
-        for f in self.f_viste.values():
-            f.pack_forget()
-        self.f_viste["tabella" if self.vista in ("report", "matchups") else self.vista].pack(fill="both", expand=True)
-        self.l_basso.configure(text=SUGGERIMENTI[self.vista])
+        """Nel pannello la cartella scelta; se sta nella sua finestra, il segnaposto coi due pulsanti."""
+        for o in self.ospiti.values():
+            o["fr"].pack_forget()
+        self.f_fuori.pack_forget()
+        if self.vista in self.staccate:
+            self.l_fuori.configure(text=f"{dict(VISTE)[self.vista]} is in its own window")
+            self.f_fuori.pack(fill="both", expand=True)
+        else:
+            self.ospiti[self.vista]["fr"].pack(fill="both", expand=True)
+        self.disegna_cartelle()
 
     def cambia_meta(self):
         self.solo_meta = not self.solo_meta
-        self.b_meta.metti("Meta decks only", self.solo_meta)
-        self.disegna_basso()
+        self.sincronizza()
+        self.disegna_matchup()
 
     def scelte(self):
         """Le partite del tipo e della situazione."""
@@ -348,9 +583,10 @@ class PaginaPerformance:
         self.aggiorna_bottone_sit()
         self.disegna_finestra_sit()
         self.disegna_numeri()
-        self.disegna_grafico()
-        self.disegna_spot()
-        self.disegna_basso()
+        for k, _n in VISTE:         # solo le cartelle che si vedono: le altre si disegnano quando si aprono
+            if k in self.visibili():
+                self.disegna_vista(k)
+        self.aggiorna_fuori()
 
     def evidenzia(self, k, on):
         """Una tendina con un valore scelto: il campo azzurro scuro col bordo azzurro e il nome in azzurro (12 nov 2026, Autore: «le tendine dove ho dati
@@ -395,79 +631,89 @@ class PaginaPerformance:
         if k["n"] and k["n"] < 30:
             c.create_text(W - 16, 86, text=f"under 30 games: a hint, not a fact", anchor="e", fill=C["arancio"], font=F(7, True))
 
-    def disegna_grafico(self):
-        c = self.cv_gr
-        c.delete("all")
-        self._img = None
-        if self.righe is None:
-            return
+    def traccia(self, c, lin, box, metrica, asse, colori, titolo):
+        """Il grafico a linee su una tela qualsiasi (la cartella Chart, il confronto): assi, griglia, le linee in un'immagine nitida, il nome in fondo a ogni
+        linea. Tiene sulla tela quel che serve al puntatore (_linee, _scala, _metrica, _asse, _colori)."""
         F = self.F
         W, H = max(c.winfo_width(), 400), max(c.winfo_height(), 160)
-        x0, y0, x1, y1 = 52, 16, W - 120, H - 24
-        r = self.scelte()
-        lin = [(n, p) for n, p in DA.linee(r, self.metrica, self.asse, self.finestra, self.dividi) if p]
-        self._linee = lin
+        x0, y0, x1, y1 = box
+        c._linee, c._metrica, c._asse, c._colori, c._scala = lin, metrica, asse, colori, None
         if not lin:
-            c.create_text(W / 2, H / 2, text="No games in this situation", fill=C["grigio"], font=F(9))
-            return
+            c.create_text((x0 + x1) / 2, (y0 + y1) / 2, text="No games in this situation", fill=C["grigio"], font=F(9))
+            return None
         xs = [x for _n, p in lin for x, _y in p]
         ys = [y for _n, p in lin for _x, y in p]
-        if self.metrica in ("wr", "mull"):
+        if metrica in ("wr", "mull"):
             ya, yb = 0.0, 100.0
-            if self.metrica == "wr":
+            if metrica == "wr":
                 ya, yb = max(0.0, min(ys) // 10 * 10 - 10), min(100.0, (max(ys) // 10 + 1) * 10 + 10)
         else:
             ya, yb = 0.0, max(ys) * 1.15 or 1.0
         xa, xb = min(xs), max(xs) if max(xs) > min(xs) else min(xs) + 1
-        self._scala = (x0, y0, x1, y1, xa, xb, ya, yb)
+        c._scala = (x0, y0, x1, y1, xa, xb, ya, yb)
         sx = lambda x: x0 + (x - xa) / (xb - xa) * (x1 - x0)
         sy = lambda y: y1 - (y - ya) / (yb - ya) * (y1 - y0)
-        passo = 10 if self.metrica in ("wr", "mull") else max(1, round((yb - ya) / 5))
+        passo = 10 if metrica in ("wr", "mull") else max(1, round((yb - ya) / 5))
         v = ya
         while v <= yb + 1e-9:
             yy = sy(v)
-            c.create_line(x0, yy, x1, yy, fill="#3a3a42" if self.metrica == "wr" and abs(v - 50) < 1e-9 else "#26262c")
-            c.create_text(x0 - 8, yy, text=f"{v:.0f}{'%' if self.metrica in ('wr', 'mull') else ''}", anchor="e", fill=C["muto"], font=F(7))
+            c.create_line(x0, yy, x1, yy, fill="#3a3a42" if metrica == "wr" and abs(v - 50) < 1e-9 else "#26262c")
+            c.create_text(x0 - 8, yy, text=f"{v:.0f}{'%' if metrica in ('wr', 'mull') else ''}", anchor="e", fill=C["muto"], font=F(7))
             v += passo
-        etx = (lambda x: f"game {int(x)}") if self.asse == "games" else (lambda x: datetime.date.fromordinal(int(x)).strftime("%d %b"))
+        etx = (lambda x: f"game {int(x)}") if asse == "games" else (lambda x: datetime.date.fromordinal(int(x)).strftime("%d %b"))
         c.create_text(x0, y1 + 12, text=etx(xa), anchor="w", fill=C["muto"], font=F(7))
         c.create_text(x1, y1 + 12, text=etx(xb), anchor="e", fill=C["muto"], font=F(7))
         tratti = []
         for i, (n, p) in enumerate(lin):
-            col = LINEE[i % len(LINEE)]
+            col = colori[i % len(colori)]
             pts = [(sx(x), sy(y)) for x, y in p]
             if len(pts) == 1:
                 pts = [pts[0], (pts[0][0] + 1, pts[0][1])]
             # sottili (12 nov 2026, Autore: «le linee dei grafici le voglio piu' sottili»; erano 2,4 / 2,0 / 1,6)
             tratti.append((pts, col, 1.4 if n == "All" and len(lin) == 1 else 1.2 if n != "All" else 1.0, None))
-            c.create_text(x1 + 8, pts[-1][1], text=f"{n}  {p[-1][1]:.0f}{'%' if self.metrica in ('wr', 'mull') else ''}", anchor="w", fill=col, font=F(7, True))
-        self._img = DG.tratti(W, H, linee=tratti)
-        c.create_image(0, 0, image=self._img, anchor="nw")
-        if self.asse == "games" and len(lin) == 1:       # i cambi di lega, come nel grafico di prima
-            for i_, rango in DA.cambi_rango(r):
-                xx = sx(i_)
-                c.create_line(xx, y0, xx, y1, fill="#3a3a42", dash=(3, 3))
-                c.create_text(xx + 4, y0 + 2, text=rango, anchor="nw", fill=C["grigio"], font=F(7, True))
+            c.create_text(x1 + 8, pts[-1][1], text=f"{n}  {p[-1][1]:.0f}{'%' if metrica in ('wr', 'mull') else ''}", anchor="w", fill=col, font=F(7, True))
+        c._img = DG.tratti(W, H, linee=tratti)
+        c.create_image(0, 0, image=c._img, anchor="nw")
+        c.create_text((x0 + x1) / 2, y0 - 12, text=titolo, anchor="n", fill=C["grigio"], font=F(7))
+        return sx, sy
+
+    def disegna_grafico(self):
+        c = self.tela("chart")
+        c.delete("all")
+        c._img, c._linee, c._scala = None, [], None
+        if self.righe is None:
+            return
+        W, H = max(c.winfo_width(), 400), max(c.winfo_height(), 160)
+        r = self.scelte()
+        lin = [(n, p) for n, p in DA.linee(r, self.metrica, self.asse, self.finestra, self.dividi) if p]
         tit = {"wr": "win rate", "n": "games", "turni": "average length in your turns", "mull": "mulligan rate"}[self.metrica]
         fin = "" if self.metrica == "n" else (", cumulative" if self.finestra == "cum" else f", last {self.finestra} games")
-        c.create_text((x0 + x1) / 2, 4, text=f"{tit}{fin}" + (f" · split by {DA.nome_var(self.dividi).lower()}" if self.dividi else ""), anchor="n", fill=C["grigio"], font=F(7))
+        tit = f"{tit}{fin}" + (f" · split by {DA.nome_var(self.dividi).lower()}" if self.dividi else "")
+        sc = self.traccia(c, lin, (52, 16, W - 120, H - 24), self.metrica, self.asse, LINEE, tit)
+        if sc and self.asse == "games" and len(lin) == 1:       # i cambi di lega, come nel grafico di prima
+            sx, _sy = sc
+            for i_, rango in DA.cambi_rango(r):
+                xx = sx(i_)
+                c.create_line(xx, 16, xx, H - 24, fill="#3a3a42", dash=(3, 3))
+                c.create_text(xx + 4, 18, text=rango, anchor="nw", fill=C["grigio"], font=self.F(7, True))
 
     def punta(self, e):
-        """Il puntatore sul grafico: la linea verticale e il valore di ogni linea in quel punto."""
-        c = self.cv_gr
+        """Il puntatore su un grafico (Chart o Compare): la linea verticale e il valore di ogni linea in quel punto."""
+        c = e.widget
         c.delete("punta")
-        if not getattr(self, "_linee", None) or not getattr(self, "_scala", None):
+        if not getattr(c, "_linee", None) or not getattr(c, "_scala", None):
             return
-        x0, y0, x1, y1, xa, xb, _ya, _yb = self._scala
+        x0, y0, x1, y1, xa, xb, _ya, _yb = c._scala
         if not x0 <= e.x <= x1:
             return
         xv = xa + (e.x - x0) / (x1 - x0) * (xb - xa)
         c.create_line(e.x, y0, e.x, y1, fill="#4a4a52", tags="punta")
         righe = []
-        for i, (n, p) in enumerate(self._linee):
+        pc = "%" if c._metrica in ("wr", "mull") else ""
+        for i, (n, p) in enumerate(c._linee):
             q = min(p, key=lambda t: abs(t[0] - xv))
-            righe.append((f"{n}: {q[1]:.1f}{'%' if self.metrica in ('wr', 'mull') else ''}", LINEE[i % len(LINEE)]))
-        etx = f"game {round(xv)}" if self.asse == "games" else datetime.date.fromordinal(int(round(xv))).strftime("%d %b %Y")
+            righe.append((f"{n}: {q[1]:.1f}{pc}", c._colori[i % len(c._colori)]))
+        etx = f"game {round(xv)}" if c._asse == "games" else datetime.date.fromordinal(int(round(xv))).strftime("%d %b %Y")
         bx = e.x + 12 if e.x < (x0 + x1) / 2 else e.x - 170
         c.create_rectangle(bx, y0 + 4, bx + 160, y0 + 22 + 15 * len(righe), fill="#101014", outline="#3a3a42", tags="punta")
         c.create_text(bx + 8, y0 + 12, text=etx, anchor="w", fill=C["titolo"], font=self.F(7, True), tags="punta")
@@ -475,18 +721,15 @@ class PaginaPerformance:
             c.create_text(bx + 8, y0 + 27 + 15 * j, text=t, anchor="w", fill=col, font=self.F(7), tags="punta")
 
     def disegna_basso(self):
-        """La tabella del pannello: Report o Matchups."""
-        if self.basso == "report":
-            self.disegna_report()
-        else:
-            self.disegna_matchup()
+        """Report o Matchups, l'ultima delle due aperta (il nome di prima)."""
+        self.disegna_vista(self.basso)
 
     def disegna_spot(self):
-        """Dove vinci e dove perdi di piu', accanto al grafico: due elenchi uno sopra l'altro, quanti ne stanno nell'altezza (niente si taglia), gli spot che
-        reggono in testa (l'intervallo sta tutto dalla loro parte: «strong»). Il clic mette le condizioni fra i filtri."""
-        c = self.cv_sp
+        """Dove vinci e dove perdi di piu': due elenchi (affiancati a tutta larghezza), quanti ne stanno nell'altezza (niente si taglia), gli spot che reggono in
+        testa (l'intervallo sta tutto dalla loro parte: «strong»). Il clic mette le condizioni fra i filtri."""
+        c = self.tela("spots")
         c.delete("all")
-        self._spot_box = []
+        c._spot_box = []
         if self.righe is None:
             return
         F = self.F
@@ -518,13 +761,14 @@ class PaginaPerformance:
                               + ("  ·  strong" if s["forte"] else "  ·  a hint"), anchor="w", fill=C["grigio"] if s["forte"] else C["muto"], font=F(7))
                 c.create_text(x0 + larga - 12, y + 12, text=f"{s['wr']:.0f}%", anchor="e", fill=col, font=F(11, True))
                 c.create_text(x0 + larga - 12, y + 28, text=f"{s['delta']:+.0f}", anchor="e", fill=col, font=F(7, True))
-                self._spot_box.append((x0, y, x0 + larga, y + alto, s))
+                c._spot_box.append((x0, y, x0 + larga, y + alto, s))
                 y += alto + 4
             y += 6
 
     def clic_spot(self, e):
         """Uno spot: le sue condizioni fra i filtri."""
-        for x0, y0, x1, y1, s in getattr(self, "_spot_box", []):
+        c = getattr(e, "widget", None) or self.tela("spots")
+        for x0, y0, x1, y1, s in getattr(c, "_spot_box", []):
             if x0 <= e.x <= x1 and y0 <= e.y <= y1:
                 for k, v in s["condizioni"]:
                     self.filtri[k] = v
@@ -533,9 +777,9 @@ class PaginaPerformance:
 
     def disegna_matchup(self):
         """La matrice: i tuoi mazzi in riga, gli archetipi incontrati in colonna (o solo quelli del meta), in ogni cella win rate e partite."""
-        c = self.cv_rp
+        c = self.tela("matchups")
         c.delete("all")
-        self._celle = []
+        c._celle = []
         if self.righe is None:
             return
         F = self.F
@@ -569,25 +813,36 @@ class PaginaPerformance:
                 c.create_rectangle(x + 2, y + 2, x + cw - 2, y + rh - 2, fill=fondo, outline="#26262c")
                 c.create_text(x + cw / 2, y + rh / 2 - 5, text=f"{w:.0f}%", fill=C["muto"] if poche else C["titolo"], font=F(8, True))
                 c.create_text(x + cw / 2, y + rh / 2 + 8, text=f"{nn}", fill=C["muto"] if poche else "#d8d8dc", font=F(6))
-                self._celle.append((x, y, x + cw, y + rh, m, a))
+                c._celle.append((x, y, x + cw, y + rh, m, a))
             c.create_text(x0 + len(archi) * cw + 40, y + rh / 2, text=f"{wr:.0f}%", fill=C["azzurro"] if wr >= 50 else C["rosso"], font=F(8, True))
             y += rh + 2
-        c.configure(scrollregion=(0, 0, W, y + 10))
+        c.create_text(8, y + 12, text="grey: under 5 games, a hint", anchor="w", fill=C["muto"], font=F(7))
+        c.configure(scrollregion=(0, 0, W, y + 26))
+
+    def clic_matchup(self, e):
+        """Una cella: il tuo mazzo e il suo archetipo fra i filtri."""
+        c = getattr(e, "widget", None) or self.tela("matchups")
+        y = c.canvasy(e.y)
+        for x0, y0, x1, y1, m, a in getattr(c, "_celle", []):
+            if x0 <= e.x <= x1 and y0 <= y <= y1:
+                self.filtri["mio"], self.filtri["suo"] = m, a
+                self.disegna()
+                return
 
     def disegna_report(self):
-        c = self.cv_rp
+        c = self.tela("report")
         c.delete("all")
-        self._righe_rp = []
+        c._righe_rp, c._n = [], 0
         if self.righe is None:
             return
         F = self.F
         rep = DA.report(self.scelte(), self.per, self.ordina if self.ordina != "wl" else "vinte")
         W = max(c.winfo_width(), 700)
         x = 8
-        self._col_x = []
+        c._col_x = []
         for k, t, w in COLONNE:
             c.create_text(x, 10, text=t or DA.nome_var(self.per).upper()[:32], anchor="w", fill=C["accento"] if k == self.ordina else C["titolo"], font=F(7, True))
-            self._col_x.append((x, x + w, k))
+            c._col_x.append((x, x + w, k))
             x += w
         y = 26
         for i, r in enumerate(rep):
@@ -613,50 +868,159 @@ class PaginaPerformance:
                         v = v[:33] + "…"
                     c.create_text(x, y + 10, text=v, anchor="w", fill=col, font=F(8, k == "nome"))
                 x += w
-            self._righe_rp.append((y - 2, y + 22, r["valore"]))
+            c._righe_rp.append((y - 2, y + 22, r["valore"]))
             y += 24
+        c._n = len(rep)
         if not rep:
             c.create_text(12, 40, text="No games in this situation", anchor="w", fill=C["grigio"], font=F(8))
         c.create_text(8, y + 10, text="grey: under 15 games, a hint", anchor="w", fill=C["muto"], font=F(7))
         c.configure(scrollregion=(0, 0, W, y + 24))
-        visibili = max(0, int((max(c.winfo_height(), 60) - 26) // 24))       # le righe che stanno intere: le altre si dicono, non si lasciano a meta'
-        if len(rep) > visibili and self.vista == "report":
-            self.l_basso.configure(text=f"{len(rep) - visibili} more rows below: scroll · " + SUGGERIMENTI["report"])
-        self.maschera_rp()
+        self.maschera_rp(c)
 
-    def maschera_rp(self):
-        """La riga che in fondo starebbe a meta' si copre: in vista solo righe intere (12 nov 2026: «tutto non tagliato»)."""
-        c = self.cv_rp
+    def maschera_rp(self, c=None):
+        """La riga che in fondo starebbe a meta' si copre: in vista solo righe intere (12 nov 2026: «tutto non tagliato»); sopra la copertura quante righe restano
+        sotto (la riga d'aiuto sotto le cartelle non c'e' piu')."""
+        c = c or self.tela("report")
         c.delete("maschera")
-        if self.basso != "report":
-            return
         top, h = c.canvasy(0), max(c.winfo_height(), 60)
         fondo = top + h
+        W = max(c.winfo_width(), 700)
         ultimo = 24 + int((fondo - 24) // 24) * 24       # le righe cominciano a 24 e sono alte 24
+        fine = 24 + 24 * getattr(c, "_n", 0)
+        sotto = (fine - ultimo) // 24 if fine > ultimo else 0
+        if sotto and fondo - ultimo < 18 and ultimo - 24 > top + 24:       # serve posto per la scritta: si copre una riga in piu'
+            ultimo -= 24
+            sotto += 1
         if ultimo < fondo:
-            c.create_rectangle(0, ultimo, max(c.winfo_width(), 700) + 10, fondo + 2, fill=C["scheda"], outline="", tags="maschera")
+            c.create_rectangle(0, ultimo, W + 10, fondo + 2, fill=C["scheda"], outline="", tags="maschera")
+        if sotto:
+            c.create_text(W - 12, (ultimo + fondo) / 2, text=f"{sotto} more row{'s' if sotto > 1 else ''} below · scroll", anchor="e", fill=C["grigio"],
+                          font=self.F(7, True), tags="maschera")
 
     def clic_report(self, e):
-        y = self.cv_rp.canvasy(e.y)
-        if self.basso == "matchups":        # una cella: il tuo mazzo e il suo archetipo fra i filtri
-            for x0, y0, x1, y1, m, a in getattr(self, "_celle", []):
-                if x0 <= e.x <= x1 and y0 <= y <= y1:
-                    self.filtri["mio"], self.filtri["suo"] = m, a
-                    self.disegna()
-                    return
-            return
+        c = getattr(e, "widget", None) or self.tela("report")
+        y = c.canvasy(e.y)
         if y < 22:      # le intestazioni: ordina
-            for a, b, k in getattr(self, "_col_x", []):
+            for a, b, k in getattr(c, "_col_x", []):
                 if a <= e.x < b:
                     self.ordina = "nome" if k == "nome" else k
                     self.disegna_report()
                     return
             return
-        for a, b, v in getattr(self, "_righe_rp", []):
+        for a, b, v in getattr(c, "_righe_rp", []):
             if a <= y < b:
                 self.filtri[self.per] = v
                 self.disegna()
                 return
+
+    # ------------------------------------------------------------ il confronto situazionale (12 nov 2026, «procedi con i confronti situazionali»)
+    def b_confronto(self):
+        """B: il resto delle partite (rest), tutte (all) o una situazione salvata (s<i>). -> (partite, nome, descrizione)."""
+        tutte = [x for x in self.righe if x["tipo"] == self.tipo]
+        if self.con.startswith("s") and self.con[1:].isdigit():
+            sal = DA.situazioni()
+            i = int(self.con[1:])
+            if i < len(sal):
+                s_ = sal[i]
+                t = s_.get("tipo") or self.tipo
+                return DA.filtra(self.righe, s_.get("filtri") or {}, t), s_.get("nome") or f"Situation {i + 1}", self.descrivi(s_.get("filtri") or {}, t)
+            self.con = "rest"
+        if self.con == "all":
+            return tutte, f"All {self.tipo.lower()} games", f"all your {self.tipo.lower()} games, A included"
+        dentro = {id(x) for x in self.scelte()}
+        return [x for x in tutte if id(x) not in dentro], "Everything else", f"your {self.tipo.lower()} games outside A"
+
+    def disegna_confronto(self):
+        """A (la situazione dei filtri) contro B: le due schede, la tabella delle misure con la differenza e se regge (test z, p sotto 5%), la frase, e sotto il
+        win rate dei due nel tempo."""
+        c = self.tela("compare")
+        c.delete("all")
+        c._img, c._linee, c._scala = None, [], None
+        if self.righe is None:
+            return
+        F = self.F
+        sal = DA.situazioni()
+        voci = ["rest", "all"] + [f"s{i}" for i in range(len(sal))]
+        if self.con not in voci:
+            self.con = "rest"
+        et = {"rest": "Everything else", "all": f"All {self.tipo.lower()} games", **{f"s{i}": (s_.get("nome") or f"Situation {i + 1}") for i, s_ in enumerate(sal)}}
+        for o in self.copie("compare"):
+            o["ctl"]["con"].opzioni(voci, lambda v: self.cambia("con", v), etichette=et)
+            o["ctl"]["con"].set(self.con)
+        W, H = max(c.winfo_width(), 600), max(c.winfo_height(), 240)
+        n_f = sum(1 for v in self.filtri.values() if v is not None)
+        if not n_f and self.con in ("rest", "all"):
+            c.create_text(16, 30, text="A is the situation you build with the smart filters and the situations in the game.", anchor="w", fill=C["titolo"], font=F(9, True))
+            c.create_text(16, 52, text="Set some, then compare it here with everything else, with all your games or with a saved situation.", anchor="w",
+                          fill=C["grigio"], font=F(8))
+            return
+        a = self.scelte()
+        b, nome_b, descr_b = self.b_confronto()
+        res = DA.confronta(a, b)
+        corto = lambda t, n: t if len(t) <= n else t[:n - 1] + "…"
+        meta = (W - 16 - 12) / 2
+        for i, (lett, tit, descr, k_, col) in enumerate((("A", "THIS SITUATION", self.descrivi(self.filtri), res["a"], C["azzurro"]),
+                                                         ("B", nome_b.upper(), descr_b, res["b"], C["arancio"]))):
+            x0 = 8 + i * (meta + 12)
+            c.create_rectangle(x0, 4, x0 + meta, 52, fill="#202024", outline="#2c2c32")
+            c.create_rectangle(x0, 4, x0 + 3, 52, fill=col, outline="")
+            c.create_text(x0 + 14, 17, text=corto(f"{lett} · {tit}", int((meta - 150) / 6.6)), anchor="w", fill=col, font=F(8, True))
+            c.create_text(x0 + meta - 10, 17, text=f"{k_['n']} games · {k_['vinte']}-{k_['perse']}", anchor="e", fill=C["titolo"], font=F(8, True))
+            c.create_text(x0 + 14, 37, text=corto(descr, int((meta - 24) / 5.6)), anchor="w", fill=C["grigio"], font=F(7))
+        # la tabella: misura, A, B, A meno B, se regge
+        cx = (16, 250, 420, 580, 700)
+        y = 64
+        for x_, t in zip(cx, ("MEASURE", "A", "B", "A − B", "DOES IT HOLD?")):
+            c.create_text(x_, y + 8, text=t, anchor="w", fill=C["azzurro"] if t == "A" else C["arancio"] if t == "B" else C["titolo"], font=F(7, True))
+        y += 20
+        pf = lambda p: "p < 0.001" if p < 0.001 else f"p {p:.3f}" if p < 0.1 else f"p {p:.2f}"
+        for i, r in enumerate(res["righe"]):
+            if i % 2 == 0:
+                c.create_rectangle(0, y, W, y + 24, fill="#202024", outline="")
+            c.create_text(cx[0], y + 12, text=r["nome"], anchor="w", fill=C["titolo"], font=F(8, True))
+            for x_, v, n, ic, col in ((cx[1], r["a"], r["na"], r["ic_a"], C["azzurro"]), (cx[2], r["b"], r["nb"], r["ic_b"], C["arancio"])):
+                if v is None:
+                    t = "-"
+                elif r["unita"] == "%":
+                    t = f"{v:.0f}%" + (f"  ({ic[0]}–{ic[1]})" if r["k"] == "wr" and ic else "") + f"  · {n} g"
+                else:
+                    t = f"T{v}  · {n} g"
+                c.create_text(x_, y + 12, text=t, anchor="w", fill=col if v is not None else C["muto"], font=F(8))
+            d = r["delta"]
+            buono = r["k"] in ("wr", "play", "draw")
+            if d is None:
+                td, cd = "-", C["muto"]
+            else:
+                td = f"{d:+.1f} pts" if r["unita"] == "%" else f"{d:+.1f} turns"
+                cd = (C["azzurro"] if d > 0 else C["rosso"] if d < 0 else C["testo"]) if buono else C["testo"]
+            c.create_text(cx[3], y + 12, text=td, anchor="w", fill=cd, font=F(8, True))
+            if r["p"] is None:
+                tv, cv, fv = "too few games (5 a side)", C["muto"], F(7)
+            elif r["p"] < 0.05:
+                tv, cv, fv = f"holds · {pf(r['p'])}", C["accento"], F(8, True)
+            else:
+                tv, cv, fv = f"could be chance · {pf(r['p'])}" + (f" · ~{r['servono']:,} games a side to tell" if r["servono"] and r["servono"] <= 3000
+                                                                   else " · no real difference" if r["unita"] == "%" else ""), C["grigio"], F(7)
+            c.create_text(cx[4], y + 12, text=tv, anchor="w", fill=cv, font=fv)
+            y += 24
+        # la frase sul win rate
+        w = res["righe"][0]
+        if w["p"] is None:
+            fr, cf = "Too few games on one side to compare the win rate: 5 at least on each.", C["grigio"]
+        else:
+            piu = f"{abs(w['delta']):.1f} points {'more' if w['delta'] > 0 else 'less'}" if w["delta"] else "the same"
+            if w["p"] < 0.05:
+                fr, cf = f"In A you win {piu} than in B, and it holds: {pf(w['p'])}, under 5% it is not chance.", C["accento"]
+            else:
+                fr, cf = (f"In A you win {piu} than in B, but it could still be chance ({pf(w['p'])})"
+                          + (f": about {w['servono']:,} games on each side would tell." if w["servono"] and w["servono"] <= 3000
+                             else ": so small that it is no real difference." if w["servono"] else "."), C["titolo"])
+        c.create_text(16, y + 16, text=fr, anchor="w", fill=cf, font=F(9, True), width=W - 32)
+        y += 40
+        if H - y >= 130:        # sotto, il win rate di A e di B nel tempo
+            lin = [(n, p) for n, p in (("A", DA.serie(a, "wr", self.asse, self.finestra)), ("B", DA.serie(b, "wr", self.asse, self.finestra))) if p]
+            fin = "cumulative" if self.finestra == "cum" else f"last {self.finestra} games"
+            self.traccia(c, lin, (52, y + 18, W - 120, H - 24), "wr", self.asse, (C["azzurro"], C["arancio"]), f"win rate of A and B, {fin}")
 
     # ------------------------------------------------------------ le situazioni dentro la partita (12 nov 2026)
     def apri_situazioni(self):
@@ -716,6 +1080,8 @@ class PaginaPerformance:
     def salva_situazione(self):
         DA.salva_situazione(self.tipo, dict(self.filtri))
         self.disegna_situazioni()
+        if "compare" in self.visibili():       # le situazioni salvate sono anche i B del confronto
+            self.disegna_confronto()
         self.b_salva_sit.metti("Saved", False); self.b_salva_sit.after(1800, lambda: self.b_salva_sit.winfo_exists() and self.b_salva_sit.metti("Save this situation", False))
 
     def disegna_situazioni(self):

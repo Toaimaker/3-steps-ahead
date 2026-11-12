@@ -283,6 +283,71 @@ def conti(r):
                 turni_p=_media(x.get("turno") for x in r if not x["vinta"]))
 
 
+def p_proporzioni(va, na, vb, nb):
+    """Il test z di due proporzioni (va su na contro vb su nb): la p a due code. None con meno di 5 partite da una parte."""
+    if na < 5 or nb < 5:
+        return None
+    p = (va + vb) / (na + nb)
+    se = math.sqrt(p * (1 - p) * (1 / na + 1 / nb))
+    if se == 0:
+        return 1.0
+    return math.erfc(abs(va / na - vb / nb) / se / math.sqrt(2))
+
+
+def p_medie(xs, ys):
+    """Due medie (i turni): il test z di Welch, la p a due code. None con meno di 5 valori da una parte."""
+    xs, ys = [x for x in xs if x is not None], [y for y in ys if y is not None]
+    if len(xs) < 5 or len(ys) < 5:
+        return None
+    ma, mb = sum(xs) / len(xs), sum(ys) / len(ys)
+    va = sum((x - ma) ** 2 for x in xs) / (len(xs) - 1)
+    vb = sum((y - mb) ** 2 for y in ys) / (len(ys) - 1)
+    se = math.sqrt(va / len(xs) + vb / len(ys))
+    if se == 0:
+        return 1.0 if ma == mb else 0.0
+    return math.erfc(abs(ma - mb) / se / math.sqrt(2))
+
+
+def servono(pa, pb):
+    """Quante partite per lato servirebbero a vedere una differenza come questa fra due proporzioni (0..1), al 5% con potenza 80%: (1,96 + 0,84)^2 = 7,84."""
+    d = abs(pa - pb)
+    if d < 1e-9:
+        return None
+    return math.ceil(7.84 * (pa * (1 - pa) + pb * (1 - pb)) / d ** 2)
+
+
+def confronta(a, b):
+    """Il confronto situazionale: A (le partite della situazione) contro B (il resto, tutte, o un'altra situazione). -> dict(a=conti, b=conti, righe=[...]):
+    per ogni misura i due valori, la differenza (A meno B), la p (test z delle proporzioni, Welch per i turni) e, dove la differenza non regge ancora, quante
+    partite per lato servirebbero a vederla."""
+    ca, cb = conti(a), conti(b)
+    righe_ = []
+
+    def prop(k, nome, sa, sb, bene):
+        va, vb = sum(1 for x in sa if bene(x)), sum(1 for x in sb if bene(x))
+        na, nb = len(sa), len(sb)
+        pa, pb = (va / na if na else None), (vb / nb if nb else None)
+        d = round(100 * (pa - pb), 1) if pa is not None and pb is not None else None
+        righe_.append(dict(k=k, nome=nome, a=None if pa is None else round(100 * pa, 1), b=None if pb is None else round(100 * pb, 1), na=na, nb=nb,
+                           ic_a=wilson(va, na), ic_b=wilson(vb, nb), delta=d, p=p_proporzioni(va, na, vb, nb),
+                           servono=servono(pa, pb) if d is not None else None, unita="%"))
+
+    def media(k, nome, sa, sb):
+        xa, xb = [x.get("turno") for x in sa], [x.get("turno") for x in sb]
+        ma, mb = _media(xa), _media(xb)
+        righe_.append(dict(k=k, nome=nome, a=ma, b=mb, na=sum(1 for x in xa if x is not None), nb=sum(1 for x in xb if x is not None), ic_a=None, ic_b=None,
+                           delta=round(ma - mb, 1) if ma is not None and mb is not None else None, p=p_medie(xa, xb), servono=None, unita="T"))
+    vinta = lambda x: x["vinta"]
+    prop("wr", "Win rate", a, b, vinta)
+    prop("play", "Win rate on the play", [x for x in a if x.get("partenza") == "Play"], [x for x in b if x.get("partenza") == "Play"], vinta)
+    prop("draw", "Win rate on the draw", [x for x in a if x.get("partenza") == "Draw"], [x for x in b if x.get("partenza") == "Draw"], vinta)
+    prop("mull", "Mulligan rate", a, b, lambda x: x["mulligan"])
+    media("turni", "Game length", a, b)
+    media("turni_v", "Length of the wins", [x for x in a if x["vinta"]], [x for x in b if x["vinta"]])
+    media("turni_p", "Length of the losses", [x for x in a if not x["vinta"]], [x for x in b if not x["vinta"]])
+    return dict(a=ca, b=cb, righe=righe_)
+
+
 METRICHE = (("wr", "Win rate"), ("n", "Games"), ("turni", "Avg turns"), ("mull", "Mulligan rate"))
 FINESTRE = (("cum", "Cumulative"), ("10", "Last 10 games"), ("20", "Last 20 games"), ("50", "Last 50 games"))
 
@@ -565,6 +630,15 @@ def prova():
     x_ = dict(righe_[0], sit=dict(io_terra=True))
     casi.append(("il filtro di una situazione: Yes, No, e None non passa", passa(x_, {"sit:io_terra": "Yes"}) and not passa(x_, {"sit:io_terra": "No"})
                  and not passa(x_, {"sit:io_curva": "Yes"}) and not passa(x_, {"sit:io_curva": "No"})))
+    # il confronto situazionale: 70 su 100 contro 40 su 100 regge; lo stesso insieme no; con 3 partite non si dice
+    fa = lambda v, n: [dict(vinta=i < v, mulligan=False, partenza="Play" if i % 2 else "Draw", turno=8) for i in range(n)]
+    cf = confronta(fa(70, 100), fa(40, 100))
+    w_ = cf["righe"][0]
+    casi.append(("confronto: 70% contro 40% su 100 partite, +30 punti, p sotto 0,001", w_["k"] == "wr" and w_["delta"] == 30.0 and w_["p"] < 0.001))
+    casi.append(("negativa: lo stesso insieme, differenza 0 e p 1", confronta(fa(50, 60), fa(50, 60))["righe"][0]["p"] == 1.0))
+    casi.append(("negativa: 3 partite per lato, nessuna p", confronta(fa(2, 3), fa(1, 3))["righe"][0]["p"] is None))
+    casi.append(("confronto: 50% contro 60% servono 385 partite per lato", servono(0.5, 0.6) == 385))
+    casi.append(("confronto: turni uguali, p dei turni 1", next(r_ for r_ in cf["righe"] if r_["k"] == "turni")["p"] == 1.0))
     vere = righe()
     casi.append(("i log veri: righe con le variabili (se ci sono partite)", not vere or all(k in vere[0] for k in ("tipo", "partenza", "terre", "sessione", "fascia"))))
     for n, ok in casi:

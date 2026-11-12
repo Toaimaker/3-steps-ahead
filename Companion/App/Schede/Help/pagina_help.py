@@ -69,7 +69,10 @@ SEZIONI = (
       ("Spots", "where you win and where you lose the most, one or two variables at a time; strong when the 95% interval clears your average; click one to filter it"),
       ("Report", "group by a variable; click a row to filter it, a column to sort"),
       ("Matchups", "your decks against the archetypes you met, or only the meta decks; click a cell to filter it"),
-      ("Save this situation", "keep a set of filters and come back to it")]),
+      ("Compare", "A, the situation of your filters, against B: everything else, all your games or a saved situation; the difference, and whether it holds "
+                  "(p under 5%) or how many games would tell"),
+      ("The folders", "the mark on the right of each folder opens it in its own window, even on another screen; close it, or Bring it back, to dock it again"),
+      ("Save this situation", "keep a set of filters and come back to it; saved situations are also a B of Compare")]),
     ("risorse", "Resources", "Gold, gems, packs, cards and wildcards: what you earn and spend, the Farmer that plans how to spend them, the roadmap and the ROI.",
      [("Period · Range · Resource", "what the chart and the income show"), ("Farmer", "goal sliders; Create makes the roadmap, Dismiss ends it"),
       ("Gold value", "My win rate or Pack price"), ("Spend gold on packs", "off: gold never buys packs"), ("Roadmap check", "above or below the plan, day by day")]),
