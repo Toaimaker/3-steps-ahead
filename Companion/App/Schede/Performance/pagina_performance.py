@@ -1123,6 +1123,19 @@ class PaginaPerformance:
             # Moments (quello di sempre) o Every action, azione per azione (12 nov 2026, Autore: «il replayer migliore in circolazione ... basta che non
             # perdiamo assolutamente cio' che abbiamo adesso»)
             self.b_modi = {}
+            # i salti e il segnalibro (12 nov 2026, «Sì, prosegui» sui salti e i segnalibri): il clic va avanti, col Maiuscolo indietro; tasti C, S, O, B
+            self.b_salti = {}
+            for k_, n_ in (("comb", "Combat ›"), ("spell", "Spell ›"), ("tappato", "Opp. tapped out ›")):
+                b_ = pulsante_solido(tk, F, testa_b, n_, False, lambda k_=k_: self.salta(k_), alto=26, bg=C["cap"], colori=GRIGI)
+                b_.configure(width=150 if k_ == "tappato" else 96); b_.pack(side="left", padx=(0, 6), pady=8)
+                b_.bind("<Shift-Button-1>", lambda e, k_=k_: (self.salta(k_, -1), "break")[1])
+                self.b_salti[k_] = b_
+            self.b_segna = pulsante_solido(tk, F, testa_b, "Bookmark", False, self.segna_board, alto=26, bg=C["cap"], colori=("#3a3220", "#4a4028", "#8a6d1c"))
+            self.b_segna.configure(width=120); self.b_segna.pack(side="left", padx=(6, 12), pady=8)
+            for tasto, k_ in (("c", "comb"), ("s", "spell"), ("o", "tappato")):
+                f.bind(f"<{tasto}>", lambda e, k_=k_: self.salta(k_))
+                f.bind(f"<{tasto.upper()}>", lambda e, k_=k_: self.salta(k_, -1))
+            f.bind("<b>", lambda e: self.segna_board())
             for k_, n_ in (("azioni", "Every action"), ("momenti", "Moments")):
                 b_ = pulsante_solido(tk, F, testa_b, n_, False, lambda k_=k_: self.cambia_modo_board(k_), alto=26, bg=C["cap"], colori=GRIGI)
                 b_.configure(width=120); b_.pack(side="right", padx=(0, 8), pady=8)
@@ -1327,6 +1340,10 @@ class PaginaPerformance:
         for j in range(b["i"]):
             c.create_image(pos(j), cy, image=punto_)
         c.create_image(xi, cy, image=DG.punto(17, "#ffffff", "#0f86cc", 2))
+        for s_ in DA.segnalibri():      # gli spot segnati di questa partita in questo modo: un segno d'oro sopra la timeline
+            if s_.get("partita") == b["x"].get("partita") and s_.get("modo") == b.get("modo", "momenti") and 0 <= s_.get("i", -1) < n:
+                xs_ = pos(s_["i"])
+                c.create_polygon(xs_ - 5, cy - 20, xs_ + 5, cy - 20, xs_ + 5, cy - 9, xs_, cy - 13, xs_ - 5, cy - 9, fill="#ffd23f", outline="")
         c.create_text(t0 - 10, sy(m[0]["vite"][0]) if m else 20, text="LIFE", anchor="e", fill=grigio, font=F(6, True))
         c.create_text(t0 - 10, (f0 + f1) / 2, text="POWER", anchor="e", fill=grigio, font=F(6, True))
         if m:
@@ -1401,6 +1418,61 @@ class PaginaPerformance:
             b_.metti({"azioni": "Every action", "momenti": "Moments"}[k_], k_ == modo)
         if ridisegna:
             self.disegna_board()
+
+    def tappato(self, f):
+        """L'avversario e' tappato: tutte le sue terre (almeno 2) tappate."""
+        import mazzi_salvati as MS
+        terre = [c_ for c_ in f["suo"] if MS.e_terra(c_[0])]
+        return len(terre) >= 2 and all(c_[1] for c_ in terre)
+
+    def salta(self, k, d=1):
+        """Il prossimo (d=1) o il precedente (d=-1) combattimento, magia, o momento in cui l'avversario resta tappato (il primo di ogni tratto)."""
+        b = getattr(self, "_board", None)
+        if not b:
+            return None
+        ps = b["passi"]
+        if k == "comb":
+            ok = lambda i: bool(ps[i][3]) and ps[i][3]["tipo"] == "comb"
+        elif k == "spell":
+            ok = lambda i: bool(ps[i][3]) and ps[i][3]["tipo"] == "spell"
+        else:
+            ok = lambda i: self.tappato(ps[i][1]) and not (i > 0 and self.tappato(ps[i - 1][1]))
+        i = b["i"] + d
+        while 0 <= i < len(ps):
+            if ok(i):
+                self.ferma_board()
+                self.vai_board(i)
+                return i
+            i += d
+        return None
+
+    def segna_board(self):
+        """Segna lo spot di adesso (o lo toglie): finisce nella cartella My filters, sotto i tuoi filtri, e si riapre da li'."""
+        b = getattr(self, "_board", None)
+        if not b:
+            return None
+        p_ = b["passi"][b["i"]]
+        ora = DA.segna(b["x"], b.get("modo", "momenti"), b["i"], p_[0], p_[2])
+        self.disegna_board()
+        if "mine" in self.visibili():
+            self.disegna_miei()
+        return ora
+
+    def apri_segnalibro(self, s_):
+        """Uno spot segnato: la sua partita nel replayer, nel suo modo, sul suo passo (o su quello con lo stesso nome piu' vicino)."""
+        x_ = next((x for x in self.righe or [] if x.get("partita") == s_.get("partita")), None)
+        if x_ is None:
+            return None
+        f = self.apri_board(x_, "fine")
+        if f is None:
+            return None
+        if s_.get("modo") == "azioni":
+            self.cambia_modo_board("azioni", ridisegna=False)
+        ps = self._board["passi"]
+        stessi = [i for i, p_ in enumerate(ps) if p_[0] == s_.get("passo")]
+        i = min(stessi, key=lambda j: abs(j - s_.get("i", 0))) if stessi else min(s_.get("i", 0), len(ps) - 1)
+        self.vai_board(i)
+        return f
 
     def turno_board(self, d):
         """Pagina su e giu': il turno prima o dopo (il primo momento o la prima azione di quel turno)."""
@@ -1558,6 +1630,9 @@ class PaginaPerformance:
         Wt = W - LARGA_RACCONTO - 12          # la tavola; a destra il racconto
         nome, f, _t, rel = b["passi"][b["i"]][:4]
         prima = b["passi"][b["i"] - 1][1] if b["i"] > 0 else None
+        if getattr(self, "b_segna", None) is not None:
+            segnato_ = DA.segnato(b["x"].get("partita"), b.get("modo", "momenti"), b["i"])
+            self.b_segna.metti("Bookmarked ★" if segnato_ else "Bookmark", segnato_)
         self._pos_id, self._pos_vita = {}, {}       # dove stanno le carte (per id di Arena) e i cuori delle vite: le frecce partono e arrivano li'
         LARGA_PILE = 150
 
@@ -2627,6 +2702,7 @@ class PaginaPerformance:
             c.create_text(16, 30, text="No personal filters yet.", anchor="w", fill=C["titolo"], font=F(9, True))
             c.create_text(16, 52, text="Set some smart filters, then press «Save as my filter»: it comes here, with its numbers, ready to be applied again.",
                           anchor="w", fill=C["grigio"], font=F(8))
+            self.disegna_segnalibri(c, 84, W)
             return
         corto = lambda t, n: t if len(t) <= n else t[:n - 1] + "…"
         attuali = {k: v for k, v in self.filtri.items() if v is not None}
@@ -2667,6 +2743,30 @@ class PaginaPerformance:
             c._box_miei.append((0, y, W - 44, y + ALTO_MIO - 6, "metti", i))
             c._box_miei.append((W - 40, y, W - 2, y + ALTO_MIO - 6, "togli", i))
             y += ALTO_MIO
+        self.disegna_segnalibri(c, y + 14, W)
+
+    def disegna_segnalibri(self, c, y, W):
+        """Sotto i filtri personali, gli spot segnati nel replayer: la partita, il passo, l'esito; il clic la riapre su quel passo, la ✕ lo toglie."""
+        F = self.F
+        sb = DA.segnalibri()
+        c.create_text(4, y + 8, text=f"BOOKMARKED SPOTS · {len(sb)}", anchor="w", fill="#ffd23f", font=F(7, True))
+        y += 24
+        if not sb:
+            c.create_text(14, y + 10, text="In the replayer press Bookmark (or B) on a spot: it comes here, one click to watch it again.", anchor="w",
+                          fill=C["grigio"], font=F(8))
+            y += 30
+        for k, s_ in enumerate(sb):
+            c.create_rectangle(0, y, W - 2, y + 38, fill="#202024" if k % 2 == 0 else "#1c1c20", outline="#3a3220")
+            c.create_polygon(12, y + 10, 22, y + 10, 22, y + 28, 17, y + 23, 12, y + 28, fill="#ffd23f", outline="")
+            quando = s_.get("quando", "")[:16].replace("T", " ")
+            c.create_text(34, y + 12, text=f"{s_.get('mio') or '-'} vs {s_.get('suo') or '-'}", anchor="w", fill=C["titolo"], font=F(8, True))
+            c.create_text(34, y + 27, text=f"{quando} · {'won' if s_.get('vinta') else 'lost'} · {s_.get('passo')}"
+                          + (" · every action" if s_.get("modo") == "azioni" else ""), anchor="w", fill=C["grigio"], font=F(7))
+            c.create_text(W - 60, y + 19, text="watch", anchor="e", fill=C["accento"], font=F(8, True))
+            c.create_text(W - 22, y + 19, text="✕", fill=C["grigio"], font=F(10, True))
+            c._box_miei.append((0, y, W - 44, y + 38, "guarda", k))
+            c._box_miei.append((W - 40, y, W - 2, y + 38, "via_sb", k))
+            y += 42
         c.configure(scrollregion=(0, 0, W, y + 8))
 
     def clic_miei(self, e):
@@ -2675,6 +2775,15 @@ class PaginaPerformance:
         for x0, y0, x1, y1, cosa, i in getattr(c, "_box_miei", []):
             if x0 <= e.x <= x1 and y0 <= y <= y1:
                 sit = DA.situazioni()
+                if cosa == "guarda":
+                    sb = DA.segnalibri()
+                    if i < len(sb):
+                        self.apri_segnalibro(sb[i])
+                    return
+                if cosa == "via_sb":
+                    DA.togli_segnalibro(i)
+                    self.disegna_miei()
+                    return
                 if cosa == "togli":
                     DA.togli_situazione(i)
                     self.disegna_miei()

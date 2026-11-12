@@ -24,6 +24,7 @@ import math  # noqa: E402
 import account  # noqa: E402
 
 SITUAZIONI = account.lega(globals(), "SITUAZIONI", "performance_situazioni.json")     # Log_Arena/performance_situazioni.json: le situazioni salvate
+SEGNALIBRI = account.lega(globals(), "SEGNALIBRI", "performance_segnalibri.json")     # gli spot segnati nel replayer (12 nov 2026)
 SESSIONE_ORE = 1.0          # un'ora senza partite chiude la sessione
 RANGHI = ("Bronze", "Silver", "Gold", "Platinum", "Diamond", "Mythic")
 FASCE = (("Night (0-6)", 0, 6), ("Morning (6-12)", 6, 12), ("Afternoon (12-18)", 12, 18), ("Evening (18-24)", 18, 24))
@@ -773,6 +774,50 @@ def togli_situazione(i):
         d.pop(i)
         _scrivi(d)
     return d
+
+
+def segnalibri():
+    """Gli spot segnati nel replayer, dal piu' recente: [dict(partita, quando, tipo, mio, suo, vinta, modo, i, passo, t)]."""
+    try:
+        with open(SEGNALIBRI, encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def segnato(partita, modo, i):
+    return any(s.get("partita") == partita and s.get("modo") == modo and s.get("i") == i for s in segnalibri())
+
+
+def segna(x, modo, i, passo, t_):
+    """Segna uno spot (una partita, il modo del replayer, il passo): in testa, al massimo 200; segnato di nuovo, si toglie. -> True se ora e' segnato."""
+    d = segnalibri()
+    gia = [s for s in d if s.get("partita") == x.get("partita") and s.get("modo") == modo and s.get("i") == i]
+    if gia:
+        d = [s for s in d if s not in gia]
+    else:
+        d.insert(0, dict(partita=x.get("partita"), quando=x["quando"].isoformat(timespec="minutes"), tipo=x.get("tipo"), mio=(x.get("mio") or "").strip(),
+                         suo=x.get("suo"), vinta=bool(x.get("vinta")), modo=modo, i=i, passo=passo, t=t_))
+    _scrivi_in(SEGNALIBRI, d[:200])
+    return not gia
+
+
+def togli_segnalibro(k):
+    d = segnalibri()
+    if 0 <= k < len(d):
+        d.pop(k)
+        _scrivi_in(SEGNALIBRI, d)
+    return d
+
+
+def _scrivi_in(path, d):
+    if account.sola_lettura():
+        return
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path + ".tmp", "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False, indent=1)
+    os.replace(path + ".tmp", path)
 
 
 def _scrivi(d):

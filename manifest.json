@@ -1,6 +1,6 @@
 {
- "version": "0.1.60",
+ "version": "0.1.61",
  "date": "2026-11-12",
- "notes": "Replayer: Every action, the game action by action with damage on the cards hit, next to Moments; a faster replayer bar.",
+ "notes": "Replayer: jump to the next combat, spell or moment the opponent is tapped out; bookmark spots and find them in My filters.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }
