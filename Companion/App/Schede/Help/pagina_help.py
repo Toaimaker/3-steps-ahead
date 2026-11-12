@@ -63,8 +63,10 @@ SEZIONI = (
      "and the matchups follow.",
      [("Constructed · Limited", "which games"), ("Add filters", "situations in the game, as flags from the turn by turn records: missed land drops, curve, first creature, "
                                                   "spells on the other turn, who attacked first, targeted, creatures lost, attacks into untapped lands, passing with lands up; Yes or No each"),
-      ("Smart filters", "format, event, your deck, their archetype and colors, play or draw, mulligans, lands in hand, length, "
-                                                  "rank, date, time of day, game in the session, a card in your hand, a card they showed; each shows its games"),
+      ("Smart filters", "by phase of the game: format, event and your deck (By deck); play or draw, mulligans, lands in hand; their archetype and colors; "
+                        "length and rank; date, time of day and game in the session"),
+      ("By deck", "pick one of your decks, against everyone or against one exact color variant of their deck (vs colors: flag the colors, mono-color to "
+                  "five colors or colorless); the table is your deck against every variant you met, click a row to pick it"),
       ("Chart", "win rate, games, average turns or mulligan rate; by game or by date; cumulative or the last N games; split by a variable"),
       ("Spots", "where you win and where you lose the most, one or two variables at a time; strong when the 95% interval clears your average; click one to filter it"),
       ("Report", "group by a variable; click a row to filter it, a column to sort"),

@@ -28,6 +28,11 @@ VISTE = (("chart", "Chart"), ("spots", "Spots"), ("report", "Report"), ("matchup
 DISEGNI = {"chart": "disegna_grafico", "spots": "disegna_spot", "report": "disegna_report", "matchups": "disegna_matchup", "compare": "disegna_confronto"}
 GRIGI = ("#2a2a30", "#3a3a42", "#0f86cc")       # i pulsanti a pillola grigi, azzurri se scelti
 ALTO_TAB, LARGA_TAB = 34, 132                   # le cartelle
+LARGA_DECK = 1000                               # la finestra By deck
+# per fasi della partita (12 nov 2026, Autore: «il menu a tendine creiamolo per macro fasi partita: formato evento e deck - poi start e mulligan - lands in
+# hand / cards in hand possiamo toglierlo, their card anche»): prima della partita (con By deck), l'apertura, l'avversario, com'e' finita, quando.
+# «deck» e' il pulsante By deck; Card in hand e Their card non sono tendine (restano in Split by, Group by e negli Spots)
+SEZIONI_FILTRI = (("formato", "evento", "deck"), ("partenza", "mull", "terre"), ("suo", "colori"), ("lunga", "rango"), ("data", "fascia", "sessione"))
 
 
 def _cartella(x0, x1, top, H, sl=6, r=5):
@@ -96,7 +101,7 @@ class PaginaPerformance:
         self.filtri = {}
         self.metrica, self.asse, self.finestra, self.dividi, self.per, self.ordina = "wr", "games", "20", None, "suo", "n"
         self.basso, self.solo_meta, self.vista = "report", False, "chart"       # la vista del pannello: chart, spots, report, matchups o compare
-        self.con, self.staccate = "rest", {}        # B del confronto (rest, all, s<i>); le viste staccate: {vista: dict(win, o, l)}
+        self.con, self.staccate, self.vs_modo = "rest", {}, "all"        # B del confronto (rest, all, s<i>); le viste staccate: {vista: dict(win, o, l)}
         self.righe, self.sporca, self.deciso, self.modo = None, True, False, "Standard"
         self._lavoro = None
         self.costruisci()
@@ -207,18 +212,25 @@ class PaginaPerformance:
         self.tendine = {}
         griglia = tk.Frame(self.col_sx, bg=C["scheda"]); griglia.pack(fill="x", padx=(12, 4))
         griglia.columnconfigure(0, minsize=104)
-        for i, (k, nome, _f) in enumerate(DA.VARIABILI):
-            corto = {"Opp. colors (contains)": "Opp. colors", "Lands in opening hand": "Lands in hand", "Game length (your turns)": "Game length",
-                     "Card in opening hand": "Card in hand", "Their card seen": "Their card"}.get(nome, nome)
-            lab = tk.Label(griglia, text=corto.upper(), bg=C["scheda"], fg=C["grigio"], font=F(7, True), anchor="w"); lab.grid(row=i, column=0, sticky="w", pady=2)
-            self.lab_filtri = getattr(self, "lab_filtri", {}); self.lab_filtri[k] = lab
-            t = Tendina(tk, griglia, "", F, larga=156, bg=C["scheda"])
-            t.fr.winfo_children()[0].pack_forget()        # il nome sta a sinistra, sulla stessa riga
-            t.campo.configure(height=24)
-            t.fr.grid(row=i, column=1, sticky="w", pady=2)
-            t.opzioni(["Any"], lambda v, k=k: self.metti_filtro(k, v)); t.set("Any")
-            self.tendine[k] = t
-        tk.Frame(self.col_sx, bg=C["filo"], height=1).pack(fill="x", padx=12, pady=(8, 8))
+        # My deck non e' fra le tendine: il mazzo si sceglie con By deck, in fondo (12 nov 2026, Autore: «togli dalle tendine my deck e crea un pulsante in
+        # fondo: by deck»)
+        # in sezioni separate da una lineetta (stesso giorno, Autore: «opponent, opponent colors e their card spostale insieme dopo lands in hand in una
+        # sezione loro separata da una lineetta / poi tutto cio' che ha a che fare con date e orario uguale in fondo / card in hand prima di lands in hand /
+        # format e event in una loro sezione»)
+        nomi_var = {k_: n_ for k_, n_, _f in DA.VARIABILI}
+        riga_g = 0
+        for j_, sezione in enumerate(SEZIONI_FILTRI):
+            if j_:
+                tk.Frame(griglia, bg=C["filo"], height=1).grid(row=riga_g, column=0, columnspan=2, sticky="ew", pady=5)
+                riga_g += 1
+            for k in sezione:
+                if k == "deck":
+                    self.b_deck = pulsante_solido(tk, F, griglia, "By deck  ·  all decks vs all", False, self.apri_deck, alto=28, bg=C["scheda"])
+                    self.b_deck.configure(width=262); self.b_deck.grid(row=riga_g, column=0, columnspan=2, sticky="ew", pady=(4, 2))
+                else:
+                    self.riga_filtro(griglia, riga_g, k, nomi_var[k])
+                riga_g += 1
+        tk.Frame(self.col_sx, bg=C["filo"], height=1).pack(fill="x", padx=12, pady=(10, 8))
         tk.Label(self.col_sx, text="SAVED SITUATIONS", bg=C["scheda"], fg=C["muto"], font=F(7, True)).pack(anchor="w", padx=12)
         self.b_salva_sit = pulsante_solido(tk, F, self.col_sx, "Save this situation", False, self.salva_situazione, alto=26, bg=C["scheda"])
         self.b_salva_sit.configure(width=262); self.b_salva_sit.pack(anchor="w", padx=12, pady=(6, 6))
@@ -256,6 +268,20 @@ class PaginaPerformance:
         self.mostra_vista()
         self.disegna_situazioni()
 
+    def riga_filtro(self, griglia, i, k, nome):
+        """Una riga degli smart filters: il nome a sinistra e la tendina a destra."""
+        tk, F = self.tk, self.F
+        corto = {"Opp. colors (contains)": "Opp. colors", "Lands in opening hand": "Lands in hand", "Game length (your turns)": "Game length",
+                 "Card in opening hand": "Card in hand", "Their card seen": "Their card"}.get(nome, nome)
+        lab = tk.Label(griglia, text=corto.upper(), bg=C["scheda"], fg=C["grigio"], font=F(7, True), anchor="w"); lab.grid(row=i, column=0, sticky="w", pady=2)
+        self.lab_filtri = getattr(self, "lab_filtri", {}); self.lab_filtri[k] = lab
+        t = Tendina(tk, griglia, "", F, larga=156, bg=C["scheda"])
+        t.fr.winfo_children()[0].pack_forget()        # il nome sta a sinistra, sulla stessa riga
+        t.campo.configure(height=24)
+        t.fr.grid(row=i, column=1, sticky="w", pady=2)
+        t.opzioni(["Any"], lambda v, k=k: self.metti_filtro(k, v)); t.set("Any")
+        self.tendine[k] = t
+
     def fai_vista(self, k, padre):
         """Una vista dentro padre (il pannello o la sua finestra): la riga dei comandi e la tela. -> dict(fr, tela, ctl). Le scelte sono della pagina: due copie
         della stessa vista dicono le stesse cose (sincronizza)."""
@@ -278,13 +304,13 @@ class PaginaPerformance:
                 b.configure(width=104); b.pack(side="left", padx=(0, 6), anchor="s", pady=(0, 2))
                 ctl["metr"][m] = b
             ctl["dividi"] = Tendina(tk, riga, "Split by", F, larga=180, bg=C["scheda"]); ctl["dividi"].fr.pack(side="right", padx=(10, 0))
-            ctl["dividi"].opzioni(["None"] + [k_ for k_, _n, _f in DA.VARIABILI if k_ not in ("data",)] + sit_k,
+            ctl["dividi"].opzioni(["None"] + [k_ for k_, _n, _f in DA.VARIABILI if k_ not in ("data",)] + ["vs"] + sit_k,
                                   lambda v: self.cambia("dividi", None if v == "None" else v), etichette={"None": "None", **et_var})
             ctl["dividi"].set(self.dividi or "None")
             asse_e_finestra()
         elif k == "report":
             ctl["per"] = Tendina(tk, riga, "Group by", F, larga=220, bg=C["scheda"]); ctl["per"].fr.pack(side="right")
-            ctl["per"].opzioni([k_ for k_, _n, _f in DA.VARIABILI if k_ != "data"] + sit_k, lambda v: self.cambia("per", v), etichette=et_var)
+            ctl["per"].opzioni([k_ for k_, _n, _f in DA.VARIABILI if k_ != "data"] + ["vs"] + sit_k, lambda v: self.cambia("per", v), etichette=et_var)
             ctl["per"].set(self.per)
         elif k == "matchups":
             ctl["meta"] = pulsante_solido(tk, F, riga, "Meta decks only", self.solo_meta, self.cambia_meta, alto=26, bg=C["scheda"], colori=GRIGI)
@@ -502,7 +528,7 @@ class PaginaPerformance:
         self.filtri = {}
         self.disegna()
 
-    PARTENZA = dict(metrica="wr", asse="games", finestra="20", dividi=None, per="suo", ordina="n", basso="report", solo_meta=False, vista="chart", con="rest")
+    PARTENZA = dict(metrica="wr", asse="games", finestra="20", dividi=None, per="suo", ordina="n", basso="report", solo_meta=False, vista="chart", con="rest", vs_modo="all")
 
     def reset(self):
         """Tutte le partite, come all'apertura: niente filtri ne' situazioni, il grafico e la cartella di partenza (le finestre staccate restano)."""
@@ -582,6 +608,8 @@ class PaginaPerformance:
             self.evidenzia(k, sc is not None)
         self.aggiorna_bottone_sit()
         self.disegna_finestra_sit()
+        self.aggiorna_bottone_deck()
+        self.disegna_finestra_deck()
         self.disegna_numeri()
         for k, _n in VISTE:         # solo le cartelle che si vedono: le altre si disegnano quando si aprono
             if k in self.visibili():
@@ -611,8 +639,12 @@ class PaginaPerformance:
         W = max(c.winfo_width(), 600)
         n_f = sum(1 for v in self.filtri.values() if v is not None)
         c.create_text(16, 14, text=(f"THIS SITUATION · {k['n']} GAMES" if n_f else f"ALL {self.tipo.upper()} GAMES · {k['n']}"), anchor="w", fill=C["muto"], font=F(7, True))
+        xd = W - 16
         if n_f:
-            c.create_text(W - 16, 14, text=f"vs all your {self.tipo.lower()} games: {tot['wr'] if tot['wr'] is not None else '-'}%", anchor="e", fill=C["grigio"], font=F(7))
+            i_ = c.create_text(xd, 14, text=f"vs all your {self.tipo.lower()} games: {tot['wr'] if tot['wr'] is not None else '-'}%", anchor="e", fill=C["grigio"], font=F(7))
+            xd = (c.bbox(i_) or (xd, 0, xd, 0))[0] - 14
+        if k["n"] and k["n"] < 30:      # in alto, accanto: in fondo usciva dalla tela
+            c.create_text(xd, 14, text="under 30 games: a hint, not a fact", anchor="e", fill=C["arancio"], font=F(7, True))
         col_wr = lambda v: C["muto"] if v is None else (C["azzurro"] if v >= 50 else C["rosso"])
         tess = [("WIN RATE", f"{k['wr']:.0f}%" if k["wr"] is not None else "-", col_wr(k["wr"]),
                  f"95% CI {k['ic'][0]}–{k['ic'][1]}%" if k["ic"] else ""),
@@ -628,10 +660,8 @@ class PaginaPerformance:
             c.create_text(x + 10, 34, text=a, anchor="nw", fill=C["muto"], font=F(7, True))
             c.create_text(x + 10, 60, text=v, anchor="w", fill=col, font=F(17, True))
             c.create_text(x + 10, 80, text=s, anchor="w", fill=C["grigio"], font=F(7))
-        if k["n"] and k["n"] < 30:
-            c.create_text(W - 16, 86, text=f"under 30 games: a hint, not a fact", anchor="e", fill=C["arancio"], font=F(7, True))
 
-    def traccia(self, c, lin, box, metrica, asse, colori, titolo):
+    def traccia(self, c, lin, box, metrica, asse, colori, titolo, vuoto="No games in this situation"):
         """Il grafico a linee su una tela qualsiasi (la cartella Chart, il confronto): assi, griglia, le linee in un'immagine nitida, il nome in fondo a ogni
         linea. Tiene sulla tela quel che serve al puntatore (_linee, _scala, _metrica, _asse, _colori)."""
         F = self.F
@@ -639,7 +669,7 @@ class PaginaPerformance:
         x0, y0, x1, y1 = box
         c._linee, c._metrica, c._asse, c._colori, c._scala = lin, metrica, asse, colori, None
         if not lin:
-            c.create_text((x0 + x1) / 2, (y0 + y1) / 2, text="No games in this situation", fill=C["grigio"], font=F(9))
+            c.create_text((x0 + x1) / 2, (y0 + y1) / 2, text=vuoto, fill=C["grigio"], font=F(9))
             return None
         xs = [x for _n, p in lin for x, _y in p]
         ys = [y for _n, p in lin for _x, y in p]
@@ -689,7 +719,8 @@ class PaginaPerformance:
         tit = {"wr": "win rate", "n": "games", "turni": "average length in your turns", "mull": "mulligan rate"}[self.metrica]
         fin = "" if self.metrica == "n" else (", cumulative" if self.finestra == "cum" else f", last {self.finestra} games")
         tit = f"{tit}{fin}" + (f" · split by {DA.nome_var(self.dividi).lower()}" if self.dividi else "")
-        sc = self.traccia(c, lin, (52, 16, W - 120, H - 24), self.metrica, self.asse, LINEE, tit)
+        vuoto = "No games in this situation" if not r else f"{len(r)} games: too few for this chart (a moving window starts at 5)"
+        sc = self.traccia(c, lin, (52, 16, W - 120, H - 24), self.metrica, self.asse, LINEE, tit, vuoto)
         if sc and self.asse == "games" and len(lin) == 1:       # i cambi di lega, come nel grafico di prima
             sx, _sy = sc
             for i_, rango in DA.cambi_rango(r):
@@ -1075,6 +1106,189 @@ class PaginaPerformance:
     def aggiorna_bottone_sit(self):
         on = [(k, v) for k, v in self.filtri.items() if k.startswith("sit:") and v is not None]
         self.b_sit.metti("Add filters  ·  " + (f"{len(on)} on" if on else "none"), bool(on))
+
+    # ------------------------------------------------------------ By deck (12 nov 2026, Autore: «crea un pulsante in fondo: by deck: si apre una finestra e
+    # scegli il tuo deck, sempre nella finestra di default e' vs all - si puo' spuntare vs colors e flaggare i colori di vs - da qui troviamo un modo intelligente
+    # per fare l'analisi in base al monocolore fino al pentacolore o incolore - in ogni caso sempre un deck contro un'unica variante colore mazzo»)
+    def lista(self):
+        """I simboli di mana (capsule), fatti una volta."""
+        if getattr(self, "_lista", None) is None:
+            from capsule import Liste
+            self._lista = Liste(self.tk, self.F)
+        return self._lista
+
+    def aggiorna_bottone_deck(self):
+        mio, vs = self.filtri.get("mio"), self.filtri.get("vs")
+        t = f"By deck  ·  {(mio or 'all decks').strip()} vs {DA.nome_vs(vs) if vs else 'all'}"
+        self.b_deck.metti(t if len(t) <= 40 else t[:39] + "…", bool(mio or vs))
+
+    def apri_deck(self):
+        """La finestra By deck: a sinistra il tuo mazzo (o tutti), a destra contro chi: vs all, o vs colors coi colori da spuntare (una variante esatta, dal
+        monocolore al pentacolore, o incolore), e sotto il mazzo contro ogni variante di colore incontrata, per gruppi; il clic su una riga la sceglie."""
+        tk, F = self.tk, self.F
+        f = getattr(self, "fin_deck", None)
+        if f is not None and f.winfo_exists():
+            f.lift(); return f
+        f = self.fin_deck = tk.Toplevel(self.fr); f.title("By deck"); f.configure(bg=C["scheda"])
+        f.transient(self.fr.winfo_toplevel())
+        f.geometry(f"+{self.cv_sx.winfo_rootx() + self.cv_sx.winfo_width() + 16}+{max(0, self.cv_sx.winfo_rooty() - 80)}")
+        f.bind("<Escape>", lambda e: f.destroy())
+        tk.Label(f, text="BY DECK", bg=C["scheda"], fg=C["titolo"], font=F(9, True)).pack(anchor="w", padx=14, pady=(12, 2))
+        tk.Label(f, text="One of your decks against everyone, or against one exact color variant of their deck: mono-color to five colors, or colorless. "
+                 "The table below is your deck against every variant you met: click a row to pick it.", bg=C["scheda"], fg=C["grigio"], font=F(7),
+                 wraplength=960, justify="left").pack(anchor="w", padx=14, pady=(0, 8))
+        self.cv_deck = tk.Canvas(f, bg=C["scheda"], highlightthickness=0, bd=0, width=LARGA_DECK, height=560)
+        self.cv_deck.pack(padx=8, pady=(0, 12), fill="both", expand=True)
+        self.cv_deck.bind("<Button-1>", self.clic_deck)
+        self.cv_deck.bind("<MouseWheel>", lambda e: e.widget.yview_scroll(-2 if e.delta > 0 else 2, "units"))
+        self.disegna_finestra_deck()
+        return f
+
+    def disegna_finestra_deck(self):
+        c = getattr(self, "cv_deck", None)
+        if c is None or not c.winfo_exists() or self.righe is None:
+            return
+        F = self.F
+        c.delete("all")
+        self._box_deck = []
+        corto = lambda t, n: t if len(t) <= n else t[:n - 1] + "…"
+        mio, vs = self.filtri.get("mio"), self.filtri.get("vs")
+        modo = "colors" if vs else self.vs_modo
+        pc = lambda v: f"{v:.0f}%" if v is not None else "-"
+        # a sinistra il tuo mazzo: contati sotto gli altri filtri (contro chi compreso)
+        base_m = DA.filtra(self.righe, {k: v for k, v in self.filtri.items() if k != "mio"}, self.tipo)
+        mazzi = [v for v, _n in DA.valori(base_m, "mio", massimo=80)]
+        if mio and mio not in mazzi:
+            mazzi.append(mio)
+        y = 4
+        c.create_text(4, y + 8, text="YOUR DECK", anchor="w", fill=C["muto"], font=F(7, True))
+        y += 22
+        for v in [None] + mazzi:
+            sub = base_m if v is None else [x for x in base_m if x.get("mio") == v]
+            k_ = DA.conti(sub)
+            on = mio == v
+            c.create_rectangle(0, y, 270, y + 26, fill="#0f2a38" if on else "#202024", outline=C["accento"] if on else "#2c2c32")
+            c.create_text(10, y + 13, text=corto((v or "All decks").strip(), 24), anchor="w", fill=C["titolo"] if on else C["testo"], font=F(8, on))
+            c.create_text(262, y + 13, text=f"{k_['n']} g · {pc(k_['wr'])}", anchor="e", fill=C["accento"] if on else C["grigio"], font=F(7))
+            self._box_deck.append((0, y, 270, y + 26, "mio", v))
+            y += 30
+        fine_sx = y
+        # a destra: contro chi
+        X = 296
+        y = 4
+        c.create_text(X, y + 8, text="AGAINST", anchor="w", fill=C["muto"], font=F(7, True))
+        y += 22
+        for i, (m, t) in enumerate((("all", "vs all"), ("colors", "vs colors"))):
+            x = X + i * 118
+            on = modo == m
+            c.create_rectangle(x, y, x + 110, y + 28, fill="#0f86cc" if on else "#202024", outline="#0f86cc" if on else "#3a3a40")
+            c.create_text(x + 55, y + 14, text=t, fill="#ffffff" if on else C["grigio"], font=F(8, True))
+            self._box_deck.append((x, y, x + 110, y + 28, "modo", m))
+        y += 40
+        flag = set() if not vs else ({"C"} if vs == "C" else set(vs))
+        for i, k in enumerate("WUBRGC"):
+            x = X + i * 48
+            on = k in flag
+            c.create_rectangle(x, y, x + 40, y + 36, fill="#0f2a38" if on else "#202024", outline=C["accento"] if on else "#2c2c32", width=2 if on else 1)
+            img = self.lista().simbolo(k, 22)
+            if img is not None:
+                c.create_image(x + 20, y + 18, image=img)
+            else:
+                c.create_text(x + 20, y + 18, text=k, fill=C["titolo"], font=F(9, True))
+            self._box_deck.append((x, y, x + 40, y + 36, "colore", k))
+        base_vs = DA.filtra(self.righe, {k: v for k, v in self.filtri.items() if k != "vs"}, self.tipo)
+        x = X + 6 * 48 + 8
+        if vs:
+            kk = DA.conti(DA.filtra(base_vs, {"vs": vs}))
+            c.create_text(x, y + 10, text=f"{(mio or 'All decks').strip()} vs {DA.etichetta('vs', vs)}", anchor="w", fill=C["titolo"], font=F(9, True))
+            c.create_text(x, y + 28, text=f"{kk['n']} games · {kk['vinte']}-{kk['perse']} · {pc(kk['wr'])}"
+                          + (f"  (95% CI {kk['ic'][0]}–{kk['ic'][1]}%)" if kk["ic"] else ""), anchor="w", fill=C["accento"], font=F(8, True))
+        elif modo == "colors":
+            c.create_text(x, y + 18, text="Flag the colors of their deck: exactly those, one variant.", anchor="w", fill=C["grigio"], font=F(8))
+        else:
+            kk = DA.conti(base_vs)
+            c.create_text(x, y + 10, text=f"{(mio or 'All decks').strip()} vs everyone", anchor="w", fill=C["titolo"], font=F(9, True))
+            c.create_text(x, y + 28, text=f"{kk['n']} games · {kk['vinte']}-{kk['perse']} · {pc(kk['wr'])}", anchor="w", fill=C["grigio"], font=F(8))
+        y += 52
+        # la tabella: il mazzo contro ogni variante, per gruppi dal monocolore al pentacolore e incolore
+        c.create_text(X, y + 8, text="AGAINST EVERY COLOR VARIANT YOU MET", anchor="w", fill=C["muto"], font=F(7, True))
+        col = dict(var=X, n=X + 280, wl=X + 336, wr=X + 400, play=X + 560, draw=X + 620)
+        y += 22
+        for k, t in (("var", "VARIANT"), ("n", "GAMES"), ("wl", "W-L"), ("wr", "WIN RATE"), ("play", "PLAY"), ("draw", "DRAW")):
+            c.create_text(col[k], y + 6, text=t, anchor="w", fill=C["titolo"], font=F(7, True))
+        y += 18
+        gruppi = DA.per_varianti(base_vs)
+        if not gruppi:
+            c.create_text(X, y + 16, text="No games with their colors in this situation", anchor="w", fill=C["grigio"], font=F(8))
+            y += 34
+
+        def barra(x, yy, wr, colore):
+            c.create_rectangle(x, yy + 8, x + 100, yy + 16, fill="#2c2c32", outline="")
+            if wr is not None:
+                c.create_rectangle(x, yy + 8, x + wr, yy + 16, fill=colore, outline="")
+            c.create_line(x + 50, yy + 5, x + 50, yy + 19, fill="#d8d8dc")
+            c.create_text(x + 108, yy + 12, text=pc(wr), anchor="w", fill=colore, font=F(8, True))
+        for g in gruppi:
+            k_ = g["conti"]
+            c.create_rectangle(X - 4, y, LARGA_DECK, y + 24, fill="#26262c", outline="")
+            c.create_text(col["var"], y + 12, text=g["gruppo"].upper(), anchor="w", fill=C["titolo"], font=F(8, True))
+            c.create_text(col["n"], y + 12, text=str(k_["n"]), anchor="w", fill=C["titolo"], font=F(8, True))
+            c.create_text(col["wl"], y + 12, text=f"{k_['vinte']}-{k_['perse']}", anchor="w", fill=C["testo"], font=F(8))
+            barra(col["wr"], y, k_["wr"], C["azzurro"] if (k_["wr"] or 0) >= 50 else C["rosso"])
+            c.create_text(col["play"], y + 12, text=pc(k_["play"]), anchor="w", fill=C["testo"], font=F(8))
+            c.create_text(col["draw"], y + 12, text=pc(k_["draw"]), anchor="w", fill=C["testo"], font=F(8))
+            y += 26
+            for i, (v, k_) in enumerate(g["varianti"]):
+                on, poche = v == vs, k_["n"] < 5
+                fondo = "#0f2a38" if on else ("#202024" if i % 2 == 0 else C["scheda"])
+                c.create_rectangle(X - 4, y, LARGA_DECK, y + 24, fill=fondo, outline=C["accento"] if on else "")
+                for j, ch in enumerate(v):
+                    img = self.lista().simbolo(ch, 14)
+                    if img is not None:
+                        c.create_image(col["var"] + 8 + j * 16, y + 12, image=img)
+                testo = C["muto"] if poche else C["titolo"]
+                c.create_text(col["var"] + 8 + 5 * 16 + 4, y + 12, text=DA.nome_vs(v), anchor="w", fill=testo, font=F(8, on))
+                c.create_text(col["n"], y + 12, text=str(k_["n"]), anchor="w", fill=testo, font=F(8))
+                c.create_text(col["wl"], y + 12, text=f"{k_['vinte']}-{k_['perse']}", anchor="w", fill=C["muto"] if poche else C["testo"], font=F(8))
+                barra(col["wr"], y, k_["wr"], C["muto"] if poche else (C["azzurro"] if (k_["wr"] or 0) >= 50 else C["rosso"]))
+                c.create_text(col["play"], y + 12, text=pc(k_["play"]), anchor="w", fill=C["muto"] if poche else C["testo"], font=F(8))
+                c.create_text(col["draw"], y + 12, text=pc(k_["draw"]), anchor="w", fill=C["muto"] if poche else C["testo"], font=F(8))
+                self._box_deck.append((X - 4, y, LARGA_DECK, y + 24, "vs", v))
+                y += 26
+            y += 6
+        if gruppi:
+            c.create_text(X, y + 8, text="grey: under 5 games, a hint", anchor="w", fill=C["muto"], font=F(7))
+            y += 22
+        alto = max(y, fine_sx) + 8
+        c.configure(scrollregion=(0, 0, LARGA_DECK, alto), height=min(alto, 720))
+
+    def clic_deck(self, e):
+        c = getattr(e, "widget", None) or self.cv_deck
+        y = c.canvasy(e.y)
+        for x0, y0, x1, y1, cosa, v in getattr(self, "_box_deck", []):
+            if not (x0 <= e.x <= x1 and y0 <= y <= y1):
+                continue
+            vs = self.filtri.get("vs")
+            if cosa == "mio":
+                self.filtri["mio"] = v
+            elif cosa == "modo":
+                self.vs_modo = v
+                if v == "all":
+                    self.filtri["vs"] = None
+            elif cosa == "colore":     # vs colors: i colori spuntati sono una variante esatta; incolore sta da solo
+                self.vs_modo = "colors"
+                flag = set() if not vs else ({"C"} if vs == "C" else set(vs))
+                if v == "C":
+                    flag = set() if "C" in flag else {"C"}
+                else:
+                    flag.discard("C")
+                    flag ^= {v}
+                self.filtri["vs"] = ("C" if "C" in flag else "".join(k for k in "WUBRG" if k in flag)) or None
+            elif cosa == "vs":
+                self.vs_modo = "colors"
+                self.filtri["vs"] = None if vs == v else v
+            self.disegna()
+            return
 
     # ------------------------------------------------------------ le situazioni salvate
     def salva_situazione(self):

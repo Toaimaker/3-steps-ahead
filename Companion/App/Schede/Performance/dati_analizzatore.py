@@ -206,6 +206,53 @@ ORDINE_VALORI = {"partenza": ("Play", "Draw"), "mull": ("0", "1", "2+"), "lunga"
                  "terre": tuple(str(i) for i in range(8)), "data": tuple(n for n, _d in DATE)}
 NOMI_COLORI = {"W": "White", "U": "Blue", "B": "Black", "R": "Red", "G": "Green"}
 
+# la variante di colore esatta dell'avversario (12 nov 2026, Autore: «By deck ... un deck contro un'unica variante colore mazzo»): dal monocolore al
+# pentacolore, o incolore («C»); non e' fra le tendine (si sceglie nella finestra By deck), ma vale per filtri, Split by, Group by e Spots
+import itertools  # noqa: E402
+VARIANTI = tuple("".join(c) for n in range(1, 6) for c in itertools.combinations("WUBRG", n)) + ("C",)
+GRUPPI_VS = ((1, "Mono-color"), (2, "Two colors"), (3, "Three colors"), (4, "Four colors"), (5, "Five colors"), (0, "Colorless"))
+NOMI_VS = dict(WU="Azorius", UB="Dimir", BR="Rakdos", RG="Gruul", WG="Selesnya", WB="Orzhov", UR="Izzet", BG="Golgari", WR="Boros", UG="Simic",
+               WUB="Esper", UBR="Grixis", BRG="Jund", WRG="Naya", WUG="Bant", WBG="Abzan", WUR="Jeskai", UBG="Sultai", WBR="Mardu", URG="Temur")
+NOME["vs"] = "Against"
+ORDINE_VALORI["vs"] = VARIANTI
+
+
+def vs_di(x):
+    """La variante di colore del mazzo avversario, esatta, in ordine WUBRG («BR»); «C» se ha mostrato solo magie incolori; None se non si sa (nessuna sua
+    magia vista)."""
+    c = x.get("colori_suoi") or ""
+    if c:
+        return "".join(k for k in "WUBRG" if k in c)
+    return None if (x.get("suo") or "Unknown") == "Unknown" else "C"
+
+
+def nome_vs(v):
+    if v == "C":
+        return "Colorless"
+    if len(v) == 1:
+        return "Mono-" + NOMI_COLORI[v]
+    if len(v) == 4:
+        return "Four-color, no " + NOMI_COLORI[next(k for k in "WUBRG" if k not in v)].lower()
+    if len(v) == 5:
+        return "Five-color"
+    return NOMI_VS.get(v, v)
+
+
+def per_varianti(r):
+    """La tabella di By deck: per gruppo (mono, due ... cinque colori, incolore) i conti del gruppo e di ogni variante esatta che ha partite.
+    -> [dict(gruppo, conti, varianti=[(variante, conti)])]."""
+    out = []
+    for n, nome in GRUPPI_VS:
+        vv = [v for v in VARIANTI if (0 if v == "C" else len(v)) == n]
+        per = collections.defaultdict(list)
+        for x in r:
+            v = vs_di(x)
+            if v in vv:
+                per[v].append(x)
+        if per:
+            out.append(dict(gruppo=nome, conti=conti([x for v in vv for x in per[v]]), varianti=[(v, conti(per[v])) for v in vv if per[v]]))
+    return out
+
 
 def valori_di(k, x):
     """I valori della variabile k per la riga x (una lista: una carta in mano o un colore possono essere piu' d'uno). «sit:chiave»: una situazione, «Yes» o «No»."""
@@ -214,6 +261,9 @@ def valori_di(k, x):
         return [] if v is None else ["Yes" if v else "No"]
     if k == "colori":
         return list(x.get("colori_suoi") or "")
+    if k == "vs":
+        v = vs_di(x)
+        return [v] if v else []
     if k == "mano":
         return x.get("mano") or []
     if k == "sue":
@@ -251,6 +301,8 @@ def nome_var(k):
 def etichetta(k, v):
     if k.startswith("sit:"):
         return NOME_SIT.get(k[4:], k[4:]) if v == "Yes" else "Not: " + NOME_SIT.get(k[4:], k[4:])
+    if k == "vs":
+        return nome_vs(v) if v == "C" else f"{v} · {nome_vs(v)}"
     return f"{v} · {NOMI_COLORI[v]}" if k == "colori" and v in NOMI_COLORI else str(v)
 
 
@@ -430,7 +482,7 @@ def report(r, per, ordina="n", minimo=15):
 # condizioni di una variabile e le coppie di due variabili (fra quelle di COPPIE), sulle partite della situazione; resta chi ha almeno `minimo` partite. L'ordine
 # non e' lo scarto grezzo, che premia il rumore: e' quanto l'intervallo di Wilson sta sopra (o sotto) il win rate di tutte, cosi' in testa ci sono gli spot che
 # reggono. «forte»: l'intervallo intero sta dalla sua parte.
-COPPIE = ("mio", "suo", "colori", "partenza", "mull", "terre", "lunga", "rango", "fascia", "sessione") + tuple("sit:" + s for s, _n in SIT)
+COPPIE = ("mio", "suo", "colori", "vs", "partenza", "mull", "terre", "lunga", "rango", "fascia", "sessione") + tuple("sit:" + s for s, _n in SIT)
 
 
 def spot(r, minimo=15, quanti=8, coppie=True, gia=None):
@@ -440,7 +492,7 @@ def spot(r, minimo=15, quanti=8, coppie=True, gia=None):
     if not base["n"] or base["wr"] is None:
         return [], []
     insiemi = {}
-    for k in [k for k, _n, _f in VARIABILI] + ["sit:" + s for s, _n in SIT]:
+    for k in [k for k, _n, _f in VARIABILI] + ["vs"] + ["sit:" + s for s, _n in SIT]:
         if k in gia or k == "data":
             continue
         per = collections.defaultdict(set)
@@ -639,6 +691,14 @@ def prova():
     casi.append(("negativa: 3 partite per lato, nessuna p", confronta(fa(2, 3), fa(1, 3))["righe"][0]["p"] is None))
     casi.append(("confronto: 50% contro 60% servono 385 partite per lato", servono(0.5, 0.6) == 385))
     casi.append(("confronto: turni uguali, p dei turni 1", next(r_ for r_ in cf["righe"] if r_["k"] == "turni")["p"] == 1.0))
+    # la variante di colore esatta: «RB» e' Rakdos «BR», senza magie viste non si sa, solo incolori e' «C»; WBR non e' BR
+    vx = [dict(colori_suoi="RB", suo="X"), dict(colori_suoi="", suo="Unknown"), dict(colori_suoi="", suo="No-Color Ramp"), dict(colori_suoi="WBR", suo="Y")]
+    casi.append(("vs: la variante esatta in ordine WUBRG, incolore C, senza magie None", [vs_di(x) for x in vx] == ["BR", None, "C", "WBR"]))
+    rv = [dict(righe_[i], colori_suoi=["BR", "WBR", "W", ""][i % 4], suo="Z") for i in range(40)]
+    casi.append(("negativa: il filtro vs BR non prende WBR ne' W", all(vs_di(x) == "BR" for x in filtra(rv, {"vs": "BR"})) and len(filtra(rv, {"vs": "BR"})) == 10))
+    pv = per_varianti(rv)
+    casi.append(("per_varianti: mono, due, tre colori e incolore, ognuno coi suoi", [g["gruppo"] for g in pv] == ["Mono-color", "Two colors", "Three colors", "Colorless"]
+                 and all(g["conti"]["n"] == 10 for g in pv) and nome_vs("WUBG") == "Four-color, no red" and etichetta("vs", "BR") == "BR · Rakdos"))
     vere = righe()
     casi.append(("i log veri: righe con le variabili (se ci sono partite)", not vere or all(k in vere[0] for k in ("tipo", "partenza", "terre", "sessione", "fascia"))))
     for n, ok in casi:

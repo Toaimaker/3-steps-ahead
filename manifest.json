@@ -1,6 +1,6 @@
 {
- "version": "0.1.46",
+ "version": "0.1.47",
  "date": "2026-11-12",
- "notes": "Performance: the situations in the game button is now called Add filters.",
+ "notes": "Performance: By deck, your deck against everyone or one exact color variant, with the table from mono-color to five colors; smart filters in groups.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }
