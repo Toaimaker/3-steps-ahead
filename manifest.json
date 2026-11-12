@@ -1,6 +1,6 @@
 {
- "version": "0.1.51",
+ "version": "0.1.52",
  "date": "2026-11-12",
- "notes": "Performance: under the chart the games of the situation with your opening hand and the board; click one to see the table of that game, turn by turn.",
+ "notes": "Performance: the board of a game is a replayer, with play and pause, step, first and last, a timeline and the speed.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

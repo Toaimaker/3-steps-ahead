@@ -30,6 +30,7 @@ GRIGI = ("#2a2a30", "#3a3a42", "#0f86cc")       # i pulsanti a pillola grigi, az
 ALTO_TAB, LARGA_TAB = 34, 132                   # le cartelle
 LARGA_DECK = 1000                               # la finestra By deck
 ALTO_PARTITA = 24                               # una riga della tabella delle partite
+ALTO_CTRL = 64                                  # la barra del replayer della board
 # per fasi della partita (12 nov 2026, Autore: «il menu a tendine creiamolo per macro fasi partita: formato evento e deck - poi start e mulligan - lands in
 # hand / cards in hand possiamo toglierlo, their card anche»): prima della partita (con By deck), l'apertura, l'avversario, com'e' finita, quando.
 # «deck» e' il pulsante By deck; Card in hand e Their card non sono tendine (restano in Split by, Group by e negli Spots)
@@ -910,10 +911,22 @@ class PaginaPerformance:
             self.l_board = tk.Label(f, text="", bg=C["cap"], fg=C["titolo"], font=F(10, True), anchor="w", padx=16, pady=10); self.l_board.pack(fill="x")
             self.cv_passi = tk.Canvas(f, bg=C["scheda"], highlightthickness=0, bd=0, height=40); self.cv_passi.pack(fill="x", padx=12, pady=(10, 4))
             self.cv_passi.bind("<Button-1>", self.clic_passo)
+            # in fondo i comandi di un replayer (12 nov 2026, Autore: «visto che abbiamo costruito una board che e' un player, metti in fondo le classiche
+            # funzioni di un replayer»): inizio, indietro, play e pausa, avanti, fine, la timeline da cliccare o trascinare, la velocita'
+            self.cv_ctrl = tk.Canvas(f, bg=C["cap"], highlightthickness=0, bd=0, height=ALTO_CTRL, cursor="hand2")
+            self.cv_ctrl.pack(side="bottom", fill="x")
+            self.cv_ctrl.bind("<Configure>", lambda e: self.disegna_controlli())
+            self.cv_ctrl.bind("<Button-1>", self.clic_controlli)
+            self.cv_ctrl.bind("<B1-Motion>", self.trascina_timeline)
+            f.bind("<space>", lambda e: self.play_board())
+            f.bind("<Home>", lambda e: self.vai_board(0))
+            f.bind("<End>", lambda e: self.vai_board(10 ** 6))
+            f.bind("<Destroy>", lambda e: e.widget is f and self.ferma_board(), add="+")
             self.cv_board = tk.Canvas(f, bg="#141418", highlightthickness=1, highlightbackground=C["filo"], bd=0)
-            self.cv_board.pack(fill="both", expand=True, padx=12, pady=(4, 12))
+            self.cv_board.pack(fill="both", expand=True, padx=12, pady=(4, 8))
             self.cv_board.bind("<Configure>", lambda e: self.disegna_board())
-        self._board = dict(x=x_, passi=passi, i=0 if dove == "mano" else len(passi) - 1)
+        self.ferma_board()
+        self._board = dict(x=x_, passi=passi, i=0 if dove == "mano" else len(passi) - 1, play=False, vel=getattr(self, "_vel_board", 1.0))
         esito = "won" if x_["vinta"] else "lost"
         self.l_board.configure(text=f"{x_['quando']:%d %b %Y %H:%M}  ·  {(x_.get('mio') or '-').strip()} vs {x_.get('suo') or '-'}  ·  {esito}"
                                + (f" on turn {x_['turno']}" if x_.get("turno") else "") + (f"  ·  {x_['partenza'].lower()}" if x_.get("partenza") else ""))
@@ -925,8 +938,151 @@ class PaginaPerformance:
     def passo_board(self, d):
         b = getattr(self, "_board", None)
         if b:
-            b["i"] = max(0, min(len(b["passi"]) - 1, b["i"] + d))
+            self.vai_board(b["i"] + d)
+
+    def vai_board(self, i):
+        b = getattr(self, "_board", None)
+        if b:
+            b["i"] = max(0, min(len(b["passi"]) - 1, i))
             self.disegna_board()
+
+    def play_board(self):
+        """Play: un momento ogni 1,6 s diviso la velocita'; arrivato in fondo si ferma. Play in fondo riparte dall'inizio."""
+        b = getattr(self, "_board", None)
+        if not b:
+            return
+        if b["play"]:
+            self.ferma_board()
+            self.disegna_controlli()
+            return
+        if b["i"] >= len(b["passi"]) - 1:
+            b["i"] = 0
+        b["play"] = True
+        self.disegna_board()
+        self._play_id = self.fin_board.after(int(1600 / b["vel"]), self.giro_board)
+
+    def giro_board(self):
+        b = getattr(self, "_board", None)
+        f = getattr(self, "fin_board", None)
+        if not b or not b["play"] or f is None or not f.winfo_exists():
+            return
+        if b["i"] >= len(b["passi"]) - 1:
+            self.ferma_board()
+            self.disegna_controlli()
+            return
+        b["i"] += 1
+        self.disegna_board()
+        self._play_id = f.after(int(1600 / b["vel"]), self.giro_board)
+
+    def ferma_board(self):
+        b = getattr(self, "_board", None)
+        if b:
+            b["play"] = False
+        pid, f = getattr(self, "_play_id", None), getattr(self, "fin_board", None)
+        if pid and f is not None:
+            try:
+                f.after_cancel(pid)
+            except Exception:      # noqa: BLE001 - gia' scattato
+                pass
+        self._play_id = None
+
+    def disegna_controlli(self):
+        """La barra del replayer: i pulsanti disegnati (nitidi), la timeline coi momenti (i tuoi turni azzurri), il momento e la velocita'."""
+        c = getattr(self, "cv_ctrl", None)
+        b = getattr(self, "_board", None)
+        if c is None or not c.winfo_exists() or not b:
+            return
+        F = self.F
+        c.delete("all")
+        W, H = max(c.winfo_width(), 800), ALTO_CTRL
+        cy = H / 2
+        d = DG.Disegno(W, H)
+        sopra = getattr(self, "_ctrl_sopra", None)
+        bianco, grigio = "#e6e6ea", "#9a9aa2"
+        self._box_ctrl = []
+        x = 22
+        for k in ("primo", "indietro", "play", "avanti", "ultimo"):
+            r = 20 if k == "play" else 15
+            cx = x + r
+            on = sopra == k
+            if k == "play":
+                d.cerchio(cx, cy, r, riempi="#2ba3ea" if on else "#0f86cc")
+            else:
+                d.cerchio(cx, cy, r, riempi="#2e2e36" if on else "#202026", bordo="#3a3a42", larghezza=1)
+            col = "#ffffff" if k == "play" else (bianco if on else grigio)
+            if k == "play" and b["play"]:
+                d.rett(cx - 6, cy - 7, cx - 2, cy + 7, riempi=col, raggio=1)
+                d.rett(cx + 2, cy - 7, cx + 6, cy + 7, riempi=col, raggio=1)
+            elif k == "play":
+                d.poligono([(cx - 5, cy - 8), (cx + 8, cy), (cx - 5, cy + 8)], riempi=col)
+            elif k == "indietro":
+                d.poligono([(cx + 4, cy - 6), (cx - 5, cy), (cx + 4, cy + 6)], riempi=col)
+            elif k == "avanti":
+                d.poligono([(cx - 4, cy - 6), (cx + 5, cy), (cx - 4, cy + 6)], riempi=col)
+            elif k == "primo":
+                d.rett(cx - 6, cy - 6, cx - 4, cy + 6, riempi=col)
+                d.poligono([(cx + 5, cy - 6), (cx - 3, cy), (cx + 5, cy + 6)], riempi=col)
+            else:
+                d.rett(cx + 4, cy - 6, cx + 6, cy + 6, riempi=col)
+                d.poligono([(cx - 5, cy - 6), (cx + 3, cy), (cx - 5, cy + 6)], riempi=col)
+            self._box_ctrl.append((cx - r, cx + r, k))
+            x += 2 * r + 10
+        # la timeline
+        t0, t1 = x + 20, W - 330
+        n = len(b["passi"])
+        self._timeline = (t0, t1, n)
+        pos = lambda i: t0 + (t1 - t0) * (i / max(1, n - 1))
+        d.linea([(t0, cy), (t1, cy)], "#3a3a42", 4)
+        d.linea([(t0, cy), (pos(b["i"]), cy)], "#0f86cc", 4)
+        for i, (nome, _f) in enumerate(b["passi"]):
+            mio_ = nome.startswith("You") or nome == "Opening hand"
+            d.cerchio(pos(i), cy, 3.2, riempi=("#24baff" if mio_ else "#8a8a92") if i > b["i"] else "#ffffff")
+        d.cerchio(pos(b["i"]), cy, 8, riempi="#ffffff", bordo="#0f86cc", larghezza=2)
+        # la velocita'
+        self._box_vel = []
+        vx = W - 150
+        for v in (0.5, 1.0, 2.0):
+            on = abs(b["vel"] - v) < 1e-9
+            d.rett(vx, cy - 12, vx + 42, cy + 12, riempi="#0f86cc" if on else "#202026", bordo="#0f86cc" if on else "#3a3a42", larghezza=1, raggio=4)
+            self._box_vel.append((vx, vx + 42, v))
+            vx += 46
+        self._img_ctrl = d.foto()
+        c.create_image(0, 0, image=self._img_ctrl, anchor="nw")
+        for x0_, x1_, v in self._box_vel:
+            on = abs(b["vel"] - v) < 1e-9
+            c.create_text((x0_ + x1_) / 2, cy, text=("0.5×" if v == 0.5 else f"{v:.0f}×"), fill="#ffffff" if on else grigio, font=F(7, True))
+        nome = b["passi"][b["i"]][0]
+        c.create_text(W - 166, cy - 7, text=nome, anchor="e", fill=bianco, font=F(9, True))
+        c.create_text(W - 166, cy + 10, text=f"{b['i'] + 1} / {n}   ·   keys: space, arrows, Home, End", anchor="e", fill=grigio, font=F(7))
+
+    def clic_controlli(self, e):
+        b = getattr(self, "_board", None)
+        if not b:
+            return
+        for x0, x1, k in getattr(self, "_box_ctrl", []):
+            if x0 <= e.x <= x1:
+                if k == "play":
+                    self.play_board()
+                else:
+                    self.ferma_board()
+                    {"primo": lambda: self.vai_board(0), "indietro": lambda: self.passo_board(-1), "avanti": lambda: self.passo_board(1),
+                     "ultimo": lambda: self.vai_board(10 ** 6)}[k]()
+                return
+        for x0, x1, v in getattr(self, "_box_vel", []):
+            if x0 <= e.x <= x1:
+                b["vel"] = self._vel_board = v
+                self.disegna_controlli()
+                return
+        self.trascina_timeline(e)
+
+    def trascina_timeline(self, e):
+        """Clic o trascinamento sulla timeline: il momento piu' vicino."""
+        t0, t1, n = getattr(self, "_timeline", (0, 0, 0))
+        if n and t0 - 12 <= e.x <= t1 + 12:
+            i = round((min(max(e.x, t0), t1) - t0) / max(1, t1 - t0) * (n - 1))
+            if i != self._board["i"]:
+                self.ferma_board()
+                self.vai_board(i)
 
     def clic_passo(self, e):
         for x0, x1, i in getattr(self, "_box_passi", []):
@@ -1039,7 +1195,7 @@ class PaginaPerformance:
         c.create_line(0, 2 * terzo, W, 2 * terzo, fill=C["filo"])
         zona("YOUR HAND" + ("  ·  the hand you kept" if nome == "Opening hand" else ""), [(n, False, False) for n in f["mano"]], 2 * terzo + 4, terzo + 12,
              C["titolo"], f"{len(f['mano'])} card{'s' if len(f['mano']) != 1 else ''}")
-        c.create_text(W - 16, H - 8, text=f"{nome}   ·   left and right arrow keys to move", anchor="e", fill=C["muto"], font=F(7))
+        self.disegna_controlli()
 
     def punta(self, e):
         """Il puntatore su un grafico (Chart o Compare): la linea verticale e il valore di ogni linea in quel punto."""
