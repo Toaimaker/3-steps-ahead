@@ -221,6 +221,18 @@ def _fuori(lst, seat):
     return out
 
 
+def colpiti_di(info):
+    """I permanenti che una magia o un'abilita' ha tolto dal campo, per le frecce rosse del replayer. Senza bersagli (un board wipe) tutto quello che e'
+    sparito mentre era in pila; coi bersagli i bersagli tolti e quello che ha spostato lei (13 nov 2026: Settle the Wreckage ha per bersaglio il giocatore ed
+    esilia le sue creature attaccanti, Tribute to Hunger fa sacrificare; Burst Lightning alla faccia non toglie quello che muore per altro). «fatti» c'e' dalla
+    VERSIONE 11 di mana_aperto e nel replay azione per azione; senza, coi bersagli valgono solo i bersagli."""
+    colpiti, bers = list(info.get("colpiti") or []), info.get("bers") or []
+    if not bers:
+        return colpiti
+    fatti = set(info.get("fatti") or ())
+    return [x for x in colpiti if x in bers or x in fatti]
+
+
 def foto_partita(x):
     """Le foto di una partita dal tuo posto (mano_aperto): dict(mano0, turni=[(turno, tuo turno?, foto)], ultima) con le foto girate cosi' che [0] sia il tuo
     lato; None se la partita non ha il log. turni=[(turno, tuo turno?, foto, «fine»|«comb»|«spell», relazioni)]. Una foto: dict(mio=[(nome, tappata, pedina,
@@ -250,9 +262,7 @@ def foto_partita(x):
                 if not nome:
                     continue
                 bers = info.get("bers") or []
-                colpiti = list(info.get("colpiti") or [])
-                if bers:        # una magia coi bersagli toglie i suoi bersagli: altro che lascia il campo nello stesso istante viene da altro (il combattimento)
-                    colpiti = [x for x in colpiti if x in bers]
+                colpiti = colpiti_di(info)
                 rel = dict(tipo="spell", nome=nome, mio=info.get("chi") == seat, ab=bool(info.get("ab")), bers=[lato(b_) for b_ in bers], colpiti=colpiti,
                            fuori=_fuori(info.get("fuori"), seat))
             elif kind == "comb":
@@ -307,7 +317,7 @@ def azioni_partita(x):
         if r_ and r_["k"] == "comb":
             rel = dict(tipo="comb", att=[(i, lato(tg)) for i, tg in r_["att"]], blocchi=[(i, list(a_)) for i, a_ in r_["blocchi"]])
         elif r_ and r_["k"] == "spell" and nome_grp(r_["g"]):
-            rel = dict(tipo="spell", nome=nome_grp(r_["g"]), mio=r_["chi"] == seat, ab=r_["ab"], bers=[lato(b_) for b_ in r_["bers"]], colpiti=[],
+            rel = dict(tipo="spell", nome=nome_grp(r_["g"]), mio=r_["chi"] == seat, ab=r_["ab"], bers=[lato(b_) for b_ in r_["bers"]], colpiti=colpiti_di(r_),
                        fuori=_fuori(r_.get("fuori"), seat))
         nome = f"{'You' if fr['att'] == seat else 'Opponent'} T{(fr['t'] + 1) // 2} · {fr['step'] or '-'}"
         out.append((nome, gira_foto(fr["foto"], seat), fr["t"], rel, ev, [(lato(b_), q) for b_, q in fr["danni"]]))

@@ -149,6 +149,9 @@ def azioni(righe, nome=lambda g: None):
     emblemi e inneschi ritardati col nome della carta; dove Arena ha riassunto un messaggio, l'azione lo dice."""
     obj, zone, zown, zids, vite, ti = {}, {}, {}, {}, {}, {}
     frames, bersagli, att_prima = [], {}, None
+    # cio' che una magia o un'abilita' toglie dal campo, per le frecce (13 nov 2026, Settle the Wreckage: il bersaglio e' il giocatore, le creature esiliate
+    # le dice l'affectorId delle ZoneTransfer): {id in pila: dict(prima=id in campo quando e' entrata, fatti=id che ha spostato lei, rels=[rel delle foto])}
+    in_pila, risolve = {}, set()       # risolve: fra ResolutionStart e ResolutionComplete (Arena sposta i permanenti con la magia ancora in pila)
     ricordo, origine = {}, {}         # {id: oggetto com'era l'ultima volta}, {id nuovo: id di prima} (ObjectIdChanged)
     riassunto, finita, veleno = False, False, {}
 
@@ -259,6 +262,26 @@ def azioni(righe, nome=lambda g: None):
             for a in gs.get("persistentAnnotations") or []:
                 if "AnnotationType_TargetSpec" in (a.get("type") or []):
                     bersagli[a.get("affectorId")] = a.get("affectedIds") or []
+            pila_ora = ids_di("ZoneType_Stack")
+            campo_ora = set(ids_di("ZoneType_Battlefield"))
+            finite = set()
+            for a in gs.get("annotations") or []:
+                if "AnnotationType_ResolutionStart" in (a.get("type") or []):
+                    risolve.add(a.get("affectorId"))
+                elif "AnnotationType_ResolutionComplete" in (a.get("type") or []):
+                    finite.add(a.get("affectorId"))
+            for a in gs.get("annotations") or []:
+                if "AnnotationType_ZoneTransfer" in (a.get("type") or []) and a.get("affectorId") in in_pila                         and (a["affectorId"] in risolve or a["affectorId"] not in pila_ora)                         and zone.get(_dettaglio(a, "zone_src")) == "ZoneType_Battlefield":       # alla risoluzione: un sacrificio come costo no
+                    in_pila[a["affectorId"]]["fatti"].update(origine.get(x, x) for x in a.get("affectedIds") or [])
+            risolve -= finite
+            for x in [x for x in in_pila if x not in pila_ora]:        # ha lasciato la pila: cosa manca dal campo di quando ci e' entrata
+                p_ = in_pila.pop(x)
+                for rel_ in p_["rels"]:
+                    rel_["colpiti"] = sorted(y for y in p_["prima"] if y not in campo_ora)
+                    rel_["fatti"] = sorted(y for y in p_["fatti"] if y in p_["prima"])
+            for x in pila_ora:
+                if x not in in_pila:
+                    in_pila[x] = dict(prima=set(campo_ora), fatti=set(), rels=[])
             ev, danni = [], []
             # un segnalino +1/+1 arriva anche come potenziamento: si dice una volta sola (il segnalino)
             con_segnalino = {x for a in gs.get("annotations") or [] if "AnnotationType_CounterAdded" in (a.get("type") or []) for x in a.get("affectedIds") or []}
@@ -367,11 +390,18 @@ def azioni(righe, nome=lambda g: None):
                 o = ogg(cima)
                 rel = dict(k="spell", g=MA.grp_vero(o, tutti), chi=o.get("controllerSeatId"), ab=o.get("type") == "GameObjectType_Ability",
                            bers=list(bersagli.get(cima, [])), colpiti=[], fuori=MA.fuori_campo(bersagli.get(cima, []), zone, zids, zown, tutti))
+                if cima in in_pila:
+                    in_pila[cima]["rels"].append(rel)
             passo = (ti.get("step") or ti.get("phase") or "").replace("Step_", "").replace("Phase_", "")
             if solo_att and frames and frames[-1].get("_att") and frames[-1]["t"] == t and frames[-1]["step"] == passo:     # attaccanti scelti uno alla volta: resta l'ultima scelta
                 frames.pop()
             frames.append(dict(t=t, step=(ti.get("step") or ti.get("phase") or "").replace("Step_", "").replace("Phase_", ""), att=att, foto=foto(), ev=ev,
                                danni=danni, rel=rel, _s=sid, _att=solo_att))
+    fine_campo = set(ids_di("ZoneType_Battlefield"))
+    for p_ in in_pila.values():     # la partita finita con la magia ancora in pila (13 nov 2026: concessa subito dopo Settle the Wreckage)
+        for rel_ in p_["rels"]:
+            rel_["colpiti"] = sorted(y for y in p_["prima"] if y not in fine_campo)
+            rel_["fatti"] = sorted(y for y in p_["fatti"] if y in p_["prima"])
     for f in frames:
         f.pop("_s", None)
         f.pop("_att", None)
@@ -408,7 +438,8 @@ def prova():
     casi = [("quattro foto: l'inizio del turno, la terra, la magia, la risoluzione (il messaggio senza niente non conta)", len(fr) == 4),
             ("i testi: turno, terra, magia, danno, morte, vite", testi == ["turn 2 begins", "played Mountain", "cast Shock", "Shock dealt 3 to Goblin", "Goblin died",
                                                                          "lost 3 life"]),
-            ("la magia in pila col suo bersaglio", fr[2]["rel"] == dict(k="spell", g=200, chi=1, ab=False, bers=[9], colpiti=[], fuori=[])),
+            ("la magia in pila col suo bersaglio (e il bersaglio morto, quando si risolve)",
+             fr[2]["rel"] == dict(k="spell", g=200, chi=1, ab=False, bers=[9], colpiti=[9], fatti=[], fuori=[])),
             ("la foto dopo la terra ha la terra in campo con il suo id", fr[1]["foto"]["c"][0] == [[100, 0, 0, None, None, 3]]),
             ("i danni e le vite dopo la risoluzione", fr[3]["danni"] == [(9, 3)] and fr[3]["foto"]["v"] == [20, 17] and fr[3]["foto"]["c"][1] == []),
             ("negativa: righe senza stato del gioco, nessuna foto", azioni(["niente", "{rotto"]) == [])]
@@ -515,6 +546,32 @@ def prova():
                                                                                                     "scried 1: 0 on top, 1 to the bottom"]))
     # la spalla da un diario finto (in una cartella di partita finta)
     import tempfile
+    # Settle the Wreckage (13 nov 2026): il bersaglio e' il giocatore, la magia esilia la sua creatura (ZoneTransfer con affectorId = la magia); nello stesso
+    # messaggio un'altra creatura muore per altro (nessun affectorId): la freccia va alla prima, non alla seconda, ne' alle vite
+    def esilio(nuovo, affettore):
+        return dict(type=["AnnotationType_ZoneTransfer"], affectedIds=[nuovo], **(dict(affectorId=affettore) if affettore else {}),
+                    details=[dict(key="zone_src", valueInt32=[28]), dict(key="category", valueString=["Exile"])])
+
+    def settle(affettore, concede=False):
+        righe_ = base + [gz(30, type="GameStateType_Diff", zones=[campo(9, 11)],
+                            gameObjects=[carta(9, 900, 28, 2, cardTypes=["CardType_Creature"], power=dict(value=3), toughness=dict(value=3)),
+                                         carta(11, 901, 28, 2, cardTypes=["CardType_Creature"], power=dict(value=1), toughness=dict(value=1))]),
+                         gz(31, type="GameStateType_Diff", zones=[pila(4), mano(1, 5)], gameObjects=[carta(4, 200, 27, 1, cardTypes=["CardType_Instant"])],
+                            diffDeletedInstanceIds=[2], annotations=[zt(4, "CastSpell")],
+                            persistentAnnotations=[dict(type=["AnnotationType_TargetSpec"], affectorId=4, affectedIds=[2])]),
+                         gz(32, type="GameStateType_Diff", zones=[campo()] if concede else [pila(), campo()], diffDeletedInstanceIds=[9, 11] if concede else [4, 9, 11],
+                            annotations=[dict(type=["AnnotationType_ResolutionStart"], affectorId=4, affectedIds=[4]),
+                                         dict(type=["AnnotationType_ObjectIdChanged"], affectedIds=[9], details=[dict(key="orig_id", valueInt32=[9]),
+                                                                                                                 dict(key="new_id", valueInt32=[10])]),
+                                         esilio(10, affettore), zt(11, "SBA_Damage")])]
+        f_ = [f for f in azioni(righe_, {200: "Settle the Wreckage", 900: "Bear", 901: "Elf"}.get) if f["rel"]]
+        return f_[0]["rel"] if f_ else {}
+    import dati_analizzatore as DA_
+    rs = settle(4)
+    casi.append(("Settle the Wreckage: bersaglio il giocatore, colpita la creatura che ha esiliato, non quella morta per altro",
+                 rs.get("bers") == [2] and rs.get("colpiti") == [9, 11] and rs.get("fatti") == [9] and DA_.colpiti_di(rs) == [9]))
+    casi.append(("negativa: senza l'affectorId nessuna creatura e' della magia", DA_.colpiti_di(settle(None)) == []))
+    casi.append(("la partita concessa con la magia ancora in pila (Arena non la toglie): la creatura esiliata resta colpita", DA_.colpiti_di(settle(4, True)) == [9]))
     vecchia = MA.CARTELLA
     MA.CARTELLA = tempfile.mkdtemp()
     try:

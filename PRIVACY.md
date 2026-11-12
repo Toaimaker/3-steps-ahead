@@ -1,6 +1,6 @@
 # Privacy notice · 3 Steps Ahead (beta)
 
-_Last updated: 2026-11-12. Data controller: [to be filled in before any data is collected]. Contact: [to be filled in]._
+_Last updated: 2026-11-13. Data controller: [to be filled in before any data is collected]. Contact: [to be filled in]._
 
 ## What the app does on your PC
 

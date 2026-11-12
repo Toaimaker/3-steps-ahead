@@ -24,12 +24,12 @@ import re  # noqa: E402
 
 from ambiente import LOGDIR  # noqa: E402
 
-VERSIONE = 10       # 2: le foto della partita; 3: cimitero, esilio, forza e costituzione; 4: i momenti del combattimento e delle magie coi bersagli;
+VERSIONE = 11       # 2: le foto della partita; 3: cimitero, esilio, forza e costituzione; 4: i momenti del combattimento e delle magie coi bersagli;
 #                    5: ogni istantaneo e stregoneria in pila (anche senza bersagli) e i permanenti che ha tolto dal campo (i board wipe);
 #                    6: per le partite lette dagli archivi, dove stanno («dove»: archivio, byte di inizio e di fine), per il replay azione per azione;
 #                    7: debug del 12 nov 2026: le cancellazioni, chi e' in campo dalle zone, le vite a 0, l'annullamento, emblemi e inneschi, i riassunti;
 #                    8: i bersagli fuori dal campo («fuori»: cimitero, esilio, pila); 9: l'emblema risale alla carta;
-#                    10: forza e costituzione a zero
+#                    10: forza e costituzione a zero; 11: «fatti», i permanenti che la magia ha spostato lei (affectorId), e le abilita' coi bersagli
 CARTELLA = os.path.join(LOGDIR, "partite")
 COPIA = os.path.join(LOGDIR, "mana_aperto.json")
 
@@ -116,6 +116,10 @@ def leggi(righe):
     # inventarci qualcosa che le mostri nel turno prima che finiscano nel cimitero e contro cosa hanno effetto di massa»): il momento nasce quando la magia
     # entra in pila, e quando lascia la pila si guarda cosa manca dal campo di allora («colpiti»)
     in_pila, mom_di = {}, {}       # {id della magia: (stato, momento, id in campo allora)}, {id della magia: (stato, momento)}
+    # i permanenti che una magia ha tolto lei dal campo (13 nov 2026, Autore: «la carta settle the wreckage dovrebbe esiliare le creature attaccanti ma nel
+    # replayer la freccia punta ai punti vita del giocatore»): Arena scrive in ogni ZoneTransfer chi l'ha causata (affectorId); il bersaglio di Settle the
+    # Wreckage e' il giocatore, quello che esilia sono le sue creature. {id della magia: {id in campo prima di lasciarlo}}
+    fatti_da, risolve = {}, set()      # risolve: le magie fra ResolutionStart e ResolutionComplete
 
     def valore(o, k):
         """Forza o costituzione di una creatura: Arena non scrive i valori a zero (power {} o assente), quindi una 0/2 e' 0/2, non una non creatura."""
@@ -206,6 +210,27 @@ def leggi(righe):
             for x in cancellati(gs):
                 obj.pop(x, None)
             turno_da(gs, ti)
+            orig = {}
+            for a in gs.get("annotations") or []:
+                if "AnnotationType_ObjectIdChanged" in (a.get("type") or []):
+                    det = {x.get("key"): (x.get("valueInt32") or [None])[0] for x in a.get("details") or []}
+                    if det.get("orig_id") and det.get("new_id"):
+                        orig[det["new_id"]] = det["orig_id"]
+            pila_ora = set(ids_di("ZoneType_Stack"))
+            finite = set()
+            for a in gs.get("annotations") or []:
+                if "AnnotationType_ResolutionStart" in (a.get("type") or []):
+                    risolve.add(a.get("affectorId"))
+                elif "AnnotationType_ResolutionComplete" in (a.get("type") or []):
+                    finite.add(a.get("affectorId"))
+            for a in gs.get("annotations") or []:
+                # solo mentre la magia si risolve (Arena esilia nel messaggio di ResolutionStart, con la magia ancora in pila) o quando lascia la pila: un
+                # sacrificio come costo (Eaten Alive, Cathar Commando) si paga mentre entra in pila e non e' il suo effetto
+                if "AnnotationType_ZoneTransfer" in (a.get("type") or []) and a.get("affectorId") in in_pila                         and (a["affectorId"] in risolve or a["affectorId"] not in pila_ora):
+                    src = next(((x.get("valueInt32") or [None])[0] for x in a.get("details") or [] if x.get("key") == "zone_src"), None)
+                    if zone.get(src) == "ZoneType_Battlefield":
+                        fatti_da.setdefault(a["affectorId"], set()).update(orig.get(x, x) for x in a.get("affectedIds") or [])
+            risolve -= finite
             t, att = ti.get("turnNumber"), ti.get("activePlayer")
             if t is None or att is None:
                 continue
@@ -236,6 +261,7 @@ def leggi(righe):
                 if i not in pila_ids:
                     _s, m_, prima_ = in_pila.pop(i)
                     m_[4]["colpiti"] = sorted(x for x in prima_ if x not in in_campo)
+                    m_[4]["fatti"] = sorted(x for x in fatti_da.pop(i, ()) if x in prima_)
             for i in pila_ids:              # un istantaneo o una stregoneria appena entrati in pila
                 o = obj.get(i)
                 if i in mom_di or not o or o.get("type") != "GameObjectType_Card" or not o.get("grpId"):
@@ -265,6 +291,7 @@ def leggi(righe):
                         st["momenti"].append((sid, m_))
                         if not ab:
                             mom_di[a["affectorId"]] = (sid, m_)
+                        if a["affectorId"] not in in_pila:      # anche un'abilita' (un sacrificio, un esilio): cosa toglie quando lascia la pila
                             in_pila[a["affectorId"]] = (sid, m_, set(in_campo))
             if ti.get("step") == "Step_End" and t not in {x[1][0] for x in st["fine"]}:
                 s, n = terre(att, campo)
@@ -274,6 +301,10 @@ def leggi(righe):
                 st["momenti"].append((sid, ["fine", t, att, f_, None]))
     if st["pend"]:
         st["momenti"].insert(st["pend"][0], (st["pend"][1], st["pend"][2]))
+    fine_campo = set(ids_di("ZoneType_Battlefield"))
+    for i, (_s, m_, prima_) in in_pila.items():     # la partita finita con la magia ancora in pila (concessa subito dopo l'esilio): si chiude qui
+        m_[4]["colpiti"] = sorted(x for x in prima_ if x not in fine_campo)
+        m_[4]["fatti"] = sorted(x for x in fatti_da.get(i, ()) if x in prima_)
     ultima = [ti.get("turnNumber"), ti.get("activePlayer"), foto()] if ti.get("turnNumber") else None
     via = lambda lst: [x[1] for x in lst]
     return dict(attacchi=via(st["attacchi"]), fine=via(st["fine"]), mano0=st["mano0"][1] if st["mano0"] else None, foto=via(st["foto"]), ultima=ultima,
@@ -462,6 +493,30 @@ def prova():
     casi.append(("un board wipe: il suo momento in pila, la tavola di prima e i due permanenti tolti", len(mw) == 1 and mw[0][4]["g"] == 777
                  and mw[0][4]["colpiti"] == [10, 20] and len(mw[0][3]["c"][0]) == 1))
     casi.append(("negativa: senza attaccanti niente momento di combattimento", not [m_ for m_ in leggi(fz)["momenti"] if m_[0] == "comb"]))
+    # Settle the Wreckage (13 nov 2026): il bersaglio e' il giocatore 1; la magia esilia la creatura 10 (affectorId, col cambio d'id), la 20 muore per altro
+    def settle(affettore, costo=False):
+        es = dict(type=["AnnotationType_ZoneTransfer"], affectedIds=[11], details=[dict(key="zone_src", valueInt32=[28]), dict(key="category", valueString=["Exile"])])
+        if affettore:
+            es["affectorId"] = affettore
+        fs = [gs(type="GameStateType_Full", zones=[dict(zoneId=28, type="ZoneType_Battlefield", objectInstanceIds=[10, 20]), dict(zoneId=27, type="ZoneType_Stack")],
+                 turnInfo=dict(turnNumber=6, activePlayer=1, step="Step_DeclareBlock"), gameObjects=[cr(10, 1), cr(20, 1)]),
+              gs(type="GameStateType_Diff", zones=[dict(zoneId=27, type="ZoneType_Stack", objectInstanceIds=[60])],
+                 gameObjects=[dict(sw(60), cardTypes=["CardType_Instant"])],
+                 persistentAnnotations=[dict(id=70, type=["AnnotationType_TargetSpec"], affectorId=60, affectedIds=[1])]),
+              gs(type="GameStateType_Diff", zones=[dict(zoneId=27, type="ZoneType_Stack", objectInstanceIds=[60] if costo else [])]
+                 + ([] if costo else [dict(zoneId=28, type="ZoneType_Battlefield")]),
+                 diffDeletedInstanceIds=[10] if costo else [10, 20, 60],
+                 annotations=[dict(type=["AnnotationType_ObjectIdChanged"], affectedIds=[10], details=[dict(key="orig_id", valueInt32=[10]),
+                                                                                                      dict(key="new_id", valueInt32=[11])]), es])]
+        if costo:       # la creatura sacrificata mentre la magia e' ancora in pila (un costo), poi la magia si risolve senza togliere niente
+            fs.append(gs(type="GameStateType_Diff", zones=[dict(zoneId=27, type="ZoneType_Stack")], diffDeletedInstanceIds=[60]))
+        return [m_[4] for m_ in leggi(fs)["momenti"] if m_[0] == "spell"]
+    import dati_analizzatore as DA_
+    ms = settle(60)
+    casi.append(("Settle the Wreckage: bersaglio il giocatore, «fatti» la creatura esiliata dalla magia, non quella morta per altro",
+                 len(ms) == 1 and ms[0]["bers"] == [1] and ms[0]["colpiti"] == [10, 20] and ms[0]["fatti"] == [10] and DA_.colpiti_di(ms[0]) == [10]))
+    casi.append(("negativa: senza l'affectorId la magia non ha tolto niente", [DA_.colpiti_di(m_) for m_ in settle(None)] == [[]]))
+    casi.append(("negativa: un sacrificio pagato mentre la magia e' in pila (un costo) non e' il suo effetto", [m_.get("fatti") for m_ in settle(60, costo=True)] == [[]]))
     # il debug del 12 nov 2026: l'annullamento toglie la magia annullata e lascia nascere il momento di quella vera, che riusa lo stesso id
     zt = lambda aid, cat: dict(type=["AnnotationType_ZoneTransfer"], affectedIds=[aid], details=[dict(key="category", valueString=[cat])])
     pl = lambda *ids: dict(zoneId=27, type="ZoneType_Stack", objectInstanceIds=list(ids))

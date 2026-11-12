@@ -1,6 +1,6 @@
 {
- "version": "0.1.64",
- "date": "2026-11-12",
- "notes": "Replayer: every replay starts from the opening hand; a deep debug of how it reads Arena's log: cancelled spells are no longer counted, dead creatures no longer linger as attackers, 0 life and 0-power creatures read right, sacrificed tokens keep their name, arrows to targets in graveyards and on the stack, how the game ended, planeswalker abilities, scry and blocks in Every action.",
+ "version": "0.1.65",
+ "date": "2026-11-13",
+ "notes": "Replayer: opens centered on the app window; spells that target a player but remove permanents (Settle the Wreckage, edicts) point their arrows at the exiled or sacrificed permanents, not at the life total; abilities that exile or bounce are marked too.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

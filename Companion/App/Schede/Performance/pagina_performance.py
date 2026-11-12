@@ -1101,6 +1101,17 @@ class PaginaPerformance:
         i = max(range(len(salti)), key=lambda j: salti[j])
         return i + 1 if salti[i] > 0 else None
 
+    def posto_board(self, largo=1500, alto=960):
+        """Il replayer al centro della finestra dell'app (13 nov 2026, Autore: «quando apriamo il replayer facciamolo partire bello centrato alla
+        pagina»), mai piu' grande di lei meno un margine; prima si apriva a 60 pixel dal bordo della tabella, spostato a destra."""
+        top = self.fr.winfo_toplevel()
+        top.update_idletasks()
+        x0, y0, W, H = top.winfo_rootx(), top.winfo_rooty(), top.winfo_width(), top.winfo_height()
+        if W < 200 or H < 200:          # la finestra non ancora disegnata: lo schermo
+            x0, y0, W, H = 0, 0, top.winfo_screenwidth(), top.winfo_screenheight()
+        w, h = min(largo, W - 40), min(alto, H - 40)
+        return f"{w}x{h}+{x0 + (W - w) // 2}+{max(0, y0 + (H - h) // 2)}"
+
     def apri_board(self, x_, dove="inizio"):
         """La board di una partita: in alto i momenti (la mano tenuta, la fine di ogni turno, la fine), sotto la tavola: le sue carte in campo, le tue, la tua
         mano, con le vite; le carte tappate girate. Frecce o clic per muoversi. Una finestra sola: un'altra partita la riempie."""
@@ -1115,7 +1126,7 @@ class PaginaPerformance:
         if f is None or not f.winfo_exists():
             f = self.fin_board = tk.Toplevel(self.fr); f.configure(bg=C["scheda"])
             f.title("The board")
-            f.geometry(f"1500x960+{self.cv_sx.winfo_rootx() + 60}+{max(0, self.cv_sx.winfo_rooty() - 90)}")
+            f.geometry(self.posto_board())
             f.bind("<Escape>", lambda e: self.chiudi_pila() if getattr(self, "_pila_aperta", None) else f.destroy())
             f.bind("<Left>", lambda e: self.passo_board(-1))
             f.bind("<Right>", lambda e: self.passo_board(1))
@@ -2027,7 +2038,12 @@ class PaginaPerformance:
                     frecce.append((dove(a_), dove(tg), "#ff5d5d"))
         elif rel["tipo"] == "spell" and pila_box:
             pile = {k_: (x0, y0, x1, y1) for x0, y0, x1, y1, _t, k_, _c in getattr(self, "_box_pile", [])}
+            # una magia che ha per bersaglio un giocatore e toglie i suoi permanenti (Settle the Wreckage, un sacrificio: 13 nov 2026, Autore: «dovrebbe
+            # esiliare le creature attaccanti ma nel replayer la freccia punta ai punti vita del giocatore»): le frecce vanno ai permanenti, non alle vite
+            sui_permanenti = bool(rel.get("colpiti")) and all(isinstance(tg, str) and tg.startswith("vita") for tg in rel["bers"])
             for tg in rel["bers"]:
+                if sui_permanenti:
+                    continue
                 if dove(tg):
                     frecce.append((pila_box, dove(tg), "#b58cff"))
                 elif (rel.get("fuori") or {}).get(tg, (None,))[0] in pile:       # un bersaglio nel cimitero o in esilio: la freccia va alla sua pila
