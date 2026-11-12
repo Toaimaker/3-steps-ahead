@@ -1,6 +1,6 @@
 {
- "version": "0.1.49",
+ "version": "0.1.50",
  "date": "2026-11-12",
- "notes": "Performance, By deck: your decks as boxes with their mana colors, sorted by most played, win rate or name.",
+ "notes": "Performance: the numbers on top are centered, with room under them.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

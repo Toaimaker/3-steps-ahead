@@ -252,7 +252,7 @@ class PaginaPerformance:
         # staccare dal quadro e renderla una finestra a se stante»), chiusa torna qui
         dx = tk.Frame(corpo, bg=C["fondo"]); dx.grid(row=0, column=1, sticky="nsew")
         dx.columnconfigure(0, weight=1); dx.rowconfigure(2, weight=1)
-        self.cv_num = tk.Canvas(dx, bg=C["scheda"], highlightthickness=1, highlightbackground=C["filo"], height=86, bd=0)
+        self.cv_num = tk.Canvas(dx, bg=C["scheda"], highlightthickness=1, highlightbackground=C["filo"], height=96, bd=0)       # le tessere centrate fra la riga in alto e il fondo, con aria sotto (12 nov 2026, Autore: «le barre toccano la base della tabella, voglio le cose centrate»)
         self.cv_num.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         self.cv_num.bind("<Configure>", lambda e: self.disegna_numeri())
         self.cv_tab = tk.Canvas(dx, bg=C["fondo"], highlightthickness=0, bd=0, height=ALTO_TAB)
@@ -669,10 +669,10 @@ class PaginaPerformance:
         cw = (W - 32) / len(tess)
         for i, (a, v, col, s) in enumerate(tess):
             x = 16 + i * cw
-            c.create_line(x, 30, x, 86, fill=col, width=2)
+            c.create_line(x, 32, x, 84, fill=col, width=2)
             c.create_text(x + 10, 34, text=a, anchor="nw", fill=C["muto"], font=F(7, True))
-            c.create_text(x + 10, 60, text=v, anchor="w", fill=col, font=F(17, True))
-            c.create_text(x + 10, 80, text=s, anchor="w", fill=C["grigio"], font=F(7))
+            c.create_text(x + 10, 57, text=v, anchor="w", fill=col, font=F(17, True))
+            c.create_text(x + 10, 77, text=s, anchor="w", fill=C["grigio"], font=F(7))
 
     def traccia(self, c, lin, box, metrica, asse, colori, titolo, vuoto="No games in this situation"):
         """Il grafico a linee su una tela qualsiasi (la cartella Chart, il confronto): assi, griglia, le linee in un'immagine nitida, il nome in fondo a ogni
