@@ -24,7 +24,8 @@ import re  # noqa: E402
 
 from ambiente import LOGDIR  # noqa: E402
 
-VERSIONE = 4        # 2: le foto della partita; 3: cimitero, esilio, forza e costituzione; 4: i momenti del combattimento e delle magie coi bersagli
+VERSIONE = 5        # 2: le foto della partita; 3: cimitero, esilio, forza e costituzione; 4: i momenti del combattimento e delle magie coi bersagli;
+#                    5: ogni istantaneo e stregoneria in pila (anche senza bersagli) e i permanenti che ha tolto dal campo (i board wipe)
 CARTELLA = os.path.join(LOGDIR, "partite")
 COPIA = os.path.join(LOGDIR, "mana_aperto.json")
 
@@ -43,6 +44,10 @@ def leggi(righe):
     # blocchi=[[id, [attaccanti]]])] coi blocchi dichiarati, ["spell", t, chi, foto, dict(g=grpId, chi=posto, ab=abilita', bers=[id o posto])] quando una magia o
     # un'abilita' sceglie i bersagli (TargetSpec)
     momenti, visti_ts, visti_comb, pend = [], set(), set(), None
+    # gli istantanei e le stregonerie in pila (12 nov 2026, Autore: «per le carte come day of judgement che distruggono grandi quantita' di board dovremmo
+    # inventarci qualcosa che le mostri nel turno prima che finiscano nel cimitero e contro cosa hanno effetto di massa»): il momento nasce quando la magia
+    # entra in pila, e quando lascia la pila si guarda cosa manca dal campo di allora («colpiti»)
+    in_pila, mom_di = {}, {}       # {id della magia: (momento, id in campo allora)}, {id della magia: momento}
 
     def valore(o, k):
         v = o.get(k)
@@ -132,17 +137,40 @@ def leggi(righe):
                 momenti.insert(pend[0], pend[1])
                 visti_comb.add(pend[1][1])
                 pend = None
-            # le magie e le abilita' coi bersagli
+            pila_ids = {i for zid, tp in zone.items() if tp == "ZoneType_Stack" for i in zids.get(zid, [])}
+            in_campo = {i for zid, tp in zone.items() if tp == "ZoneType_Battlefield" for i in zids.get(zid, [])}
+            for i in list(in_pila):         # una magia che ha lasciato la pila: cosa manca dal campo di quando e' stata lanciata
+                if i not in pila_ids:
+                    m_, prima_ = in_pila.pop(i)
+                    m_[4]["colpiti"] = sorted(x for x in prima_ if x not in in_campo)
+            for i in pila_ids:              # un istantaneo o una stregoneria appena entrati in pila
+                o = obj.get(i)
+                if i in mom_di or not o or o.get("type") != "GameObjectType_Card" or not o.get("grpId"):
+                    continue
+                if not {"CardType_Instant", "CardType_Sorcery"} & set(o.get("cardTypes") or []):
+                    continue
+                m_ = ["spell", t, att, foto(), dict(g=o["grpId"], chi=o.get("controllerSeatId"), ab=False, bers=[], colpiti=[])]
+                momenti.append(m_)
+                mom_di[i] = m_
+                in_pila[i] = (m_, set(in_campo))
+            # le magie e le abilita' coi bersagli (una magia gia' in pila prende i suoi bersagli)
             for a in (gs.get("persistentAnnotations") or []) + (gs.get("annotations") or []):
                 if "AnnotationType_TargetSpec" in (a.get("type") or []) and a.get("id") not in visti_ts:
                     visti_ts.add(a.get("id"))
+                    if a.get("affectorId") in mom_di:
+                        mom_di[a["affectorId"]][4]["bers"] = a.get("affectedIds") or []
+                        continue
                     sp = obj.get(a.get("affectorId"))
                     if not sp:
                         continue
                     ab = sp.get("type") == "GameObjectType_Ability"
                     g = ((obj.get(sp.get("parentId")) or {}).get("grpId") or sp.get("objectSourceGrpId") or sp.get("grpId")) if ab else sp.get("grpId")
                     if g:
-                        momenti.append(["spell", t, att, foto(), dict(g=g, chi=sp.get("controllerSeatId"), ab=ab, bers=a.get("affectedIds") or [])])
+                        m_ = ["spell", t, att, foto(), dict(g=g, chi=sp.get("controllerSeatId"), ab=ab, bers=a.get("affectedIds") or [], colpiti=[])]
+                        momenti.append(m_)
+                        if not ab:
+                            mom_di[a["affectorId"]] = m_
+                            in_pila[a["affectorId"]] = (m_, set(in_campo))
             if ti.get("step") == "Step_End" and t not in visti_fine:
                 visti_fine.add(t)
                 s, n = terre(att)
@@ -321,7 +349,16 @@ def prova():
     dm = leggi(fc)["momenti"]
     casi.append(("i momenti: il combattimento coi blocchi, la magia col bersaglio, la fine del turno, in ordine",
                  [m_[0] for m_ in dm] == ["comb", "spell", "fine"] and dm[0][4] == dict(att=[[10, 2]], blocchi=[[20, [10]]])
-                 and dm[1][4] == dict(g=555, chi=1, ab=False, bers=[20])))
+                 and dm[1][4]["g"] == 555 and dm[1][4]["bers"] == [20]))
+    # un board wipe: una stregoneria senza bersagli entra in pila, si risolve, e dal campo mancano le due creature
+    sw = lambda i, **k: dict(instanceId=i, grpId=777, type="GameObjectType_Card", zoneId=27, controllerSeatId=2, ownerSeatId=2, cardTypes=["CardType_Sorcery"], **k)
+    fw = [gs(type="GameStateType_Full", zones=[dict(zoneId=28, type="ZoneType_Battlefield", objectInstanceIds=[10, 20]), dict(zoneId=27, type="ZoneType_Stack")],
+             turnInfo=dict(turnNumber=6, activePlayer=2, step="Step_Main1"), gameObjects=[cr(10, 1), cr(20, 2)]),
+          gs(type="GameStateType_Diff", zones=[dict(zoneId=27, type="ZoneType_Stack", objectInstanceIds=[50])], gameObjects=[sw(50)]),
+          gs(type="GameStateType_Diff", zones=[dict(zoneId=27, type="ZoneType_Stack"), dict(zoneId=28, type="ZoneType_Battlefield")], deletedInstanceIds=[10, 20, 50])]
+    mw = [m_ for m_ in leggi(fw)["momenti"] if m_[0] == "spell"]
+    casi.append(("un board wipe: il suo momento in pila, la tavola di prima e i due permanenti tolti", len(mw) == 1 and mw[0][4]["g"] == 777
+                 and mw[0][4]["colpiti"] == [10, 20] and len(mw[0][3]["c"][0]) == 1))
     casi.append(("negativa: senza attaccanti niente momento di combattimento", not [m_ for m_ in leggi(fz)["momenti"] if m_[0] == "comb"]))
     for n, ok in casi:
         print(("ok    " if ok else "ROSSO ") + n)

@@ -1507,14 +1507,14 @@ class PaginaPerformance:
             c.create_text(x0 + 8, y0 + 11, text=f"{tit} · {len(carte)}", anchor="w", fill=colore, font=F(7, True))
             if carte:
                 w = max(40, min(larga - 24, int((alta - 30) * 200 / 279)))
-                img = self.immagine_carta(carte[-1], w, False)
+                img = self.immagine_carta(carte[0], w, False)       # in cima la piu' recente: Arena scrive la pila dalla carta arrivata per ultima
                 cx_ = x0 + larga / 2 - w / 2
                 if img is not None:
                     c.create_image(cx_, y0 + 22, image=img, anchor="nw")
-                    self._box_carte.append((cx_, y0 + 22, cx_ + w, y0 + 22 + round(w * 1.395), carte[-1]))
+                    self._box_carte.append((cx_, y0 + 22, cx_ + w, y0 + 22 + round(w * 1.395), carte[0]))
                 else:
                     c.create_rectangle(cx_, y0 + 22, cx_ + w, y0 + 22 + round(w * 1.395), fill="#26262c", outline="#4a4a52")
-                    c.create_text(cx_ + w / 2, y0 + 22 + w * 0.7, text=carte[-1], width=w - 8, fill=C["titolo"], font=F(7, True), justify="center")
+                    c.create_text(cx_ + w / 2, y0 + 22 + w * 0.7, text=carte[0], width=w - 8, fill=C["titolo"], font=F(7, True), justify="center")
                 self._box_pile.append((x0, y0, x0 + larga, y0 + alta, tit, chiave, carte))
             else:
                 c.create_text(x0 + larga / 2, y0 + alta / 2 + 6, text="empty", fill=C["muto"], font=F(7))
@@ -1627,6 +1627,11 @@ class PaginaPerformance:
                 c.create_text(xr + 14 + w_p / 2, y + 12 + hp / 2, text=rel["nome"], width=w_p - 10, fill=C["titolo"], font=F(8, True), justify="center")
             pila_box = (xr + 14, y + 12, xr + 14 + w_p, y + 12 + hp)
             y += hp + 28
+            nc = len(rel.get("colpiti") or [])
+            if nc:      # l'effetto: quanti permanenti ha tolto
+                c.create_text(xr + 14, y - 6, text=f"REMOVED {nc} PERMANENT{'S' if nc > 1 else ''}" + ("  ·  a sweeper" if nc >= 3 else ""), anchor="w",
+                              fill="#ff5d5d", font=F(7, True))
+                y += 16
         elif rel and rel["tipo"] == "comb":
             nb = len(rel["blocchi"])
             c.create_text(xr + 14, y, text=f"COMBAT · {len(rel['att'])} attacking · {nb} block{'s' if nb != 1 else ''}", anchor="w", fill="#ff6b6b",
@@ -1671,6 +1676,15 @@ class PaginaPerformance:
             for tg in rel["bers"]:
                 if dove(tg):
                     frecce.append((pila_box, dove(tg), "#b58cff"))
+            for k_ in rel.get("colpiti") or []:      # cio' che la magia ha tolto dal campo (un board wipe: tutto quello che spazza)
+                if k_ not in rel["bers"] and dove(k_):
+                    frecce.append((pila_box, dove(k_), "#ff5d5d"))
+            for k_ in rel.get("colpiti") or []:
+                r_ = self._pos_id.get(k_)
+                if r_:
+                    c.create_rectangle(r_[0] - 3, r_[1] - 3, r_[2] + 3, r_[3] + 3, outline="#ff5d5d", width=3)
+                    c.create_rectangle(r_[0] + 4, r_[3] - 40, r_[0] + 62, r_[3] - 24, fill="#ff5d5d", outline="")
+                    c.create_text(r_[0] + 33, r_[3] - 32, text="REMOVED", fill="#ffffff", font=self.F(6, True))
         if not frecce:
             return
         d = DG.Disegno(W, H)
@@ -1848,7 +1862,7 @@ class PaginaPerformance:
             w -= 6
         h = round(w * 279 / 200)
         per = max(1, int((larga + 10) // (w + 10)))
-        for j, n in enumerate(reversed(carte)):     # l'ultima arrivata per prima
+        for j, n in enumerate(carte):     # l'ultima arrivata per prima (Arena le scrive gia' cosi')
             x, y = rx0 + 20 + (j % per) * (w + 10), ry0 + 60 + (j // per) * (h + 10)
             if y + h > ry1:
                 c.create_text(rx1 - 20, ry1 - 14, text=f"+{len(carte) - j} more", anchor="e", fill=C["grigio"], font=F(8, True))

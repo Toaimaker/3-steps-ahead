@@ -233,7 +233,11 @@ def foto_partita(x):
                 nome = nome_grp(info["g"])
                 if not nome:
                     continue
-                rel = dict(tipo="spell", nome=nome, mio=info.get("chi") == seat, ab=bool(info.get("ab")), bers=[lato(b_) for b_ in info.get("bers") or []])
+                bers = info.get("bers") or []
+                colpiti = list(info.get("colpiti") or [])
+                if bers:        # una magia coi bersagli toglie i suoi bersagli: altro che lascia il campo nello stesso istante viene da altro (il combattimento)
+                    colpiti = [x for x in colpiti if x in bers]
+                rel = dict(tipo="spell", nome=nome, mio=info.get("chi") == seat, ab=bool(info.get("ab")), bers=[lato(b_) for b_ in bers], colpiti=colpiti)
             elif kind == "comb":
                 rel = dict(tipo="comb", att=[(i, lato(tg)) for i, tg in info.get("att") or []], blocchi=[(i, list(a_)) for i, a_ in info.get("blocchi") or []])
             turni.append((t, att == seat, gira(f), kind, rel))

@@ -1,6 +1,6 @@
 {
- "version": "0.1.58",
+ "version": "0.1.59",
  "date": "2026-11-12",
- "notes": "Performance: a draggable line between chart and games, readable split lines, result and turns columns; the replayer opens graveyard and exile over the table.",
+ "notes": "Replayer: every instant and sorcery has its moment on the stack, sweepers show the permanents they removed with red arrows; the last card in is on top of graveyard and exile.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }
