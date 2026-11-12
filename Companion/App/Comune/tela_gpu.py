@@ -219,6 +219,11 @@ class TelaGPU:
             self.w = pyglet.window.Window(64, 64, style=pyglet.window.Window.WINDOW_STYLE_BORDERLESS, visible=False, vsync=VSYNC)
         self.batch = batch_che_tiene()
         self.batch_fisso = pyglet.graphics.Batch()      # lo strato fisso: coordinate della finestra, sopra tutto, non segue pan e zoom (l'HUD del Board)
+        # lo strato senza zoom (12 nov 2026, Autore: «sistema lo zoom sideboard»): finche' dura lo zoom immediato della rotella gli elementi coi tag di
+        # senza_zoom (la fascia della sideboard del Board) passano qui e si disegnano con la vista senza lo zoom, sopra il foglio; poi tornano al loro posto
+        self.batch_banda = pyglet.graphics.Batch()
+        self.tag_senza_zoom = set()
+        self._banda = False
         self.el = {}                # id -> elemento
         self.per_tag = {}           # tag -> gli id che lo hanno: _ids non scorre tutti gli elementi (10 nov 2026: move costava 0,7 ms a chiamata con 500 elementi)
         self.ord = []               # gli id in ordine di disegno
@@ -364,6 +369,9 @@ class TelaGPU:
         w.view = (Mat4.from_translation(Vec3(self.ztx, self.zty, 0)) @ Mat4.from_scale(Vec3(self.zk, self.zk, 1))
                   @ Mat4.from_translation(Vec3(-self.vx, -self.vy, 0)))
         self.batch.draw()
+        if self._banda:         # lo strato senza zoom: la vista com'e', senza lo zoom immediato
+            w.view = Mat4.from_translation(Vec3(-self.vx, -self.vy, 0))
+            self.batch_banda.draw()
         w.view = Mat4()         # lo strato fisso: in coordinate della finestra
         self.batch_fisso.draw()
 
@@ -520,9 +528,34 @@ class TelaGPU:
     def canvasy(self, y):
         return (y - self.zty) / self.zk + self.vy
 
+    def senza_zoom(self, tags):
+        """I tag degli elementi che lo zoom immediato non ingrandisce (la fascia della sideboard e le sue carte): restano dove sono, alla loro misura."""
+        tags = set(tags)
+        if tags == self.tag_senza_zoom:
+            return
+        vecchi, self.tag_senza_zoom = self.tag_senza_zoom, tags
+        if self._banda:
+            for e in self.el.values():
+                if bool(set(e["tags"]) & vecchi) != bool(set(e["tags"]) & tags):
+                    self._costruisci(e)
+
+    def _in_banda(self, e):
+        return self._banda and not e.get("fisso") and bool(self.tag_senza_zoom.intersection(e["tags"]))
+
+    def _strato_banda(self, acceso):
+        """Accende o spegne lo strato senza zoom: gli elementi coi tag di senza_zoom passano di strato (si rifanno, nell'ordine di sempre)."""
+        if self._banda == acceso:
+            return
+        self._banda = acceso
+        if self.tag_senza_zoom:
+            for e in self.el.values():
+                if not e.get("fisso") and self.tag_senza_zoom.intersection(e["tags"]):
+                    self._costruisci(e)
+
     def zoom_immediato(self, r, px, py):
-        """Lo zoom subito, sulla scheda: tutto si ingrandisce di r intorno al punto (px, py) della finestra, senza ridisegnare niente. Si somma agli scatti di prima;
-        azzera_zoom lo toglie quando Card view ha ridisegnato alla misura nuova."""
+        """Lo zoom subito, sulla scheda: tutto si ingrandisce di r intorno al punto (px, py) della finestra, senza ridisegnare niente, tranne lo strato senza zoom
+        (senza_zoom). Si somma agli scatti di prima; azzera_zoom lo toglie quando Card view ha ridisegnato alla misura nuova."""
+        self._strato_banda(True)
         self.zk *= r
         self.ztx = px + (self.ztx - px) * r
         self.zty = py + (self.zty - py) * r
@@ -530,6 +563,7 @@ class TelaGPU:
 
     def azzera_zoom(self):
         self.zk, self.ztx, self.zty = 1.0, 0.0, 0.0
+        self._strato_banda(False)
         self.sporco = True
 
     def xview_moveto(self, f):
@@ -647,7 +681,7 @@ class TelaGPU:
 
     def _sprite(self, tex, x, y, b, g, e, k=1.0):
         """Uno sprite: dalla riserva se ce n'e' uno con la stessa immagine allo stesso posto nell'ordine (stesso gruppo), se no nuovo."""
-        lista = self._riuso.get((e["ord"], id(tex), bool(e.get("fisso"))))
+        lista = self._riuso.get((e["ord"], id(tex), id(b)))
         if lista:
             s = lista.pop()
             s.position = (x, y, s.z)
@@ -667,7 +701,7 @@ class TelaGPU:
             o.delete()
         e["obj"] = []
         g = self._gruppo(e["ord"])
-        b = self.batch_fisso if e.get("fisso") else self.batch
+        b = self.batch_fisso if e.get("fisso") else self.batch_banda if self._in_banda(e) else self.batch
         o, c = e["opz"], e["c"]
         if e["tipo"] == "image":
             foto = o.get("image")
@@ -853,7 +887,7 @@ class TelaGPU:
             try:
                 if hasattr(o, "image") and hasattr(o, "position") and len(self._riuso) < 3000:      # uno sprite: nella riserva, nascosto
                     o.visible = False
-                    self._riuso.setdefault((e["ord"], id(o.image), bool(e.get("fisso"))), []).append(o)
+                    self._riuso.setdefault((e["ord"], id(o.image), id(o.batch)), []).append(o)
                 else:
                     o.delete()
             except Exception:
@@ -1193,6 +1227,18 @@ def prova():
     casi.append(("lo zoom immediato tiene fermo il punto sotto il puntatore", abs(t.canvasx(100) - vx0) < 1e-9 and abs(t.canvasx(300) - (vx0 + 100)) < 1e-9))
     t.azzera_zoom()
     casi.append(("azzerato, la vista torna quella di prima", t.canvasx(300) == vx0 + 200))
+    fa_ = t.create_rectangle(10, 10, 60, 40, fill="#ff00ff", tags=("fascia_p",))
+    fo_ = t.create_rectangle(10, 10, 60, 40, fill="#00ffff", tags=("foglio_p",))
+    t.senza_zoom({"fascia_p"})
+    prima_ = t.el[fa_]["obj"][0].batch is t.batch
+    t.zoom_immediato(2.0, 100, 100)
+    casi.append(("lo strato senza zoom: durante lo zoom immediato la fascia passa nel suo strato, il foglio resta (12 nov 2026)",
+                 prima_ and t.el[fa_]["obj"][0].batch is t.batch_banda and t.el[fo_]["obj"][0].batch is t.batch))
+    t._disegna()
+    t.azzera_zoom()
+    casi.append(("azzerato lo zoom, la fascia torna nello strato del foglio; negativa: senza i tag resta sempre li'",
+                 t.el[fa_]["obj"][0].batch is t.batch and (t.senza_zoom(set()), t.zoom_immediato(2.0, 100, 100), t.el[fa_]["obj"][0].batch is t.batch)[2]))
+    t.azzera_zoom(); t.delete("fascia_p"); t.delete("foglio_p")
     casi.append(("la finestra figlia sta dentro il frame", t.attaccata))
     t.xview_moveto(0); t.yview_moveto(0)
     fx = t.create_rectangle(10, 10, 60, 40, fill="#ff0000", tags="hud", fisso=True)

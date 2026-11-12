@@ -84,7 +84,8 @@ COMANDI = (("Wheel", "zoom"), ("Middle-drag", "pan"), ("Drag a card", "move · d
            ("Click", "opens a pile"), ("Double-click", "one copy across"), ("Gold dot → card", "parent → child"), ("Click a line", "color and weight"),
            ("✕ · right-click", "unlink"), ("Pin · double-click a line", "adds a dot"), ("Drag on the empty sheet", "select"), ("≡ in the frame", "label: name, color"),
            ("A", "frame the whole network"), ("F", "frame the selection (or the card picked in the outliner)"), ("Esc", "clear the selection, then close"))
-COMANDI_MOD = (("− +", "copies"), ("⇄", "replace the card"))
+COMANDI_MOD = (("− +", "copies"), ("⇄", "replace the card"), ("+ note beside the gold dot", "a note on the card"),
+               ("+ note on a group title", "a note on the group"), ("Auto groups", "from the analysis, or the visible cards of the type filter"))
 COMANDI_VISTA = (("Wheel", "zoom"), ("Middle-drag", "pan"), ("Drag a card", "move it (deck and sideboard stay as they are)"), ("Click", "opens a pile, selects the card"),
                  ("A", "frame the whole network"),
                  ("F", "frame the selection"), ("Hover", "the card large"), ("Edit the deck", "to change the board"), ("Esc", "close"))
@@ -217,9 +218,43 @@ def tipo_arena(nome):
     return _TIPO_ARENA.get((nome or "").split(" // ")[0].strip().lower(), "")
 
 
+CARTELLA_TIPI = os.path.join(percorsi.GRAFICA, "tipi")
+
+
+def icona_svg(f, lato, colore):
+    """Un svg a un colore solo (i simboli del font Mana) reso con PyMuPDF a 4x, ridotto col Lanczos e tinto di colore. -> PhotoImage (registrata per la tela
+    sulla scheda video), o None se non si puo'."""
+    try:
+        import re
+        import fitz
+        from PIL import Image, ImageTk
+        testo = re.sub(r'fill="#[0-9a-fA-F]{3,6}"', 'fill="#000000"', open(f, encoding="utf-8").read())
+        pg = fitz.open(stream=testo.encode("utf-8"), filetype="svg")[0]
+        z = lato * 4 / max(pg.rect.width, pg.rect.height)
+        pm = pg.get_pixmap(matrix=fitz.Matrix(z, z), alpha=True)
+        a = Image.frombytes("RGBA", (pm.width, pm.height), pm.samples).getchannel("A").resize((lato, lato), Image.LANCZOS)
+        out = Image.new("RGBA", (lato, lato), tuple(int(colore[i:i + 2], 16) for i in (1, 3, 5)) + (0,))
+        out.putalpha(a)
+        ft = ImageTk.PhotoImage(out)
+        import tela_gpu
+        tela_gpu.registra(ft, out)
+        return ft
+    except Exception:       # noqa: BLE001 - senza PyMuPDF o con un file rotto: chi chiama usa il disegno nostro
+        return None
+
+
 def icona_tipo(tipo, lato=18, colore="#bebec2"):
-    """L'icona di un tipo di carta, disegnata da noi nello stile dei simboli dei tipi (12 nov 2026): artiglio, fulmine, fiamma, sole, anfora, scintilla, monti,
-    scudo. Antialias."""
+    """L'icona di un tipo di carta: i simboli originali dei tipi (Autore, 12 nov 2026: «qui voglio i loghi originali»), gli svg del font Mana di Andrew Gioia
+    (github.com/andrewgioia/mana; i simboli sono di Wizards of the Coast), in Companion/Grafica/tipi. La battaglia nel font non c'e': resta lo scudo disegnato
+    da noi, come ogni tipo il cui file manca o non si legge."""
+    f = os.path.join(CARTELLA_TIPI, tipo + ".svg")
+    chiave = ("icona_tipo_svg", tipo, lato, colore)
+    if os.path.exists(f):
+        if chiave not in DG.CACHE:
+            DG.CACHE[chiave] = icona_svg(f, lato, colore)
+        if DG.CACHE[chiave] is not None:
+            return DG.CACHE[chiave]
+
     def fa():
         d = DG.Disegno(lato, lato)
         k = lato / 20
@@ -626,7 +661,7 @@ class TavoloCarte:
         dentro = tk.Frame(p, bg=C["cap"]); dentro.pack(padx=1, pady=1)
         tk.Label(dentro, text="Auto groups", bg=C["cap"], fg=C["titolo"], font=F(9, True)).pack(anchor="w", padx=10, pady=(8, 4))
         voci = [("From analysis: best performers, hard to cast, weak in losses", self.auto_analisi),
-                ("Shown vs hidden (the type filter)", self.auto_visibili)]
+                ("Visible cards (the type filter)", self.auto_visibili)]
         for testo, fa in voci:
             b = tk.Label(dentro, text=testo, bg=C["cap"], fg=C["accento"], font=F(8, True), cursor="hand2", anchor="w")
             b.pack(fill="x", padx=10, pady=2)
@@ -672,17 +707,15 @@ class TavoloCarte:
         return nate
 
     def auto_visibili(self):
+        """Un gruppo solo, con le carte che il filtro per tipo mostra (Autore, 12 nov 2026: «auto group show vs hidden deve essere solo autogroup visible e gruppa
+        solo il visibile ma non l'invisibile»): le nascoste restano dove sono, e il filtro resta acceso."""
         if not self.filtro:
-            self.dici("Turn on a type filter first: the groups are the cards it shows and the ones it hides")
+            self.dici("Turn on a type filter first: the group is the cards it shows")
             return []
-        nomi = sorted(self.filtro)
+        nomi = dict(TIPI)
         si = {v["nome"] for vid, v in self.voci.items() if v["zona"] == "main" and self.visibile(vid)}
-        no = {v["nome"] for vid, v in self.voci.items() if v["zona"] == "main" and not self.visibile(vid)}
-        filtro = set(self.filtro)
-        self.filtro = set()         # i gruppi si vedono tutti e due
-        nate = self.gruppi_auto([("Shown: " + ", ".join(nomi), "#24baff", si), ("Hidden", GRIGIO_L, no)])
-        self.disegna_filtri()
-        self.dici(f"Auto groups: {len(nate)} from the filter ({', '.join(sorted(filtro))})")
+        nate = self.gruppi_auto([(", ".join(nomi.get(t, t) for t in sorted(self.filtro)), "#24baff", si)])
+        self.dici(f"Auto group: the {len(si)} visible cards" if nate else "No visible card to group")
         return nate
 
     def analisi_mazzo(self):
@@ -1301,7 +1334,8 @@ class TavoloCarte:
         """La vista e' cambiata (pan, rotella, zoom, inquadra): la fascia e le sue carte tornano in cima alla finestra, spostate, senza ridisegnare. Le frecce
         che toccano la fascia si rifanno. -> True se si e' mossa."""
         cv = self.cv
-        fx, fy = cv.canvasx(0), cv.canvasy(0)
+        # sulla scheda la vista vera (vx, vy), senza lo zoom immediato della rotella: la fascia sta nello strato che non si ingrandisce (12 nov 2026)
+        fx, fy = (cv.vx, cv.vy) if self.gpu else (cv.canvasx(0), cv.canvasy(0))
         dx, dy = fx - self._fx, fy - self._fy
         if abs(dx) < 0.5 and abs(dy) < 0.5:
             return False
@@ -1311,7 +1345,7 @@ class TavoloCarte:
         for pl in self.pile:
             if pl["zona"] != "main":
                 for vid in pl["carte"]:
-                    for t_ in (f"c{vid}", f"n{vid}", f"s{vid}"):
+                    for t_ in (f"c{vid}", f"n{vid}", f"s{vid}", f"ni{vid}", f"nn{vid}", f"nb{vid}"):
                         cv.move(t_, dx, dy)
                     tocca |= self.voci[vid]["nome"] in rete
         if tocca:
@@ -1393,8 +1427,8 @@ class TavoloCarte:
             self.drag = None
             if sopra[0] == "nota_i":
                 return self.apri_nota("c", self.voci[sopra[1]]["nome"])
-            if sopra[0] == "label_n":
-                return self.apri_nota("l", sopra[1])
+            if sopra[0] == "label_n":       # piena apre e chiude, col + scrive la prima
+                return self.apri_nota("l", sopra[1]) if self.nota_di("l", sopra[1]) else self.editor_nota("l", sopra[1])
             if sopra[0] in ("nota_b", "nota_n"):
                 return self.editor_nota("c", self.voci[sopra[1]]["nome"])
             return self.editor_nota("l", sopra[1])
@@ -1788,9 +1822,20 @@ class TavoloCarte:
         cv.tag_raise("nodo")
         self.fascia_sopra()
 
+    def tag_fascia(self):
+        """I tag di tutto quello che sta nella fascia della sideboard: la fascia, le sue carte e i loro strumenti e note."""
+        tags = {"fascia"}
+        for pl in self.pile:
+            if pl["zona"] != "main":
+                for vid in pl["carte"]:
+                    tags |= {f"c{vid}", f"n{vid}", f"s{vid}", f"ni{vid}", f"nn{vid}", f"nb{vid}"}
+        return tags
+
     def fascia_sopra(self):
         """La fascia sopra il foglio del mazzo (che le scorre sotto), le sue carte sopra la fascia, la barra e l'HUD sopra tutto."""
         cv = self.cv
+        if self.gpu:        # lo zoom immediato della rotella non la ingrandisce (Autore, 12 nov 2026: «sistema lo zoom sideboard»)
+            cv.senza_zoom(set() if self.nascosta() else self.tag_fascia())
         if self.nascosta():
             cv.tag_raise("barra")
             return
@@ -2030,6 +2075,9 @@ class TavoloCarte:
             v = self.voci[vid]
             if rr == 8 and self.modifica and v["zona"] != "cmd":       # alla base delle carte intere, nei mazzi che si cambiano: il ⇄ accanto al pallino
                 self.cv.create_image(x + 22 - 8, y - 8, image=segno_scambia(16), anchor="nw", tags=("scambia", f"s{vid}"))
+                if v["nome"] not in self.note:      # e a sinistra il + nota (Autore, 12 nov 2026: «aggiungere note va accanto al pallino giallo di collegamento
+                    # sulle carte»; prima era in alto a destra della carta sotto il mouse)
+                    self.cv.create_image(x - 22 - 9, y - 9, image=segno_nota(18, False), anchor="nw", tags=("nota", "nota_n", f"nn{vid}"))
 
     def scambia_apri(self, vid):
         """Il ⇄ sotto la carta: una casella accanto, scrivi il nome, le carte della collezione che combaciano (prima quelle che hai, con le copie), Invio o il clic
@@ -2121,21 +2169,8 @@ class TavoloCarte:
         cv.tag_raise("label_nb")
 
     def nota_hover(self, vid):
-        """Il foglietto vuoto col + per una nota nuova: solo sulla carta sotto il mouse (in modalita' edit, se la carta intera non ha gia' una nota), nell'angolo in
-        alto a destra, dove sta la nota quando c'e'; su tutte le carte copriva il costo di mana e i riquadri delle note vicine."""
+        """Dal 12 nov 2026 il + nota sta fisso alla base della carta, accanto al pallino (nodo): qui resta solo chi e' sotto il mouse."""
         self._nota_hover = vid
-        if vid == getattr(self, "_nota_su", None) and self.cv.find_withtag("nota_n"):
-            return
-        self.cv.delete("nota_n")
-        self._nota_su = vid
-        if vid is None or not self.modifica or vid not in self.voci:
-            return
-        pl = self.pila_di(vid)
-        if pl is None or pl["zona"] == "cmd" or self.voci[vid]["nome"] in self.note or not (vid == pl["carte"][-1] or vid == pl.get("aperta")):
-            return
-        r = self.rett(vid)
-        if r is not None:
-            self.cv.create_image(r[2] - 24, r[1] + 8, image=segno_nota(16, False), anchor="nw", tags=("nota", "nota_n", f"nn{vid}"))
 
     def nota_di(self, tipo, chiave):
         if tipo == "c":
@@ -3628,8 +3663,10 @@ class TavoloCarte:
             cv.create_image(x1 - 30 - 16, y0 + th / 2 - 8, image=DG.lucchetto(16, chiusa, "#f0ad4e" if chiusa else "#bebec2"), anchor="nw",
                             tags=tg + ("label_l", f"ll{k}"))
             cv.create_image(x1 - 52 - 16, y0 + th / 2 - 8, image=segno_menu(16), anchor="nw", tags=tg + ("label_m", f"lm{k}"))
-            if lb.get("nota"):      # la nota della label (12 nov 2026): l'icona sul titolo, il riquadro sotto il titolo se e' aperta
-                cv.create_image(x1 - 76 - 18, y0 + th / 2 - 9, image=segno_nota(18, True), anchor="nw", tags=tg + ("nota", "label_n", f"ln{k}"))
+            # la nota della label (12 nov 2026): l'icona sul titolo, in alto a destra accanto al menu, piena se c'e' la nota, col + se no (Autore: «in alto a
+            # destra bello visibile sui gruppi di selezione»); il riquadro sotto il titolo se e' aperta
+            cv.create_image(x1 - 76 - 20, y0 + th / 2 - 10, image=segno_nota(20, bool(lb.get("nota"))), anchor="nw", tags=tg + ("nota", "label_n", f"ln{k}"))
+            if lb.get("nota"):
                 if lb.get("nota_aperta"):
                     self.nota_box(x0 + 8, y0 + th + 6, lb["nota"], ("label_nb", f"lb{k}"), larga=max(160, min(300, x1 - x0 - 16)))
             g = 14
@@ -4617,11 +4654,9 @@ def prova():
     t8.cv.xview_moveto(0); t8.cv.yview_moveto(0); t8.segui_fascia(); t8.disegna(); root.update()
     vn = t8.vid_nome("Token Maker")
     t8.pila_di(vn)["aperta"] = vn; t8.disegna(); root.update()
-    altra = next(v_ for v_ in t8.voci if v_ != vn and t8.rett(v_) is not None)
-    t8.nota_hover(altra); senza_ = not t8.cv.find_withtag(f"nn{vn}")
-    t8.nota_hover(vn)
-    casi.append(("nota: il foglietto vuoto in alto a destra della carta sotto il mouse, in modalita' edit (negativa: non sulle altre)",
-                 bool(t8.cv.find_withtag(f"nn{vn}")) and senza_))
+    bn_, bp_ = t8.cv.bbox(f"nn{vn}"), t8.cv.bbox(f"n{vn}")
+    casi.append(("nota: il + nota alla base della carta, a sinistra del pallino giallo, alla sua altezza (12 nov 2026)",
+                 bool(bn_ and bp_) and bn_[2] <= bp_[0] and abs((bn_[1] + bn_[3]) / 2 - (bp_[1] + bp_[3]) / 2) < 3))
     t8.metti_nota("c", "Token Maker", "Keep for the late game"); root.update()
     casi.append(("nota scritta: l'icona sulla carta e il riquadro aperto col testo", bool(t8.cv.find_withtag(f"ni{vn}")) and bool(t8.cv.find_withtag(f"nb{vn}"))
                  and "Keep for the late game" in [t8.cv.itemcget(i, "text") for i in t8.cv.find_withtag(f"nb{vn}") if t8.cv.type(i) == "text"]))
@@ -4643,8 +4678,9 @@ def prova():
     casi.append(("le note si salvano con la disposizione", (salvata_.get("note") or {}).get("Token Maker", {}).get("testo") == "Side out vs control"
                  and any(x.get("nota") == "Swap in after game 1" for x in salvata_.get("etichette") or [])))
     t8.metti_nota("c", "Token Maker", ""); t8.metti_nota("l", kn, ""); root.update()
-    casi.append(("negativa: cancellate, niente icone ne' riquadri e niente nel file", not t8.cv.find_withtag(f"ni{vn}") and not t8.cv.find_withtag(f"ln{kn}")
-                 and not (carica_tavoli(t8.file_tavoli).get(t8.chiave) or {}).get("note") and "nota" not in t8.etichette[kn]))
+    casi.append(("negativa: cancellate, niente icone piene ne' riquadri e niente nel file; restano i + nota (alla base della carta, sul titolo della label)",
+                 not t8.cv.find_withtag(f"ni{vn}") and not t8.cv.find_withtag(f"lb{kn}") and bool(t8.cv.find_withtag(f"nn{vn}"))
+                 and bool(t8.cv.find_withtag(f"ln{kn}")) and not (carica_tavoli(t8.file_tavoli).get(t8.chiave) or {}).get("note") and "nota" not in t8.etichette[kn]))
     t8.togli_etichetta(kn)
     if ("Token Maker", "Anthem") not in t8.rete.figli:       # la connessione che la prova dell'imparato cerca in un altro mazzo
         t8.rete.lega("Token Maker", "Anthem", dbr)
@@ -4721,9 +4757,13 @@ def prova():
     tF.scegli_filtro("creature")
     nate_ = tF.auto_visibili(); root.update()
     nomi_ = {lb["nome"] for lb in nate_}
-    casi.append(("Auto groups dal filtro: «Shown» con le creature e «Hidden» col resto, ognuno con le sue carte", nomi_ == {"Shown: creature", "Hidden"}
-                 and set(tF.carte_gruppo(tF.etichette.index(next(lb for lb in nate_ if lb["nome"].startswith("Shown"))))) == {"Token Maker", "Vanilla"}
-                 and not tF.filtro))
+    nascoste_ = {tF.voci[v_]["nome"]: (tF.pila_di(v_) or {}).get("x") for v_ in tF.voci if tF.voci[v_]["zona"] == "main" and not tF.visibile(v_)}
+    casi.append(("Auto group dal filtro: un gruppo solo, con le carte a vista (le creature); il filtro resta acceso (12 nov 2026)", nomi_ == {"Creatures"}
+                 and set(tF.carte_gruppo(tF.etichette.index(nate_[0]))) == {"Token Maker", "Vanilla"} and tF.filtro == {"creature"}))
+    casi.append(("negativa: le carte nascoste dal filtro non entrano nel gruppo e restano al loro posto", bool(nascoste_)
+                 and not set(nascoste_) & set(tF.carte_gruppo(tF.etichette.index(nate_[0])))
+                 and all((tF.pila_di(tF.vid_nome(n_)) or {}).get("x") == x_ for n_, x_ in nascoste_.items())))
+    tF.scegli_filtro("all")
     tF.fonte_analisi = lambda: dict(con_dati=30, migliori=[dict(nome="Token Maker")], fatica=[dict(nome="Plains")], perse=[dict(nome="Non nel mazzo")])
     nate2 = tF.auto_analisi(); root.update()
     casi.append(("Auto groups dall'analisi: Best performers e Hard to cast; negativa: la carta che non e' nel mazzo non fa gruppo",
@@ -5290,7 +5330,8 @@ def prova():
     tutti_B = tB.cv.find_all()
     casi.append(("la label nasce intorno alle pile selezionate, col nome e il colore del menu, chiusa, sotto le carte", lb is not None and lb["nome"] == "Finisher"
                  and lb.get("colore") == "#d9534f" and lb.get("lucchetto") is True and dentro_(i2) and dentro_(i3) and tB._nome_pop is None
-                 and not tB.sel and max(tutti_B.index(i_) for i_ in tB.cv.find_withtag("label")) < min(tutti_B.index(i_) for i_ in tB.cv.find_withtag("carta"))))
+                 and not tB.sel and max(tutti_B.index(i_) for i_ in tB.cv.find_withtag("label") if "nota" not in tB.cv.gettags(i_))
+                 < min(tutti_B.index(i_) for i_ in tB.cv.find_withtag("carta"))))
     bt = tB.cv.bbox("lt0")
     tx_, ty_ = bt[0] + 40, (bt[1] + bt[3]) / 2
     pos_l = (lb["x"], lb["y"]); prima = {id(q): (q["x"], q["y"]) for q in (p2, p3, pt)}
