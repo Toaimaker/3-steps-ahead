@@ -1,6 +1,6 @@
 {
- "version": "0.1.42",
+ "version": "0.1.43",
  "date": "2026-11-12",
- "notes": "Performance: new situations from the game logs: attacks into untapped lands, attacks when they were tapped out, passing the turn with lands untapped.",
+ "notes": "Performance: the open-mana situations also read your archived Arena logs, so every game counts, in the public app too.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

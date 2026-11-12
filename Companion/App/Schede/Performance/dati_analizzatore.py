@@ -163,7 +163,7 @@ def righe(partite=None):
         return _CACHE["righe"]
     try:        # il mana aperto: dalla copia su disco, e le partite nuove lette adesso (la prima volta ~10 s per 450 partite)
         import mana_aperto
-        _MANA.clear(); _MANA.update(mana_aperto.tutti())
+        _MANA.clear(); _MANA.update(mana_aperto.tutti(ids={p.get("matchId") for p in partite}))
     except Exception:       # noqa: BLE001 - senza i pezzi di log le situazioni del mana restano None
         _MANA.clear()
     out = []

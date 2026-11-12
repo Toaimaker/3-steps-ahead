@@ -3,7 +3,8 @@ ogni partita (Log_Arena/partite/<ID>/arena.log, partite_separate) si segue lo st
 - a ogni turno con un attacco, le terre stappate di chi difende quando gli attaccanti sono dichiarati (la prima volta nel turno);
 - alla fine di ogni turno (passo End), le terre stappate di chi era di turno.
 Le terre sono gli oggetti in campo col tipo Land; stappate = senza isTapped. Una copia su disco (Log_Arena/mana_aperto.json, VERSIONE) evita di rileggere: una partita
-si legge una volta sola.
+si legge una volta sola. Le partite senza il pezzo di log (l'app pubblica non li scrive: costano centinaia di MB) si leggono dai log archiviati
+(Log_Arena/20*_Player*.log, archivia_log), ritagliate in memoria come fa partite_separate; ogni archivio si guarda una volta (la copia ricorda nome e misura).
 
     py -I -X utf8 Companion/App/Schede/Performance/mana_aperto.py --prova
 """
@@ -16,6 +17,7 @@ if _casa not in sys.path:
 import percorsi  # noqa: E402,F401
 import glob  # noqa: E402
 import json  # noqa: E402
+import re  # noqa: E402
 
 from ambiente import LOGDIR  # noqa: E402
 
@@ -90,8 +92,44 @@ def indice():
     return out
 
 
-def tutti(ids=None):
-    """{matchId: dato} per le partite che hanno il pezzo di log; dalla copia, e le nuove lette adesso (e salvate). ids: solo queste."""
+MID = re.compile(rb'"matchId"\s*:\s*"([0-9a-f-]{36})"|Connecting to matchId ([0-9a-f-]{36})')
+
+
+def dagli_archivi(dati, letti, ids):
+    """Le partite che mancano, dai log archiviati: ogni archivio non ancora guardato (nome e misura in letti), le sue partite ritagliate in memoria.
+    -> quante nuove."""
+    nuove = 0
+    for f in sorted(glob.glob(os.path.join(LOGDIR, "20*_Player*.log")), reverse=True):     # dal piu' nuovo
+        chiave = os.path.basename(f)
+        try:
+            misura = os.path.getsize(f)
+        except OSError:
+            continue
+        if letti.get(chiave) == misura:
+            continue
+        if ids is not None and not (set(ids) - set(dati)):     # nessuna partita che serve manca: gli archivi restano da guardare un'altra volta
+            break
+        try:
+            with open(f, "rb") as h:
+                data = h.read()
+        except OSError:
+            continue
+        for mid in dict.fromkeys((a or b).decode() for a, b in MID.findall(data)):
+            if mid in dati or (ids is not None and mid not in ids):
+                continue
+            m = mid.encode()
+            i = data.find(m); i = data.rfind(b"\n", 0, i) + 1
+            j = data.rfind(m); j = data.find(b"\n", j); j = len(data) if j < 0 else j + 1
+            d = leggi(data[i:j].decode("utf-8", "replace").splitlines())
+            if d["attacchi"] or d["fine"]:
+                dati[mid] = d
+                nuove += 1
+        letti[chiave] = misura
+    return nuove
+
+
+def tutti(ids=None, archivi=True):
+    """{matchId: dato}: dalla copia, le nuove dai pezzi di log e (archivi) dai log archiviati, poi salvate. ids: solo queste partite."""
     try:
         with open(COPIA, encoding="utf-8") as h:
             c = json.load(h)
@@ -100,6 +138,7 @@ def tutti(ids=None):
     except (OSError, ValueError):
         c = {}
     dati = c.get("partite") or {}
+    letti = c.get("archivi") or {}
     nuove = 0
     for mid, cart in indice().items():
         if mid in dati or (ids is not None and mid not in ids):
@@ -110,11 +149,14 @@ def tutti(ids=None):
             nuove += 1
         except OSError:
             continue
-    if nuove:
+    prima = len(letti)
+    if archivi:
+        nuove += dagli_archivi(dati, letti, ids)
+    if nuove or len(letti) != prima:
         try:
             os.makedirs(os.path.dirname(COPIA), exist_ok=True)
             with open(COPIA + ".tmp", "w", encoding="utf-8") as h:
-                json.dump(dict(versione=VERSIONE, partite=dati), h)
+                json.dump(dict(versione=VERSIONE, partite=dati, archivi=letti), h)
             os.replace(COPIA + ".tmp", COPIA)
         except OSError:
             pass
@@ -155,6 +197,22 @@ def prova():
                  and not s["lui_att_aperto"] and s["io_passa_aperto"] and not s["lui_passa_aperto"]))
     casi.append(("negativa: senza log niente situazioni", all(v is None for v in situazioni(None, 1).values())))
     casi.append(("negativa: le righe senza stato del gioco non contano", leggi(["niente", "{rotto"]) == dict(attacchi=[], fine=[])))
+    # dagli archivi: un archivio finto con due partite, ritagliate per matchId; guardato una volta sola
+    import tempfile
+    global LOGDIR
+    vecchio = LOGDIR
+    LOGDIR = tempfile.mkdtemp()
+    try:
+        a, b = "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
+        testo = "\n".join([f'Connecting to matchId {a}'] + righe + [f'"matchId": "{a}" fine', f'Connecting to matchId {b}', "niente di utile", f'"matchId": "{b}"'])
+        with open(os.path.join(LOGDIR, "2026-11-01_Player.log"), "w", encoding="utf-8") as h:
+            h.write(testo)
+        dati, letti = {}, {}
+        n1 = dagli_archivi(dati, letti, None)
+        casi.append(("dagli archivi: la partita col gioco ritagliata e letta, quella vuota no", n1 == 1 and dati[a]["attacchi"] == [[3, 1, 2, 2], [4, 2, 0, 3]] and b not in dati))
+        casi.append(("negativa: un archivio gia' guardato non si rilegge", dagli_archivi(dati, letti, None) == 0 and "2026-11-01_Player.log" in letti))
+    finally:
+        LOGDIR = vecchio
     for n, ok in casi:
         print(("ok    " if ok else "ROSSO ") + n)
     print(f"{sum(1 for _n, ok in casi if ok)}/{len(casi)}")
