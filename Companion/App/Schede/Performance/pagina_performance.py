@@ -1651,20 +1651,6 @@ class PaginaPerformance:
                 out[n_] = out.get(n_, 0) + 1
             return out
 
-        def misura(ordine, alto, largo):
-            """La carta piu' grande (larghezza) con cui le carte della zona ci stanno tutte, a capo compreso; le tappate occupano l'altezza in larghezza."""
-            for w in range(min(150, int((alto - 40) * 200 / 279)), 44, -4):
-                h = round(w * 279 / 200)
-                x, righe_ = 16, 1
-                for g in ordine:
-                    ww = h if g[1] else w
-                    if x + ww > largo - 16:
-                        x, righe_ = 16, righe_ + 1
-                    x += ww + 8
-                if righe_ * (h + 10) <= alto - 30:
-                    return w
-            return 44
-
         def pila(x0, y0, larga, alta, tit, carte, colore, chiave):
             """Il cimitero o l'esilio: il titolo col numero, l'ultima carta arrivata, il clic apre tutte."""
             c.create_rectangle(x0, y0, x0 + larga, y0 + alta, fill="#18181e", outline="#2c2c34")
@@ -1702,7 +1688,7 @@ class PaginaPerformance:
                 info(largo - 16, y + 12, destra)
             elif destra:
                 c.create_text(largo - 16, y + 12, text=destra, anchor="e", fill=C["titolo"], font=F(9, True))
-            # le stesse carte insieme, con quante; le terre in fondo; nuove = piu' copie di prima
+            # le stesse carte insieme, con quante; nuove = piu' copie di prima
             gruppi, ids = {}, {}
             for c_ in carte:
                 k = (c_[0], c_[1], c_[2], c_[3] if len(c_) > 3 else None, c_[4] if len(c_) > 4 else None)
@@ -1712,45 +1698,88 @@ class PaginaPerformance:
             prima_n = contate(vecchie) if vecchie is not None else None
             ora_n = contate([c_[0] for c_ in carte])
             ordine = sorted(gruppi, key=lambda g: (MS.e_terra(g[0]), g[2], g[0]))
-            w_carta = misura(ordine, alto, largo)
-            h_carta = round(w_carta * 279 / 200)
-            x, yy = 16, y + 28
-            for g in ordine:
-                n, tap, ped, pw, th = g
-                ww, hh = (h_carta, w_carta) if tap else (w_carta, h_carta)
-                if x + ww > largo - 16:
-                    x, yy = 16, yy + h_carta + 10
-                if yy + hh > y + alto:
-                    c.create_text(largo - 16, y + alto - 8, text="…", anchor="e", fill=C["grigio"], font=F(10, True))
-                    break
-                img = self.immagine_token(w_carta, tap) if ped else self.immagine_carta(n, w_carta, tap)
-                cy = yy + (h_carta - hh)        # le tappate appoggiate in basso
-                for id_ in ids.get(g, []):
-                    self._pos_id[id_] = (x, cy, x + ww, cy + hh)
-                if img is not None:
-                    it_ = c.create_image(x, cy, image=img, anchor="nw")
-                    self._box_zona.append((zkey, n, (x, cy, x + ww, cy + hh), tap, it_))
-                    if not ped:
-                        self._box_carte.append((x, cy, x + ww, cy + hh, n))
-                    if ped:     # il nome della pedina sul disegno di default
-                        c.create_text(x + ww / 2, cy + (hh - 16 if tap else hh * 0.80), text=n, width=ww - 12, fill=C["titolo"], font=F(7, True), justify="center")
-                else:
-                    c.create_rectangle(x, cy, x + ww, cy + hh, fill="#26262c", outline="#4a4a52")
-                    c.create_text(x + ww / 2, cy + hh / 2, text=n, width=ww - 10, fill=C["titolo"], font=F(7, True), justify="center")
-                nuova = prima_n is not None and ora_n.get(n, 0) > prima_n.get(n, 0)
-                if nuova and img is not None and not ped:
-                    self._nuove.append((zkey, n, (x, cy, x + ww, cy + hh), tap, it_))
-                if nuova:       # arrivata dal momento prima
-                    c.create_rectangle(x - 2, cy - 2, x + ww + 2, cy + hh + 2, outline="#24baff", width=2)
-                    c.create_rectangle(x + 4, cy + 4, x + 38, cy + 18, fill="#0f86cc", outline="")
-                    c.create_text(x + 21, cy + 11, text="NEW", fill="#ffffff", font=F(6, True))
-                if pw is not None and th is not None:      # forza e costituzione
-                    c.create_rectangle(x + ww - 38, cy + hh - 22, x + ww - 4, cy + hh - 4, fill="#101014", outline="#e6e6ea")
-                    c.create_text(x + ww - 21, cy + hh - 13, text=f"{pw}/{th}", fill="#ffffff", font=F(8, True))
-                if gruppi[g] > 1:
-                    c.create_rectangle(x + ww - 28, cy + 4, x + ww - 4, cy + 22, fill="#101014", outline=C["accento"])
-                    c.create_text(x + ww - 16, cy + 13, text=f"×{gruppi[g]}", fill=C["titolo"], font=F(7, True))
-                x += ww + 8
+
+            def misura_area(lista, alto_a, larga_a, massimo=150):
+                """La carta piu' grande con cui le carte ci stanno tutte nel riquadro, a capo compreso (le tappate occupano l'altezza in larghezza)."""
+                for w in range(min(massimo, int((alto_a - 4) * 200 / 279)), 30, -4):
+                    h = round(w * 279 / 200)
+                    xx, righe_ = 0, 1
+                    for g in lista:
+                        ww = h if g[1] else w
+                        if xx + ww > larga_a and xx > 0:
+                            xx, righe_ = 0, righe_ + 1
+                        xx += ww + 8
+                    if righe_ * (h + 8) <= alto_a:
+                        return w
+                return 30
+
+            def posa(lista, x0, y0, larga_a, alto_a, massimo=150):
+                """Le carte di una lista nel riquadro (x0, y0, larga_a, alto_a), da sinistra, a capo se serve."""
+                w_carta = misura_area(lista, alto_a, larga_a, massimo)
+                h_carta = round(w_carta * 279 / 200)
+                x, yy = x0, y0
+                for g in lista:
+                    n, tap, ped, pw, th = g
+                    ww, hh = (h_carta, w_carta) if tap else (w_carta, h_carta)
+                    if x + ww > x0 + larga_a and x > x0:
+                        x, yy = x0, yy + h_carta + 8
+                    if yy + hh > y0 + alto_a + 2:
+                        c.create_text(x0 + larga_a, y0 + alto_a - 6, text="…", anchor="e", fill=C["grigio"], font=F(10, True))
+                        break
+                    img = self.immagine_token(w_carta, tap) if ped else self.immagine_carta(n, w_carta, tap)
+                    cy = yy + (h_carta - hh)        # le tappate appoggiate in basso
+                    for id_ in ids.get(g, []):
+                        self._pos_id[id_] = (x, cy, x + ww, cy + hh)
+                    it_ = None
+                    if img is not None:
+                        it_ = c.create_image(x, cy, image=img, anchor="nw")
+                        self._box_zona.append((zkey, n, (x, cy, x + ww, cy + hh), tap, it_))
+                        if not ped:
+                            self._box_carte.append((x, cy, x + ww, cy + hh, n))
+                        if ped:     # il nome della pedina sul disegno di default
+                            c.create_text(x + ww / 2, cy + (hh - 16 if tap else hh * 0.80), text=n, width=ww - 12, fill=C["titolo"], font=F(7, True),
+                                          justify="center")
+                    else:
+                        c.create_rectangle(x, cy, x + ww, cy + hh, fill="#26262c", outline="#4a4a52")
+                        c.create_text(x + ww / 2, cy + hh / 2, text=n, width=ww - 10, fill=C["titolo"], font=F(7, True), justify="center")
+                    nuova = prima_n is not None and ora_n.get(n, 0) > prima_n.get(n, 0)
+                    if nuova and it_ is not None and not ped:
+                        self._nuove.append((zkey, n, (x, cy, x + ww, cy + hh), tap, it_))
+                    if nuova:       # arrivata dal momento prima
+                        c.create_rectangle(x - 2, cy - 2, x + ww + 2, cy + hh + 2, outline="#24baff", width=2)
+                        c.create_rectangle(x + 4, cy + 4, x + 38, cy + 18, fill="#0f86cc", outline="")
+                        c.create_text(x + 21, cy + 11, text="NEW", fill="#ffffff", font=F(6, True))
+                    if pw is not None and th is not None:      # forza e costituzione
+                        c.create_rectangle(x + ww - 38, cy + hh - 22, x + ww - 4, cy + hh - 4, fill="#101014", outline="#e6e6ea")
+                        c.create_text(x + ww - 21, cy + hh - 13, text=f"{pw}/{th}", fill="#ffffff", font=F(8, True))
+                    if gruppi[g] > 1:
+                        c.create_rectangle(x + ww - 28, cy + 4, x + ww - 4, cy + 22, fill="#101014", outline=C["accento"])
+                        c.create_text(x + ww - 16, cy + 13, text=f"×{gruppi[g]}", fill=C["titolo"], font=F(7, True))
+                    x += ww + 8
+
+            if zkey in ("mio", "suo"):
+                # il campo in due righe, come al tavolo (12 nov 2026, Autore: «1 ok, 2 a destra e 3 a sinistra»): davanti, verso il centro del tavolo, le
+                # creature; dietro le terre a sinistra e gli altri permanenti (artefatti, incantesimi, planeswalker...) a destra; il suo campo e' speculare
+                crea = [g for g in ordine if g[3] is not None]
+                terre = [g for g in ordine if g[3] is None and MS.e_terra(g[0])]
+                altri = [g for g in ordine if g[3] is None and not MS.e_terra(g[0])]
+                y0, A, L = y + 26, alto - 30, largo - 32
+                h_cr = A if not (terre or altri) else 0 if not crea else round(A * 0.56)
+                h_di = A - h_cr - (6 if crea and (terre or altri) else 0)
+                y_cr, y_di = (y0 + h_di + 6, y0) if zkey == "suo" else (y0, y0 + h_cr + 6)
+                if crea:
+                    posa(crea, 16, y_cr, L, h_cr)
+                if terre or altri:
+                    if terre and altri:
+                        quota = max(0.3, min(0.7, len(terre) / (len(terre) + len(altri))))
+                        l_t = round(L * quota) - 8
+                        posa(terre, 16, y_di, l_t, h_di, 110)
+                        c.create_line(16 + l_t + 8, y_di + 4, 16 + l_t + 8, y_di + h_di - 4, fill="#2c2c34")
+                        posa(altri, 16 + l_t + 16, y_di, L - l_t - 16, h_di, 120)
+                    else:
+                        posa(terre or altri, 16 if terre else 16, y_di, L, h_di, 110 if terre else 120)
+            else:
+                posa(ordine, 16, y + 28, largo - 32, alto - 30)
             if not carte:
                 c.create_text(16, y + 44, text="nothing", anchor="w", fill=C["muto"], font=F(8))
         vite = f.get("vite") or (None, None)

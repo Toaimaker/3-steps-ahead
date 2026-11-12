@@ -1,6 +1,6 @@
 {
- "version": "0.1.62",
+ "version": "0.1.63",
  "date": "2026-11-12",
- "notes": "Replayer: cards slide from zone to zone, and in limited games the companion advice for each turn sits next to the action.",
+ "notes": "Replayer: each battlefield laid out as at the table, creatures in front, lands on the left and other permanents on the right behind them.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }
