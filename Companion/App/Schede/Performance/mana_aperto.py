@@ -24,45 +24,119 @@ import re  # noqa: E402
 
 from ambiente import LOGDIR  # noqa: E402
 
-VERSIONE = 6        # 2: le foto della partita; 3: cimitero, esilio, forza e costituzione; 4: i momenti del combattimento e delle magie coi bersagli;
+VERSIONE = 10       # 2: le foto della partita; 3: cimitero, esilio, forza e costituzione; 4: i momenti del combattimento e delle magie coi bersagli;
 #                    5: ogni istantaneo e stregoneria in pila (anche senza bersagli) e i permanenti che ha tolto dal campo (i board wipe);
-#                    6: per le partite lette dagli archivi, dove stanno («dove»: archivio, byte di inizio e di fine), per il replay azione per azione
+#                    6: per le partite lette dagli archivi, dove stanno («dove»: archivio, byte di inizio e di fine), per il replay azione per azione;
+#                    7: debug del 12 nov 2026: le cancellazioni, chi e' in campo dalle zone, le vite a 0, l'annullamento, emblemi e inneschi, i riassunti;
+#                    8: i bersagli fuori dal campo («fuori»: cimitero, esilio, pila); 9: l'emblema risale alla carta;
+#                    10: forza e costituzione a zero
 CARTELLA = os.path.join(LOGDIR, "partite")
 COPIA = os.path.join(LOGDIR, "mana_aperto.json")
 
 
+def grp_vero(o, obj):
+    """Il grpId da mostrare di un oggetto: la carta per carte e pedine (3 = a faccia in giu', come lo scrive Arena), la carta d'origine per un'abilita' (il
+    padre) e per emblemi e inneschi ritardati, che Arena scrive con grpId finti (2, 5: objectSourceGrpId e' la carta)."""
+    for _ in range(6):         # un'abilita' di un emblema: si risale fino alla carta (l'abilita' -> l'emblema -> la carta che l'ha creato)
+        if not o:
+            return None
+        if o.get("type") in ("GameObjectType_Card", "GameObjectType_Token"):
+            return o.get("grpId")
+        padre = obj.get(o.get("parentId"))
+        if padre is None or padre is o:
+            return o.get("objectSourceGrpId") or o.get("grpId")
+        o = padre
+    return None
+
+
+def cancellati(gs):
+    """Gli oggetti che un messaggio toglie: Arena li scrive in diffDeletedInstanceIds (fino al 12 nov 2026 si leggeva deletedInstanceIds, che nei log non c'e':
+    nessun oggetto veniva mai tolto e le creature morte restavano «in campo» con l'attacco dichiarato)."""
+    return (gs.get("diffDeletedInstanceIds") or []) + (gs.get("deletedInstanceIds") or [])
+
+
+def vite_da(gs, vite):
+    """Le vite dei giocatori di un messaggio: un giocatore senza lifeTotal ha 0 vite (Arena non scrive i valori a zero)."""
+    for pl in gs.get("players") or []:
+        if pl.get("systemSeatNumber") in (1, 2):
+            vite[pl["systemSeatNumber"]] = pl.get("lifeTotal", 0)
+
+
+def turno_da(gs, ti):
+    """turnInfo: nelle fasi principali Arena non scrive lo step, quindi quello di prima non resta."""
+    t_ = gs.get("turnInfo")
+    if t_:
+        if "phase" in t_ and "step" not in t_:
+            ti.pop("step", None)
+        ti.update(t_)
+
+
+ZONE_FUORI = {"ZoneType_Graveyard": "cim", "ZoneType_Exile": "esi", "ZoneType_Stack": "pila", "ZoneType_Hand": "mano", "ZoneType_Library": "grimorio"}
+
+
+def fuori_campo(bers, zone, zids, zown, obj):
+    """I bersagli che non sono in campo (12 nov 2026, il debug del replayer: 410 bersagli nel cimitero, una rianimazione, e 79 in pila, una contromagia, non
+    avevano la freccia): [[id, «cim»|«esi»|«pila»|«mano»|«grimorio», posto del proprietario, grpId]]."""
+    out = []
+    for b in bers:
+        if b in (1, 2):
+            continue
+        for zid, tp in zone.items():
+            if tp in ZONE_FUORI and b in zids.get(zid, []):
+                o = obj.get(b) or {}
+                out.append([b, ZONE_FUORI[tp], zown.get(zid) or o.get("ownerSeatId"), grp_vero(o, obj) if o else None])
+                break
+    return out
+
+
+RIASSUNTO = "[Message summarized because"       # Arena non scrive i messaggi oltre 50 oggetti o 50 azioni: solo i conteggi
+
+
 def leggi(righe):
     """Le righe di un pezzo di log -> dict(attacchi=[[turno, chi attacca, terre stappate di chi difende, sue terre]], fine=[[turno, chi, stappate, terre]],
-    mano0=foto all'inizio del primo turno, foto=[[turno, chi e' di turno, foto]] alla fine di ogni turno, ultima=[turno, chi, foto] all'ultimo stato).
+    mano0=foto all'inizio del primo turno, foto=[[turno, chi e' di turno, foto]] alla fine di ogni turno, ultima=[turno, chi, foto] all'ultimo stato,
+    riassunti=quanti messaggi Arena ha riassunto).
     Una foto: dict(c=[campo del posto 1, del posto 2] con [grpId, tappata, pedina, forza, costituzione], m=[mano 1, mano 2] coi grpId che si vedono, n=[carte in
-    mano], v=[vite], g=[cimitero 1, 2], e=[esilio 1, 2]) (cimitero ed esilio per proprietario, 12 nov 2026: «aggiungiamo cimitero e esilio»)."""
+    mano], v=[vite], g=[cimitero 1, 2], e=[esilio 1, 2]) (cimitero ed esilio per proprietario, 12 nov 2026: «aggiungiamo cimitero e esilio»). Una carta che Arena
+    ha messo in un cimitero o in un esilio senza mandarne i dati (un messaggio riassunto) ha grpId 0: si vede che c'e', non quale e'.
+    Debug del 12 nov 2026 (Autore: «riguarda in maniera approfondita come il replayer legge i log e le azioni, debugga tutto»): gli oggetti cancellati si
+    leggono da diffDeletedInstanceIds; chi e' in campo lo dicono le zone, non la zona scritta nell'oggetto; le vite a 0; l'annullamento di Arena (undo: uno
+    stato Full con prevGameStateId che torna indietro) toglie quello che era stato annotato da quello stato in poi; lo step vecchio nelle fasi principali."""
     obj, zone, ti = {}, {}, {}
     zown, zids, vite = {}, {}, {}
-    attacchi, fine, visti_att, visti_fine = [], [], set(), set()
-    foto_t, mano0 = [], None
+    # ogni cosa annotata porta lo stato del gioco in cui e' nata, cosi' un annullamento la toglie: [(stato, elemento)]
+    st = dict(attacchi=[], fine=[], foto=[], momenti=[], mano0=None, pend=None)
+    riassunti = 0
+    visti_ts = {}               # {id dell'annotazione TargetSpec: stato}
     # i momenti in ordine (12 nov 2026, Autore: «una freccia che definisce quali carte interagiscono con quali altre, per vedere come si e' bloccato in
     # combattimento o contro cosa e' stato lanciato uno spot removal»): ["fine", t, chi, foto, None], ["comb", t, chi, foto, dict(att=[[id, bersaglio]],
     # blocchi=[[id, [attaccanti]]])] coi blocchi dichiarati, ["spell", t, chi, foto, dict(g=grpId, chi=posto, ab=abilita', bers=[id o posto])] quando una magia o
     # un'abilita' sceglie i bersagli (TargetSpec)
-    momenti, visti_ts, visti_comb, pend = [], set(), set(), None
     # gli istantanei e le stregonerie in pila (12 nov 2026, Autore: «per le carte come day of judgement che distruggono grandi quantita' di board dovremmo
     # inventarci qualcosa che le mostri nel turno prima che finiscano nel cimitero e contro cosa hanno effetto di massa»): il momento nasce quando la magia
     # entra in pila, e quando lascia la pila si guarda cosa manca dal campo di allora («colpiti»)
-    in_pila, mom_di = {}, {}       # {id della magia: (momento, id in campo allora)}, {id della magia: momento}
+    in_pila, mom_di = {}, {}       # {id della magia: (stato, momento, id in campo allora)}, {id della magia: (stato, momento)}
 
     def valore(o, k):
+        """Forza o costituzione di una creatura: Arena non scrive i valori a zero (power {} o assente), quindi una 0/2 e' 0/2, non una non creatura."""
         v = o.get(k)
-        return v.get("value") if isinstance(v, dict) else v
+        return v.get("value", 0) if isinstance(v, dict) else (v if v is not None else 0)
+
+    def ids_di(tipo):
+        return [i for zid, tp in zone.items() if tp == tipo for i in zids.get(zid, [])]
 
     def foto():
         c, m, n, g, e = [[], []], [[], []], [0, 0], [[], []], [[], []]
         for zid, tp in zone.items():
             ids = zids.get(zid, [])
             if tp in ("ZoneType_Graveyard", "ZoneType_Exile"):
+                lato = (g if tp == "ZoneType_Graveyard" else e)
                 for i in ids:
                     o = obj.get(i)
-                    if o and o.get("grpId") and o.get("type") == "GameObjectType_Card" and o.get("ownerSeatId") in (1, 2):
-                        (g if tp == "ZoneType_Graveyard" else e)[o["ownerSeatId"] - 1].append(o["grpId"])
+                    if o is None and zown.get(zid) in (1, 2):         # in una zona pubblica ma mai mandata (messaggio riassunto)
+                        lato[zown[zid] - 1].append(0)
+                    elif o and o.get("grpId") and o.get("type") == "GameObjectType_Card" and o.get("ownerSeatId") in (1, 2):
+                        lato[o["ownerSeatId"] - 1].append(o["grpId"])
             elif tp == "ZoneType_Battlefield":
                 for i in ids:
                     o = obj.get(i)
@@ -77,14 +151,33 @@ def leggi(righe):
                 m[k] = [obj[i]["grpId"] for i in ids if i in obj and obj[i].get("grpId")]
         return dict(c=c, m=m, n=n, v=[vite.get(1), vite.get(2)], g=g, e=e)
 
-    def terre(seat):
+    def terre(seat, campo):
         tot = stap = 0
-        for o in obj.values():
-            if o.get("controllerSeatId") == seat and "CardType_Land" in (o.get("cardTypes") or []) and zone.get(o.get("zoneId")) == "ZoneType_Battlefield":
+        for i in campo:
+            o = obj.get(i) or {}
+            if o.get("controllerSeatId") == seat and "CardType_Land" in (o.get("cardTypes") or []):
                 tot += 1
                 stap += 0 if o.get("isTapped") else 1
         return stap, tot
+
+    def annulla(fino):
+        """L'annullamento di Arena: via quello che e' nato da questo stato in poi (lo stato Full che segue lo rimanda)."""
+        for k in ("attacchi", "fine", "foto", "momenti"):
+            st[k] = [x for x in st[k] if x[0] < fino]
+        for dd in (mom_di, in_pila):
+            for k in [k for k, v in dd.items() if v[0] >= fino]:
+                dd.pop(k)
+        for k in [k for k, v in visti_ts.items() if v >= fino]:
+            visti_ts.pop(k)
+        if st["mano0"] is not None and st["mano0"][0] >= fino:
+            st["mano0"] = None
+        if st["pend"] and st["pend"][1] >= fino:
+            st["pend"] = None
+
     for r in righe:
+        if r.startswith(RIASSUNTO):
+            riassunti += 1
+            continue
         if "gameStateMessage" not in r:
             continue
         i = r.find("{")
@@ -98,51 +191,50 @@ def leggi(righe):
             gs = m.get("gameStateMessage")
             if not gs:
                 continue
+            sid = gs.get("gameStateId") or 0
+            if gs.get("update") == "GameStateUpdate_Undo" and gs.get("prevGameStateId"):
+                annulla(gs["prevGameStateId"])
             if gs.get("type") == "GameStateType_Full":
                 obj, zone, zown, zids = {}, {}, {}, {}
             for z in gs.get("zones") or []:
                 zone[z.get("zoneId")] = z.get("type")
                 zown[z.get("zoneId")] = z.get("ownerSeatId")
                 zids[z.get("zoneId")] = z.get("objectInstanceIds") or []     # una zona vuota arriva senza la lista
-            for pl in gs.get("players") or []:
-                if pl.get("systemSeatNumber") in (1, 2) and pl.get("lifeTotal") is not None:
-                    vite[pl["systemSeatNumber"]] = pl["lifeTotal"]
+            vite_da(gs, vite)
             for o in gs.get("gameObjects") or []:
                 obj[o.get("instanceId")] = o
-            for x in gs.get("deletedInstanceIds") or []:
+            for x in cancellati(gs):
                 obj.pop(x, None)
-            if gs.get("turnInfo"):
-                ti.update(gs["turnInfo"])
+            turno_da(gs, ti)
             t, att = ti.get("turnNumber"), ti.get("activePlayer")
             if t is None or att is None:
                 continue
-            if t not in visti_att and any(o.get("attackState") in ("AttackState_Declared", "AttackState_Attacking") and o.get("controllerSeatId") == att
-                                          and zone.get(o.get("zoneId")) == "ZoneType_Battlefield" for o in obj.values()):
-                visti_att.add(t)
+            campo = ids_di("ZoneType_Battlefield")
+            sul = [obj[i] for i in campo if i in obj]
+            attaccanti = [o for o in sul if o.get("attackState") in ("AttackState_Declared", "AttackState_Attacking")]
+            if t not in {a[1][0] for a in st["attacchi"]} and any(o.get("controllerSeatId") == att for o in attaccanti):
                 difende = 2 if att == 1 else 1
-                s, n = terre(difende)
-                attacchi.append([t, att, s, n])
-            if t == 1 and mano0 is None:
-                mano0 = foto()
+                s, n = terre(difende, campo)
+                st["attacchi"].append((sid, [t, att, s, n]))
+            if t == 1 and st["mano0"] is None:
+                st["mano0"] = (sid, foto())
             # il combattimento: attaccanti e blocchi dichiarati; si tiene l'ultimo stato prima del danno, al suo posto fra i momenti
+            pend = st["pend"]
             in_comb = ti.get("step") in ("Step_DeclareAttack", "Step_DeclareBlock")
-            if in_comb and t not in visti_comb:
-                sul = [o for o in obj.values() if zone.get(o.get("zoneId")) == "ZoneType_Battlefield"]
-                att_ids = [[o["instanceId"], (o.get("attackInfo") or {}).get("targetId")] for o in sul
-                           if o.get("attackState") in ("AttackState_Declared", "AttackState_Attacking")]
+            if in_comb and t not in {x[1][1] for x in st["momenti"] if x[1][0] == "comb"}:
+                att_ids = [[o["instanceId"], (o.get("attackInfo") or {}).get("targetId")] for o in attaccanti]
                 if att_ids:
                     blocchi = [[o["instanceId"], (o.get("blockInfo") or {}).get("attackerIds") or []] for o in sul if (o.get("blockInfo") or {}).get("attackerIds")]
-                    posto = pend[0] if pend else len(momenti)
-                    pend = (posto, ["comb", t, att, foto(), dict(att=att_ids, blocchi=blocchi)])
+                    posto = pend[0] if pend else len(st["momenti"])
+                    st["pend"] = (posto, pend[1] if pend else sid, ["comb", t, att, foto(), dict(att=att_ids, blocchi=blocchi)])
             elif pend:
-                momenti.insert(pend[0], pend[1])
-                visti_comb.add(pend[1][1])
-                pend = None
-            pila_ids = {i for zid, tp in zone.items() if tp == "ZoneType_Stack" for i in zids.get(zid, [])}
-            in_campo = {i for zid, tp in zone.items() if tp == "ZoneType_Battlefield" for i in zids.get(zid, [])}
+                st["momenti"].insert(pend[0], (pend[1], pend[2]))
+                st["pend"] = None
+            pila_ids = set(ids_di("ZoneType_Stack"))
+            in_campo = set(campo)
             for i in list(in_pila):         # una magia che ha lasciato la pila: cosa manca dal campo di quando e' stata lanciata
                 if i not in pila_ids:
-                    m_, prima_ = in_pila.pop(i)
+                    _s, m_, prima_ = in_pila.pop(i)
                     m_[4]["colpiti"] = sorted(x for x in prima_ if x not in in_campo)
             for i in pila_ids:              # un istantaneo o una stregoneria appena entrati in pila
                 o = obj.get(i)
@@ -151,38 +243,41 @@ def leggi(righe):
                 if not {"CardType_Instant", "CardType_Sorcery"} & set(o.get("cardTypes") or []):
                     continue
                 m_ = ["spell", t, att, foto(), dict(g=o["grpId"], chi=o.get("controllerSeatId"), ab=False, bers=[], colpiti=[])]
-                momenti.append(m_)
-                mom_di[i] = m_
-                in_pila[i] = (m_, set(in_campo))
+                st["momenti"].append((sid, m_))
+                mom_di[i] = (sid, m_)
+                in_pila[i] = (sid, m_, set(in_campo))
             # le magie e le abilita' coi bersagli (una magia gia' in pila prende i suoi bersagli)
             for a in (gs.get("persistentAnnotations") or []) + (gs.get("annotations") or []):
                 if "AnnotationType_TargetSpec" in (a.get("type") or []) and a.get("id") not in visti_ts:
-                    visti_ts.add(a.get("id"))
+                    visti_ts[a.get("id")] = sid
                     if a.get("affectorId") in mom_di:
-                        mom_di[a["affectorId"]][4]["bers"] = a.get("affectedIds") or []
+                        mom_di[a["affectorId"]][1][4]["bers"] = a.get("affectedIds") or []
+                        mom_di[a["affectorId"]][1][4]["fuori"] = fuori_campo(a.get("affectedIds") or [], zone, zids, zown, obj)
                         continue
                     sp = obj.get(a.get("affectorId"))
                     if not sp:
                         continue
                     ab = sp.get("type") == "GameObjectType_Ability"
-                    g = ((obj.get(sp.get("parentId")) or {}).get("grpId") or sp.get("objectSourceGrpId") or sp.get("grpId")) if ab else sp.get("grpId")
+                    g = grp_vero(sp, obj)
                     if g:
-                        m_ = ["spell", t, att, foto(), dict(g=g, chi=sp.get("controllerSeatId"), ab=ab, bers=a.get("affectedIds") or [], colpiti=[])]
-                        momenti.append(m_)
+                        m_ = ["spell", t, att, foto(), dict(g=g, chi=sp.get("controllerSeatId"), ab=ab, bers=a.get("affectedIds") or [], colpiti=[],
+                                                            fuori=fuori_campo(a.get("affectedIds") or [], zone, zids, zown, obj))]
+                        st["momenti"].append((sid, m_))
                         if not ab:
-                            mom_di[a["affectorId"]] = m_
-                            in_pila[a["affectorId"]] = (m_, set(in_campo))
-            if ti.get("step") == "Step_End" and t not in visti_fine:
-                visti_fine.add(t)
-                s, n = terre(att)
-                fine.append([t, att, s, n])
+                            mom_di[a["affectorId"]] = (sid, m_)
+                            in_pila[a["affectorId"]] = (sid, m_, set(in_campo))
+            if ti.get("step") == "Step_End" and t not in {x[1][0] for x in st["fine"]}:
+                s, n = terre(att, campo)
+                st["fine"].append((sid, [t, att, s, n]))
                 f_ = foto()
-                foto_t.append([t, att, f_])
-                momenti.append(["fine", t, att, f_, None])
-    if pend:
-        momenti.insert(pend[0], pend[1])
+                st["foto"].append((sid, [t, att, f_]))
+                st["momenti"].append((sid, ["fine", t, att, f_, None]))
+    if st["pend"]:
+        st["momenti"].insert(st["pend"][0], (st["pend"][1], st["pend"][2]))
     ultima = [ti.get("turnNumber"), ti.get("activePlayer"), foto()] if ti.get("turnNumber") else None
-    return dict(attacchi=attacchi, fine=fine, mano0=mano0, foto=foto_t, ultima=ultima, momenti=momenti)
+    via = lambda lst: [x[1] for x in lst]
+    return dict(attacchi=via(st["attacchi"]), fine=via(st["fine"]), mano0=st["mano0"][1] if st["mano0"] else None, foto=via(st["foto"]), ultima=ultima,
+                momenti=via(st["momenti"]), riassunti=riassunti)
 
 
 def indice():
@@ -290,11 +385,12 @@ def prova():
         return "[UnityCrossThreadLogger]x " + json.dumps(dict(greToClientEvent=dict(greToClientMessages=[dict(gameStateMessage=k)])))
     terra = lambda i, seat, tap: dict(instanceId=i, controllerSeatId=seat, cardTypes=["CardType_Land"], zoneId=28, **({"isTapped": True} if tap else {}))
     crea = lambda i, seat, att: dict(instanceId=i, controllerSeatId=seat, cardTypes=["CardType_Creature"], zoneId=28, **({"attackState": "AttackState_Declared"} if att else {}))
-    righe = [gs(type="GameStateType_Full", zones=[dict(zoneId=28, type="ZoneType_Battlefield")], turnInfo=dict(turnNumber=3, activePlayer=1, step="Step_BeginCombat"),
+    campo = lambda *ids: [dict(zoneId=28, type="ZoneType_Battlefield", objectInstanceIds=list(ids))]       # chi e' in campo lo dice la zona, come nei log veri
+    righe = [gs(type="GameStateType_Full", zones=campo(1, 2, 3, 4, 5, 10), turnInfo=dict(turnNumber=3, activePlayer=1, step="Step_BeginCombat"),
                 gameObjects=[terra(1, 1, False), terra(2, 1, False), terra(3, 1, True), terra(4, 2, False), terra(5, 2, False), crea(10, 1, False)]),
              gs(type="GameStateType_Diff", turnInfo=dict(step="Step_DeclareAttack"), gameObjects=[crea(10, 1, True)]),
              gs(type="GameStateType_Diff", turnInfo=dict(step="Step_End"), gameObjects=[crea(10, 1, False)]),
-             gs(type="GameStateType_Diff", turnInfo=dict(turnNumber=4, activePlayer=2, step="Step_DeclareAttack"),
+             gs(type="GameStateType_Diff", turnInfo=dict(turnNumber=4, activePlayer=2, step="Step_DeclareAttack"), zones=campo(1, 2, 3, 4, 5, 10, 11),
                 gameObjects=[terra(1, 1, True), terra(2, 1, True), terra(3, 1, True), dict(crea(11, 2, True))]),
              gs(type="GameStateType_Diff", turnInfo=dict(step="Step_End"), gameObjects=[terra(4, 2, True)])]
     d = leggi(righe)
@@ -366,6 +462,29 @@ def prova():
     casi.append(("un board wipe: il suo momento in pila, la tavola di prima e i due permanenti tolti", len(mw) == 1 and mw[0][4]["g"] == 777
                  and mw[0][4]["colpiti"] == [10, 20] and len(mw[0][3]["c"][0]) == 1))
     casi.append(("negativa: senza attaccanti niente momento di combattimento", not [m_ for m_ in leggi(fz)["momenti"] if m_[0] == "comb"]))
+    # il debug del 12 nov 2026: l'annullamento toglie la magia annullata e lascia nascere il momento di quella vera, che riusa lo stesso id
+    zt = lambda aid, cat: dict(type=["AnnotationType_ZoneTransfer"], affectedIds=[aid], details=[dict(key="category", valueString=[cat])])
+    pl = lambda *ids: dict(zoneId=27, type="ZoneType_Stack", objectInstanceIds=list(ids))
+    ist = lambda i, g: dict(instanceId=i, grpId=g, type="GameObjectType_Card", zoneId=27, controllerSeatId=1, ownerSeatId=1, cardTypes=["CardType_Instant"])
+    t5 = dict(turnNumber=5, activePlayer=1, phase="Phase_Main1")
+    fu = [gs(gameStateId=1, type="GameStateType_Full", zones=[dict(zoneId=28, type="ZoneType_Battlefield"), pl()], turnInfo=t5),
+          gs(gameStateId=10, type="GameStateType_Diff", zones=[pl(4)], gameObjects=[ist(4, 200)], annotations=[zt(4, "CastSpell")]),
+          gs(gameStateId=11, type="GameStateType_Full", update="GameStateUpdate_Undo", prevGameStateId=10, turnInfo=t5,
+             zones=[dict(zoneId=28, type="ZoneType_Battlefield"), pl()]),
+          gs(gameStateId=12, type="GameStateType_Diff", zones=[pl(4)], gameObjects=[ist(4, 300)], annotations=[zt(4, "CastSpell")])]
+    mu = [m_[4]["g"] for m_ in leggi(fu)["momenti"] if m_[0] == "spell"]
+    casi.append(("l'annullamento: via la magia annullata, il momento della magia vera c'e' (anche con lo stesso id)", mu == [300]))
+    # chi e' in campo lo dice la zona: un oggetto che resta in memoria con la zona del campo ma non e' nella lista non attacca e non e' una terra
+    vecchio = [gs(type="GameStateType_Full", zones=campo(1), turnInfo=dict(turnNumber=7, activePlayer=1, step="Step_DeclareAttack"),
+                  gameObjects=[terra(1, 1, False), dict(crea(10, 1, True)), terra(4, 2, False)])]
+    dv = leggi(vecchio)
+    casi.append(("negativa: un oggetto fuori dalla lista del campo non attacca e non conta fra le terre", dv["attacchi"] == [] and dv["fine"] == []))
+    # le vite a zero e gli oggetti cancellati (diffDeletedInstanceIds)
+    zz = [gs(type="GameStateType_Full", zones=campo(10), turnInfo=dict(turnNumber=2, activePlayer=1, step="Step_Upkeep"), gameObjects=[crea(10, 1, False)],
+             players=[dict(systemSeatNumber=1, lifeTotal=3), dict(systemSeatNumber=2, lifeTotal=5)]),
+          gs(type="GameStateType_Diff", zones=campo(), diffDeletedInstanceIds=[10], players=[dict(systemSeatNumber=1, status="PlayerStatus_PendingLoss")])]
+    u = leggi(zz)["ultima"][2]
+    casi.append(("le vite a zero (lifeTotal assente) e la creatura cancellata", u["v"] == [0, 5] and u["c"] == [[], []]))
     for n, ok in casi:
         print(("ok    " if ok else "ROSSO ") + n)
     print(f"{sum(1 for _n, ok in casi if ok)}/{len(casi)}")

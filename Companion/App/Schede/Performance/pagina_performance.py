@@ -1051,7 +1051,8 @@ class PaginaPerformance:
         c = getattr(e, "widget", None) or self.tabella_partite()
         x_, k = self.partita_a(c, e)
         if x_ is not None:
-            self.apri_board(x_, "mano" if k == "mano" else "fine")
+            # il replay parte sempre dall'inizio, la mano tenuta (12 nov 2026, Autore: «i replay partono tutti dalla fine e mai dall'inizio»)
+            self.apri_board(x_, "inizio")
 
     def passi_board(self, fo):
         """I momenti di una partita da guardare: la mano tenuta, la fine di ogni turno, l'ultimo stato (se e' dopo l'ultima fine di turno).
@@ -1073,8 +1074,9 @@ class PaginaPerformance:
 
     @staticmethod
     def forza(lato):
-        """La forza delle creature in campo di un lato."""
-        return sum(c_[3] or 0 for c_ in lato if len(c_) > 3 and c_[3] is not None)
+        """La forza delle creature in campo di un lato. Una forza negativa (segnalini -1/-1) conta 0: non fa danni, e nel grafico della barra una
+        barra negativa faceva cadere il disegno (debug del 12 nov 2026: in 7 partite su 25 la barra del replayer non si disegnava)."""
+        return sum(max(0, c_[3] or 0) for c_ in lato if len(c_) > 3 and c_[3] is not None)
 
     def momenti(self, passi):
         """Il grafico della partita: per ogni momento le vite, la forza in campo dei due e il vantaggio (vite di differenza piu' due volte la forza di
@@ -1099,7 +1101,7 @@ class PaginaPerformance:
         i = max(range(len(salti)), key=lambda j: salti[j])
         return i + 1 if salti[i] > 0 else None
 
-    def apri_board(self, x_, dove="fine"):
+    def apri_board(self, x_, dove="inizio"):
         """La board di una partita: in alto i momenti (la mano tenuta, la fine di ogni turno, la fine), sotto la tavola: le sue carte in campo, le tue, la tua
         mano, con le vite; le carte tappate girate. Frecce o clic per muoversi. Una finestra sola: un'altra partita la riempie."""
         tk, F = self.tk, self.F
@@ -1165,11 +1167,13 @@ class PaginaPerformance:
             self.cv_board.bind("<Leave>", self.via_hover)
         self.ferma_board()
         self._pila_aperta = None
-        self._board = dict(x=x_, passi=passi, i=0 if dove == "mano" else len(passi) - 1, play=False, vel=getattr(self, "_vel_board", 1.0), modo="momenti",
+        self._board = dict(x=x_, passi=passi, i=len(passi) - 1 if dove == "fine" else 0, play=False, vel=getattr(self, "_vel_board", 1.0), modo="momenti",
                            momenti_passi=passi)
         self._board["svolta"] = self.svolta(passi, x_["vinta"])
         if getattr(self, "_modo_board", "momenti") == "azioni":      # resta la scelta dell'ultima volta
             self.cambia_modo_board("azioni", ridisegna=False)
+            if dove != "fine":      # in Every action dalla prima azione
+                self._board["i"] = 0
         for k_, b_ in self.b_modi.items():
             b_.metti({"azioni": "Every action", "momenti": "Moments"}[k_], k_ == self._board["modo"])
         esito = "won" if x_["vinta"] else "lost"
@@ -1503,13 +1507,10 @@ class PaginaPerformance:
             self.vai_board(b["svolta"])
 
     def racconto(self, i):
-        """Cosa e' successo nel momento i, dalla scheda della partita (Partite/): le terre, le magie, le abilita' (non quelle di mana delle terre), gli attacchi,
-        i blocchi, le pedine, chi muore. -> [(tu?, testo)]; None senza scheda."""
+        """Cosa e' successo nel turno del momento i. Dal debug del 12 nov 2026 dal replay azione per azione (replay_log: l'annullamento di Arena, le terre
+        messe in campo da un effetto, i messaggi riassunti); senza il log della partita, dalla scheda (Partite/), come prima: le terre, le magie, le abilita'
+        (non quelle di mana delle terre), gli attacchi, i blocchi, le pedine, chi muore. -> [(tu?, testo)]; None senza niente."""
         b = self._board
-        sch = DA.scheda(b["x"].get("partita"))
-        if not sch:
-            return None
-        import mazzi_salvati as MS
         nome, _f, t = b["passi"][i][:3]
         if nome == "Opening hand":
             x_ = b["x"]
@@ -1517,6 +1518,25 @@ class PaginaPerformance:
             if x_.get("mulligan"):
                 out.append((True, f"You took {x_['mulligan']} mulligan{'s' if x_['mulligan'] > 1 else ''}"))
             return out
+        if b.get("azioni_passi") is None:
+            b["azioni_passi"] = DA.azioni_partita(b["x"]) or []
+        if b["azioni_passi"]:
+            out = []
+            for p_ in b["azioni_passi"]:
+                if p_[2] != t:
+                    continue
+                for mio, testo in p_[4]:
+                    if testo.endswith(" begins") or " drew " in f" {testo}" or testo.endswith(" resolved"):    # il riassunto del turno: le mosse, non il contorno
+                        continue
+                    if out and out[-1][1] == testo:      # le righe uguali di fila una volta sola, con quante
+                        out[-1][2] += 1
+                    else:
+                        out.append([mio, testo, 1])
+            return [(a, t_ + (f"  ×{n_}" if n_ > 1 else "")) for a, t_, n_ in out]
+        sch = DA.scheda(b["x"].get("partita"))
+        if not sch:
+            return None
+        import mazzi_salvati as MS
         verbi = {"terra": "played", "lancia": "cast", "abilita": "activated", "attacca": "attacked with", "blocca": "blocked with", "pedina": "made a token:",
                  "muore": "lost"}
         out = []
@@ -1726,6 +1746,7 @@ class PaginaPerformance:
                     if yy + hh > y0 + alto_a + 2:
                         c.create_text(x0 + larga_a, y0 + alto_a - 6, text="…", anchor="e", fill=C["grigio"], font=F(10, True))
                         break
+                    ped = ped or n in DA.SENZA_FACCIA.values()      # a faccia in giu' o sconosciuta: il disegno di default col nome
                     img = self.immagine_token(w_carta, tap) if ped else self.immagine_carta(n, w_carta, tap)
                     cy = yy + (h_carta - hh)        # le tappate appoggiate in basso
                     for id_ in ids.get(g, []):
@@ -1736,9 +1757,9 @@ class PaginaPerformance:
                         self._box_zona.append((zkey, n, (x, cy, x + ww, cy + hh), tap, it_))
                         if not ped:
                             self._box_carte.append((x, cy, x + ww, cy + hh, n))
-                        if ped:     # il nome della pedina sul disegno di default
-                            c.create_text(x + ww / 2, cy + (hh - 16 if tap else hh * 0.80), text=n, width=ww - 12, fill=C["titolo"], font=F(7, True),
-                                          justify="center")
+                        if ped:     # il nome della pedina sul disegno di default (sopra il riquadro della forza, che sta in basso: debug del 12 nov 2026)
+                            c.create_text(x + ww / 2, cy + (hh - 16 if tap and pw is None else hh * 0.36 if tap else hh * 0.64 if pw is not None else hh * 0.80),
+                                          text=n, width=ww - 8, fill=C["titolo"], font=F(7, True), justify="center")
                     else:
                         c.create_rectangle(x, cy, x + ww, cy + hh, fill="#26262c", outline="#4a4a52")
                         c.create_text(x + ww / 2, cy + hh / 2, text=n, width=ww - 10, fill=C["titolo"], font=F(7, True), justify="center")
@@ -1804,9 +1825,9 @@ class PaginaPerformance:
         xr = Wt + 12
         c.create_rectangle(xr, 0, W, H, fill="#18181e", outline="")
         c.create_text(xr + 14, 16, text="WHAT HAPPENED", anchor="w", fill=C["muto"], font=F(7, True))
-        c.create_text(xr + 14, 34, text=nome + ("   ★ turning point" if b["i"] == b.get("svolta") else ""), anchor="w",
-                      fill="#ffd23f" if b["i"] == b.get("svolta") else C["titolo"], font=F(10, True), width=LARGA_RACCONTO - 28)
-        y = 58
+        tit_ = c.create_text(xr + 14, 25, text=nome + ("   ★ turning point" if b["i"] == b.get("svolta") else ""), anchor="nw",
+                             fill="#ffd23f" if b["i"] == b.get("svolta") else C["titolo"], font=F(10, True), width=LARGA_RACCONTO - 28)
+        y = max(58, (c.bbox(tit_) or (0, 0, 0, 46))[3] + 14)     # un nome lungo va a capo verso il basso, non sopra «WHAT HAPPENED» (debug del 12 nov 2026)
         pila_box = None
         if rel and rel["tipo"] == "spell":      # la magia (o l'abilita') in pila, da cui partono le frecce verso i bersagli
             chi = "You" if rel["mio"] else "Opponent"
@@ -1824,6 +1845,12 @@ class PaginaPerformance:
             pila_box = (xr + 14, y + 12, xr + 14 + w_p, y + 12 + hp)
             self._pila_ora = (pila_box, rel["nome"])
             y += hp + 28
+            dove_n = {"cim_mio": "in your graveyard", "cim_suo": "in the opponent's graveyard", "esi_mio": "in your exile", "esi_suo": "in the opponent's exile",
+                      "pila": "on the stack", "mano": "in hand", "grimorio": "in the library"}
+            for _i, (z_, _l, n_) in (rel.get("fuori") or {}).items():      # i bersagli che non sono in campo: una contromagia, una rianimazione
+                c.create_text(xr + 14, y - 6, text=f"→ {n_ or 'a card'} {dove_n.get(z_, '')}", anchor="w", fill="#b58cff", font=F(7, True),
+                              width=LARGA_RACCONTO - 28)
+                y += 16
             nc = len(rel.get("colpiti") or [])
             if nc:      # l'effetto: quanti permanenti ha tolto
                 c.create_text(xr + 14, y - 6, text=f"REMOVED {nc} PERMANENT{'S' if nc > 1 else ''}" + ("  ·  a sweeper" if nc >= 3 else ""), anchor="w",
@@ -1999,9 +2026,12 @@ class PaginaPerformance:
                 if a_ not in bloccati and dove(a_) and dove(tg):
                     frecce.append((dove(a_), dove(tg), "#ff5d5d"))
         elif rel["tipo"] == "spell" and pila_box:
+            pile = {k_: (x0, y0, x1, y1) for x0, y0, x1, y1, _t, k_, _c in getattr(self, "_box_pile", [])}
             for tg in rel["bers"]:
                 if dove(tg):
                     frecce.append((pila_box, dove(tg), "#b58cff"))
+                elif (rel.get("fuori") or {}).get(tg, (None,))[0] in pile:       # un bersaglio nel cimitero o in esilio: la freccia va alla sua pila
+                    frecce.append((pila_box, pile[rel["fuori"][tg][0]], "#b58cff"))
             for k_ in rel.get("colpiti") or []:      # cio' che la magia ha tolto dal campo (un board wipe: tutto quello che spazza)
                 if k_ not in rel["bers"] and dove(k_):
                     frecce.append((pila_box, dove(k_), "#ff5d5d"))

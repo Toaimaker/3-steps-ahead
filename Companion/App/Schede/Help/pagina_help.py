@@ -90,7 +90,10 @@ SEZIONI = (
                     "on the stack with an arrow to each target (purple); every instant and sorcery has its moment on the stack, before it resolves, with red "
                     "arrows to the permanents it removed (a sweeper shows everything it wiped, marked REMOVED); on top of each graveyard and exile the last "
                     "card in; Moments or Every action on top: every action is the game action by action (each draw, land, spell, damage, life change, token, "
-                    "counter, attack), with the damage on the card it hits; PgUp and PgDn jump a turn; "
+                    "counter, planeswalker ability, scry, attack and block), with the damage on the card it hits, and the last action says how the game ended "
+                    "(conceded, 0 life, empty library, poison, time); a target in a graveyard or exile gets its arrow to that pile, a spell on the stack "
+                    "is named under the card; a spell you started and cancelled is not counted; where Arena's own log left part of a step out (a message "
+                    "too large to write), the action says so and those cards show as Unknown card; the replay opens on the opening hand; PgUp and PgDn jump a turn; "
                     "Combat ›, Spell › and Opp. tapped out › jump to the next one (C, S, O; with Shift the one before); Bookmark (B) marks the spot: it goes to "
                     "My filters, under your filters, one click to watch it again; stepping forward the cards slide from where they were (hand, stack, battlefield, "
                     "graveyard, exile); in the limited games the companion followed, THE COMPANION SAID shows its advice for that turn")]),

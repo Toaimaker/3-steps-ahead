@@ -1,6 +1,6 @@
 {
- "version": "0.1.63",
+ "version": "0.1.64",
  "date": "2026-11-12",
- "notes": "Replayer: each battlefield laid out as at the table, creatures in front, lands on the left and other permanents on the right behind them.",
+ "notes": "Replayer: every replay starts from the opening hand; a deep debug of how it reads Arena's log: cancelled spells are no longer counted, dead creatures no longer linger as attackers, 0 life and 0-power creatures read right, sacrificed tokens keep their name, arrows to targets in graveyards and on the stack, how the game ended, planeswalker abilities, scry and blocks in Every action.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

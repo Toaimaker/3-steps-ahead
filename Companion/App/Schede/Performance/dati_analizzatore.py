@@ -195,8 +195,14 @@ def riga(p, r):
 _NOMI_GRP = {}
 
 
+# i grpId che Arena usa per le carte senza faccia: 3 a faccia in giu' (camuffata, manifestata), 0 una carta che il log non ha scritto (messaggio riassunto)
+SENZA_FACCIA = {0: "Unknown card", 3: "Face-down card"}
+
+
 def nome_grp(g):
     """Il nome di una carta di Arena dal suo grpId (una volta per grpId); None se il database non la conosce."""
+    if g in SENZA_FACCIA:
+        return SENZA_FACCIA[g]
     if g not in _NOMI_GRP:
         try:
             import condividi
@@ -204,6 +210,15 @@ def nome_grp(g):
         except Exception:      # noqa: BLE001 - senza database niente nomi
             _NOMI_GRP[g] = None
     return _NOMI_GRP[g]
+
+
+def _fuori(lst, seat):
+    """I bersagli fuori dal campo dal tuo posto: {id: (zona, «mio»|«suo», nome)}: «cim_mio», «esi_suo», «pila»..."""
+    out = {}
+    for i, z, chi, g in lst or []:
+        lato_ = "mio" if chi == seat else "suo"
+        out[i] = (f"{z}_{lato_}" if z in ("cim", "esi") else z, lato_, nome_grp(g) if g is not None else None)
+    return out
 
 
 def foto_partita(x):
@@ -238,7 +253,8 @@ def foto_partita(x):
                 colpiti = list(info.get("colpiti") or [])
                 if bers:        # una magia coi bersagli toglie i suoi bersagli: altro che lascia il campo nello stesso istante viene da altro (il combattimento)
                     colpiti = [x for x in colpiti if x in bers]
-                rel = dict(tipo="spell", nome=nome, mio=info.get("chi") == seat, ab=bool(info.get("ab")), bers=[lato(b_) for b_ in bers], colpiti=colpiti)
+                rel = dict(tipo="spell", nome=nome, mio=info.get("chi") == seat, ab=bool(info.get("ab")), bers=[lato(b_) for b_ in bers], colpiti=colpiti,
+                           fuori=_fuori(info.get("fuori"), seat))
             elif kind == "comb":
                 rel = dict(tipo="comb", att=[(i, lato(tg)) for i, tg in info.get("att") or []], blocchi=[(i, list(a_)) for i, a_ in info.get("blocchi") or []])
             turni.append((t, att == seat, gira(f), kind, rel))
@@ -260,7 +276,7 @@ def gira_foto(f, seat):
                 cim=(nomi((f.get("g") or vuoto)[a]), nomi((f.get("g") or vuoto)[b])), esi=(nomi((f.get("e") or vuoto)[a]), nomi((f.get("e") or vuoto)[b])))
 
 
-VERBI = ("played", "cast", "drew", "gained", "lost", "created", "attacked", "discarded", "sacrificed", "turn")
+VERBI = ("played", "cast", "drew", "gained", "lost", "created", "attacked", "discarded", "sacrificed", "turn", "conceded", "scried")
 
 
 def azioni_partita(x):
@@ -291,7 +307,8 @@ def azioni_partita(x):
         if r_ and r_["k"] == "comb":
             rel = dict(tipo="comb", att=[(i, lato(tg)) for i, tg in r_["att"]], blocchi=[(i, list(a_)) for i, a_ in r_["blocchi"]])
         elif r_ and r_["k"] == "spell" and nome_grp(r_["g"]):
-            rel = dict(tipo="spell", nome=nome_grp(r_["g"]), mio=r_["chi"] == seat, ab=r_["ab"], bers=[lato(b_) for b_ in r_["bers"]], colpiti=[])
+            rel = dict(tipo="spell", nome=nome_grp(r_["g"]), mio=r_["chi"] == seat, ab=r_["ab"], bers=[lato(b_) for b_ in r_["bers"]], colpiti=[],
+                       fuori=_fuori(r_.get("fuori"), seat))
         nome = f"{'You' if fr['att'] == seat else 'Opponent'} T{(fr['t'] + 1) // 2} · {fr['step'] or '-'}"
         out.append((nome, gira_foto(fr["foto"], seat), fr["t"], rel, ev, [(lato(b_), q) for b_, q in fr["danni"]]))
     return out
