@@ -1,6 +1,6 @@
 {
- "version": "0.1.26",
+ "version": "0.1.27",
  "date": "2026-11-12",
- "notes": "Your decks public/private; Board: fixed sideboard band, notes, type filters, groups with copies and swap, auto groups, finer grid; deck window: card hover game data, play/draw flags, full analysis window; smoother Farmer sliders.",
+ "notes": "Board: original card type symbols in the filters, the sideboard band no longer scales during wheel zoom, add-note buttons beside the gold dot and on group titles, auto group of the visible cards only.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }
