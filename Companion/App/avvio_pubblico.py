@@ -45,7 +45,7 @@ def prepara(root):
     from tema import icona_finestra
     root.after(50, lambda: icona_finestra(root, os.path.join(ASSET, "companion.ico")))       # il logo nella barra, non la piuma di Tk
     tk.Label(root, text=PRODOTTO, bg=FONDO, fg=TITOLO, font=("Segoe UI", 16, "bold")).pack(pady=(24, 4))
-    tk.Label(root, text="Alpha · free · unofficial fan content", bg=FONDO, fg=GRIGIO, font=("Segoe UI", 9)).pack()
+    tk.Label(root, text="Beta · free · unofficial fan content", bg=FONDO, fg=GRIGIO, font=("Segoe UI", 9)).pack()
     riga = tk.Label(root, text="", bg=FONDO, fg=TESTO, font=("Segoe UI", 10)); riga.pack(pady=(28, 6))
     tk.Label(root, text="The first start downloads card data (about 125 MB). Next starts are instant.", bg=FONDO, fg=GRIGIO, font=("Segoe UI", 8)).pack()
     sotto = tk.Frame(root, bg=FONDO); sotto.pack(pady=18, fill="x")

@@ -1,6 +1,6 @@
 {
- "version": "0.1.36",
+ "version": "0.1.37",
  "date": "2026-11-12",
- "notes": "Deck HUD: the opponent's deck while you play (archetype with confidence, likely cards, its turns 2-4, instants its open mana can pay, your record against it; in limited the 17Lands numbers of its colors). Decks only, never players.",
+ "notes": "Open beta: limited to 1,000 testers, who join on our Discord.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

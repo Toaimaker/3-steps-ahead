@@ -1,4 +1,4 @@
-# 3 Steps Ahead · free MTG Arena deck tracker and deck builder (alpha 0.1.36)
+# 3 Steps Ahead · free MTG Arena deck tracker and deck builder (open beta 0.1.37)
 
 A free desktop companion for MTG Arena on Windows (Mac: experimental, see below). It reads your own Arena log (Player.log) and shows your decks with their real record,
 on the play and on the draw, a card-by-card analysis of why they win and lose, a deck builder over your collection with a mana base calculator,
@@ -27,10 +27,10 @@ From source (developers): unzip the release zip, install Python 3.11, run `Insta
 On Mac the Board is drawn without the graphics card, and the deck-building overlay over Arena is Windows only.
 If something does not work, tell us on Discord with your macOS version: the Mac build is new.
 
-## What's in the alpha
+## What's in the beta
 
 Meta, Your decks (with Analysis and the Board), Performance, Resources, Collection, Help.
-The in-game drafter and live advice are not in the alpha yet.
+The in-game drafter and live advice are not in the beta yet.
 
 ## Privacy
 

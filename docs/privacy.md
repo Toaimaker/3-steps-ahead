@@ -1,4 +1,4 @@
-# Privacy notice · 3 Steps Ahead (alpha)
+# Privacy notice · 3 Steps Ahead (beta)
 
 _Last updated: 2026-11-12. Data controller: [to be filled in before any data is collected]. Contact: [to be filled in]._
 
