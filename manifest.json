@@ -1,6 +1,6 @@
 {
- "version": "0.1.56",
+ "version": "0.1.57",
  "date": "2026-11-12",
- "notes": "Performance: My filters folder with your saved filters and their numbers, Clear all filters button, card zoom on hover and life and hand icons in the replayer.",
+ "notes": "Replayer: the combat and the targeted spells are moments of their own, with arrows from blockers to attackers, attackers to the player and spells on the stack to their targets.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

@@ -24,7 +24,7 @@ import re  # noqa: E402
 
 from ambiente import LOGDIR  # noqa: E402
 
-VERSIONE = 3        # 2: le foto della partita; 3: cimitero, esilio, forza e costituzione
+VERSIONE = 4        # 2: le foto della partita; 3: cimitero, esilio, forza e costituzione; 4: i momenti del combattimento e delle magie coi bersagli
 CARTELLA = os.path.join(LOGDIR, "partite")
 COPIA = os.path.join(LOGDIR, "mana_aperto.json")
 
@@ -38,6 +38,11 @@ def leggi(righe):
     zown, zids, vite = {}, {}, {}
     attacchi, fine, visti_att, visti_fine = [], [], set(), set()
     foto_t, mano0 = [], None
+    # i momenti in ordine (12 nov 2026, Autore: «una freccia che definisce quali carte interagiscono con quali altre, per vedere come si e' bloccato in
+    # combattimento o contro cosa e' stato lanciato uno spot removal»): ["fine", t, chi, foto, None], ["comb", t, chi, foto, dict(att=[[id, bersaglio]],
+    # blocchi=[[id, [attaccanti]]])] coi blocchi dichiarati, ["spell", t, chi, foto, dict(g=grpId, chi=posto, ab=abilita', bers=[id o posto])] quando una magia o
+    # un'abilita' sceglie i bersagli (TargetSpec)
+    momenti, visti_ts, visti_comb, pend = [], set(), set(), None
 
     def valore(o, k):
         v = o.get(k)
@@ -58,7 +63,8 @@ def leggi(righe):
                     if o and o.get("grpId") and o.get("type") in ("GameObjectType_Card", "GameObjectType_Token") and o.get("controllerSeatId") in (1, 2):
                         crea = "CardType_Creature" in (o.get("cardTypes") or [])
                         c[o["controllerSeatId"] - 1].append([o["grpId"], 1 if o.get("isTapped") else 0, 1 if o["type"] == "GameObjectType_Token" else 0,
-                                                             valore(o, "power") if crea else None, valore(o, "toughness") if crea else None])
+                                                             valore(o, "power") if crea else None, valore(o, "toughness") if crea else None,
+                                                             o.get("instanceId")])
             elif tp == "ZoneType_Hand" and zown.get(zid) in (1, 2):
                 k = zown[zid] - 1
                 n[k] = len(ids)
@@ -112,13 +118,42 @@ def leggi(righe):
                 attacchi.append([t, att, s, n])
             if t == 1 and mano0 is None:
                 mano0 = foto()
+            # il combattimento: attaccanti e blocchi dichiarati; si tiene l'ultimo stato prima del danno, al suo posto fra i momenti
+            in_comb = ti.get("step") in ("Step_DeclareAttack", "Step_DeclareBlock")
+            if in_comb and t not in visti_comb:
+                sul = [o for o in obj.values() if zone.get(o.get("zoneId")) == "ZoneType_Battlefield"]
+                att_ids = [[o["instanceId"], (o.get("attackInfo") or {}).get("targetId")] for o in sul
+                           if o.get("attackState") in ("AttackState_Declared", "AttackState_Attacking")]
+                if att_ids:
+                    blocchi = [[o["instanceId"], (o.get("blockInfo") or {}).get("attackerIds") or []] for o in sul if (o.get("blockInfo") or {}).get("attackerIds")]
+                    posto = pend[0] if pend else len(momenti)
+                    pend = (posto, ["comb", t, att, foto(), dict(att=att_ids, blocchi=blocchi)])
+            elif pend:
+                momenti.insert(pend[0], pend[1])
+                visti_comb.add(pend[1][1])
+                pend = None
+            # le magie e le abilita' coi bersagli
+            for a in (gs.get("persistentAnnotations") or []) + (gs.get("annotations") or []):
+                if "AnnotationType_TargetSpec" in (a.get("type") or []) and a.get("id") not in visti_ts:
+                    visti_ts.add(a.get("id"))
+                    sp = obj.get(a.get("affectorId"))
+                    if not sp:
+                        continue
+                    ab = sp.get("type") == "GameObjectType_Ability"
+                    g = ((obj.get(sp.get("parentId")) or {}).get("grpId") or sp.get("objectSourceGrpId") or sp.get("grpId")) if ab else sp.get("grpId")
+                    if g:
+                        momenti.append(["spell", t, att, foto(), dict(g=g, chi=sp.get("controllerSeatId"), ab=ab, bers=a.get("affectedIds") or [])])
             if ti.get("step") == "Step_End" and t not in visti_fine:
                 visti_fine.add(t)
                 s, n = terre(att)
                 fine.append([t, att, s, n])
-                foto_t.append([t, att, foto()])
+                f_ = foto()
+                foto_t.append([t, att, f_])
+                momenti.append(["fine", t, att, f_, None])
+    if pend:
+        momenti.insert(pend[0], pend[1])
     ultima = [ti.get("turnNumber"), ti.get("activePlayer"), foto()] if ti.get("turnNumber") else None
-    return dict(attacchi=attacchi, fine=fine, mano0=mano0, foto=foto_t, ultima=ultima)
+    return dict(attacchi=attacchi, fine=fine, mano0=mano0, foto=foto_t, ultima=ultima, momenti=momenti)
 
 
 def indice():
@@ -253,7 +288,7 @@ def prova():
     df = leggi(fz)
     casi.append(("le foto: la mano tenuta al primo turno (la sua solo contata), la board a fine turno con tappata e pedina, le vite",
                  df["mano0"]["m"] == [[100, 200], []] and df["mano0"]["n"] == [2, 3] and df["foto"][0][:2] == [1, 1]
-                 and df["foto"][0][2]["c"] == [[[100, 1, 0, None, None], [900, 0, 1, None, None]], []] and df["foto"][0][2]["m"][0] == [200] and df["foto"][0][2]["v"] == [20, 17]
+                 and df["foto"][0][2]["c"] == [[[100, 1, 0, None, None, 3], [900, 0, 1, None, None, 4]], []] and df["foto"][0][2]["m"][0] == [200] and df["foto"][0][2]["v"] == [20, 17]
                  and df["ultima"][0] == 1))
     # dagli archivi: un archivio finto con due partite, ritagliate per matchId; guardato una volta sola
     import tempfile
@@ -271,6 +306,23 @@ def prova():
         casi.append(("negativa: un archivio gia' guardato non si rilegge", dagli_archivi(dati, letti, None) == 0 and "2026-11-01_Player.log" in letti))
     finally:
         LOGDIR = vecchio
+    # i momenti del combattimento e della magia col bersaglio: tu (1) attacchi con 10, lui blocca con 20; poi lanci 555 su 20
+    cr = lambda i, seat, **k: dict(instanceId=i, grpId=100 + i, type="GameObjectType_Card", zoneId=28, controllerSeatId=seat, ownerSeatId=seat,
+                                   cardTypes=["CardType_Creature"], **k)
+    fc = [gs(type="GameStateType_Full", zones=[dict(zoneId=28, type="ZoneType_Battlefield", objectInstanceIds=[10, 20]), dict(zoneId=27, type="ZoneType_Stack")],
+             turnInfo=dict(turnNumber=5, activePlayer=1, step="Step_DeclareAttack"),
+             gameObjects=[cr(10, 1, attackState="AttackState_Attacking", attackInfo=dict(targetId=2)), cr(20, 2)]),
+          gs(type="GameStateType_Diff", turnInfo=dict(step="Step_DeclareBlock"), gameObjects=[cr(20, 2, blockState="BlockState_Blocking", blockInfo=dict(attackerIds=[10]))]),
+          gs(type="GameStateType_Diff", turnInfo=dict(step="Step_CombatDamage")),
+          gs(type="GameStateType_Diff", turnInfo=dict(step="Step_Main2"), gameObjects=[dict(instanceId=30, grpId=555, type="GameObjectType_Card", zoneId=27,
+                                                                                            controllerSeatId=1, ownerSeatId=1)],
+             persistentAnnotations=[dict(id=9, type=["AnnotationType_TargetSpec"], affectorId=30, affectedIds=[20])]),
+          gs(type="GameStateType_Diff", turnInfo=dict(step="Step_End"))]
+    dm = leggi(fc)["momenti"]
+    casi.append(("i momenti: il combattimento coi blocchi, la magia col bersaglio, la fine del turno, in ordine",
+                 [m_[0] for m_ in dm] == ["comb", "spell", "fine"] and dm[0][4] == dict(att=[[10, 2]], blocchi=[[20, [10]]])
+                 and dm[1][4] == dict(g=555, chi=1, ab=False, bers=[20])))
+    casi.append(("negativa: senza attaccanti niente momento di combattimento", not [m_ for m_ in leggi(fz)["momenti"] if m_[0] == "comb"]))
     for n, ok in casi:
         print(("ok    " if ok else "ROSSO ") + n)
     print(f"{sum(1 for _n, ok in casi if ok)}/{len(casi)}")

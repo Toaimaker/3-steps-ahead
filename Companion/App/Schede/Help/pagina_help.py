@@ -84,7 +84,9 @@ SEZIONI = (
       ("Save as my filter", "keep a set of filters: it goes to the My filters folder, one under the other with its numbers; click to apply it, ✕ to "
                             "remove it; your filters are also a B of Compare"),
       ("Clear all filters", "the button under it: back to all your games, the chart and the folder stay as they are"),
-      ("The board", "hover a card to see it big; the heart is the life, the two cards the cards in hand")]),
+      ("The board", "hover a card to see it big; the heart is the life, the two cards the cards in hand; the combat moments have arrows from each "
+                    "blocker to its attacker (yellow) and from each unblocked attacker to the player (red); the spells and abilities with targets show the card "
+                    "on the stack with an arrow to each target (purple)")]),
     ("risorse", "Resources", "Gold, gems, packs, cards and wildcards: what you earn and spend, the Farmer that plans how to spend them, the roadmap and the ROI.",
      [("Period · Range · Resource", "what the chart and the income show"), ("Farmer", "goal sliders; Create makes the roadmap, Dismiss ends it"),
       ("Gold value", "My win rate or Pack price"), ("Spend gold on packs", "off: gold never buys packs"), ("Roadmap check", "above or below the plan, day by day")]),

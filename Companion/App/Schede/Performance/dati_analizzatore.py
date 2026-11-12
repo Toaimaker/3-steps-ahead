@@ -207,7 +207,8 @@ def nome_grp(g):
 
 def foto_partita(x):
     """Le foto di una partita dal tuo posto (mano_aperto): dict(mano0, turni=[(turno, tuo turno?, foto)], ultima) con le foto girate cosi' che [0] sia il tuo
-    lato; None se la partita non ha il log. Una foto: dict(mio=[(nome, tappata, pedina, forza, costituzione)], suo=[...], mano=[nomi], n_suo=carte nella sua
+    lato; None se la partita non ha il log. turni=[(turno, tuo turno?, foto, «fine»|«comb»|«spell», relazioni)]. Una foto: dict(mio=[(nome, tappata, pedina,
+    forza, costituzione, id)], suo=[...], mano=[nomi], n_suo=carte nella sua
     mano, vite=(tu, lui), cim=(tuo cimitero, suo), esi=(tuo esilio, suo))."""
     d = _MANA.get(x.get("partita"))
     seat = x.get("seat")
@@ -218,12 +219,26 @@ def foto_partita(x):
     def gira(f):
         if not f:
             return None
-        carte = lambda lst: [(nome_grp(c[0]) or ("Token" if c[2] else f"#{c[0]}"), bool(c[1]), bool(c[2]), *(list(c[3:5]) + [None, None])[:2]) for c in lst]
+        carte = lambda lst: [(nome_grp(c[0]) or ("Token" if c[2] else f"#{c[0]}"), bool(c[1]), bool(c[2]), *(list(c[3:6]) + [None, None, None])[:3]) for c in lst]
         nomi = lambda lst: [nome_grp(g) or f"#{g}" for g in lst]
         vuoto = [[], []]
         return dict(mio=carte(f["c"][a]), suo=carte(f["c"][b]), mano=nomi(f["m"][a]), n_suo=f["n"][b], vite=(f["v"][a], f["v"][b]),
                     cim=(nomi((f.get("g") or vuoto)[a]), nomi((f.get("g") or vuoto)[b])), esi=(nomi((f.get("e") or vuoto)[a]), nomi((f.get("e") or vuoto)[b])))
-    turni = [(t, att == seat, gira(f)) for t, att, f in d.get("foto") or []]
+    lato = lambda b_: ("vita_mio" if b_ == seat else "vita_suo") if b_ in (1, 2) else b_      # un bersaglio giocatore e' il suo posto (1 o 2)
+    if d.get("momenti") is not None:        # i momenti in ordine: la fine dei turni, i combattimenti, le magie coi bersagli (VERSIONE 4)
+        turni = []
+        for kind, t, att, f, info in d["momenti"]:
+            rel = None
+            if kind == "spell":
+                nome = nome_grp(info["g"])
+                if not nome:
+                    continue
+                rel = dict(tipo="spell", nome=nome, mio=info.get("chi") == seat, ab=bool(info.get("ab")), bers=[lato(b_) for b_ in info.get("bers") or []])
+            elif kind == "comb":
+                rel = dict(tipo="comb", att=[(i, lato(tg)) for i, tg in info.get("att") or []], blocchi=[(i, list(a_)) for i, a_ in info.get("blocchi") or []])
+            turni.append((t, att == seat, gira(f), kind, rel))
+    else:
+        turni = [(t, att == seat, gira(f), "fine", None) for t, att, f in d.get("foto") or []]
     ult = d.get("ultima")
     return dict(mano0=gira(d.get("mano0")), turni=turni, ultima=(ult[0], ult[1] == seat, gira(ult[2])) if ult else None)
 

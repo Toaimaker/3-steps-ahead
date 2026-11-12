@@ -1011,11 +1011,17 @@ class PaginaPerformance:
         -> [(nome, foto, turno di Arena)]."""
         passi = []
         if fo["mano0"]:
-            passi.append(("Opening hand", fo["mano0"], 0))
-        for t, mio_, f in fo["turni"]:      # Arena conta i turni dei due giocatori insieme: qui il turno di ognuno, come in partita
-            passi.append((f"{'You' if mio_ else 'Opponent'} T{(t + 1) // 2}", f, t))
+            passi.append(("Opening hand", fo["mano0"], 0, None))
+        corto = lambda t_, n: t_ if len(t_) <= n else t_[:n - 1] + "…"
+        for t, mio_, f, kind, rel in fo["turni"]:      # Arena conta i turni dei due giocatori insieme: qui il turno di ognuno, come in partita
+            base = f"{'You' if mio_ else 'Opponent'} T{(t + 1) // 2}"
+            if kind == "comb":
+                base += " · combat"
+            elif kind == "spell":
+                base += " · " + corto(rel["nome"], 16)
+            passi.append((base, f, t, rel))
         if fo["ultima"] and fo["ultima"][2] and (not fo["turni"] or fo["ultima"][2] != fo["turni"][-1][2]):
-            passi.append(("End", fo["ultima"][2], fo["ultima"][0]))
+            passi.append(("End", fo["ultima"][2], fo["ultima"][0], None))
         return passi
 
     @staticmethod
@@ -1027,7 +1033,8 @@ class PaginaPerformance:
         """Il grafico della partita: per ogni momento le vite, la forza in campo dei due e il vantaggio (vite di differenza piu' due volte la forza di
         differenza: grado C, un modo semplice di dire chi sta davanti). -> [dict(vite, forza, vantaggio)]."""
         out = []
-        for _n, f, _t in passi:
+        for p_ in passi:
+            f = p_[1]
             v = f.get("vite") or (None, None)
             fm, fs = self.forza(f["mio"]), self.forza(f["suo"])
             vm, vs = (v[0] if v[0] is not None else 20), (v[1] if v[1] is not None else 20)
@@ -1226,7 +1233,8 @@ class PaginaPerformance:
         d.linea([(0, ALTO_GRAF), (W, ALTO_GRAF)], "#26262c", 1)
         d.linea([(t0, cy), (t1, cy)], "#3a3a42", 4)
         d.linea([(t0, cy), (pos(b["i"]), cy)], "#0f86cc", 4)
-        for i, (nome, _f, _t) in enumerate(b["passi"]):
+        for i, p_ in enumerate(b["passi"]):
+            nome = p_[0]
             mio_ = nome.startswith("You") or nome == "Opening hand"
             d.cerchio(pos(i), cy, 3.2, riempi=("#24baff" if mio_ else "#8a8a92") if i > b["i"] else "#ffffff")
             if i == sv:
@@ -1317,7 +1325,7 @@ class PaginaPerformance:
         if not sch:
             return None
         import mazzi_salvati as MS
-        nome, _f, t = b["passi"][i]
+        nome, _f, t = b["passi"][i][:3]
         if nome == "Opening hand":
             x_ = b["x"]
             out = [(True, f"You are on the {x_['partenza'].lower()}" if x_.get("partenza") else "Who starts is not in the logs")]
@@ -1405,7 +1413,8 @@ class PaginaPerformance:
         cp.delete("all")
         self._box_passi = []
         x = 0
-        for i, (nome, _f, _t) in enumerate(b["passi"]):
+        for i, p_ in enumerate(b["passi"]):
+            nome = p_[0]
             w = max(64, len(nome) * 7 + 20)
             on = i == b["i"]
             mio_ = nome.startswith("You") or nome == "Opening hand"
@@ -1426,8 +1435,9 @@ class PaginaPerformance:
         self.via_hover()
         W, H = max(c.winfo_width(), 900), max(c.winfo_height(), 560)
         Wt = W - LARGA_RACCONTO - 12          # la tavola; a destra il racconto
-        nome, f, _t = b["passi"][b["i"]]
+        nome, f, _t, rel = b["passi"][b["i"]]
         prima = b["passi"][b["i"] - 1][1] if b["i"] > 0 else None
+        self._pos_id, self._pos_vita = {}, {}       # dove stanno le carte (per id di Arena) e i cuori delle vite: le frecce partono e arrivano li'
         LARGA_PILE = 150
 
         def contate(lst):
@@ -1471,11 +1481,14 @@ class PaginaPerformance:
         def info(xd, y, voci):
             """A destra della testa di una zona: [(icona, testo)] da destra a sinistra, l'icona grigia accanto al numero (12 nov 2026, Autore: «accanto a
             life e cards in hand metti i loghi del cuore e due carte in mano grigetti»)."""
-            for ic, t_ in voci:
+            for voce in voci:
+                ic, t_ = voce[0], voce[1]
                 i_ = c.create_text(xd, y, text=t_, anchor="e", fill=C["titolo"], font=F(10, True))
                 bb = c.bbox(i_)
                 xd = (bb[0] if bb else xd - 30) - 6
                 c.create_image(xd, y, image=self.icona_board(ic), anchor="e")
+                if len(voce) > 2:
+                    self._pos_vita[voce[2]] = (xd - 20, y - 10, (bb[2] if bb else xd + 30), y + 10)
                 xd -= 30
 
         def zona(tit, carte, y, alto, colore, destra="", vecchie=None, largo=Wt):
@@ -1485,10 +1498,12 @@ class PaginaPerformance:
             elif destra:
                 c.create_text(largo - 16, y + 12, text=destra, anchor="e", fill=C["titolo"], font=F(9, True))
             # le stesse carte insieme, con quante; le terre in fondo; nuove = piu' copie di prima
-            gruppi = {}
+            gruppi, ids = {}, {}
             for c_ in carte:
                 k = (c_[0], c_[1], c_[2], c_[3] if len(c_) > 3 else None, c_[4] if len(c_) > 4 else None)
                 gruppi[k] = gruppi.get(k, 0) + 1
+                if len(c_) > 5 and c_[5] is not None:
+                    ids.setdefault(k, []).append(c_[5])
             prima_n = contate(vecchie) if vecchie is not None else None
             ora_n = contate([c_[0] for c_ in carte])
             ordine = sorted(gruppi, key=lambda g: (MS.e_terra(g[0]), g[2], g[0]))
@@ -1505,6 +1520,8 @@ class PaginaPerformance:
                     break
                 img = self.immagine_token(w_carta, tap) if ped else self.immagine_carta(n, w_carta, tap)
                 cy = yy + (h_carta - hh)        # le tappate appoggiate in basso
+                for id_ in ids.get(g, []):
+                    self._pos_id[id_] = (x, cy, x + ww, cy + hh)
                 if img is not None:
                     c.create_image(x, cy, image=img, anchor="nw")
                     if not ped:
@@ -1534,12 +1551,12 @@ class PaginaPerformance:
         largo_campo = Wt - 2 * LARGA_PILE - 20
         c.create_rectangle(0, 0, Wt, terzo, fill="#18161a", outline="")
         vv = lambda v: str(v) if v is not None else "-"
-        zona("OPPONENT'S BATTLEFIELD", f["suo"], 4, terzo - 8, C["arancio"], [("carte", str(f["n_suo"])), ("cuore", vv(vite[1]))],
+        zona("OPPONENT'S BATTLEFIELD", f["suo"], 4, terzo - 8, C["arancio"], [("carte", str(f["n_suo"])), ("cuore", vv(vite[1]), "vita_suo")],
              [c_[0] for c_ in prima["suo"]] if prima else None, largo_campo)
         pila(largo_campo + 4, 8, LARGA_PILE - 4, terzo - 16, "GRAVEYARD", cim[1], C["arancio"], "cim_suo")
         pila(largo_campo + LARGA_PILE + 8, 8, LARGA_PILE - 4, terzo - 16, "EXILE", esi[1], C["arancio"], "esi_suo")
         c.create_line(0, terzo, Wt, terzo, fill=C["filo"])
-        zona("YOUR BATTLEFIELD", f["mio"], terzo + 4, terzo - 8, C["azzurro"], [("carte", str(len(f["mano"]))), ("cuore", vv(vite[0]))],
+        zona("YOUR BATTLEFIELD", f["mio"], terzo + 4, terzo - 8, C["azzurro"], [("carte", str(len(f["mano"]))), ("cuore", vv(vite[0]), "vita_mio")],
              [c_[0] for c_ in prima["mio"]] if prima else None, largo_campo)
         pila(largo_campo + 4, terzo + 8, LARGA_PILE - 4, terzo - 16, "GRAVEYARD", cim[0], C["azzurro"], "cim_mio")
         pila(largo_campo + LARGA_PILE + 8, terzo + 8, LARGA_PILE - 4, terzo - 16, "EXILE", esi[0], C["azzurro"], "esi_mio")
@@ -1551,9 +1568,31 @@ class PaginaPerformance:
         c.create_rectangle(xr, 0, W, H, fill="#18181e", outline="")
         c.create_text(xr + 14, 16, text="WHAT HAPPENED", anchor="w", fill=C["muto"], font=F(7, True))
         c.create_text(xr + 14, 34, text=nome + ("   ★ turning point" if b["i"] == b.get("svolta") else ""), anchor="w",
-                      fill="#ffd23f" if b["i"] == b.get("svolta") else C["titolo"], font=F(10, True))
-        righe_r = self.racconto(b["i"])
+                      fill="#ffd23f" if b["i"] == b.get("svolta") else C["titolo"], font=F(10, True), width=LARGA_RACCONTO - 28)
         y = 58
+        pila_box = None
+        if rel and rel["tipo"] == "spell":      # la magia (o l'abilita') in pila, da cui partono le frecce verso i bersagli
+            chi = "You" if rel["mio"] else "Opponent"
+            c.create_text(xr + 14, y, text=f"ON THE STACK · {chi.upper()}" + (" · ABILITY OF" if rel["ab"] else ""), anchor="w",
+                          fill="#b58cff", font=F(7, True))
+            w_p = 130
+            img = self.immagine_carta(rel["nome"], w_p, False)
+            hp = round(w_p * 279 / 200)
+            if img is not None:
+                c.create_image(xr + 14, y + 12, image=img, anchor="nw")
+                self._box_carte.append((xr + 14, y + 12, xr + 14 + w_p, y + 12 + hp, rel["nome"]))
+            else:
+                c.create_rectangle(xr + 14, y + 12, xr + 14 + w_p, y + 12 + hp, fill="#26262c", outline="#b58cff")
+                c.create_text(xr + 14 + w_p / 2, y + 12 + hp / 2, text=rel["nome"], width=w_p - 10, fill=C["titolo"], font=F(8, True), justify="center")
+            pila_box = (xr + 14, y + 12, xr + 14 + w_p, y + 12 + hp)
+            y += hp + 28
+        elif rel and rel["tipo"] == "comb":
+            nb = len(rel["blocchi"])
+            c.create_text(xr + 14, y, text=f"COMBAT · {len(rel['att'])} attacking · {nb} block{'s' if nb != 1 else ''}", anchor="w", fill="#ff6b6b",
+                          font=F(7, True))
+            y += 22
+        self.frecce_board(c, rel, pila_box, W, H)
+        righe_r = self.racconto(b["i"])
         if righe_r is None:
             c.create_text(xr + 14, y, text="No turn record for this game.", anchor="w", fill=C["grigio"], font=F(8))
         elif not righe_r:
@@ -1562,11 +1601,66 @@ class PaginaPerformance:
             if y > H - 24:
                 c.create_text(xr + 14, y, text="…", anchor="w", fill=C["grigio"], font=F(9, True))
                 break
-            c.create_oval(xr + 14, y - 4, xr + 22, y + 4, fill="#24baff" if mio_ else "#f0ad4e", outline="")
-            i_ = c.create_text(xr + 30, y, text=testo, anchor="w", fill=C["testo"], font=F(8), width=LARGA_RACCONTO - 46)
+            c.create_oval(xr + 14, y + 4, xr + 22, y + 12, fill="#24baff" if mio_ else "#f0ad4e", outline="")
+            i_ = c.create_text(xr + 30, y, text=testo, anchor="nw", fill=C["testo"], font=F(8), width=LARGA_RACCONTO - 46)      # dall'alto: a capo non copre la riga dopo
             bb = c.bbox(i_)
-            y = (bb[3] if bb else y + 10) + 12
+            y = (bb[3] if bb else y + 16) + 6
         self.disegna_controlli()
+
+    def frecce_board(self, c, rel, pila_box, W, H):
+        """Le frecce di chi interagisce con chi (12 nov 2026, Autore: «una freccia che definisce quali carte interagiscono con quali altre, per vedere
+        come si e' bloccato in combattimento o contro cosa e' stato lanciato uno spot removal»): nel combattimento dal bloccante all'attaccante (gialle) e
+        dall'attaccante non bloccato al giocatore o al planeswalker che attacca (rosse); per una magia o un'abilita' dalla carta in pila ai bersagli (viola).
+        Curve nitide in un'immagine sola sopra la tavola; la punta sul bordo della carta."""
+        if not rel:
+            return
+        frecce = []
+        dove = lambda k: self._pos_id.get(k) or self._pos_vita.get(k)
+        if rel["tipo"] == "comb":
+            bloccati = {a_ for _b, aa in rel["blocchi"] for a_ in aa}
+            for b_, aa in rel["blocchi"]:
+                for a_ in aa:
+                    if dove(b_) and dove(a_):
+                        frecce.append((dove(b_), dove(a_), "#ffd23f"))
+            for a_, tg in rel["att"]:
+                if a_ not in bloccati and dove(a_) and dove(tg):
+                    frecce.append((dove(a_), dove(tg), "#ff5d5d"))
+        elif rel["tipo"] == "spell" and pila_box:
+            for tg in rel["bers"]:
+                if dove(tg):
+                    frecce.append((pila_box, dove(tg), "#b58cff"))
+        if not frecce:
+            return
+        d = DG.Disegno(W, H)
+
+        def bordo(r, verso):
+            """Il punto sul bordo del riquadro r nella direzione del punto verso."""
+            cx, cy = (r[0] + r[2]) / 2, (r[1] + r[3]) / 2
+            dx, dy = verso[0] - cx, verso[1] - cy
+            if dx == 0 and dy == 0:
+                return cx, cy
+            sx = (r[2] - r[0]) / 2 / abs(dx) if dx else float("inf")
+            sy = (r[3] - r[1]) / 2 / abs(dy) if dy else float("inf")
+            k = min(sx, sy)
+            return cx + dx * k, cy + dy * k
+        for a, b, col in frecce:
+            ca, cb = ((a[0] + a[2]) / 2, (a[1] + a[3]) / 2), ((b[0] + b[2]) / 2, (b[1] + b[3]) / 2)
+            p0, p2 = bordo(a, cb), bordo(b, ca)
+            dx, dy = p2[0] - p0[0], p2[1] - p0[1]
+            lung = max(1.0, math.hypot(dx, dy))
+            ctrl = ((p0[0] + p2[0]) / 2 - dy / lung * lung * 0.18, (p0[1] + p2[1]) / 2 + dx / lung * lung * 0.18)     # un po' curva, si leggono anche sovrapposte
+            pts = [((1 - u) ** 2 * p0[0] + 2 * (1 - u) * u * ctrl[0] + u * u * p2[0], (1 - u) ** 2 * p0[1] + 2 * (1 - u) * u * ctrl[1] + u * u * p2[1])
+                   for u in (i / 30 for i in range(31))]
+            d.linea(pts, (0, 0, 0, 150), 6)       # l'ombra, per staccarla dalle carte
+            d.linea(pts, col, 3)
+            ux, uy = pts[-1][0] - pts[-3][0], pts[-1][1] - pts[-3][1]
+            ul = max(1e-6, math.hypot(ux, uy))
+            ux, uy = ux / ul, uy / ul
+            tip = pts[-1]
+            d.poligono([tip, (tip[0] - 16 * ux + 8 * uy, tip[1] - 16 * uy - 8 * ux), (tip[0] - 16 * ux - 8 * uy, tip[1] - 16 * uy + 8 * ux)], riempi=col)
+            d.cerchio(p0[0], p0[1], 5, riempi=col)
+        self._img_frecce = d.foto(veloce=True)
+        c.create_image(0, 0, image=self._img_frecce, anchor="nw")
 
     def icona_board(self, k):
         """Le icone grigie della tavola: il cuore delle vite, due carte per la mano. Disegnate nitide, una volta."""
