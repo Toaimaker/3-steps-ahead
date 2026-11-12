@@ -108,7 +108,7 @@ class PaginaPerformance:
         self.filtri = {}
         self.metrica, self.asse, self.finestra, self.dividi, self.per, self.ordina = "wr", "games", "20", None, "suo", "n"
         self.basso, self.solo_meta, self.vista = "report", False, "chart"       # la vista del pannello: chart, spots, report, matchups o compare
-        self.con, self.staccate, self.vs_modo = "rest", {}, "all"        # B del confronto (rest, all, s<i>); le viste staccate: {vista: dict(win, o, l)}
+        self.con, self.staccate, self.vs_modo, self.ord_deck = "rest", {}, "all", "n"        # B del confronto (rest, all, s<i>); le viste staccate: {vista: dict(win, o, l)}
         self.righe, self.sporca, self.deciso, self.modo = None, True, False, "Standard"
         self._lavoro = None
         self.costruisci()
@@ -1177,8 +1177,23 @@ class PaginaPerformance:
         self.cv_deck.pack(padx=8, pady=(0, 12), fill="both", expand=True)
         self.cv_deck.bind("<Button-1>", self.clic_deck)
         self.cv_deck.bind("<MouseWheel>", lambda e: e.widget.yview_scroll(-2 if e.delta > 0 else 2, "units"))
+        # i tuoi mazzi in ordine di utilizzo, di win rate o di nome, dalla tendina (12 nov 2026, Autore: «in by deck la mia lista deck in ordine alfabetico o
+        # di win rate o di utilizzo da tendina / in box per ogni deck, a elenco con simboli di colore mana»)
+        self.t_ord_deck = Tendina(tk, self.cv_deck, "Sort your decks by", F, larga=270, bg=C["scheda"])
+        self.t_ord_deck.opzioni(["n", "wr", "nome"], self.ordina_deck, etichette={"n": "Most played", "wr": "Win rate", "nome": "Name (A-Z)"})
+        self.t_ord_deck.set(self.ord_deck)
         self.disegna_finestra_deck()
         return f
+
+    def ordina_deck(self, v):
+        self.ord_deck = v
+        self.disegna_finestra_deck()
+
+    def colori_deck(self, nome):
+        """I colori di un tuo mazzo: la variante piu' frequente fra le sue partite (dalle magie della lista)."""
+        import collections
+        cc = collections.Counter(x.get("miei_colori") for x in self.righe or [] if x.get("mio") == nome and x.get("miei_colori"))
+        return cc.most_common(1)[0][0] if cc else ""
 
     def disegna_finestra_deck(self):
         c = getattr(self, "cv_deck", None)
@@ -1196,18 +1211,36 @@ class PaginaPerformance:
         mazzi = [v for v, _n in DA.valori(base_m, "mio", massimo=80)]
         if mio and mio not in mazzi:
             mazzi.append(mio)
-        y = 4
-        c.create_text(4, y + 8, text="YOUR DECK", anchor="w", fill=C["muto"], font=F(7, True))
-        y += 22
-        for v in [None] + mazzi:
-            sub = base_m if v is None else [x for x in base_m if x.get("mio") == v]
-            k_ = DA.conti(sub)
+        conti_m = {v: DA.conti([x for x in base_m if x.get("mio") == v]) for v in mazzi}
+        ordine = getattr(self, "ord_deck", "n")
+        if ordine == "nome":
+            mazzi.sort(key=lambda v: v.strip().casefold())
+        elif ordine == "wr":
+            mazzi.sort(key=lambda v: (conti_m[v]["wr"] is None, -(conti_m[v]["wr"] or 0), -conti_m[v]["n"]))
+        else:
+            mazzi.sort(key=lambda v: -conti_m[v]["n"])
+        t_ = getattr(self, "t_ord_deck", None)
+        y = 2
+        if t_ is not None and t_.fr.winfo_exists():
+            c.create_window(0, y, window=t_.fr, anchor="nw")
+            y += 62
+        for v in [None] + mazzi:       # un riquadro per mazzo: il nome, sotto i simboli dei suoi colori, a destra partite e win rate
+            k_ = DA.conti(base_m) if v is None else conti_m[v]
             on = mio == v
-            c.create_rectangle(0, y, 270, y + 26, fill="#0f2a38" if on else "#202024", outline=C["accento"] if on else "#2c2c32")
-            c.create_text(10, y + 13, text=corto((v or "All decks").strip(), 24), anchor="w", fill=C["titolo"] if on else C["testo"], font=F(8, on))
-            c.create_text(262, y + 13, text=f"{k_['n']} g · {pc(k_['wr'])}", anchor="e", fill=C["accento"] if on else C["grigio"], font=F(7))
-            self._box_deck.append((0, y, 270, y + 26, "mio", v))
-            y += 30
+            c.create_rectangle(0, y, 270, y + 42, fill="#0f2a38" if on else "#202024", outline=C["accento"] if on else "#2c2c32")
+            c.create_text(10, y + 13, text=corto((v or "All decks").strip(), 26), anchor="w", fill=C["titolo"] if on else C["testo"], font=F(8, True))
+            if v is not None:
+                for j, ch in enumerate(self.colori_deck(v)):
+                    img = self.lista().simbolo(ch, 14)
+                    if img is not None:
+                        c.create_image(18 + j * 17, y + 30, image=img)
+            else:
+                c.create_text(10, y + 30, text="every deck", anchor="w", fill=C["muto"], font=F(7))
+            wr = k_["wr"]
+            c.create_text(262, y + 13, text=pc(wr), anchor="e", fill=C["muto"] if wr is None else (C["azzurro"] if wr >= 50 else C["rosso"]), font=F(9, True))
+            c.create_text(262, y + 30, text=f"{k_['n']} games", anchor="e", fill=C["accento"] if on else C["grigio"], font=F(7))
+            self._box_deck.append((0, y, 270, y + 42, "mio", v))
+            y += 46
         fine_sx = y
         # a destra: contro chi
         X = 296

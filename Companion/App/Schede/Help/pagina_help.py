@@ -67,7 +67,7 @@ SEZIONI = (
                                              "the break before the game"),
       ("Smart filters", "by phase of the game: format, event and your deck (By deck); play or draw, mulligans, lands in hand; their archetype and colors; "
                         "length and rank; date, time of day and game in the session"),
-      ("By deck", "pick one of your decks, against everyone or against one exact color variant of their deck (vs colors: flag the colors, mono-color to "
+      ("By deck", "pick one of your decks (one box each, with its colors; sorted by most played, win rate or name), against everyone or against one exact color variant of their deck (vs colors: flag the colors, mono-color to "
                   "five colors or colorless); the table is your deck against every variant you met, click a row to pick it"),
       ("Chart", "win rate, games, average turns or mulligan rate; by game or by date; cumulative or the last N games; split by a variable"),
       ("Spots", "where you win and where you lose the most, one or two variables at a time; strong when the 95% interval clears your average; click one to filter it"),
