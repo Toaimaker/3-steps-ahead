@@ -1,6 +1,6 @@
 {
- "version": "0.1.28",
+ "version": "0.1.29",
  "date": "2026-11-12",
- "notes": "Meta: switching from Charts back to Grid no longer leaves an empty block over the first row of decks.",
+ "notes": "The window always opens maximized, on the screen where you left it.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

@@ -1066,12 +1066,14 @@ def monitor(root=None):
 
 
 def posizione_iniziale(schermi, pos=None):
-    """-> (geometria, ingrandita). Dove l'hai lasciata se quello schermo c'e' ancora, se no sul secondo schermo; con uno schermo solo su quello."""
+    """-> (geometria, ingrandita). Lo schermo dove l'hai lasciata se c'e' ancora, se no il secondo schermo; con uno schermo solo quello. Ingrandita sempre
+    (Autore, 12 nov 2026: «l'app ridotta accavalla male le varie parti dell'interfaccia, facciamo che l'app parte sempre a tutto schermo»; fino a quel giorno
+    si riapriva ridotta se l'avevi chiusa ridotta). La geometria resta: e' la misura a cui torna se la riduci."""
     m = re.match(r"\d+x\d+\+(-?\d+)\+(-?\d+)$", (pos or {}).get("geo") or "")
     if m and any(a <= int(m.group(1)) < c and b <= int(m.group(2)) < d for a, b, c, d, _ in schermi):
-        return pos["geo"], bool(pos.get("ingrandita"))
+        return pos["geo"], True
     z = next((x for x in schermi if not x[4]), schermi[0] if schermi else (0, 0, 0, 0, True))
-    return f"900x960+{z[0] + 20}+{z[1] + 20}", False
+    return f"900x960+{z[0] + 20}+{z[1] + 20}", True
 
 
 if __name__ == "__main__":
