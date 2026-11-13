@@ -265,6 +265,8 @@ class HudArena:
                 f.geometry(f"{p[2] - p[0] + 2 * m}x{p[3] - p[1] + 2 * m}+{x0}+{y0}")
             else:
                 f.geometry("10x10+-3000+0")
+        self.root.update_idletasks()    # prima Tk mette le finestre al loro posto: un SetWindowPos con la geometria ancora in attesa gliela fa dimenticare
+        # (13 nov 2026: Tk prendeva per buona la posizione vecchia fuori schermo, e il pannello «a vista» restava a x -3000)
         if user32:
             user32.SetWindowPos(self.hwnd, -1, 0, 0, 0, 0, 0x13)        # HWND_TOPMOST, NOMOVE NOSIZE NOACTIVATE
             for _f, h in self.fondi.values():
@@ -536,6 +538,11 @@ def prova():
     casi.append(("il velo leggero sotto ogni lista, coi margini, e semitrasparente", fs == (area[0] + sx_[0] - m, sx_[1] - m, area[0] + sx_[2] + m, sx_[3] + m)
                  and fd == (area[0] + dx_[0] - m, dx_[1] - m, area[0] + dx_[2] + m, dx_[3] + m)
                  and abs(float(w.fondi["sinistra"][0].attributes("-alpha")) - FONDO_ALFA) < 0.01))
+    if user32:
+        r_ = wintypes.RECT(); user32.GetWindowRect(ctypes.c_void_p(w.hwnd), ctypes.byref(r_))
+        rf = wintypes.RECT(); user32.GetWindowRect(ctypes.c_void_p(w.fondi["sinistra"][1]), ctypes.byref(rf))
+        casi.append(("le finestre vere sono davvero dove le mette il disegno (negativa: dopo il SetWindowPos restavano al posto vecchio)",
+                     (r_.left, r_.top) == (area[0], area[1]) and (rf.left, rf.top) == fs[:2]))
     casi.append(("piu' strette e attaccate ai bordi: al massimo 250 pixel a 1080, a 4 pixel dal bordo", sx_[2] - sx_[0] <= LARG_MAX and dx_[2] - dx_[0] <= LARG_MAX
                  and sx_[0] <= 4 and 1920 - dx_[2] <= 4))
     sx = min(w.cv.coords(i)[0] for i in w.cv.find_withtag("riga") if w.cv.itemcget(i, "text") == "YOUR DECK")

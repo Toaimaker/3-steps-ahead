@@ -1,6 +1,6 @@
 {
- "version": "0.1.94",
+ "version": "0.1.95",
  "date": "2026-11-13",
- "notes": "Deck HUD on Arena: narrower lists hugging the edges, a light see-through backdrop, and it shows as soon as the log is read.",
+ "notes": "Deck HUD on Arena: fixed the lists staying off screen after the new backdrop.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }
