@@ -1,6 +1,6 @@
 {
- "version": "0.1.89",
+ "version": "0.1.90",
  "date": "2026-11-13",
- "notes": "Data sharing really sends now: shared games go in batches the server accepts, with the app's own certificates (the first send failed on some PCs)",
+ "notes": "Beta donations: \u20ac2.99 whenever you like, a one-off tip, not a subscription; it still unlocks nothing",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

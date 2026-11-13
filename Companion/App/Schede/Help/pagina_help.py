@@ -236,7 +236,7 @@ class PaginaHelp:
 
     def riquadro_donazioni(self):
         """SUPPORT: l'app e' gratis al 100%, solo donazioni (Autore, 11 nov 2026: «lanciamo l'app come 100% free e solo donazioni»); in beta la donazione
-        e' di €2,99 al mese (13 nov 2026: «fase di beta test perciò tutto gratuito con donazione per sostenere il progetto a 2,99»). Il pulsante apre la pagina
+        e' di €2,99 una tantum, quando l'utente vuole (13 nov 2026: «fase di beta test perciò tutto gratuito con donazione per sostenere il progetto a 2,99», poi «2.99 quando vogliono»: niente abbonamento). Il pulsante apre la pagina
         delle donazioni (url_donazioni); finche' non c'e', dice che apre presto."""
         tk, F = self.tk, self.F
         box = tk.Frame(self.fr, bg=C["filo"], padx=1, pady=1); box.pack(fill="x", padx=16, pady=(0, 10))
@@ -245,7 +245,7 @@ class PaginaHelp:
         riga = tk.Frame(d, bg=C["scheda"]); riga.pack(fill="x", padx=12, pady=(0, 10))
         url = url_donazioni()
         self.b_dona = None
-        self.l_dona = tk.Label(riga, text=f"{PRODOTTO} is in beta and 100% free, for everyone: nothing is locked. If it helps you, support the project with €2.99 a month."
+        self.l_dona = tk.Label(riga, text=f"{PRODOTTO} is in beta and 100% free, for everyone: nothing is locked. If it helps you, support the project with €2.99, whenever you like."
                                + ("" if url else " Donations open soon."), bg=C["scheda"], fg=C["testo"], font=F(9), anchor="w", justify="left", wraplength=700)
         self.l_dona.pack(side="left", fill="x", expand=True)
         if url:

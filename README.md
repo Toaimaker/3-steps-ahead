@@ -1,4 +1,4 @@
-# 3 Steps Ahead · free MTG Arena deck tracker and deck builder (open beta 0.1.89)
+# 3 Steps Ahead · free MTG Arena deck tracker and deck builder (open beta 0.1.90)
 
 A free desktop companion for MTG Arena on Windows (Mac: experimental, see below). It reads your own Arena log (Player.log) and shows your decks with their real record,
 on the play and on the draw, a card-by-card analysis of why they win and lose, a deck builder over your collection with a mana base calculator,
@@ -42,7 +42,7 @@ The Help tab checks for new versions and shows a download button.
 
 ## Support
 
-The app is in beta and 100% free, for everyone: no plans, nothing locked. If it helps you, you can support the project with €2.99 a month: the support page is coming soon.
+The app is in beta and 100% free, for everyone: no plans, nothing locked. If it helps you, you can support the project with €2.99, whenever you like: the support page is coming soon.
 
 ## Credits
 

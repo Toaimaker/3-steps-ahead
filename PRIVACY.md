@@ -32,10 +32,10 @@ Your account id is replaced by a one-way code (SHA-256 with a fixed app salt): t
 is **pseudonymous**, not anonymous. Before sending, games wait in a queue you can read: `Log_Arena\condivisione\coda.jsonl`.
 
 **Why**: to measure which cards, decks and choices win, and to improve the app's advice for everyone.
-**Legal basis**: your consent (GDPR art. 6(1)(a)); you can withdraw it at any time in Help, without affecting what was sent before.
+**Legal basis**: your consent (GDPR art. 6(1)(a)); you can withdraw it at any time in Settings, without affecting what was sent before.
 **Where and how long**: on Cloudflare (Cloudflare, Inc., acting as our processor), in a D1 database restricted to the EU jurisdiction, for as long as the project runs; you can ask us to delete your games at any time.
 **Your rights**: access, rectification, erasure, restriction, portability and objection (GDPR art. 15-21), by writing to the contact above
-and quoting the code shown in Help. You can also lodge a complaint with your data protection authority (in Italy: Garante per la protezione dei dati personali).
+and quoting the code shown in Settings. You can also lodge a complaint with your data protection authority (in Italy: Garante per la protezione dei dati personali).
 
 ## Children
 
