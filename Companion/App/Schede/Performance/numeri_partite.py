@@ -1,8 +1,8 @@
 """I numeri in cima a Performance, da scegliere (13 nov 2026, Autore: «in questa tab in alto a dx creiamo una rotellina di impostazioni con i 6 dati che
-vogliamo avere su questa tabella, includi tutti quelli che reputi importanti per i dati delle partite»).
+vogliamo avere su questa tabella, includi tutti quelli che reputi importanti per i dati delle partite», poi «permetti fino a tutti i valori sulla barra»).
 
 CATALOGO: (chiave, nome, cosa dice). valori(r, tutte) -> {chiave: (testo, tono, riga sotto)}: r le partite della situazione, tutte quelle del tipo (per lo scarto);
-tono «su» (sopra il 50% o meglio), «giu», «neutro», «vuoto». La scelta (sei al massimo, nell'ordine del catalogo) sta in Log_Arena/performance_numeri.json
+tono «su» (sopra il 50% o meglio), «giu», «neutro», «vuoto». La scelta (anche tutti, nell'ordine del catalogo) sta in Log_Arena/performance_numeri.json
 dell'account (dati_analizzatore.numeri_scelti).
 """
 import os, sys
@@ -14,7 +14,6 @@ if _casa not in sys.path:
 import percorsi  # noqa: E402,F401
 import dati_analizzatore as DA  # noqa: E402
 
-MASSIMO = 6
 PARTENZA = ("wr", "record", "turni", "mull", "play", "draw")
 CATALOGO = (("wr", "Win rate", "with its 95% interval"),
             ("record", "Record", "wins and losses, and the gap from all your games"),
@@ -33,6 +32,7 @@ CATALOGO = (("wr", "Win rate", "with its 95% interval"),
             ("dif", "Defense gain", "the same for your defense, when they attack"),
             ("finisher", "Decided wins", "wins with a decisive play of 2+ cards (Finishers)"))
 NOMI = {k: n for k, n, _d in CATALOGO}
+MASSIMO = len(CATALOGO)     # tutti (13 nov 2026, Autore: «permetti fino a tutti i valori sulla barra ma ben organizzati»; prima sei)
 
 
 def _wr(xs):

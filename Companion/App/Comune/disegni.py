@@ -203,6 +203,28 @@ def barre(lato, colore):
     return _icona(("barre", lato, colore), fa)
 
 
+def rotella(lato, colore, fondo):
+    """La rotella delle impostazioni (13 nov 2026, Autore: «ridisegna la rotellina che così è terribile»; prima era il carattere ⚙ del font): otto denti
+    squadrati e smussati attorno a un anello, il foro al centro nel colore del fondo."""
+    import math as _m
+
+    def fa():
+        d = Disegno(lato, lato)
+        c = lato / 2
+        r_est, r_int, denti = lato * 0.48, lato * 0.36, 8
+        pts = []
+        for i in range(denti):
+            a = 2 * _m.pi * i / denti
+            for da, r in ((-0.30, r_int), (-0.17, r_est), (0.17, r_est), (0.30, r_int)):
+                aa = a + da * 2 * _m.pi / denti
+                pts.append((c + r * _m.cos(aa), c + r * _m.sin(aa)))
+        d.poligono(pts, riempi=colore)
+        d.cerchio(c, c, lato * 0.34, riempi=colore)
+        d.cerchio(c, c, lato * 0.15, riempi=fondo)
+        return d
+    return _icona(("rotella", lato, colore, fondo), fa)
+
+
 def griglia(lato, colore):
     """L'icona della griglia: quattro riquadri (il pulsante View della Meta, 11 nov 2026)."""
     def fa():

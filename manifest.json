@@ -1,6 +1,6 @@
 {
- "version": "0.1.85",
+ "version": "0.1.86",
  "date": "2026-11-13",
- "notes": "Performance: a gear on the numbers on top to pick the six you want.",
+ "notes": "Performance: a drawn gear, and all sixteen numbers can stay on top, eight a row.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

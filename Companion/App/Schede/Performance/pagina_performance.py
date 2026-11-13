@@ -974,20 +974,28 @@ class PaginaPerformance:
         toni = {"su": C["azzurro"], "giu": C["rosso"], "neutro": C["testo"], "vuoto": C["muto"]}
         tess = [(NP.NOMI[k_].upper(), val[k_][0], toni[val[k_][1]], val[k_][2]) for k_ in DA.numeri_scelti() if k_ in val]
         # la rotellina, in alto a destra
-        i_r = c.create_text(W - 14, 14, text="⚙", anchor="e", fill=C["accento"], font=F(12, True))
+        i_r = c.create_image(W - 12, 14, image=DG.rotella(18, C["accento"], C["scheda"]), anchor="e")      # disegnata, nitida (disegni.rotella)
         bb_r = c.bbox(i_r)
         c._box_rotella = (bb_r[0] - 6, bb_r[1] - 4, bb_r[2] + 6, bb_r[3] + 4)
         if not tess:
             c.create_text(16, 60, text="No numbers picked: click ⚙ and tick the ones you want here.", anchor="w", fill=C["grigio"], font=F(9))
             return
-        cw = (W - 32) / len(tess)
-        for i, (a, v, col, s) in enumerate(tess):
-            x = 16 + i * cw
+        # tutti i numeri del catalogo si possono tenere (13 nov 2026, Autore: «permetti fino a tutti i valori sulla barra ma ben organizzati»): fino a 8 per
+        # riga; oltre, due righe pari (9 = 5 e 4 ... 16 = 8 e 8), e la barra si alza
+        per_riga = len(tess) if len(tess) <= 8 else -(-len(tess) // 2)
+        righe_n = -(-len(tess) // per_riga)
+        alto = 32 + righe_n * 76 + 2
+        if int(c.cget("height")) != alto:
+            c.configure(height=alto)
+        cw = (W - 32) / per_riga
+        for i, (a, v, col, s_) in enumerate(tess):
+            x = 16 + (i % per_riga) * cw
+            dy = (i // per_riga) * 76
             # piu' aria fra nome, numero e riga sotto (12 nov 2026, Autore: «i testi qui sono tutti incollati, gestisci meglio le spaziature»)
             c.create_line(x, 32 + dy, x, 96 + dy, fill=col, width=2)
             c.create_text(x + 12, 36 + dy, text=a, anchor="nw", fill=C["muto"], font=F(7, True))
             c.create_text(x + 12, 65 + dy, text=v, anchor="w", fill=col, font=F(17, True))
-            c.create_text(x + 12, 89 + dy, text=s, anchor="w", fill=C["grigio"], font=F(7))
+            c.create_text(x + 12, 89 + dy, text=s_, anchor="w", fill=C["grigio"], font=F(7), width=cw - 20)
 
     def clic_numeri_rotella(self, e):
         b = getattr(self.cv_num, "_box_rotella", None)
@@ -1024,8 +1032,8 @@ class PaginaPerformance:
         c.delete("all")
         c._box = []
         scelti = DA.numeri_scelti()
-        c.create_text(12, 16, text=f"THE NUMBERS ON TOP · {len(scelti)} of {NP.MASSIMO} · tick the ones you want to see", anchor="w", fill=C["azzurro"],
-                      font=F(8, True))
+        c.create_text(12, 16, text=f"THE NUMBERS ON TOP · {len(scelti)} of {len(NP.CATALOGO)} · tick the ones you want to see (8 a row, then two rows)",
+                      anchor="w", fill=C["azzurro"], font=F(8, True))
         y = 40
         for k, nome, cosa in NP.CATALOGO:
             on = k in scelti
