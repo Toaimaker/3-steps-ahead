@@ -333,18 +333,26 @@ def leggi(righe):
                 momenti=via(st["momenti"]), riassunti=riassunti)
 
 
+_INDICE = {}        # {file partita.json: matchId}: un pezzo di log non cambia, si legge una volta per processo (13 nov 2026: 450 file a ogni rilettura)
+
+
 def indice():
     """{matchId: cartella} dei pezzi di log."""
     out = {}
     for f in glob.glob(os.path.join(CARTELLA, "*", "partita.json")):
-        try:
-            with open(f, encoding="utf-8") as h:
-                mid = json.load(h).get("matchId")
-        except (OSError, ValueError):
-            continue
+        if f not in _INDICE:
+            try:
+                with open(f, encoding="utf-8") as h:
+                    _INDICE[f] = json.load(h).get("matchId")
+            except (OSError, ValueError):
+                continue
+        mid = _INDICE[f]
         if mid:
             out[mid] = os.path.dirname(f)
     return out
+
+
+_COPIA_MEM = {}     # la copia su disco gia' letta: {"chiave": (mtime, misura), "c": contenuto}
 
 
 MID = re.compile(rb'"matchId"\s*:\s*"([0-9a-f-]{36})"|Connecting to matchId ([0-9a-f-]{36})')
@@ -386,9 +394,15 @@ def dagli_archivi(dati, letti, ids):
 
 def tutti(ids=None, archivi=True):
     """{matchId: dato}: dalla copia, le nuove dai pezzi di log e (archivi) dai log archiviati, poi salvate. ids: solo queste partite."""
-    try:
-        with open(COPIA, encoding="utf-8") as h:
-            c = json.load(h)
+    try:        # la copia (13 MB) si rilegge solo se il file e' cambiato
+        st_ = os.stat(COPIA)
+        chiave = (st_.st_mtime, st_.st_size)
+        if _COPIA_MEM.get("chiave") == chiave:
+            c = _COPIA_MEM["c"]
+        else:
+            with open(COPIA, encoding="utf-8") as h:
+                c = json.load(h)
+            _COPIA_MEM.update(chiave=chiave, c=c)
         if c.get("versione") != VERSIONE:
             c = {}
     except (OSError, ValueError):
@@ -414,6 +428,8 @@ def tutti(ids=None, archivi=True):
             with open(COPIA + ".tmp", "w", encoding="utf-8") as h:
                 json.dump(dict(versione=VERSIONE, partite=dati, archivi=letti), h)
             os.replace(COPIA + ".tmp", COPIA)
+            st_ = os.stat(COPIA)
+            _COPIA_MEM.update(chiave=(st_.st_mtime, st_.st_size), c=dict(versione=VERSIONE, partite=dati, archivi=letti))
         except OSError:
             pass
     return dati

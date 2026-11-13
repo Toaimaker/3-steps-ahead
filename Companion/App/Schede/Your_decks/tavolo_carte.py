@@ -60,6 +60,7 @@ FILE = _ACC.lega(globals(), "FILE", "tavoli_mazzi.json")     # Log_Arena/tavoli_
 BASE_W = 146                    # la carta a zoom 1; le posizioni si salvano in questa scala
 SCALE = dict(S=0.8, M=1.0, L=1.25)      # le grandezze del primo giro: una disposizione salvata allora riprende il suo zoom
 ZOOM_MIN, ZOOM_MAX = 0.3, 2.0
+ZOOM_VISTA = 0.12                # A, l'apertura e il filtro possono scendere fin qui per far stare tutto un foglio grande (la rotella si ferma a ZOOM_MIN)
 FASCIA_DEF = 250                # l'altezza della fascia della sideboard all'apertura, in pixel
 SPARISCE = 0.16                 # sotto questa scala le carte della fascia non si disegnano piu'
 
@@ -492,6 +493,7 @@ class TavoloCarte:
         self._xy = None             # il punto della tela dell'ultimo clic o movimento: da li' si cerca la carta
         self._fine_drag = 0.0       # quando e' finito l'ultimo trascinamento (la carta grande non salta fuori subito dopo)
         self.cambiato = False
+        self._da_inquadrare = False      # l'inquadratura dell'apertura, finche' la tela non ha la sua misura
         self.voci = {}          # id -> dict(nome, zona, q): una carta per nome e zona
         self.pile = []          # dict(zona="main"|"side"|"cmd", x, y, carte=[id...], aperta=id|None) in coordinate di scala M
         self.zoom = 1.0             # lo zoom del foglio (il mazzo)
@@ -508,6 +510,7 @@ class TavoloCarte:
         self.banda = None       # il riquadro di selezione mentre lo tiri
         self.ridim = None       # l'angolo di una label mentre lo tiri
         self.filtro = set()     # i tipi a vista (12 nov 2026): vuoto = All; le carte fuori stanno da parte (_riposte), nel mazzo e nella disposizione
+        self._ordine_pile = []  # l'ordine delle pile prima del filtro: sfiltra lo rimette
         self._riposte = []      # [(pila, tolta, [(indice, vid)])]: le carte tenute da parte per il filtro, e se la pila e' uscita perche' non ne restava nessuna
         self.note = {}          # le note personali sulle carte (12 nov 2026): {nome della carta: dict(testo, aperta)}; quelle delle label stanno nella label
         self.etichette = []     # le label: dict(nome, x, y, w, h) in coordinate del mazzo (scala 1), riquadri col nome; le carte dentro ne fanno parte
@@ -540,12 +543,17 @@ class TavoloCarte:
             f.geometry(f"{L}x{H}+5000+20")
         elif geometria:     # nel builder: sopra il builder, alla sua misura (a sinistra resta la Collection)
             f.geometry(geometria)
+            try:
+                L, H = (int(v) for v in geometria.split("+")[0].split("x"))
+            except ValueError:
+                pass
         else:
             x = padre.winfo_rootx() + (padre.winfo_width() - L) // 2
             y = padre.winfo_rooty() + max(0, (padre.winfo_height() - H) // 2)
             f.geometry(f"{L}x{H}+{max(0, x)}+{max(0, y)}")
         f.minsize(900, 600)
-        f.after(50, self.pulsante_ingrandisci)       # una finestra transient su Windows non ha il pulsante per ingrandirla: lo rimette
+        self._L, self._H = max(900, L), max(600, H)        # la misura chiesta: serve finche' la tela non ha la sua (la finestra appena nata e' nascosta)
+        f.after(50, self.pulsante_ingrandisci)      # una finestra transient su Windows non ha il pulsante per ingrandirla: lo rimette
         f.bind("<Escape>", lambda e: self.esc())
         f.bind("<Key>", self.tasto, add="+")       # A e F
         f.protocol("WM_DELETE_WINDOW", self.chiudi)
@@ -568,7 +576,14 @@ class TavoloCarte:
                     self.voci[i] = dict(nome=n, zona=zona, q=q); i += 1
         self.compagno = set(compagno or {})
         f.update_idletasks()        # la tela alla sua misura: le pile per costo vanno a capo sulla larghezza vera
-        if self.riprendi():
+        ripreso = self.riprendi()
+        # in sola lettura un mazzo senza sideboard ne' comandante non ha la fascia: era una striscia vuota di 250 pixel in cima (13 nov 2026, Autore: «testa le
+        # board delle schede dei deck perche' all'apertura sono disposte male»); la barra resta, e tirata giu' la riapre
+        if self.sola and not any(v["zona"] != "main" for v in self.voci.values()):
+            self.hs = 0
+        if ripreso and not self.fascia_sta():        # la sideboard salvata oltre il bordo della finestra: la fascia si rifa' (le pile del mazzo restano)
+            self.pile = [pl for pl in self.pile if pl["zona"] == "main"] + self.pile_fascia()
+        if ripreso:
             self.disegna()      # la disposizione di prima: si disegna subito, senza aspettare che la finestra cambi misura
         else:
             self.disponi("cost", salva=False)
@@ -591,12 +606,22 @@ class TavoloCarte:
             self.cv.bind("<Key>", self.tasto)
             self.cv.bind("<Escape>", lambda e: self.esc())
         self.cv.bind("<Shift-MouseWheel>", lambda e: self.cv.xview_scroll(-1 if e.delta > 0 else 1, "units"))
-        self.cv.bind("<Configure>", lambda e: self.disegna())
+        self.cv.bind("<Configure>", self.al_configure)
         self.carica_mancanti()
         if self.modifica:       # il punto di partenza dello storico: Undo non va oltre, ed e' lo stato salvato
             self.storia, self.passo, self.salvato_a = [self.foto_stato()], 0, 0
             self.aggiorna_salva()
+        # all'apertura tutto il mazzo in vista (13 nov 2026): la vista partiva sempre dall'angolo in alto a sinistra del foglio con lo zoom salvato, e le pile
+        # spostate a destra, a sinistra o sopra (Arrange network, i gruppi automatici, le carte isolate) restavano fuori, o sotto la fascia e l'HUD. Se la tela
+        # non ha ancora la sua misura, aspetta il primo <Configure>
+        self._da_inquadrare = True
+        self.inquadra_apertura()
         f.lift(); f.focus_set()
+
+    def al_configure(self, e=None):
+        self.disegna()
+        if self._da_inquadrare:
+            self.inquadra_apertura()
 
     # ------------------------------------------------ i filtri per tipo (12 nov 2026)
     # Autore: «aggiungiamo la possibilita' con pulsanti sulla cornice alta della board e relativi loghi di mtga di visualizzare solo le creature solo gli istantanei
@@ -659,6 +684,7 @@ class TavoloCarte:
             self.filtro.add(chiave)
         self.disegna_filtri()
         self.disegna()
+        self.inquadra_visibili()        # le carte a vista inquadrate se qualcuna e' fuori (13 nov 2026: «il focus si sposta a caso»)
         nascoste = sum(len(x[2]) for x in self._riposte)
         self.dici("Showing all the cards" if not self.filtro else f"Showing {', '.join(sorted(self.filtro))} · {nascoste} cards hidden")
 
@@ -773,22 +799,32 @@ class TavoloCarte:
 
     def sfiltra(self):
         """Rimette nelle pile le carte tenute da parte (e le pile uscite perche' vuote)."""
-        for pl, tolta, carte in reversed(self._riposte):
+        for pl, _tolta, carte in reversed(self._riposte):
             # la pila torna sul foglio se non c'e' piu': uscita perche' il filtro l'aveva svuotata, o perche' ne hai trascinato via tutte le carte a vista
-            # (12 nov 2026, lo stress: le sue carte nascoste restavano senza pila)
-            if (tolta or any(vid in self.voci for _i, vid in carte)) and not any(pl is q for q in self.pile):
+            # (12 nov 2026, lo stress: le sue carte nascoste restavano senza pila). Solo se le resta una carta: una carta nascosta tolta dal builder col filtro
+            # acceso (allinea) lasciava la pila vuota, e il disegno cadeva (13 nov 2026, lo stress)
+            vive = [(i, vid) for i, vid in carte if vid in self.voci]
+            if vive and not any(pl is q for q in self.pile):
                 self.pile.append(pl)
-            for i, vid in carte:
-                if vid in self.voci and vid not in pl["carte"]:
+            for i, vid in vive:
+                if vid not in pl["carte"]:
                     pl["carte"].insert(min(i, len(pl["carte"])), vid)
             if pl.get("aperta") not in pl["carte"]:
                 pl["aperta"] = None
         self._riposte = []
+        self.pile = [pl for pl in self.pile if pl["carte"]]
+        # le pile tornano nell'ordine di prima del filtro (l'ordine e' chi sta sopra a chi): prima quelle uscite si rimettevano in fondo, e col filtro acceso ogni
+        # disegno cambiava l'ordine, quindi lo storico segnava un gesto a ogni zoom («Save ●» senza modifiche, Undo che non faceva niente: 13 nov 2026, lo stress)
+        ordine = {id(p_): i for i, p_ in enumerate(self._ordine_pile)}
+        if ordine:
+            self.pile.sort(key=lambda p_: ordine.get(id(p_), len(ordine)))
+        self._ordine_pile = []
 
     def filtra(self):
         """Tiene da parte le carte fuori dal filtro; una pila che resta vuota esce dal foglio finche' il filtro c'e'."""
         if not self.filtro:
             return
+        self._ordine_pile = list(self.pile)
         for pl in list(self.pile):
             via = [(i, vid) for i, vid in enumerate(pl["carte"]) if not self.visibile(vid)]
             if not via:
@@ -806,7 +842,11 @@ class TavoloCarte:
         for pl, _tolta, carte in self._riposte:
             extra.setdefault(id(pl), (pl, []))[1].extend(carte)
         out = []
-        for pl in self.pile + [x[0] for x in extra.values() if not any(x[0] is q for q in self.pile)]:
+        seq = self.pile + [x[0] for x in extra.values() if not any(x[0] is q for q in self.pile)]
+        ordine = {id(p_): i for i, p_ in enumerate(self._ordine_pile)}      # l'ordine di prima del filtro: le foto dello storico non cambiano col filtro
+        if ordine:
+            seq.sort(key=lambda p_: ordine.get(id(p_), len(ordine)))
+        for pl in seq:
             carte = list(pl["carte"])
             for i, vid in sorted(extra.get(id(pl), (pl, []))[1]):
                 if vid in self.voci and vid not in carte:
@@ -910,26 +950,68 @@ class TavoloCarte:
                 ("", [i for i in ordinate if self.voci[i]["zona"] == "main" and terra(i)]),
                 ("SIDEBOARD", [i for i in ordinate if self.voci[i]["zona"] == "side"])]
 
-    def gruppi_label(self):
-        """[(k, label, [vid] o [(nome, copie)] per una copia)]: i gruppi per l'outliner, nell'ordine delle label; con tutte le carte, anche quelle che il filtro
-        nasconde."""
+    def voci_outliner(self):
+        """Le righe dell'outliner, un elenco solo (13 nov 2026, Autore: «l'outliner non deve ripetere le carte gruppate ma deve mantenere lo stesso elenco e
+        aggiungere il gruppo tra le carte incluse in ogni gruppo»; prima i gruppi stavano in fondo, sotto GROUPS, e ripetevano le loro carte). Comandante, magie,
+        terre e sideboard come sempre; un gruppo entra nell'elenco al posto della sua prima carta, come intestazione, con sotto tutte le sue carte (anche le terre),
+        e le carte fuori dai gruppi restano dove sono. Una carta in due label (una dentro l'altra) sta nella piu' piccola. Le copie di un gruppo (Duplicate: carte
+        scritte, non nel mazzo) sono una riga sola sotto il gruppo da cui vengono; i gruppi vuoti in fondo al mazzo. Con tutte le carte, anche quelle che il filtro
+        nasconde. -> [("titolo", testo) | ("spazio",) | ("gruppo", k, label, copie) | ("carta", vid, colore del gruppo o None)]"""
         nascoste = bool(self._riposte)
         if nascoste:
             self.sfiltra()
         try:
-            return self._gruppi_label()
+            casa = {}
+            for k, lb in enumerate(self.etichette):
+                if lb.get("copia"):
+                    continue
+                pile, _a = self.membri(k)
+                for pl in pile:
+                    for c in pl["carte"]:
+                        j = casa.get(c)
+                        if j is None or lb["w"] * lb["h"] < self.etichette[j]["w"] * self.etichette[j]["h"]:
+                            casa[c] = k
         finally:
             if nascoste:
                 self.filtra()
+        casa = {c: k for c, k in casa.items() if c in self.voci and self.voci[c]["zona"] == "main"}
+        out, fatti = [], set()
 
-    def _gruppi_label(self):
-        out = []
-        for k, lb in enumerate(self.etichette):
-            if lb.get("copia"):
-                out.append((k, lb, sorted((lb.get("carte") or {}).items())))
-            else:
-                pile, _a = self.membri(k)
-                out.append((k, lb, sorted((c for pl in pile for c in pl["carte"]), key=self.ordine)))
+        def copie_di(lb):
+            return [(j, l2) for j, l2 in enumerate(self.etichette) if l2.get("copia") and lb.get("id") and l2.get("origine") == lb.get("id")]
+
+        def blocco(k, righe):
+            lb = self.etichette[k]
+            fatti.add(k)
+            carte = sorted((c for c, j in casa.items() if j == k), key=self.ordine)
+            col = lb.get("colore") or GRIGIO_L
+            righe.append(("gruppo", k, lb, sum(self.voci[c]["q"] for c in carte)))
+            righe += [("carta", c, col) for c in carte]
+            for j, l2 in copie_di(lb):
+                fatti.add(j)
+                righe.append(("gruppo", j, l2, sum((l2.get("carte") or {}).values())))
+
+        sezioni = self.gruppi_outliner()
+        for i, (titolo, vids) in enumerate(sezioni):
+            righe = []
+            for vid in vids:
+                k = casa.get(vid)
+                if k is None:
+                    righe.append(("carta", vid, None))
+                elif k not in fatti:
+                    blocco(k, righe)
+            if i == 2:      # in fondo al mazzo i gruppi vuoti e le copie senza il loro gruppo
+                for k, lb in enumerate(self.etichette):
+                    if k not in fatti and not (lb.get("copia") and any(l0.get("id") == lb.get("origine") for l0 in self.etichette if not l0.get("copia"))):
+                        fatti.add(k)
+                        righe.append(("gruppo", k, lb, sum((lb.get("carte") or {}).values()) if lb.get("copia") else 0))
+            if not righe:
+                continue
+            if out:
+                out.append(("spazio",))
+            if titolo:
+                out.append(("titolo", titolo))
+            out += righe
         return out
 
     def disegna_outliner(self):
@@ -938,56 +1020,48 @@ class TavoloCarte:
             return
         import tkinter.font as tkf
         F = self.F
-        fnt = tkf.Font(font=F(8))
+        fnt, fnt_b = tkf.Font(font=F(8)), tkf.Font(font=F(8, True))
         L = max(cv.winfo_width(), LARGO_OUT)
         cv.delete("all")
         self._out_righe, y = [], 2
-        primo = True
-        for titolo, vids in self.gruppi_outliner():
-            if not vids:
-                continue
-            if not primo:
-                y += 9          # un piccolo spazio fra i gruppi
-            primo = False
-            if titolo:
-                cv.create_text(10, y + 6, text=titolo, fill=C["muto"], font=F(6, True), anchor="w")
+
+        def corto(nome, spazio, f_):
+            if f_.measure(nome) > spazio:
+                while nome and f_.measure(nome + "…") > spazio:
+                    nome = nome[:-1]
+                nome += "…"
+            return nome
+        for voce in self.voci_outliner():
+            if voce[0] == "spazio":
+                y += 9          # un piccolo spazio fra magie, terre e sideboard
+            elif voce[0] == "titolo":
+                cv.create_text(10, y + 6, text=voce[1], fill=C["muto"], font=F(6, True), anchor="w")
                 y += 14
-            for vid in vids:
+            elif voce[0] == "gruppo":       # l'intestazione del gruppo, nel suo colore, col totale delle copie; la copia di un gruppo in grigio
+                _t, k, lb, n_ = voce
+                col = lb.get("colore") or GRIGIO_L
+                copia = bool(lb.get("copia"))
+                if k in self.sel_label:
+                    cv.create_rectangle(0, y, L, y + RIGA_OUT, fill="#1d3a52", width=0)
+                cv.create_rectangle(4, y + 4, 8, y + RIGA_OUT - 4, fill=col, width=0)
+                testo = (lb["nome"] + ("  · copy" if copia else "")).upper()
+                cv.create_text(14, y + RIGA_OUT / 2, text=corto(testo, L - 52, fnt_b), fill=C["grigio"] if copia else "#ffffff", font=F(8, True), anchor="w")
+                cv.create_text(L - 10, y + RIGA_OUT / 2, text=str(n_), fill=col, font=F(8, True), anchor="e")
+                self._out_righe.append((y, y + RIGA_OUT, ("l", k)))
+                y += RIGA_OUT
+            else:
+                _t, vid, col = voce
                 v = self.voci[vid]
                 scelta = vid == self.sel_carta
                 if scelta:
                     cv.create_rectangle(0, y, L, y + RIGA_OUT, fill="#1d3a52", width=0)
-                nome = v["nome"]
-                spazio = L - 44
-                if fnt.measure(nome) > spazio:
-                    while nome and fnt.measure(nome + "…") > spazio:
-                        nome = nome[:-1]
-                    nome += "…"
-                cv.create_text(10, y + RIGA_OUT / 2, text=nome, fill="#ffffff" if scelta else C["testo"], font=F(8), anchor="w")
+                x0 = 10
+                if col is not None:     # dentro un gruppo: rientrata, col filo del colore del gruppo
+                    cv.create_rectangle(10, y, 12, y + RIGA_OUT, fill=col, width=0)
+                    x0 = 22
+                cv.create_text(x0, y + RIGA_OUT / 2, text=corto(v["nome"], L - 34 - x0, fnt), fill="#ffffff" if scelta else C["testo"], font=F(8), anchor="w")
                 cv.create_text(L - 10, y + RIGA_OUT / 2, text=str(v["q"]), fill=C["accento"] if scelta else C["grigio"], font=F(8, True), anchor="e")
                 self._out_righe.append((y, y + RIGA_OUT, vid))
-                y += RIGA_OUT
-        # i gruppi (12 nov 2026, Autore: «nell'outliner se ho creato dei gruppi anche li vengono visualizzati»): il nome nel colore del gruppo, poi le carte
-        gl = self.gruppi_label()
-        if gl:
-            y += 9
-            cv.create_text(10, y + 6, text="GROUPS", fill=C["muto"], font=F(6, True), anchor="w")
-            y += 14
-        for k, lb, carte in gl:
-            col = lb.get("colore") or GRIGIO_L
-            n_ = sum(q for _n, q in carte) if lb.get("copia") else sum(self.voci[v]["q"] for v in carte)
-            cv.create_rectangle(4, y + 4, 8, y + RIGA_OUT - 4, fill=col, width=0)
-            cv.create_text(14, y + RIGA_OUT / 2, text=lb["nome"], fill=C["grigio"] if lb.get("copia") else "#ffffff", font=F(8, True), anchor="w")
-            cv.create_text(L - 10, y + RIGA_OUT / 2, text=str(n_), fill=col, font=F(8, True), anchor="e")
-            self._out_righe.append((y, y + RIGA_OUT, ("l", k)))
-            y += RIGA_OUT
-            for c in carte:
-                nome, q = (c if lb.get("copia") else (self.voci[c]["nome"], self.voci[c]["q"]))
-                cv.create_text(22, y + RIGA_OUT / 2, text=nome if len(nome) <= 26 else nome[:25] + "…", fill=C["grigio"] if lb.get("copia") else C["testo"],
-                               font=F(8), anchor="w")
-                cv.create_text(L - 10, y + RIGA_OUT / 2, text=str(q), fill=C["grigio"], font=F(8, True), anchor="e")
-                if not lb.get("copia"):
-                    self._out_righe.append((y, y + RIGA_OUT, c))
                 y += RIGA_OUT
         cv.configure(scrollregion=(0, 0, L, y + 6))
 
@@ -1002,10 +1076,20 @@ class TavoloCarte:
             self.sel_label = {k}
             lb = self.etichette[k]
             z, o = self.zoom, self.oy("main")
-            self.inquadra((lb["x"] * z, o + lb["y"] * z, (lb["x"] + lb["w"]) * z, o + (lb["y"] + lb["h"]) * z))
+            self.inquadra((lb["x"] * z, o + lb["y"] * z, (lb["x"] + lb["w"]) * z, o + (lb["y"] + lb["h"]) * z), zmax=max(1.0, self.zoom))
             self.disegna_sel(); self.disegna_outliner()
             return
+        if self.sel or self.sel_punti or self.sel_label:        # la carta scelta prende il posto della selezione (prima restava, e F inquadrava quella)
+            self.sel, self.sel_punti, self.sel_label = [], set(), set()
         self.sel_carta = vid
+        # la carta fuori dalla vista: il foglio la porta in vista, senza cambiare lo zoom (13 nov 2026, Autore: «non trovo in prima vista le carte che ho
+        # focussato»); nascosta dal filtro o nella fascia chiusa, lo dice
+        if not self.mostra_carta(vid):
+            pl = self.pila_di(vid)
+            if pl is None:
+                self.dici(f"{self.voci[vid]['nome']} is hidden by the type filter")
+            elif pl["zona"] != "main" and self.nascosta():
+                self.dici(f"{self.voci[vid]['nome']} is in the sideboard: drag the bar down to open it")
         self.disegna_sel()
         self.disegna_outliner()
         self.out_cv.focus_set()
@@ -1031,9 +1115,19 @@ class TavoloCarte:
         rr = [self.ingombro_px(pl) for pl in self.pile if pl["zona"] == "main"]
         rr += [self.lb_px(k) for k in range(len(self.etichette))]
         rr += [(lambda pt: (pt[0] - 10, pt[1] - 10, pt[0] + 26, pt[1] + 10))(self.punto_xy(q)) for q in self.punti]
+        return self.unione(rr)
+
+    @staticmethod
+    def unione(rr):
+        """Il rettangolo che li contiene tutti, con l'aria per il numero delle copie (a sinistra) e per i pallini (sotto). None se non ce n'e'."""
+        rr = [r for r in rr if r]
         if not rr:
             return None
         return min(r[0] for r in rr) - 16, min(r[1] for r in rr) - 8, max(r[2] for r in rr) + 8, max(r[3] for r in rr) + 26
+
+    def rett_visibili(self):
+        """Il rettangolo delle pile del mazzo che si vedono adesso (col filtro per tipo: solo quelle con carte a vista)."""
+        return self.unione([self.ingombro_px(pl) for pl in self.pile if pl["zona"] == "main" and pl["carte"]])
 
     def rett_selezione(self):
         cor = self.cornice_sel()
@@ -1041,7 +1135,7 @@ class TavoloCarte:
             return cor
         if self.sel_carta in self.voci:
             pl = self.pila_di(self.sel_carta)
-            if pl is not None and not (pl["zona"] != "main" and self.nascosta()):
+            if pl is not None and pl["zona"] == "main":
                 x0, y0, x1, y1 = self.ingombro_px(pl)
                 return x0 - 16, y0 - 8, x1 + 8, y1 + 26
         return None
@@ -1054,21 +1148,103 @@ class TavoloCarte:
         return self.inquadra(r)
 
     def inquadra_selezione(self):
+        sola_carta = self.sel_carta in self.voci and not (self.sel or self.sel_punti or self.sel_label)
+        pl = self.pila_di(self.sel_carta) if sola_carta else None
+        if pl is not None and pl["zona"] != "main":
+            # la carta scelta sta nella fascia della sideboard, ferma in cima alla finestra: e' gia' in vista, il foglio non si muove (13 nov 2026: prima F la
+            # trattava come una carta del mazzo e portava la vista in un punto a caso del foglio)
+            self.dici(f"{self.voci[self.sel_carta]['nome']} is in the sideboard band, always in view" if not self.nascosta()
+                      else "That card is in the sideboard: drag the bar down to open it")
+            return False
         r = self.rett_selezione()
         if r is None:
+            if sola_carta and pl is None:
+                self.dici(f"{self.voci[self.sel_carta]['nome']} is hidden by the type filter")
+                return False
             self.dici("F frames the selection: click a card, pick one in the outliner, or drag a box")
             return False
         return self.inquadra(r)
 
-    def inquadra(self, r, margine=50):
-        """Lo zoom e la vista che mettono il rettangolo (pixel della tela, allo zoom di adesso) al centro della finestra, il piu' grande possibile."""
+    # le zone della finestra dove il foglio del mazzo si vede davvero (13 nov 2026, Autore: «quando seleziono una categoria di carte il focus si sposta a caso e
+    # non trovo in prima vista le carte che ho focussato»): F, A e l'inquadratura mettevano il rettangolo al centro di tutta la tela, e la parte alta finiva sotto la
+    # fascia della sideboard (ferma in cima, 250 pixel); l'HUD in alto a destra e la finestrella dei comandi in basso a destra coprivano il resto
+    def ostacoli(self):
+        """I riquadri sopra il foglio, in coordinate della finestra della tela: l'HUD delle carte e la finestrella dei comandi."""
+        W, H = self.misura_tela()
+        hud = self._hud_rect or (W - INFO_L - 14, 12, W - 14, 12 + TESTA_HUD + (INFO_H if self.info_aperto else 0))
+        out = [tuple(hud)]
+        try:
+            pw, ph = self.pannello.winfo_width(), self.pannello.winfo_height()
+            if pw > 1 and ph > 1:
+                out.append((W - 12 - pw, H - 12 - ph, W - 12, H - 12))
+        except Exception:       # noqa: BLE001 - la finestrella non c'e' ancora
+            pass
+        return out
+
+    def misura_tela(self):
+        """La tela in pixel; finche' non ha la sua misura (la finestra appena nata, nascosta), quella chiesta alla finestra, meno l'outliner e le righe in alto."""
+        W, H = self.cv.winfo_width(), self.cv.winfo_height()
+        if W >= 200 and H >= 200:
+            return W, H
+        return max(400, self._L - (LARGO_OUT + 18 if self.outliner_aperto else 18)), max(300, self._H - 140)
+
+    def aree_libere(self):
+        """Dove il mazzo si vede tutto, in coordinate della finestra della tela: sotto la fascia (se aperta), fuori da HUD e comandi. Due scelte quando un riquadro
+        sporge nell'area: tagliare a destra (tutta l'altezza) o tagliare sopra e sotto (tutta la larghezza)."""
+        W, H = self.misura_tela()
+        top = (self.hs if not self.nascosta() else 0) + 10
+        tocca = [o for o in self.ostacoli() if o[3] > top and o[1] < H and o[2] > 0]
+        if not tocca:
+            return [(0, top, W, H)]
+        a = (0, top, min(o[0] for o in tocca) - 8, H)
+        su = [o for o in tocca if o[1] < (top + H) / 2]
+        giu = [o for o in tocca if o[1] >= (top + H) / 2]
+        b = (0, max([top] + [o[3] + 8 for o in su]), W, min([H] + [o[1] - 8 for o in giu]))
+        return [r for r in (a, b) if r[2] - r[0] > 100 and r[3] - r[1] > 100] or [(0, top, W, H)]
+
+    def in_vista(self, r, tolleranza=3):
+        """Il rettangolo (pixel della tela) si vede tutto in una delle aree libere?"""
+        if r is None:
+            return True
+        vx, vy = self.cv.canvasx(0), self.cv.canvasy(0)
+        x0, y0, x1, y1 = r[0] - vx, r[1] - vy, r[2] - vx, r[3] - vy
+        t = tolleranza
+        return any(a[0] - t <= x0 and x1 <= a[2] + t and a[1] - t <= y0 and y1 <= a[3] + t for a in self.aree_libere())
+
+    def pile_in_vista(self):
+        """Ogni pila del mazzo (col filtro: quelle a vista) si vede intera, sotto la fascia e fuori da HUD e comandi?"""
+        W, H = self.misura_tela()
+        vx, vy = self.cv.canvasx(0), self.cv.canvasy(0)
+        top = (self.hs if not self.nascosta() else 0) + 10
+        ost = self.ostacoli()
+        for pl in self.pile:
+            if pl["zona"] != "main" or not pl["carte"]:
+                continue
+            x0, y0, x1, y1 = self.ingombro_px(pl)
+            x0, y0, x1, y1 = x0 - 14 - vx, y0 - vy, x1 - vx, y1 - vy        # il numero delle copie sporge a sinistra
+            if x0 < -3 or y0 < top - 3 or x1 > W + 3 or y1 > H + 3:
+                return False
+            if any(x0 < o[2] and o[0] < x1 and y0 < o[3] and o[1] < y1 for o in ost):
+                return False
+        return True
+
+    def inquadra(self, r, margine=30, zmax=ZOOM_MAX, salva=True):
+        """Lo zoom e la vista che mettono il rettangolo (pixel della tela, allo zoom di adesso) al centro dell'area libera della finestra (sotto la fascia, fuori
+        da HUD e comandi), il piu' grande possibile fino a zmax."""
         cv = self.cv
+        self._da_inquadrare = False
         z0, o = self.zoom, self.oy("main")
         fx0, fx1 = r[0] / z0, r[2] / z0
         fy0, fy1 = (r[1] - o) / z0, (r[3] - o) / z0
-        W, H = max(200, cv.winfo_width()), max(200, cv.winfo_height())
-        z = min((W - 2 * margine) / max(1.0, fx1 - fx0), (H - 2 * margine) / max(1.0, fy1 - fy0))
-        z = round(max(ZOOM_MIN, min(ZOOM_MAX, z)) * 20) / 20
+        fw, fh = max(1.0, fx1 - fx0), max(1.0, fy1 - fy0)
+        migliore = None
+        for a in self.aree_libere():
+            za = min((a[2] - a[0] - 2 * margine) / fw, (a[3] - a[1] - 2 * margine) / fh)
+            if migliore is None or za > migliore[0]:
+                migliore = (za, a)
+        z, area = migliore
+        passi = 20 if z >= ZOOM_MIN else 100
+        z = max(ZOOM_VISTA, math.floor(min(zmax, ZOOM_MAX, z) * passi + 1e-6) / passi)     # per difetto: il rettangolo ci sta davvero
         if self._zoom_dopo is not None:
             cv.after_cancel(self._zoom_dopo)
             self._zoom_dopo = None
@@ -1077,11 +1253,55 @@ class TavoloCarte:
         self.zoom = z
         self.l_zoom.configure(text=f"{round(z * 100)}%")
         self.disegna()
+        o = self.oy("main")
         cx, cy = (fx0 + fx1) / 2 * z, o + (fy0 + fy1) / 2 * z
-        dx, dy = cx - cv.canvasx(W / 2), cy - cv.canvasy(H / 2)
+        ax, ay = (area[0] + area[2]) / 2, (area[1] + area[3]) / 2
+        dx, dy = cx - cv.canvasx(ax), cy - cv.canvasy(ay)
         cv.scan_mark(0, 0)
         cv.scan_dragto(int(round(-dx)), int(round(-dy)), gain=1)
-        self.salva()
+        self.segui_fascia()
+        if salva:
+            self.salva()
+        return True
+
+    def inquadra_apertura(self):
+        """All'apertura (e al primo <Configure> se la tela non era ancora a misura): se una pila del mazzo non si vede intera, tutto il mazzo inquadrato, allo zoom
+        salvato al massimo (o al 100%). Se si vede gia' tutto, zoom e vista restano."""
+        W, H = self.cv.winfo_width(), self.cv.winfo_height()
+        if W < 200 or H < 200:
+            return False
+        self._da_inquadrare = False
+        if self.pile_in_vista():
+            return False
+        r = self.rett_tutto()
+        return self.inquadra(r, zmax=max(1.0, self.zoom), salva=False) if r else False
+
+    def inquadra_visibili(self):
+        """Dopo un cambio del filtro per tipo: se qualche carta a vista e' fuori dalla vista, le carte a vista inquadrate (le altre stanno da parte); se si vedono
+        gia' tutte, la vista resta dov'e'."""
+        self._da_inquadrare = False
+        if self.cv.winfo_width() < 200 or self.pile_in_vista():
+            return False
+        r = self.rett_visibili() if self.filtro else self.rett_tutto()
+        return self.inquadra(r, zmax=max(1.0, self.zoom)) if r else False
+
+    def mostra_carta(self, vid):
+        """La carta (appena arrivata, o scelta nell'outliner) fuori dalla vista: il foglio si sposta finche' la sua pila e' al centro, senza cambiare lo zoom."""
+        pl = self.pila_di(vid) if vid in self.voci else None
+        if pl is None or pl["zona"] != "main" or self.cv.winfo_width() < 200:
+            return False
+        x0, y0, x1, y1 = self.ingombro_px(pl)
+        r = (x0 - 16, y0 - 8, x1 + 8, y1 + 26)
+        if self.in_vista(r):
+            return False
+        cv = self.cv
+        area = max(self.aree_libere(), key=lambda a: (a[2] - a[0]) * (a[3] - a[1]))
+        alta = min(r[3] - r[1], area[3] - area[1] - 20)      # una pila piu' alta della finestra: la sua cima in vista
+        ax, ay = (area[0] + area[2]) / 2, area[1] + 10 + alta / 2
+        dx, dy = (r[0] + r[2]) / 2 - cv.canvasx(ax), r[1] + alta / 2 - cv.canvasy(ay)
+        cv.scan_mark(0, 0)
+        cv.scan_dragto(int(round(-dx)), int(round(-dy)), gain=1)
+        self.segui_fascia()
         return True
 
     def curva(self):
@@ -1233,7 +1453,9 @@ class TavoloCarte:
     def zoom_a(self, nuovo, ex=None, ey=None):
         """Lo zoom del foglio (il mazzo), a passi di 5 punti; intorno al puntatore se c'e' (Ctrl+rotella), se no intorno all'angolo in alto. Il disegno aspetta un attimo:
         la rotella manda tanti scatti e le carte si ricuociono una volta sola."""
-        nuovo = round(max(ZOOM_MIN, min(ZOOM_MAX, nuovo)) * 20) / 20
+        # sotto ZOOM_MIN si arriva solo inquadrando (A): da li' la rotella va a passi fini e non salta di colpo al 30%
+        nuovo = max(min(ZOOM_MIN, self.zoom), min(ZOOM_MAX, nuovo))
+        nuovo = round(nuovo * 20) / 20 if nuovo >= ZOOM_MIN else round(nuovo * 100) / 100
         if nuovo == self.zoom:
             return
         cv = self.cv
@@ -1297,11 +1519,13 @@ class TavoloCarte:
 
     def rotella(self, e):
         self.nascondi()
+        self._da_inquadrare = False
         self.zoom_a(self.zoom * (1.12 if e.delta > 0 else 1 / 1.12), e.x, e.y)
 
     def pan_inizio(self, e):
         """Il tasto centrale premuto: il foglio segue il mouse (la mano), fino al rilascio."""
         self.nascondi()
+        self._da_inquadrare = False
         self.cv.configure(cursor="fleur")
         self.cv.scan_mark(e.x, e.y)
 
@@ -1316,16 +1540,12 @@ class TavoloCarte:
         self.barra(bb[2] if bb else max(self.cv.winfo_width(), 400))       # il segno della barra torna al centro di quello che si vede
 
     def adatta(self):
-        """Fit: lo zoom che fa stare tutto il mazzo nella finestra, sotto la fascia."""
-        w, h, _off, _p = misure(1.0)
-        main = [pl for pl in self.pile if pl["zona"] == "main"]
-        if not main:
-            return
-        larga = max(pl["x"] + w for pl in main) + MARGINE
-        alta = max(self.posizioni(pl)[-1] + h for pl in main) + MARGINE
-        W, H = max(200, self.cv.winfo_width()), max(200, self.cv.winfo_height() - self.oy("main"))
-        self.cv.xview_moveto(0); self.cv.yview_moveto(0)
-        self.zoom_a(min(W / larga, H / alta))
+        """Fit: tutto il mazzo nella finestra, come A (13 nov 2026: prima portava la vista all'angolo del foglio, e le pile spostate a sinistra o sopra
+        restavano fuori; e non vedeva HUD e comandi)."""
+        r = self.rett_tutto()
+        if r is None:
+            return False
+        return self.inquadra(r)
 
     def sf(self):
         """La scala delle carte della fascia: quella che ci sta nell'altezza della fascia (una carta e due sfalsate), al massimo 1,25. Sotto SPARISCE non si disegnano."""
@@ -1391,12 +1611,19 @@ class TavoloCarte:
         w, h, _off, _p = misure(1.0)
         return x, y, x + w * s_, self.oy(pl["zona"]) + (self.posizioni(pl)[-1] + h) * s_
 
-    def vicino_barra(self, cy):
-        return abs(cy - self._fy - self.hs) <= 6
+    def vicino_barra(self, cy, cx=None):
+        """Sulla barra fra fascia e foglio, o sul suo segno ▲▼ (che con la fascia chiusa del tutto sta appena sotto il bordo alto, intero)."""
+        if abs(cy - self._fy - self.hs) <= 6:
+            return True
+        if cx is None or self.hs >= 9:
+            return False
+        mx = self.cv.canvasx(0) + max(self.cv.winfo_width(), 400) / 2
+        return abs(cx - mx) <= 30 and 0 <= cy - self._fy <= 18
 
     def premi_tela(self, e):
         """Il tasto sinistro, ovunque sulla tela. In ordine: la barra della fascia (si trascina), il contatore (lo fa contatore), il pallino (una freccia
         nuova), una carta in ogni suo punto (si trascina), il vuoto (niente)."""
+        self._da_inquadrare = False
         cx, cy = self.cv.canvasx(e.x), self.cv.canvasy(e.y)
         self._xy = (cx, cy)
         self.stile_chiudi()
@@ -1413,7 +1640,7 @@ class TavoloCarte:
                 return self.apri_nota("c", self.voci[sopra_n[1]]["nome"])
             if sopra_n[0] in ("label_n", "label_nb") and sopra_n[1] is not None:
                 return self.apri_nota("l", sopra_n[1])
-            if self.vicino_barra(cy):
+            if self.vicino_barra(cy, cx):
                 self.separa = dict(y0=cy, hs0=self.hs, attesa=None)
                 return
             vid = self.carta_a(cx, cy)
@@ -1427,7 +1654,7 @@ class TavoloCarte:
                 self.clic = self.cv.after(230, lambda: self.apri_pila(vid))
             return
         sopra = self.pezzo_a(cx, cy)
-        if self.vicino_barra(cy) and sopra[0] is None:      # la barra della fascia si prende solo dove non c'e' altro (10 nov 2026: il titolo di una label vicino
+        if self.vicino_barra(cy, cx) and sopra[0] is None:      # la barra della fascia si prende solo dove non c'e' altro (10 nov 2026: il titolo di una label vicino
             self.drag = self.tira = None                    # alla barra trascinava la barra)
             self.separa = dict(y0=cy, hs0=self.hs, attesa=None)
             return
@@ -1647,6 +1874,7 @@ class TavoloCarte:
         rompono dove si chiudono), l'ordine nella riga per baricentro dei vicini (quattro passate giu' e su, meno incroci). Ogni carta della rete e' una pila sua.
         Le carte senza connessioni vanno per costo in un blocco sotto la rete; sideboard e comandante restano; i dot tornano a meta' fra ingressi e uscite; le
         label restano dove sono. -> quante carte ha messo in rete (0: niente da riordinare)."""
+        self.sfiltra()      # col filtro acceso le carte nascoste stavano ancora nelle pile vecchie: finivano in due pile (13 nov 2026, lo stress); il disegno rifiltra
         w, h, off, _p = misure(1.0)
         main = {}
         for i, v in self.voci.items():
@@ -1656,6 +1884,7 @@ class TavoloCarte:
         archi += [(p_, c_) for q in self.punti for (p_, c_), r in self.vie.items() if r == q and p_ in main and c_ in main and (p_, c_) not in archi]
         nodi = sorted({n for a in archi for n in a}, key=lambda n: (self.ordine(main[n])))
         if not nodi:
+            self.filtra()       # niente da riordinare: il filtro torna com'era
             self.dici("No connections between the deck's cards to arrange")
             return 0
         figli = collections.defaultdict(list)
@@ -1750,20 +1979,49 @@ class TavoloCarte:
         self.dici(f"Network arranged: {len(nodi)} linked cards in {k_max + 1} row{'s' if k_max else ''}, parents above children · the others below by cost")
         return len(nodi)
 
+    def fascia_sta(self):
+        """Le carte della fascia stanno tutte nella larghezza della finestra? (La fascia e' ferma in cima alla finestra: quel che esce a destra non si vede mai.
+        Sotto l'HUD, semitrasparente, una carta si vede ancora: la disposizione salvata resta.)"""
+        if self.nascosta():
+            return True
+        w, _h, _off, _p = misure(1.0)
+        W_, _H = self.misura_tela()
+        destra = max((pl["x"] + w for pl in self.pile if pl["zona"] != "main"), default=0) * self.sf()
+        return destra <= W_ - 8
+
+    def pile_fascia(self):
+        """Le pile della fascia per l'apertura: prima il comandante e il compagno, poi la sideboard per costo, una carta per pila finche' stanno nella larghezza
+        della fascia (fuori dall'HUD); se no a pile di 2 o 3 (la fascia ne mostra una e due sfalsate). Fino al 13 nov 2026 una carta per pila sempre: con 15 carte
+        diverse in sideboard le ultime finivano oltre il bordo destro della finestra, e la fascia, ferma, non si sposta mai per mostrarle."""
+        w, _h, _off, _p = misure(1.0)
+        W_, _H = self.misura_tela()
+        s_ = max(self.sf(), SPARISCE)
+        posti = max(1, int((W_ - (INFO_L + 28) - MARGINE) / s_ // (w + SPAZIO)))
+        cmd = sorted((i for i, v in self.voci.items() if v["zona"] == "cmd"), key=self.ordine)
+        side = sorted((i for i, v in self.voci.items() if v["zona"] == "side"), key=self.ordine)
+        liberi = max(1, posti - len(cmd) - (1 if cmd else 0))
+        per = 1 if len(side) <= liberi else min(3, -(-len(side) // liberi))
+        pile, x = [], MARGINE
+        for i in cmd:
+            pile.append(dict(zona="cmd", x=x, y=0, carte=[i], aperta=None))
+            x += w + SPAZIO
+        if cmd:
+            x += SPAZIO
+        for a in range(0, len(side), per):
+            pile.append(dict(zona="side", x=x, y=0, carte=side[a:a + per], aperta=None))
+            x += w + SPAZIO
+        return pile
+
     def disponi(self, modo="cost", salva=True):
         """Le pile in ordine: per costo (una colonna per costo, le terre in fondo) o per tipo (creature, istantanei e stregonerie, il resto, le terre).
         Nella fascia le carte una accanto all'altra, prima il comandante e il compagno. Le pile si allungano quanto basta perche' il mazzo stia in una riga."""
-        larga = max(800, (self.cv.winfo_width() or 1400) / self.zoom)
+        self.sfiltra()      # le carte nascoste dal filtro tornano prima: se no finirebbero in due pile (il disegno rifiltra)
+        W_, _H = self.misura_tela()
+        # la larghezza vera della tela (13 nov 2026): la finestra appena nata e' ancora nascosta e la tela misurava 1 pixel, quindi «larga» era 800 e le colonne
+        # dei costi si univano in 4 (1, 2, 3+ e le terre). Se l'HUD copre l'angolo del mazzo, ci pensa l'inquadratura dell'apertura
+        larga = max(800, W_ / self.zoom)
         w, h, off, _p = misure(1.0)
-        pile = []
-        x = MARGINE
-        for zona in ("cmd", "side"):
-            ids = sorted((i for i, v in self.voci.items() if v["zona"] == zona), key=self.ordine)
-            for i in ids:
-                pile.append(dict(zona=zona, x=x, y=0, carte=[i], aperta=None))
-                x += w + SPAZIO
-            if zona == "cmd" and ids:
-                x += SPAZIO
+        pile = self.pile_fascia()
         gruppi = collections.OrderedDict()
         for i in sorted((i for i, v in self.voci.items() if v["zona"] == "main"), key=self.ordine):
             gruppi.setdefault(self.gruppo(i, modo), []).append(i)
@@ -1806,7 +2064,8 @@ class TavoloCarte:
         for v in self.voci.values():
             conti[v["zona"]] += v["q"]
         destra = max([L] + [self.ingombro_px(pl)[2] + MARGINE for pl in self.pile])
-        cv.create_rectangle(-50000, -50000, 50000, hs, fill=C["fondo"], width=0, tags="fondo")        # il foglio sopra il mazzo, quando la vista ci arriva
+        # niente piu' il rettangolo scuro «sopra il mazzo» (dal foglio a -50000 fino alla barra): da quando la fascia sta ferma in cima alla finestra, scorrendo
+        # in su o inquadrando un foglio con carte sopra l'inizio del mazzo appariva come una seconda fascia vuota, con le carte dentro (13 nov 2026)
         cv.create_rectangle(fx - 50000, fy - 50000, fx + 50000, fy + hs, fill=C["fondo"], width=0, tags=("fascia", "fascia_fondo"))     # la fascia, in cima alla vista
         if hs >= 22:
             cv.create_text(fx + MARGINE, fy + 8, text=f"SIDEBOARD · {conti['side']}", fill=C["titolo"], font=self.F(8, True), anchor="nw", tags=("fascia",))
@@ -1878,7 +2137,8 @@ class TavoloCarte:
         y = self._fy + self.hs
         cv.create_line(-50000, y, 50000, y, fill=C["filo"], width=1, tags=("barra", "fascia"))
         cx = cv.canvasx(0) + L / 2
-        cv.create_image(cx - 30, y - 9, image=segno_barra(), anchor="nw", tags=("barra", "fascia"))
+        # con la fascia chiusa del tutto (hs 0: in sola lettura senza sideboard) il segno resta intero sotto il bordo alto, non tagliato a meta' (13 nov 2026)
+        cv.create_image(cx - 30, max(y - 9, self._fy), image=segno_barra(), anchor="nw", tags=("barra", "fascia"))
         cv.tag_raise("barra")
 
     def carta(self, vid, x, y, intera, s=1.0):
@@ -1967,6 +2227,8 @@ class TavoloCarte:
     def togli(self, vid):
         pl = self.pila_di(vid)
         del self.voci[vid]
+        for _pl, _tolta, carte in self._riposte:        # una carta nascosta dal filtro: esce anche dalle carte tenute da parte
+            carte[:] = [x for x in carte if x[1] != vid]
         if pl is not None:
             pl["carte"].remove(vid)
             if pl.get("aperta") == vid:
@@ -1993,11 +2255,16 @@ class TavoloCarte:
                 self.togli(vid)
             else:
                 v["q"] = q
+        nuove = []
         for (n, zona), q in voluto.items():
             if (n, zona) not in ora:
-                self.nuova_voce(n, zona, q)
+                nuove.append(self.nuova_voce(n, zona, q))
         self.carica_mancanti()
         self.disegna()
+        # la carta arrivata dal builder (doppio clic in Collection) va nello spazio isolato a destra di tutto: se e' fuori dalla vista, il foglio la porta in
+        # vista (13 nov 2026: prima arrivava fuori dallo schermo e sembrava che il doppio clic non avesse fatto niente)
+        if nuove:
+            self.mostra_carta(nuove[-1])
         self.salva()
         return True
 
@@ -2078,11 +2345,14 @@ class TavoloCarte:
         gemella = next((i for i, v in self.voci.items() if v["nome"] == nome and v["zona"] == zona), None)
         if gemella is not None:
             self.voci[gemella]["q"] += 1
+            nuova = gemella
         else:
-            self.nuova_voce(nome, zona, 1, pila=b, xy=xy if b is None and x_root is not None else None)
+            nuova = self.nuova_voce(nome, zona, 1, pila=b, xy=xy if b is None and x_root is not None else None)
         self.mazzo_cambiato()
         self.carica_mancanti()
         self.disegna()
+        if x_root is None:      # dalla ricerca: la carta in vista (lasciata col mouse e' gia' dove la guardi)
+            self.mostra_carta(nuova)
         self.salva()
         return True
 
@@ -2737,6 +3007,9 @@ class TavoloCarte:
         self.aiuto.configure(text=testo, fg=FG_DICI)
         self.aiuto.after(4000, lambda: self.aiuto.winfo_exists() and self.aiuto.configure(text=self.aiuto_base, fg=FG_AIUTO))
         self.disegna()
+        # la connessione e' un gesto come gli altri: nello storico (Undo) e da salvare (13 nov 2026, lo stress: in modalita' edit la connessione col pallino non
+        # entrava nello storico, Save restava spento e chiudendo il Board senza domanda la connessione si perdeva)
+        self.salva()
 
     def ricerca(self, padre):
         """La ricerca veloce per nome: scrivi, le carte del formato che combaciano (prima quelle che cominciano cosi'), frecce e Invio; Maiuscolo+Invio in sideboard."""
@@ -3097,7 +3370,7 @@ class TavoloCarte:
                 self.drag = None
                 self.stile_chiudi()
                 return self.inserisci_punto(cx, cy)
-            if self.vicino_barra(cy) or sopra[0] in ("ctrl", "nodo"):
+            if self.vicino_barra(cy, cx) or sopra[0] in ("ctrl", "nodo"):
                 return
             self._xy = (cx, cy)
         vid = self.sotto_al_mouse()
@@ -3361,7 +3634,7 @@ class TavoloCarte:
                 self.accendi_tronco(tr)
             else:
                 self.accendi_arco(sg)
-        self.cv.configure(cursor="sb_v_double_arrow" if self.vicino_barra(cy) and pezzo is None else "hand2" if pezzo in ("nodo", "ctrl", "rete_x", "rete_s", "rete_c", "rete_xt", "punto_out", "scambia", "label_x", "label_l", "label_m", "sel_menu",
+        self.cv.configure(cursor="sb_v_double_arrow" if self.vicino_barra(cy, cx) and pezzo is None else "hand2" if pezzo in ("nodo", "ctrl", "rete_x", "rete_s", "rete_c", "rete_xt", "punto_out", "scambia", "label_x", "label_l", "label_m", "sel_menu",
                                                                                                                                          "nota_i", "nota_b", "nota_n", "label_n", "label_nb")
                           or self._arco else "fleur" if pezzo in ("carta", "label_t", "punto") else "size_nw_se" if pezzo == "label_r" else "")
         if self.drag is not None or _tm.time() - self._fine_drag < 0.8:
@@ -3875,13 +4148,13 @@ class TavoloCarte:
             return None
         self.sfiltra()
         lb = self.etichette[k]
-        if not lb.get("id"):
-            lb["id"] = self.nuovo_id()
         carte = self.carte_gruppo(k)
         if not carte:
             self.filtra()
             self.dici(f"«{lb['nome']}» is empty: nothing to duplicate")
             return None
+        if not lb.get("id"):        # l'id solo quando la copia nasce davvero: prima anche sul gruppo vuoto, un cambio fuori dallo storico (13 nov 2026, lo stress)
+            lb["id"] = self.nuovo_id()
         nuova = dict(nome=lb["nome"] + " (copy)", x=round(lb["x"] + lb["w"] + 2 * SPAZIO), y=lb["y"], w=300, h=60, colore=lb.get("colore") or GRIGIO_L, lucchetto=True,
                      id=self.nuovo_id(), copia=True, carte=carte, origine=lb["id"])
         self.etichette.append(nuova)
@@ -4043,6 +4316,7 @@ class TavoloCarte:
             cambiate = [self.rete.imposta_stile(a, b, **kw) for a, b in self.fratelli(pa, pb)]
             if any(cambiate):
                 self.disegna()
+                self.salva()        # colore e spessore della linea: nello storico e da salvare, come la connessione (13 nov 2026)
             ridisegna()
 
         def colore(e):
@@ -4366,6 +4640,12 @@ def prova():
     import tkinter as tk
     d = tempfile.mkdtemp()
     ft, fm = os.path.join(d, "tavoli.json"), os.path.join(d, "mazzi.json")
+    # mai i file di Autore (13 nov 2026: i Board di prova senza file_rete salvavano la loro rete vuota in Log_Arena/sinergie_mazzi.json, 18 voci «build:...»
+    # in sei giri, e riscrivevano sinergie_imparate.json): la rete, l'imparato e le disposizioni di default vanno nella cartella della prova
+    vero_ = (RS.FILE, RS.IMPARATE, globals()["FILE"])
+    RS.FILE, RS.IMPARATE, globals()["FILE"] = os.path.join(d, "rete_tutte.json"), os.path.join(d, "imparate_tutte.json"), os.path.join(d, "tavoli_tutti.json")
+    impronta_vera = lambda: [(os.path.getmtime(f_), os.path.getsize(f_)) if os.path.exists(f_) else None for f_ in vero_]
+    veri_prima = impronta_vera()
     m = MS.aggiungi("build", dict(nome="Prova", lista={"Lightning Bolt": 4, "Shock": 2, "Opt": 1, "Mountain": 14}, side={"Abrade": 2}), f=fm)
     db = {"Lightning Bolt": dict(cmc=1, tipo="Instant"), "Shock": dict(cmc=1, tipo="Instant"), "Opt": dict(cmc=1, tipo="Instant"),
           "Mountain": dict(cmc=0, tipo="Basic Land — Mountain"), "Abrade": dict(cmc=2, tipo="Instant")}
@@ -5284,8 +5564,10 @@ def prova():
     tasto_("f"); root.update()
     ra_ = tO.ingombro_px(tO.pila_di(van))
     centro_ = ((ra_[0] + ra_[2]) / 2, (ra_[1] + ra_[3]) / 2)
-    casi.append(("F: il Board porta sulla carta scelta, al centro", abs(centro_[0] - 4 - tO.cv.canvasx(500)) < 12 and abs(centro_[1] + 9 - tO.cv.canvasy(350)) < 12
-                 and tO.zoom > 1.0))
+    # al centro dell'area libera (sotto la fascia, fuori da HUD e comandi: 13 nov 2026), non piu' al centro di tutta la tela
+    casi.append(("F: il Board porta sulla carta scelta, al centro dell'area libera", tO.zoom > 1.0 and tO.in_vista(tO.rett_selezione())
+                 and any(abs(centro_[0] - 4 - tO.cv.canvasx((a_[0] + a_[2]) / 2)) < 12 and abs(centro_[1] + 9 - tO.cv.canvasy((a_[1] + a_[3]) / 2)) < 12
+                         for a_ in tO.aree_libere())))
     tasto_("a"); root.update()
     dentro_v = all(tO.cv.canvasx(0) <= r_[0] and r_[2] <= tO.cv.canvasx(1000) and tO.cv.canvasy(0) <= r_[1] and r_[3] <= tO.cv.canvasy(700)
                    for r_ in (tO.ingombro_px(pl_) for pl_ in tO.pile if pl_["zona"] == "main"))
@@ -5586,7 +5868,172 @@ def prova():
     tU.domanda.altro(); root.update()
     casi.append(("Don't save: il Board si chiude e il file resta all'ultimo Save (negativa: la modifica non c'e')", not tU.fin.winfo_exists()
                  and sU()["Lightning Bolt"] == 2 and sU()["Shock"] == 4))
+    # ---- 13 nov 2026 (Autore: «testa le board delle schede dei deck perche' all'apertura sono disposte male», «l'outliner non deve ripetere le carte
+    # gruppate», «quando seleziono una categoria di carte il focus si sposta a caso»): l'apertura inquadrata, il filtro che inquadra le carte a vista, F e A
+    # sotto la fascia e fuori dall'HUD, l'outliner a elenco unico, il filtro con le carte tolte o riordinate, la fascia che sta nella finestra
+    dbV = {"Lightning Bolt": dict(cmc=1, tipo="Instant"), "Shock": dict(cmc=2, tipo="Instant"), "Opt": dict(cmc=3, tipo="Sorcery"),
+           "Abrade": dict(cmc=4, tipo="Creature — Elf"), "Token Maker": dict(cmc=5, tipo="Creature — Human"), "Anthem": dict(cmc=6, tipo="Enchantment"),
+           "Vanilla": dict(cmc=7, tipo="Creature — Bear"), "Mountain": dict(cmc=0, tipo="Basic Land — Mountain"), "Plains": dict(cmc=0, tipo="Basic Land — Plains")}
+    mainV = {"Lightning Bolt": 4, "Shock": 4, "Opt": 4, "Abrade": 4, "Token Maker": 4, "Anthem": 4, "Vanilla": 4, "Mountain": 16, "Plains": 8}
+
+    def apri_v(chiave, sola=True, side=None, L=1000, H=700):
+        kw_ = dict(sola_lettura=True) if sola else dict(editore=lambda a_, b_: None, limite=lim)
+        t_ = TavoloCarte(tk, F, root, "Vista", dict(mainV), dict(side or {}), carte_db=dbV, chiave=chiave, file_tavoli=ft, file_mazzi=fm, file_rete=fr, fuori=True, **kw_)
+        root.update()
+        t_.cv.winfo_width = lambda: L; t_.cv.winfo_height = lambda: H
+        return t_
+    tV0 = apri_v("mio:vista_nuovo", side={"Abrade": 1})
+    n_col = len([pl for pl in tV0.pile if pl["zona"] == "main"])
+    casi.append(("apertura: un mazzo senza disposizione ha le colonne dei costi che stanno nella finestra vera (1262 pixel: 7, 6 e 7 insieme), anche se la tela non ha "
+                 "ancora la sua misura (prima 4: 1, 2, 3+, terre)", n_col == 7))
+    tV0.chiudi()
+    # una disposizione salvata con pile lontane: a destra, a sinistra e sopra l'inizio del mazzo
+    w_, h_, off_, _p = misure(1.0)
+    salva_tavolo("mio:vista_lontana", dict(v=2, zoom=1.0, fascia=250, pile=[
+        dict(zona="main", x=22, y=0, carte=[["Lightning Bolt", 4], ["Shock", 4]]), dict(zona="main", x=4200, y=900, carte=[["Opt", 4], ["Abrade", 4]]),
+        dict(zona="main", x=-1500, y=-800, carte=[["Token Maker", 4], ["Anthem", 4]]), dict(zona="main", x=900, y=300, carte=[["Vanilla", 4]]),
+        dict(zona="main", x=1300, y=0, carte=[["Mountain", 16], ["Plains", 8]])]), ft)
+    tV = apri_v("mio:vista_lontana")
+    fuori_prima = not tV.pile_in_vista()
+    tV.al_configure(); root.update()
+    casi.append(("apertura: le pile lontane (a destra, a sinistra, sopra) inquadrate tutte, sotto la fascia e fuori dall'HUD (prima la vista partiva dall'angolo del foglio)",
+                 fuori_prima and tV.pile_in_vista() and tV.zoom < 1.0 and not tV._da_inquadrare))
+    vx_, vy_, z_ = tV.cv.canvasx(0), tV.cv.canvasy(0), tV.zoom
+    tV.al_configure(); root.update()
+    casi.append(("negativa: inquadrato una volta, un altro <Configure> non sposta piu' la vista", (tV.cv.canvasx(0), tV.cv.canvasy(0), tV.zoom) == (vx_, vy_, z_)))
+    casi.append(("niente piu' il rettangolo scuro sopra il mazzo (una seconda fascia vuota quando la vista va sopra l'inizio del foglio)", not tV.cv.find_withtag("fondo")))
+    # il filtro: le carte a vista fuori dalla vista vengono inquadrate
+    tV.zoom = 1.0; tV.disegna(); tV.cv.scan_mark(0, 0); tV.cv.scan_dragto(int(tV.cv.canvasx(0)), int(tV.cv.canvasy(0)), gain=1); tV.segui_fascia(); root.update()
+    tV.scegli_filtro("creature"); root.update()
+    cre_ = [pl for pl in tV.pile if pl["zona"] == "main"]
+    casi.append(("il filtro Creatures: le creature (lontane) inquadrate, dentro la vista (prima la vista restava ferma e non si vedeva niente)",
+                 bool(cre_) and all(tV.visibile(c) for pl in cre_ for c in pl["carte"]) and tV.pile_in_vista()))
+    vx_, vy_, z_ = tV.cv.canvasx(0), tV.cv.canvasy(0), tV.zoom
+    tV.scegli_filtro("creature"); tV.scegli_filtro("creature"); root.update()
+    casi.append(("negativa: un filtro le cui carte si vedono gia' tutte non sposta la vista", (tV.cv.canvasx(0), tV.cv.canvasy(0), tV.zoom) == (vx_, vy_, z_)))
+    tV.scegli_filtro("all"); root.update()
+    casi.append(("tornato a All: tutto il mazzo in vista", tV.pile_in_vista()))
+    # Fit: come A, anche con le pile a sinistra e sopra
+    tV.zoom = 1.0; tV.disegna(); root.update()
+    tV.adatta(); root.update()
+    casi.append(("Fit: tutte le pile in vista, anche quelle a sinistra e sopra l'inizio del foglio (prima portava la vista all'angolo del foglio)", tV.pile_in_vista()))
+    # F: sotto la fascia, non al centro di tutta la tela
+    sola_ = tV.pila_di(tV.vid_nome("Vanilla"))
+    tV.sel_carta = sola_["carte"][-1]
+    tV.inquadra_selezione(); root.update()
+    r_f = tV.rett_selezione()
+    casi.append(("F: la carta tutta sotto la fascia della sideboard e fuori dall'HUD (prima il centro di tutta la tela: la cima finiva sotto la fascia)",
+                 tV.in_vista(r_f) and r_f[1] - tV.cv.canvasy(0) >= tV.hs))
+    tV.chiudi()
+    tVs = apri_v("mio:vista_side", side={"Abrade": 1, "Shock": 1})
+    tVs.disegna(); root.update()
+    vx_, vy_, z_ = tVs.cv.canvasx(0), tVs.cv.canvasy(0), tVs.zoom
+    tVs.sel_carta = tVs.pila_di(next(i for i, v in tVs.voci.items() if v["zona"] == "side"))["carte"][-1]
+    ok_s = tVs.inquadra_selezione() is False and (tVs.cv.canvasx(0), tVs.cv.canvasy(0), tVs.zoom) == (vx_, vy_, z_) and "sideboard band" in tVs.aiuto.cget("text")
+    casi.append(("negativa: F su una carta della fascia non porta il foglio in un punto a caso (la fascia e' sempre in vista), e lo dice", ok_s))
+    # la fascia sta nella finestra: con tante carte diverse in sideboard si impilano a 2 o 3
+    tVs.cv.winfo_width = lambda: 700
+    voci0_ = tVs.voci
+    side8 = {n_: 1 for n_ in ("Lightning Bolt", "Shock", "Opt", "Abrade", "Token Maker", "Anthem", "Vanilla", "Plains")}
+    tVs.voci = {i: dict(nome=n_, zona="side", q=1) for i, n_ in enumerate(side8)}
+    pf_ = tVs.pile_fascia()
+    destra_f = max(pl["x"] + w_ for pl in pf_) * max(tVs.sf(), SPARISCE)
+    casi.append(("la sideboard all'apertura sta nella larghezza della finestra, a sinistra dell'HUD: 8 carte su 700 pixel a pile di 2-3 (prima una per pila, oltre il bordo)",
+                 destra_f <= 700 - INFO_L - 28 and max(len(pl["carte"]) for pl in pf_) in (2, 3) and sum(len(pl["carte"]) for pl in pf_) == 8))
+    tVs.voci = {0: dict(nome="Shock", zona="side", q=1), 1: dict(nome="Opt", zona="side", q=1)}
+    casi.append(("negativa: due carte in sideboard, una per pila come sempre", [len(pl["carte"]) for pl in tVs.pile_fascia()] == [1, 1]))
+    tVs.voci = voci0_
+    tVs.chiudi()
+    tVv = apri_v("mio:vista_vuota")
+    casi.append(("in sola lettura, senza sideboard ne' comandante, niente fascia vuota in cima (prima 250 pixel vuoti)", tVv.hs == 0 and tVv.nascosta()))
+    tVv.disegna(); root.update()
+    seg_ = [tVv.cv.bbox(i_) for i_ in tVv.cv.find_withtag("barra") if tVv.cv.type(i_) == "image"]
+    mx_ = tVv.cv.canvasx(0) + 500
+    casi.append(("con la fascia chiusa il segno della barra e' intero sotto il bordo alto, e si prende per riaprirla", bool(seg_) and seg_[0][1] >= tVv._fy - 0.5
+                 and tVv.vicino_barra(tVv._fy + 9, mx_)))
+    casi.append(("negativa: lontano dal segno, in cima alla vista, non e' la barra (le carte li' si prendono)", not tVv.vicino_barra(tVv._fy + 9, mx_ + 300)))
+    tVv.chiudi()
+    tVe = apri_v("build:vista_vuota", sola=False)
+    casi.append(("negativa: in modalita' edit la fascia resta aperta anche vuota (ci si lasciano le carte)", tVe.hs == FASCIA_DEF and not tVe.nascosta()))
+    # la carta arrivata dal builder nello spazio isolato: in vista
+    tVe.disegna(); root.update()
+    tVe.allinea(dict(mainV, Nuova=1), {})
+    root.update()
+    v_n = tVe.vid_nome("Nuova")
+    x0n, y0n, x1n, y1n = tVe.ingombro_px(tVe.pila_di(v_n))
+    casi.append(("la carta nuova dal builder (spazio isolato a destra di tutto) arriva in vista (prima fuori dallo schermo)", tVe.in_vista((x0n - 16, y0n - 8, x1n + 8, y1n + 26))))
+    # col filtro acceso: il builder toglie una carta nascosta, Arrange network senza connessioni
+    tVe.scegli_filtro("instant"); root.update()
+    try:
+        tVe.allinea({n_: q_ for n_, q_ in mainV.items() if n_ != "Vanilla"}, {}); root.update()
+        crash_ = False
+    except Exception:       # noqa: BLE001
+        crash_ = True
+    tutte_ = [c for _pl, cc in tVe.pile_tutte() for c in cc]
+    casi.append(("col filtro acceso il builder toglie una carta nascosta: niente pila vuota, il disegno non cade (prima IndexError in disegna)",
+                 not crash_ and tVe.vid_nome("Vanilla") is None and all(pl["carte"] for pl in tVe.pile) and sorted(tutte_) == sorted(tVe.voci)))
+    tVe.disponi_rete(); root.update()
+    casi.append(("negativa: Arrange network senza connessioni lascia il filtro com'era (solo gli istantanei sul foglio)",
+                 all(tVe.visibile(c) for pl in tVe.pile for c in pl["carte"]) and bool(tVe._riposte)))
+    tVe.rete.lega("Lightning Bolt", "Shock", dbV)
+    tVe.disponi_rete(); root.update()
+    tutte_ = [c for _pl, cc in tVe.pile_tutte() for c in cc]
+    casi.append(("Arrange network col filtro acceso: ogni carta in una pila sola (prima le nascoste finivano in due pile)", sorted(tutte_) == sorted(tVe.voci)))
+    tVe.scegli_filtro("all"); root.update()
+    # l'outliner: un elenco solo, il gruppo al posto della sua prima carta con sotto le sue carte (anche le terre), nessuna carta ripetuta
+    pS_, pM_ = tVe.pila_di(tVe.vid_nome("Shock")), tVe.pila_di(tVe.vid_nome("Mountain"))
+    pM_["x"], pM_["y"] = pS_["x"] + PASSO_X, pS_["y"]        # le terre accanto a Shock: la label prende solo queste due pile
+    tVe.sel = [pS_, pM_]
+    gV = tVe.crea_etichetta("Burn", "#d9534f"); root.update()
+    kV = tVe.etichette.index(gV)
+    cpV = tVe.duplica_gruppo(kV); root.update()
+    righe_V = tVe.voci_outliner()
+    carte_V = [x[1] for x in righe_V if x[0] == "carta"]
+    i_g = next(i for i, x in enumerate(righe_V) if x[0] == "gruppo" and x[1] == kV)
+    sotto_ = [tVe.voci[x[1]]["nome"] for x in righe_V[i_g + 1:i_g + 3]]
+    i_bolt = next(i for i, x in enumerate(righe_V) if x[0] == "carta" and tVe.voci[x[1]]["nome"] == "Lightning Bolt")
+    i_opt = next(i for i, x in enumerate(righe_V) if x[0] == "carta" and tVe.voci[x[1]]["nome"] == "Opt")
+    testi_V = [tVe.out_cv.itemcget(i_, "text") for i_ in tVe.out_cv.find_all() if tVe.out_cv.type(i_) == "text"]
+    casi.append(("outliner: ogni carta una volta sola, il gruppo fra Lightning Bolt e Opt (al posto di Shock) con sotto Shock e le terre, la copia una riga sotto",
+                 sorted(carte_V) == sorted(tVe.voci) and len(carte_V) == len(set(carte_V)) and i_bolt < i_g < i_opt and sotto_ == ["Shock", "Mountain"]
+                 and righe_V[i_g + 4][0] == "gruppo" and righe_V[i_g + 4][2] is cpV and "BURN" in testi_V))
+    casi.append(("negativa: niente piu' la sezione GROUPS in fondo che ripeteva le carte", "GROUPS" not in testi_V
+                 and sum(1 for _a, _b, v_ in tVe._out_righe if v_ == tVe.vid_nome("Shock")) == 1))
+    y_g = next((a_ + b_) / 2 for a_, b_, v_ in tVe._out_righe if v_ == ("l", kV))
+    tVe.scegli_outliner(type("E", (), dict(x=20, y=y_g, state=0))()); root.update()
+    casi.append(("clic sul gruppo nell'outliner: scelto e inquadrato nell'area libera", tVe.sel_label == {kV} and tVe.in_vista(tVe.lb_px(kV), tolleranza=40)))
+    # la carta scelta nell'outliner fuori dalla vista: il foglio la porta in vista, senza cambiare lo zoom
+    tVe.zoom = 1.0; tVe.disegna(); tVe.cv.scan_mark(0, 0); tVe.cv.scan_dragto(-4000, -3000, gain=1); root.update()
+    y_c = next((a_ + b_) / 2 for a_, b_, v_ in tVe._out_righe if v_ == tVe.vid_nome("Opt"))
+    tVe.scegli_outliner(type("E", (), dict(x=20, y=y_c, state=0))()); root.update()
+    x0o, y0o, x1o, y1o = tVe.ingombro_px(tVe.pila_di(tVe.vid_nome("Opt")))
+    casi.append(("clic su una carta dell'outliner fuori dalla vista: la sua pila in vista, lo zoom resta", tVe.zoom == 1.0 and tVe.in_vista((x0o, y0o, x1o, min(y1o, y0o + 300)))))
+    # la rotella sotto il 30% (dopo un'inquadratura di un foglio grande): non salta al 30%, va a passi fini
+    tVe.zoom = 0.15; tVe.disegna()
+    tVe.zoom_a(0.15 * 1.12); z_su = tVe.zoom
+    tVe.zoom = 0.15; tVe.zoom_a(0.15 / 1.12); z_giu = tVe.zoom
+    casi.append(("la rotella sotto il 30%: in su 0,17 (prima saltava a 0,30), in giu' resta", abs(z_su - 0.17) < 1e-9 and z_giu == 0.15))
+    tVe.zoom = 0.3; tVe.zoom_a(0.3 / 1.12)
+    casi.append(("negativa: dal 30% la rotella non scende piu' giu'", tVe.zoom == 0.3))
+    # la connessione col pallino e' un gesto: nello storico e da salvare (prima chiudendo senza Save si perdeva, senza domanda)
+    tVe.zoom = 1.0; tVe.disegna(); tVe.salva_tutto(); root.update()
+    tVe.rete.figli.pop(("Opt", "Abrade"), None)
+    tVe.apri_pila(tVe.vid_nome("Opt")) if tVe.pila_di(tVe.vid_nome("Opt"))["carte"][-1] != tVe.vid_nome("Opt") else None
+    tVe.inquadra_tutto(); tVe.salva_tutto(); root.update()       # tutto in vista e fuori dall'HUD (sotto l'HUD le carte non si prendono)
+    tira(tVe, "Opt", "Abrade")
+    legata_ = ("Opt", "Abrade") in tVe.rete.figli
+    casi.append(("la connessione col pallino in modalita' edit: da salvare (Save acceso, chiudendo chiede) e nello storico", legata_ and tVe.da_salvare))
+    tVe.annulla(); root.update()
+    casi.append(("Undo toglie la connessione, e non c'e' piu' niente da salvare", ("Opt", "Abrade") not in tVe.rete.figli and not tVe.da_salvare))
+    # col filtro acceso un disegno non e' un gesto: lo storico non cambia (prima l'ordine delle pile cambiava e Save si accendeva da solo)
+    tVe.scegli_filtro("creature"); root.update()
+    tVe.zoom_a(0.8); root.update(); tVe.disegna(); tVe.salva()
+    casi.append(("col filtro acceso zoom e disegno non segnano un gesto finto: niente da salvare", not tVe.da_salvare))
+    tVe.scegli_filtro("all"); root.update()
+    tVe.chiudi(chiedi=False)
     root.destroy()
+    RS.FILE, RS.IMPARATE, globals()["FILE"] = vero_
+    casi.append(("le prove non toccano i file di Autore (reti, imparato, disposizioni)", impronta_vera() == veri_prima))
     ok = sum(1 for _n, v in casi if v)
     for n, v in casi:
         print(("ok    " if v else "ROSSO ") + n)

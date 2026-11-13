@@ -61,7 +61,7 @@ SEZIONI = (
       ("Closed session", "closes the draft by hand: two clicks")]),
     ("performance", "Performance", "An analyzer of your games and situations, from your Arena logs: pick any variables, and the numbers, the chart, the spots "
      "and the matchups follow.",
-     [("Constructed · Limited", "which games"), ("+ more", "on each phase of the game, its extra filters: your deck's colors; the 1-2 mana spells and creatures in your opening hand and "
+     [("Constructed · Limited", "which games"), ("+ more", "on each phase of the game, its extra filters: the 1-2 mana spells and creatures in your opening hand and "
                                              "the first turns (missed land drops, curve, first creature); the fight (who attacked first, spells on the other turn, targeted, "
                                              "attacks into untapped lands, passing with lands up); how it ended (who conceded) and creatures lost; the day of the week and "
                                              "the break before the game"),
@@ -69,13 +69,24 @@ SEZIONI = (
                         "length and rank; date, time of day and game in the session"),
       ("By deck", "pick one of your decks (one box each, with its colors; sorted by most played, win rate or name), against everyone or against one exact color variant of the opponent's deck (vs colors: flag the colors, mono-color to "
                   "five colors or colorless); the table is your deck against every variant you met, click a row to pick it"),
-      ("Chart", "win rate, games, average turns or mulligan rate; by game or by date; cumulative or the last N games; split by a variable"),
+      ("Advanced filters", "the button under the smart filters opens your question: every filter you turn on is a piece with its x, the answer (win rate, "
+                           "games, record, interval, against all your games) right below, and the whole page follows it. Two tabs, You and Opponent, each with "
+                           "its phases: opening hand (your deck's colors, creatures, instants, sorceries, artifacts, enchantments, planeswalkers, battles; the "
+                           "opponent's mulligans), what was cast on each player's turns 1-5 and on the other one's turns, attacks turn by turn (how many "
+                           "creatures, the defender's untapped lands), defense (blocked or not), and the game: land drops on curve, lowest life, life and "
+                           "creatures at the end of your turns, permanents removed, board wipes, counterspells, graveyard targets, spells cast, when the game "
+                           "ended, no creature by a turn"),
+      ("Chart", "win rate, games, average turns or mulligan rate; by game or by date; cumulative or the last N games; split by a variable; under it, "
+                "Ranks (the league logos where your rank changes) and Trophies (the cup on the game that closes a draft with 7 wins)"),
       ("Games in this situation", "under the chart, one game per row: deck, opponent, result, start, your opening hand and the board at the end; click the "
                                   "hand or the board to open the table of that game, turn by turn, with a replayer: first, back, play and pause, forward, last, "
                                   "the timeline and the speed (keys: space, arrows, Home, End, T); each player's graveyard and exile (click to see them all), the cards that just arrived marked "
                                   "NEW, power and toughness, what happened in that moment, the chart of the game (life and power) and the turning point (★); the bar on the "
-                                  "right scrolls the games, the mark on top opens them in their own window"),
-      ("Spots", "where you win and where you lose the most, one or two variables at a time; strong when the 95% interval clears your average; click one to filter it"),
+                                  "right scrolls the games, the mark on top opens them in their own window; click a column title to sort by it (again to "
+                                  "reverse); the opponent's colors are mana symbols"),
+      ("Spots", "Preset searches: the basic questions already built (opening hand, attack, defense, instant speed; life, board and removal), each with "
+                "its win rate and games; one click turns on all its filters and opens the view that answers it, again to go back. Auto spots: where you "
+                "win and lose the most, one or two variables at a time; strong when the 95% interval clears your average; click one to filter it"),
       ("Report", "group by a variable; click a row to filter it, a column to sort"),
       ("Matchups", "your decks against the archetypes you met, or only the meta decks; click a cell to filter it"),
       ("Compare", "A, the situation of your filters, against B: everything else, all your games or a saved situation; the difference, and whether it holds "

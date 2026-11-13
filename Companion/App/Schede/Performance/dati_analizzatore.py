@@ -20,6 +20,7 @@ import collections  # noqa: E402
 import datetime  # noqa: E402
 import json  # noqa: E402
 import math  # noqa: E402
+import re  # noqa: E402
 
 import account  # noqa: E402
 
@@ -260,6 +261,105 @@ ENTRO = tuple(range(3, 13))         # «la partita finita entro il tuo turno N»
 SENZA = tuple(range(1, 7))          # «nessuna creatura lanciata entro il tuo turno N»
 
 
+SITUA_TURNI = (3, 5, 7)         # i turni delle foto di fine turno per vite e creature
+TERRE_TURNI = (3, 4, 5)         # le terre in curva entro il tuo turno N
+ORDINE_SITUA = {"terre": ("On curve", "1 short", "2+ short"), "vita": ("16+", "11-15", "6-10", "1-5", "0 or less"),
+                "vita_t": ("Ahead", "Even", "Behind"), "crea_t": ("More creatures", "Same", "Fewer creatures"),
+                "rim": ("0", "1", "2", "3+"), "si": ("Yes", "No"), "magie": ("0-4", "5-9", "10-14", "15+")}
+
+
+def situazioni_replay(match_id, seat, inizia, turni):
+    """I filtri situazionali letti dai replay (13 nov 2026, Autore: «Aggiungi tutti i filtri situazionali per le spot che potrebbero ancora mancare sii
+    minuzioso e dettagliato parti dai replay per aggiungere le migliori features di filtri»), per te («io») e per l'avversario («lui»), dalle azioni, dai
+    momenti e dalle foto di fine turno di mana_aperto (VERSIONE 12). {chiave: valore}; una chiave manca quando non si sa (la partita e' finita prima, mancano
+    i dati). Le chiavi:
+      terre_{chi}{N}   le terre giocate entro il suo turno N: «On curve» (N), «1 short», «2+ short»;
+      vita_{chi}       la sua vita piu' bassa nelle foto di fine turno e all'ultimo stato: «16+» ... «0 or less»;
+      vita_t{N}        a fine del tuo turno N: tu «Ahead», «Even» (2 vite o meno di scarto), «Behind»;
+      crea_t{N}        a fine del tuo turno N: le tue creature in campo contro le sue, «More creatures», «Same», «Fewer creatures»;
+      rim_{chi}        i permanenti dell'altro che le sue magie e abilita' hanno tolto dal campo (come colpiti_di): «0», «1», «2», «3+»;
+      wipe_{chi}       una sua magia o abilita' ha tolto 3+ permanenti (un board wipe): «Yes», «No»;
+      counter_{chi}    ha bersagliato una magia dell'altro in pila (una contromagia): «Yes», «No»;
+      cim_{chi}        ha bersagliato una carta in un cimitero (rianimare, riprendere): «Yes», «No»;
+      magie_{chi}      le magie lanciate nella partita: «0-4», «5-9», «10-14», «15+»."""
+    d = _MANA.get(match_id) or {}
+    if "azioni" not in d or seat not in (1, 2) or inizia is None:
+        return {}
+    out = {}
+    altro_s = 2 if seat == 1 else 1
+    posto = {"io": seat, "lui": altro_s}
+    comincia = {"io": inizia, "lui": not inizia}
+    t_di = lambda chi, n: 2 * n - 1 if comincia[chi] else 2 * n       # il turno di Arena del suo turno n
+    for chi in ("io", "lui"):
+        # le terre in curva
+        for n in TERRE_TURNI:
+            if turni and t_di(chi, n) <= turni:
+                k = sum(1 for t, s_, cosa, _g, _tp in d["azioni"] if cosa == "terra" and s_ == posto[chi] and t <= t_di(chi, n))
+                out[f"terre_{chi}{n}"] = "On curve" if k >= n else "1 short" if k == n - 1 else "2+ short"
+        # le magie lanciate
+        k = sum(1 for _t, s_, cosa, _g, _tp in d["azioni"] if cosa == "magia" and s_ == posto[chi])
+        out[f"magie_{chi}"] = "0-4" if k < 5 else "5-9" if k < 10 else "10-14" if k < 15 else "15+"
+    # la vita piu' bassa
+    foto = [f for _t, _a, f in d.get("foto") or []] + ([d["ultima"][2]] if d.get("ultima") and d["ultima"][2] else [])
+    for chi in ("io", "lui"):
+        vv = [f["v"][posto[chi] - 1] for f in foto if f.get("v") and f["v"][posto[chi] - 1] is not None]
+        if vv:
+            m = min(vv)
+            out[f"vita_{chi}"] = "16+" if m >= 16 else "11-15" if m >= 11 else "6-10" if m >= 6 else "1-5" if m >= 1 else "0 or less"
+    # a fine dei tuoi turni: vite e creature
+    per_t = {t: f for t, _a, f in d.get("foto") or []}
+    for n in SITUA_TURNI:
+        f = per_t.get(t_di("io", n))
+        if not f:
+            continue
+        v = f.get("v") or [None, None]
+        if v[seat - 1] is not None and v[altro_s - 1] is not None:
+            dv = v[seat - 1] - v[altro_s - 1]
+            out[f"vita_t{n}"] = "Ahead" if dv > 2 else "Behind" if dv < -2 else "Even"
+        c = f.get("c") or [[], []]
+        mie = sum(1 for x in c[seat - 1] if len(x) > 3 and x[3] is not None)
+        sue = sum(1 for x in c[altro_s - 1] if len(x) > 3 and x[3] is not None)
+        out[f"crea_t{n}"] = "More creatures" if mie > sue else "Fewer creatures" if mie < sue else "Same"
+    # le magie e le abilita' coi permanenti tolti, le contromagie, i bersagli nei cimiteri
+    rim = {"io": 0, "lui": 0}
+    for chi in ("io", "lui"):
+        for k in ("wipe", "counter", "cim"):
+            out[f"{k}_{chi}"] = "No"
+    for kind, _t, _att, f, info in d.get("momenti") or []:
+        if kind != "spell" or not info or info.get("chi") not in (1, 2):
+            continue
+        chi = "io" if info["chi"] == seat else "lui"
+        tolti = colpiti_di(info)
+        c = (f or {}).get("c") or [[], []]
+        suoi = {x[5] for x in c[(altro_s if chi == "io" else seat) - 1] if len(x) > 5}
+        rim[chi] += sum(1 for x in tolti if x in suoi)
+        if len(tolti) >= 3:
+            out[f"wipe_{chi}"] = "Yes"
+        for _i, zona, proprietario, _g in info.get("fuori") or []:
+            if zona == "pila" and proprietario not in (None, info["chi"]):
+                out[f"counter_{chi}"] = "Yes"
+            elif zona == "cim":
+                out[f"cim_{chi}"] = "Yes"
+    for chi in ("io", "lui"):
+        out[f"rim_{chi}"] = str(rim[chi]) if rim[chi] < 3 else "3+"
+    return out
+
+
+SITUA_NOMI = {}
+for _chi, _tu, _suo in (("io", "You", "the opponent's"), ("lui", "Opponent", "your")):
+    for _n in TERRE_TURNI:
+        SITUA_NOMI[f"terre_{_chi}{_n}"] = (f"{_tu} · land drops by {'your' if _chi == 'io' else 'their'} turn {_n}", "terre")
+    SITUA_NOMI[f"vita_{_chi}"] = (f"{_tu} · lowest life in the game", "vita")
+    SITUA_NOMI[f"rim_{_chi}"] = (f"{_tu} · {_suo} permanents removed", "rim")
+    SITUA_NOMI[f"wipe_{_chi}"] = (f"{_tu} · wiped the board (3+ permanents at once)", "si")
+    SITUA_NOMI[f"counter_{_chi}"] = (f"{_tu} · countered a spell", "si")
+    SITUA_NOMI[f"cim_{_chi}"] = (f"{_tu} · targeted a card in a graveyard", "si")
+    SITUA_NOMI[f"magie_{_chi}"] = (f"{_tu} · spells cast in the game", "magie")
+for _n in SITUA_TURNI:
+    SITUA_NOMI[f"vita_t{_n}"] = (f"Life at the end of your turn {_n}", "vita_t")
+    SITUA_NOMI[f"crea_t{_n}"] = (f"Creatures at the end of your turn {_n}", "crea_t")
+
+
 def colori_mazzo(nomi_):
     """La variante di colore del tuo mazzo (WUBRG, «C» senza colori) dalle magie della lista; None senza lista."""
     if not nomi_:
@@ -280,26 +380,38 @@ def come_finita(motivo, vinta):
     return {"Game": "Played to the end", "Timeout": "Timeout"}.get(m)
 
 
+_TERRE = {}         # e_terra ricordata per nome: quella di mazzi_salvati ricontrolla 5 file a ogni chiamata (13 nov 2026: 0,7 s su 1,9 per rileggere)
+
+
+def e_terra(n):
+    if n not in _TERRE:
+        import mazzi_salvati as MS
+        _TERRE[n] = MS.e_terra(n)
+    return _TERRE[n]
+
+
 def riga(p, r):
     """Una partita: il record di matchup_log piu' le variabili dell'analizzatore. p e' la partita di partite_log."""
     import condividi
-    import mazzi_salvati as MS
     quando = datetime.datetime.fromtimestamp((p.get("inizio") or 0) / 1000)
     mani = p.get("mani") or []
     tenuta = condividi.nomi(mani[-1]) if mani else None
-    terre = sum(q for n, q in tenuta.items() if MS.e_terra(n)) if tenuta else None
+    terre = sum(q for n, q in tenuta.items() if e_terra(n)) if tenuta else None
     sue = condividi.nomi(p.get("sue") or []) or {}
     turni = r.get("turni")
     econ, crea = dalla_mano(tenuta)
     lista = condividi.nomi(p.get("carte") or []) or {}
-    return dict(r, seat=p.get("seat"), economiche=econ, crea_mano=crea, crea_in_mano=creature_in_mano(tenuta),
+    return dict(r, seat=p.get("seat"), mazzo_id=p.get("mazzo"), economiche=econ, crea_mano=crea, crea_in_mano=creature_in_mano(tenuta),
                 suo_mull=suo_mulligan(r.get("partita"), p.get("seat")), crea_prima=prima_creatura(r.get("partita"), p.get("seat"), r.get("inizia")),
                 ist_mano=magie_in_mano(tenuta, "Instant"), str_mano=magie_in_mano(tenuta, "Sorcery"),
                 art_mano=magie_in_mano(tenuta, "Artifact"), inc_mano=magie_in_mano(tenuta, "Enchantment"), pw_mano=magie_in_mano(tenuta, "Planeswalker"),
                 bat_mano=magie_in_mano(tenuta, "Battle"),
-                per_turno=per_turno(r.get("partita"), p.get("seat"), r.get("inizia"), turni), miei_colori=colori_mazzo(lista), fine=come_finita(p.get("motivo"), r["vinta"]),
+                per_turno=per_turno(r.get("partita"), p.get("seat"), r.get("inizia"), turni),
+                situa=situazioni_replay(r.get("partita"), p.get("seat"), r.get("inizia"), turni),
+                crea_prima_lui=prima_creatura(r.get("partita"), 2 if p.get("seat") == 1 else 1 if p.get("seat") == 2 else None,
+                                              None if r.get("inizia") is None else not r.get("inizia")), miei_colori=colori_mazzo(lista), fine=come_finita(p.get("motivo"), r["vinta"]),
                 giorno=GIORNI[quando.weekday()], tipo="Limited" if r["formato"] == "limited" else "Constructed", quando=quando, ora=quando.hour, fascia=_fascia(quando.hour),
-                terre=terre, mano=sorted(tenuta or {}), sue_viste=sorted(n for n in sue if not MS.e_terra(n)),
+                terre=terre, mano=sorted(tenuta or {}), sue_viste=sorted(n for n in sue if not e_terra(n)),
                 turno=math.ceil(turni / 2) if turni else None, lunga=_lunga(math.ceil(turni / 2) if turni else None),
                 partenza=None if r.get("inizia") is None else ("Play" if r["inizia"] else "Draw"),
                 mull="0" if r["mulligan"] == 0 else "1" if r["mulligan"] == 1 else "2+",
@@ -468,6 +580,7 @@ def righe(partite=None):
     firma = (len(partite), partite[-1].get("matchId") if partite else None)       # partite_log da' gia' le partite dell'account mostrato
     if _CACHE.get("firma") == firma:
         return _CACHE["righe"]
+    _TERRE.clear()      # una rilettura dei log rifa' anche le terre (una carta nuova del database)
     try:        # il mana aperto: dalla copia su disco, e le partite nuove lette adesso (la prima volta ~10 s per 450 partite)
         import mana_aperto
         _MANA.clear(); _MANA.update(mana_aperto.tutti(ids={p.get("matchId") for p in partite}))
@@ -573,6 +686,9 @@ EXTRA += [(f"t_{pre}{chi}{suf}{n}", nome.format(n=n), (lambda x, k=f"{pre}{chi}{
                                  ("a", "", tu + " · turn {n} attack"), ("d", "", tu + " · " + lui_ + " turn {n} defense"),
                                  ("m", "", tu + " · turn {n} attack · " + ("the opponent's" if chi == "io" else "your") + " untapped lands"))
           for n in range(1, TURNI_FILTRO + 1)]
+# i filtri situazionali dai replay (13 nov 2026, situazioni_replay) e la prima creatura dell'avversario
+EXTRA += [("s_" + k_, nome_, (lambda x, k=k_: (x.get("situa") or {}).get(k))) for k_, (nome_, _o) in SITUA_NOMI.items()]
+EXTRA += [("senza_lui", "Opponent · no creature cast by", lambda x: (valori_di("senza_lui", x) or [None])[0])]
 for _k, _n, _f in EXTRA:
     NOME[_k], LEGGI[_k] = _n, _f
 # vinta o persa come tendina della fase Opening and first turns (12 nov 2026, Autore: «aggiungiamo la tendina di partita vinta o persa nella sezione opening
@@ -586,7 +702,9 @@ ORDINE_VALORI.update(esito=("Won", "Lost"), miei_colori=VARIANTI, economiche=("0
                      art_mano=("0", "1", "2+"), inc_mano=("0", "1", "2+"), pw_mano=("0", "1", "2+"), bat_mano=("0", "1", "2+"),
                      **{f"t_{pre}{chi}{suf}{n}": o_ for chi in ("io", "lui") for n in range(1, TURNI_FILTRO + 1)
                         for pre, suf, o_ in (("", "", ORDINE_TIPI), ("", "x", ORDINE_TIPI), ("a", "", ORDINE_ATT), ("d", "", ORDINE_DIF),
-                                             ("m", "", ORDINE_APERTE))})
+                                             ("m", "", ORDINE_APERTE))},
+                     **{"s_" + k_: ORDINE_SITUA[o_] for k_, (_n, o_) in SITUA_NOMI.items()},
+                     senza_lui=tuple(f"Their turn {n}" for n in SENZA) + ("The whole game",))
 
 
 def per_varianti(r):
@@ -628,11 +746,15 @@ def valori_di(k, x):
     if k == "fine_entro":
         t = x.get("turno")
         return [] if not t else [f"Your turn {n}" for n in ENTRO if t <= n]
-    if k == "senza_crea":
-        prima = x.get("crea_prima")
+    if k.startswith("s_"):       # i filtri situazionali dai replay (situazioni_replay)
+        v = (x.get("situa") or {}).get(k[2:])
+        return [] if v is None else [v]
+    if k in ("senza_crea", "senza_lui"):
+        prima = x.get("crea_prima" if k == "senza_crea" else "crea_prima_lui")
         if prima is None:
             return []
-        return [f"Your turn {n}" for n in SENZA if prima == 0 or n < prima] + (["The whole game"] if prima == 0 else [])
+        chi_ = "Your" if k == "senza_crea" else "Their"
+        return [f"{chi_} turn {n}" for n in SENZA if prima == 0 or n < prima] + (["The whole game"] if prima == 0 else [])
     v = LEGGI[k](x)
     return [] if v is None else [v]
 
@@ -817,6 +939,22 @@ def cambi_rango(r):
             if prima is not None:
                 out.append((i + 1, x["rango"]))
             prima = x["rango"]
+    return out
+
+
+def trofei(r):
+    """Le partite che chiudono un draft col trofeo, sull'asse delle partite: [indice 1..] (13 nov 2026, Autore: «nei grafici non si vedono piu' i loghi dei
+    trofei per il limited»). Ogni draft ha il suo mazzo (un id per corso): le sue partite in fila, e la vittoria numero 7 (3 nel Traditional, al meglio
+    delle tre) e' il trofeo. Solo gli eventi limited (Draft, Sealed, Cube)."""
+    out, vinte = [], {}
+    for i, x in enumerate(sorted(r, key=lambda x: x["quando"])):
+        ev = x.get("evento") or ""
+        if not x.get("mazzo_id") or not re.search(r"Draft|Sealed|Cube", ev) or not x.get("vinta"):
+            continue
+        k = (ev, x["mazzo_id"])
+        vinte[k] = vinte.get(k, 0) + 1
+        if vinte[k] == (3 if ev.startswith("Trad") else 7):
+            out.append(i + 1)
     return out
 
 
@@ -1144,6 +1282,25 @@ def prova():
         casi.append(("le terre stappate di chi difende: lui attacca al suo turno 2 contro 2 tue stappate, tu al tuo 2 contro lui tappato",
                      p5.get("mlui2") == ["2+ untapped lands"] and p5.get("mio2") == ["0 untapped lands"] and p5.get("mio1") == ["No attack"]))
         casi.append(("negativa: un combattimento senza le terre (prima della VERSIONE 12) non da' il valore", "alui2" in p4 and "mlui2" not in p4))
+        # i filtri situazionali dai replay (13 nov 2026): terre, vita e campo a fine turno, rimozioni, board wipe, contromagie
+        fo_ = dict(v=[12, 4], c=[[[1, 0, 0, 2, 2, 10], [2, 0, 0, 1, 1, 11]], [[3, 0, 0, 3, 3, 20]]])
+        _MANA["m6"] = dict(azioni=[[1, 1, "terra", 1, "L"], [3, 1, "terra", 1, "L"], [2, 2, "terra", 1, "L"], [4, 2, "terra", 1, "L"], [6, 2, "terra", 1, "L"]],
+                          foto=[[5, 1, fo_]],
+                          momenti=[["spell", 5, 1, fo_, dict(g=1, chi=1, ab=False, bers=[20], colpiti=[20], fatti=[], fuori=[[30, "pila", 2, 99]])],
+                                   ["spell", 6, 2, fo_, dict(g=2, chi=2, ab=False, bers=[], colpiti=[10, 11, 12], fatti=[10, 11, 12], fuori=[])]])
+        sr = situazioni_replay("m6", 1, True, 6)
+        casi.append(("situazioni dai replay: le terre (tu corto di una al turno 3, lui in curva), vita e creature a fine del tuo turno 3, le vite piu' basse",
+                     sr.get("terre_io3") == "1 short" and sr.get("terre_lui3") == "On curve" and sr.get("vita_t3") == "Ahead"
+                     and sr.get("crea_t3") == "More creatures" and sr.get("vita_io") == "11-15" and sr.get("vita_lui") == "1-5"))
+        casi.append(("le rimozioni: la tua toglie una sua creatura e contromaga; la sua spazza 3 permanenti, 2 tuoi (12 non e' in campo)",
+                     sr.get("rim_io") == "1" and sr.get("counter_io") == "Yes" and sr.get("wipe_lui") == "Yes" and sr.get("rim_lui") == "2"
+                     and sr.get("wipe_io") == "No" and sr.get("counter_lui") == "No"))
+        casi.append(("negativa: senza le azioni della partita nessuna situazione", situazioni_replay("mx", 1, True, 6) == {}))
+        q_ = datetime.datetime(2026, 11, 1)
+        tr = [dict(quando=q_ + datetime.timedelta(hours=i), evento="QuickDraft_FRA_1", mazzo_id="d1", vinta=i != 3) for i in range(9)]
+        casi.append(("i trofei: la settima vittoria dello stesso draft (con una sconfitta in mezzo) e' la nona partita", trofei(tr) == [8]))
+        casi.append(("negativa: le partite costruite non danno trofei, e un Traditional basta a 3",
+                     trofei([dict(x, evento="Ladder") for x in tr]) == [] and trofei([dict(x, evento="TradDraft_FRA_1") for x in tr]) == [3]))
         casi.append(("negativa: il filtro del turno sbagliato non passa (la creatura e' del tuo turno 2, non dell'1)",
                      passa(dict(per_turno=pt), {"t_io2": "Creature"}) and not passa(dict(per_turno=pt), {"t_io1": "Creature"})))
     finally:

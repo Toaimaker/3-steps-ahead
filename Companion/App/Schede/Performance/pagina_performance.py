@@ -44,6 +44,14 @@ PRESET = (
     ("INSTANT SPEED", "You cast on the opponent's turn", "Instants and flash", {"sit:io_nel_suo": "Yes"}, "chart", None),
     ("INSTANT SPEED", "Opponent cast on your turn", "Their instants and flash", {"sit:lui_nel_mio": "Yes"}, "chart", None),
     ("INSTANT SPEED", "You passed with mana up", "2+ untapped lands at the end of your turn", {"sit:io_passa_aperto": "Yes"}, "chart", None),
+    # dai filtri situazionali dei replay (13 nov 2026)
+    ("LIFE, BOARD AND REMOVAL", "You survived at 5 life or less", "Your lowest life was 1-5", {"s_vita_io": "1-5"}, "chart", None),
+    ("LIFE, BOARD AND REMOVAL", "More creatures at your turn 5", "At the end of your 5th turn", {"s_crea_t5": "More creatures"}, "chart", None),
+    ("LIFE, BOARD AND REMOVAL", "Fewer creatures at your turn 5", "At the end of your 5th turn", {"s_crea_t5": "Fewer creatures"}, "chart", None),
+    ("LIFE, BOARD AND REMOVAL", "You removed none of their permanents", "No removal landed in the whole game", {"s_rim_io": "0"}, "chart", None),
+    ("LIFE, BOARD AND REMOVAL", "Opponent wiped the board", "3+ permanents at once", {"s_wipe_lui": "Yes"}, "chart", None),
+    ("LIFE, BOARD AND REMOVAL", "Opponent countered your spell", "A spell of theirs targeted yours on the stack", {"s_counter_lui": "Yes"}, "chart", None),
+    ("LIFE, BOARD AND REMOVAL", "Opponent stumbled on lands", "2+ land drops short by their turn 4", {"s_terre_lui4": "2+ short"}, "chart", None),
 )
 # come si ordina la tabella delle partite per colonna (13 nov 2026); None va in fondo. La mano: per terre in mano
 ORDINI_PARTITE = {"data": lambda x: x["quando"], "mio": lambda x: (x.get("mio") or "").strip().lower() or None,
@@ -86,14 +94,21 @@ AVANZATI = {
                        ("IN THE WHOLE GAME", ("sit:io_primo", "sit:io_tutto", "sit:io_tutto_aperto", "sit:io_att_aperto", "sit:io_att_chiuso")))),
            ("Defense", (("YOUR DEFENSE ON THE OPPONENT'S TURNS", tuple(f"t_dio{n}" for n in range(1, DA.TURNI_FILTRO + 1))),
                         ("IN THE WHOLE GAME", ("sit:io_blocca", "sit:io_difende")))),
-           ("Game", (("YOUR GAME", ("senza_crea", "fine_entro")),))),
+           # i filtri situazionali dai replay (13 nov 2026, «sii minuzioso e dettagliato parti dai replay»): terre, vita e campo, rimozioni e interazione
+           ("Game", (("LAND DROPS", ("s_terre_io3", "s_terre_io4", "s_terre_io5")),
+                     ("LIFE AND BOARD AT THE END OF YOUR TURNS", ("s_vita_io", "s_vita_t3", "s_vita_t5", "s_vita_t7", "s_crea_t3", "s_crea_t5", "s_crea_t7")),
+                     ("REMOVAL AND INTERACTION", ("s_rim_io", "s_wipe_io", "s_counter_io", "s_cim_io", "s_magie_io")),
+                     ("THE END", ("senza_crea", "fine_entro"))))),
     "lui": (("Opening hand", (("THE OPPONENT", ("suo_mull",)),)),
             ("Their turns", (("WHAT THEY CAST ON THEIR TURNS", tuple(f"t_lui{n}" for n in range(1, DA.TURNI_FILTRO + 1))),)),
             ("Your turns", (("WHAT THEY CAST ON YOUR TURNS", tuple(f"t_luix{n}" for n in range(1, DA.TURNI_FILTRO + 1))),)),
             ("Attack", (("THEIR ATTACKS, TURN BY TURN", tuple(f"t_alui{n}" for n in range(1, DA.TURNI_FILTRO + 1))),
                         ("YOUR UNTAPPED LANDS WHEN THEY ATTACK", tuple(f"t_mlui{n}" for n in range(1, DA.TURNI_FILTRO + 1))),
                         ("IN THE WHOLE GAME", ("sit:lui_att_aperto",)))),
-            ("Defense", (("THEIR DEFENSE ON YOUR TURNS", tuple(f"t_dlui{n}" for n in range(1, DA.TURNI_FILTRO + 1))),)))}
+            ("Defense", (("THEIR DEFENSE ON YOUR TURNS", tuple(f"t_dlui{n}" for n in range(1, DA.TURNI_FILTRO + 1))),)),
+            ("Game", (("LAND DROPS", ("s_terre_lui3", "s_terre_lui4", "s_terre_lui5")),
+                      ("LIFE AND CREATURES", ("s_vita_lui", "senza_lui")),
+                      ("REMOVAL AND INTERACTION", ("s_rim_lui", "s_wipe_lui", "s_counter_lui", "s_cim_lui", "s_magie_lui")))))}
 VALORI_FISSI = {"mull": ("0", "1", "2+"), "partenza": ("Play", "Draw"), "esito": ("Won", "Lost")}      # le tendine con le voci fisse
 SEZIONI_FILTRI = (("formato", "evento", "deck"), ("partenza", "mull", "terre", "esito"), ("suo", "colori"), ("lunga", "rango"), ("data", "fascia", "sessione"))
 
@@ -462,6 +477,8 @@ class PaginaPerformance:
             c = tk.Canvas(fr, bg=C["scheda"], highlightthickness=0, bd=0, height=120)
             c.pack(fill="both", expand=True, padx=8, pady=(4, 6))
         c.bind("<Configure>", lambda e, k=k: self.tela(k) is e.widget and self.disegna_vista(k))
+        if k == "chart":
+            c.bind("<Button-1>", self.clic_grafico)
         if k in ("chart", "compare"):
             c.bind("<Motion>", self.punta)
             c.bind("<Leave>", lambda e: e.widget.delete("punta"))
@@ -903,15 +920,61 @@ class PaginaPerformance:
         fin = "" if self.metrica == "n" else (", cumulative" if self.finestra == "cum" else f", last {self.finestra} games")
         tit = f"{tit}{fin}" + (f" · split by {DA.nome_var(self.dividi).lower()}" if self.dividi else "")
         vuoto = "No games in this situation" if not r else f"{len(r)} games: too few for this chart (a moving window starts at 5)"
-        sc = self.traccia(c, lin, (52, 16, W - (210 if self.dividi else 120), H - 24), self.metrica, self.asse, LINEE, tit, vuoto)
-        if sc and self.asse == "games" and len(lin) == 1:       # i cambi di lega, come nel grafico di prima
-            sx, _sy = sc
-            for i_, rango in DA.cambi_rango(r):
-                xx = sx(i_)
-                c.create_line(xx, 16, xx, H - 24, fill="#3a3a42", dash=(3, 3))
-                c.create_text(xx + 4, 18, text=rango, anchor="nw", fill=C["grigio"], font=self.F(7, True))
+        sc = self.traccia(c, lin, (52, 16, W - (210 if self.dividi else 120), H - 44), self.metrica, self.asse, LINEE, tit, vuoto)
+        # i loghi delle leghe e le coppe dei trofei, con le loro spunte sotto il grafico (13 nov 2026, Autore: «nei grafici non si vedono piu' i loghi dei
+        # trofei per il limited e dei rank superati, metti una spunta per i rank e una per i trofei da accendere o spegnere sotto il grafico»)
+        c._spunte_g = []
+        F = self.F
+        x_ = 52
+        for k_, nome in (("ranghi", "Ranks"), ("trofei", "Trophies")):
+            on = getattr(self, "mostra_" + k_, True)
+            c.create_image(x_, H - 14, image=DG.spunta(13, on, C["azzurro"], C["fondo"], C["grigio"], C["fondo"]), anchor="w")
+            t_ = c.create_text(x_ + 18, H - 14, text=nome, anchor="w", fill=C["titolo"] if on else C["grigio"], font=F(7, True))
+            x1_ = (c.bbox(t_) or (0, 0, x_ + 80, 0))[2]
+            c._spunte_g.append((x_ - 2, H - 24, x1_ + 4, H - 4, k_))
+            x_ = x1_ + 22
+        if sc and self.asse == "games" and len(lin) == 1:
+            sx, sy = sc
+            punti = dict(lin[0][1])
+            if getattr(self, "mostra_ranghi", True):        # dove cambia la lega: la linea e il suo logo
+                tipo_l = "limited" if self.tipo == "Limited" else "constructed"
+                for i_, rango in DA.cambi_rango(r):
+                    xx = sx(i_)
+                    c.create_line(xx, 16, xx, H - 44, fill="#3a3a42", dash=(3, 3))
+                    img = self.logo_grafico(tipo_l, rango)
+                    if img is not None:
+                        c.create_image(xx, 18, image=img, anchor="n")
+                    else:
+                        c.create_text(xx + 4, 18, text=rango, anchor="nw", fill=C["grigio"], font=F(7, True))
+            if getattr(self, "mostra_trofei", True):        # la coppa sulla partita che chiude un draft col trofeo
+                img = self.logo_grafico(None, "coppa")
+                for i_ in DA.trofei(r):
+                    y_ = punti.get(i_)
+                    if img is not None and y_ is not None:
+                        c.create_image(sx(i_), sy(y_) - 12, image=img)
         if not self.partite_fuori:
             self.disegna_partite(self.ospite("chart").get("lista"))
+
+    def logo_grafico(self, tipo, nome):
+        """Il logo di una lega (tipo «constructed» o «limited») o la coppa (nome «coppa»), fatto una volta."""
+        cache = self.__dict__.setdefault("_loghi_g", {})
+        if (tipo, nome) not in cache:
+            import icone
+            try:
+                f = icone.emoji_png("🏆", "coppa", 18) if nome == "coppa" else icone.logo_lega(tipo, (nome or "").split(" ")[0], 26)
+                cache[(tipo, nome)] = self.tk.PhotoImage(file=f) if f else None
+            except Exception:      # noqa: BLE001 - senza il file resta il nome
+                cache[(tipo, nome)] = None
+        return cache[(tipo, nome)]
+
+    def clic_grafico(self, e):
+        """Le spunte sotto il grafico: Ranks e Trophies."""
+        for x0, y0, x1, y1, k in getattr(e.widget, "_spunte_g", []):
+            if x0 <= e.x <= x1 and y0 <= e.y <= y1:
+                setattr(self, "mostra_" + k, not getattr(self, "mostra_" + k, True))
+                self.disegna_vista("chart")
+                return k
+        return None
 
     # ------------------------------------------------------------ le partite sotto il grafico e la board di ognuna (12 nov 2026, Autore: «proprio come
     # holdem manager, sotto al grafico si dovrebbe generare una tabella che ci permette di vedere la nostra mano in una colonna e il board in un'altra colonna:

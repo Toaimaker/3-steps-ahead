@@ -28,7 +28,12 @@ Companion/
       Drafter/           drafter_evento (Rare pick, calendario, Play limited, Closed session, record), drafter_mazzi (le tre fasi, i mazzi,
                          Select deck, Fix, overlay), deck_sheet, drafter_partita, dati_drafter, calendario_eventi, chiudi_draft,
                          pronto_limited, finestra_mazzi (la finestra a 3 colonne di prima)
-      Performance/       pagina_performance (la tendina Mode), pagina_limited, pagina_standard
+      Performance/       pagina_performance (l'analizzatore: smart filters, Advanced filters con la domanda, Spots con le ricerche
+                         preimpostate, Chart con Ranks e Trophies, Report, Matchups, Compare, My filters, la tabella delle partite e il
+                         replayer), dati_analizzatore (le righe delle partite, le variabili, i filtri turno per turno e dai replay),
+                         mana_aperto (la lettura dei log di ogni partita: momenti, azioni, combattimenti, foto; copia in
+                         Log_Arena/mana_aperto.json), replay_log (il replay azione per azione), pagina_limited e pagina_standard (le
+                         pagine di prima, come classi: Your decks eredita da PaginaStandard)
       Your_decks/        pagina_mazzi, gruppi_mazzi, finestra_mazzo, scheda_mazzo, mani_mazzo, esporta_mazzo,
                          mazzi_salvati, mazzi_arena, dati_mazzo, prezzi_carte
       Resources/         pagina_risorse, farmer, roadmap, roi, trend, roadmap_check, risorse, verifica_piani, premi_eventi
