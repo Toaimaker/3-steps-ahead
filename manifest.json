@@ -1,6 +1,6 @@
 {
- "version": "0.1.101",
+ "version": "0.1.102",
  "date": "2026-11-13",
- "notes": "Deck HUD: the READY badge sits on the list header row, and a redrawn eye (open with the iris, closed with lashes)",
+ "notes": "Deck HUD: the header frame sits exactly on the backdrop edge and stays on screen, sharper logo and dot on the READY badge",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

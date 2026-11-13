@@ -142,6 +142,12 @@ def finestra_arena():
     return h, (p.x, p.y, p.x + r.right - r.left, p.y + r.bottom - r.top)
 
 
+def bordo(W):
+    """Quanto sta la lista dal bordo di Arena: abbastanza perche' il velo, coi suoi margini, resti tutto sullo schermo (13 nov 2026, il debug dei bordi: a
+    0,002 x 1920 = 3 pixel il velo cominciava a -2 e la cornice della testata si vedeva staccata dal bordo del velo)."""
+    return max(int(POSTO[0] * W), FONDO_MARGINE)
+
+
 def arena_in_cima(h, x, y):
     """True se nel punto (x, y) dello schermo la finestra in cima e' Arena (le finestre che lasciano passare i clic, come questa, non contano)."""
     w = user32.WindowFromPoint(wintypes.POINT(int(x), int(y)))
@@ -292,7 +298,7 @@ class HudArena:
         self.fondi = {lato: self._fondo(in_cattura) for lato in ("sinistra", "destra")}
         self.in_cattura = in_cattura
         self.pool_strisce = [[*self._fondo(in_cattura), None] for _ in range(14)]     # [Toplevel, hwnd, alfa]
-        self.strisce, self.rett_strisce = {}, []
+        self.strisce, self.rett_strisce, self.testate, self.veli = {}, [], {}, {}
         import disegni
         self.D, self.prima_clic, self.rett_occhi = disegni, None, {}
         self.occhi = {lato: self._occhio(lato, in_cattura) for lato in ("sinistra", "destra")}
@@ -376,7 +382,7 @@ class HudArena:
                 x, y = (t[0] if lato == "sinistra" else t[0] - ew), int(t[1] - eh / 2)    # al bordo del monitor (stesso giorno: «occhio tienilo a
                 # bordo monitor quindi posizione opposta»)
             else:
-                x = int(POSTO[0] * W) if lato == "sinistra" else W - int(POSTO[0] * W) - ew
+                x = bordo(W) if lato == "sinistra" else W - bordo(W) - ew
                 y = (H - eh) // 2
             a_vista = vista("mio" if lato == "sinistra" else "suo")
             c.delete("all")
@@ -395,12 +401,11 @@ class HudArena:
         """Ogni velo sotto la sua lista (coi margini), o fuori dallo schermo se la lista non c'e'; poi i testi in cima e i veli subito sotto."""
         self.rett_fondi = {}
         for lato, (f, h) in self.fondi.items():
-            p = self.pannelli.get(lato) if area else None
-            if p:
-                m = FONDO_MARGINE
-                x0, y0 = area[0] + p[0] - m, area[1] + p[1] - m
-                self.rett_fondi[lato] = (x0, y0, x0 + p[2] - p[0] + 2 * m, y0 + p[3] - p[1] + 2 * m)
-                f.geometry(f"{p[2] - p[0] + 2 * m}x{p[3] - p[1] + 2 * m}+{x0}+{y0}")
+            v = getattr(self, "veli", {}).get(lato) if area and lato in self.pannelli else None
+            if v:
+                x0, y0 = area[0] + v[0], area[1] + v[1]
+                self.rett_fondi[lato] = (x0, y0, x0 + v[2] - v[0], y0 + v[3] - v[1])
+                f.geometry(f"{v[2] - v[0]}x{v[3] - v[1]}+{x0}+{y0}")
             else:
                 f.geometry("10x10+-3000+0")
         tutte = [x for lato in ("sinistra", "destra") if area and lato in self.pannelli for x in self.strisce.get(lato, [])]
@@ -521,7 +526,7 @@ class HudArena:
             return
         self.disegnato = chiave
         self.cv.delete("all")
-        self.pannelli, self.titoli, self.strisce = {}, {}, {}
+        self.pannelli, self.titoli, self.strisce, self.testate, self.veli = {}, {}, {}, {}, {}
         if area and pronto and not (suo or mio or any(occhi.values())):
             self.badge(area)
             return
@@ -548,7 +553,10 @@ class HudArena:
             self.cv.move(lato, 0, dy)
             self.pannelli[lato] = (x0, y0 + dy, x1, y0 + dy + alto, sn, xn, yt + dy)
             self.strisce[lato] = [(a, b + dy, c, e + dy, t) for a, b, c, e, t in self.strisce.get(lato, [])]
-            self.titoli[lato] = (x0 if lato == "sinistra" else x1, yt + dy)
+            m = FONDO_MARGINE
+            t0, t1 = (v + dy for v in self.testate[lato])
+            self.titoli[lato] = (x0 - m + 1 if lato == "sinistra" else x1 + m - 1, yt + dy)       # l'occhio: dentro la cornice, al bordo del monitor
+            self.veli[lato] = (x0 - m, t0 - 1, x1 + m, y0 + dy + alto + m)                   # il velo comincia con la riga della cornice
             self.ricorda_titolo((yt + dy) / H)       # dove sta l'occhio, al bordo del monitor: resta li' anche a lista chiusa (Autore, stesso giorno)
             if nascoste.get(lato):      # la lista chiusa: resta la testata con l'occhio, come una tendina richiusa (stesso giorno, Autore: «quando chiuso
                 # resta la tendina con your deck his deck»); il resto si toglie, il velo copre la sola testata
@@ -556,8 +564,8 @@ class HudArena:
                     if "testa" not in self.cv.gettags(i):
                         self.cv.delete(i)
                 self.strisce[lato] = [x for x in self.strisce[lato] if x[4] == "titolo"]
-                mezza = int(OCCHIO[1] * s / 2) + 2
-                self.pannelli[lato] = (x0, int(yt + dy - mezza), x1, int(yt + dy + mezza), sn, xn, yt + dy)
+                self.pannelli[lato] = (x0, t0, x1, t1, sn, xn, yt + dy)
+                self.veli[lato] = (x0 - m, t0 - 1, x1 + m, t1 + 1)        # il velo e' la sola cornice
         self.root.geometry(f"{W}x{H}+{area[0]}+{area[1]}")
         self.metti_fondi(area)      # i veli sotto le liste, e i testi di nuovo in cima alle finestre sempre-sopra
         self.metti_occhi(area, occhi)
@@ -580,13 +588,20 @@ class HudArena:
         return v
 
     def logo(self, n):
-        """Il logo dell'app (Companion/Grafica/companion_icona.png) a n pixel, ricordato."""
+        """Il logo dell'app a n pixel, ricordato: le tre carte che avanzano, l'ultima col filo azzurro (Distribuzione/logo.py), disegnate a 4x senza il quadrato
+        scuro di fondo. Il png del logo ridotto a 18 pixel era un quadrato scuro sulla striscia scura e le carte non si vedevano (13 nov 2026, il debug)."""
         self._loghi = getattr(self, "_loghi", {})
         if n not in self._loghi:
             try:
-                from PIL import Image, ImageTk
-                im = Image.open(os.path.join(percorsi.GRAFICA, "companion_icona.png")).convert("RGBA").resize((n, n), Image.LANCZOS)
-                self._loghi[n] = ImageTk.PhotoImage(im, master=self.root)
+                from PIL import ImageTk
+                import disegni as DG
+                d = DG.Disegno(n, n)
+                k = n / 153                 # le carte del logo a 256 pixel stanno in 150 x 153
+                ox = (n - 150 * k) / 2
+                for x0, y0, colore in ((0, 48, (95, 95, 104)), (38, 24, (150, 150, 158)), (76, 0, (36, 186, 255))):
+                    d.rett(ox + x0 * k, y0 * k, ox + (x0 + 74) * k, (y0 + 105) * k, riempi=(24, 24, 28, 255), bordo=colore, larghezza=max(1.2, 7 * k),
+                           raggio=9 * k)
+                self._loghi[n] = ImageTk.PhotoImage(d.immagine(), master=self.root)
             except Exception:       # noqa: BLE001 - senza il logo il badge dice solo il testo
                 self._loghi[n] = None
         return self._loghi[n]
@@ -599,7 +614,7 @@ class HudArena:
         cv = self.cv
         f_b = self.font(max(10, int(13 * s)), True)
         pad, gap, alto, n = int(6 * s), int(7 * s), int(OCCHIO[1] * s), int(18 * s)     # alto come la testata delle liste
-        x0 = int(POSTO[0] * W)
+        x0 = bordo(W)
         yt = self.y_titolo()
         cy = int((yt if yt else Y_TITOLO) * H)          # alla riga del titolo delle liste
         y0 = cy - alto // 2
@@ -611,7 +626,13 @@ class HudArena:
         for testo, colore in (("DECK HUD", COL["titolo"]), (None, VERDE), ("READY", VERDE)):
             if testo is None:       # il pallino verde
                 r = max(3, int(4 * s))
-                cv.create_oval(x, cy - r, x + 2 * r, cy + r, fill=VERDE, outline="", tags=("punto", "sinistra", "testa"))
+                if ("punto", r) not in self._loghi:      # disegnato a 4x e ridotto: l'ovale di Tk su Windows non ha l'antialias (13 nov 2026, il debug)
+                    from PIL import ImageTk
+                    import disegni as DG
+                    dp = DG.Disegno(2 * r + 2, 2 * r + 2)
+                    dp.cerchio(r + 1, r + 1, r, riempi=VERDE)
+                    self._loghi[("punto", r)] = ImageTk.PhotoImage(dp.immagine(), master=self.root)
+                cv.create_image(x - 1, cy, image=self._loghi[("punto", r)], anchor="w", tags=("punto", "sinistra", "testa"))
                 x += 2 * r + int(5 * s)
                 continue
             cv.create_text(x + 1, cy + 1, text=testo, font=f_b, fill=OMBRA, anchor="w", tags=("ombra", "sinistra", "testa"))
@@ -619,11 +640,12 @@ class HudArena:
             x = cv.bbox(it)[2] + gap
         x1 = x - gap + pad
         m = FONDO_MARGINE
-        for xy in ((x0 - m - 1, y0 - 1, x1 + m, y0 - 1), (x0 - m - 1, y0 + alto, x1 + m, y0 + alto), (x0 - m - 1, y0 - 1, x0 - m - 1, y0 + alto + 1),
-                   (x1 + m, y0 - 1, x1 + m, y0 + alto + 1)):
+        vx0, vx1 = x0 - m, x1 + m
+        for xy in ((vx0, y0 - 1, vx1, y0 - 1), (vx0, y0 + alto, vx1, y0 + alto), (vx0, y0 - 1, vx0, y0 + alto + 1), (vx1 - 1, y0 - 1, vx1 - 1, y0 + alto + 1)):
             cv.create_line(*xy, fill=COL["filo"], width=1, tags=("cornice", "sinistra", "testa"))
         cv.tag_raise("riga")
         self.pannelli = {"sinistra": (x0, y0, x1, y0 + alto, 0, x0, cy)}
+        self.veli = {"sinistra": (vx0, y0 - 1, vx1, y0 + alto + 1)}
         self.strisce = {"sinistra": [(x0 - m, y0, x1 + m, y0 + alto, "titolo")]}
         self.root.geometry(f"{W}x{H}+{area[0]}+{area[1]}")
         self.metti_fondi(area)
@@ -659,7 +681,7 @@ class HudArena:
         wn = max([f_nome.measure(r[2]) for r in carte] + [0])
         wt = max([(f_tit if r[2] == "titolo" else f_t).measure(r[1]) for r in rr if r[0] == "t"] + [f_sez.measure(testa)])
         larg = larg_fissa or max(int(LARG_MIN * s), min(int(LARG_MAX * s), max(pad + wc + (gap if wc else 0) + wn + gap + wp + pad, wt + 2 * pad)))
-        x0 = int(POSTO[0] * W) if lato == "sinistra" else W - int(POSTO[0] * W) - larg
+        x0 = bordo(W) if lato == "sinistra" else W - bordo(W) - larg
         xn = x0 + pad + wc + (gap if wc else 0)         # dove comincia il nome
         xp = x0 + larg - pad                            # dove finisce la %
         spazio_n = xp - wp - gap - xn                   # quanto puo' essere largo un nome
@@ -672,18 +694,19 @@ class HudArena:
         st = []                     # (x0, y0, x1, y1, tipo)
         col = None                  # il pezzo di colonna delle quantita' in corso
         ew_o, eh_o = int(OCCHIO[0] * s), int(OCCHIO[1] * s)
-        x_tit = x0 + pad + (int(OCCHIO[0] * s) + gap if lato == "sinistra" else 0)    # a sinistra l'occhio sta prima del titolo, al bordo del monitor
+        vx0, vx1 = x0 - FONDO_MARGINE, x0 + larg + FONDO_MARGINE       # i bordi del velo (vx1 escluso): la cornice della testata ci sta sopra
+        x_tit = (vx0 + 1 + ew_o + gap) if lato == "sinistra" else x0 + pad    # a sinistra l'occhio sta prima del titolo, al bordo del monitor
         it = scrivi(x_tit, y, testa, f_sez, COL["grigio"], altro=("testa",))
         bt = cv.bbox(it)
         y_tit = (bt[1] + bt[3]) / 2                     # l'occhio sta su questa riga, in fondo a destra
         y = max(bt[3], int(y_tit + OCCHIO[1] * s / 2)) + int(2 * s * k)
         t0 = int(math.floor(y_tit - eh_o / 2)); t1 = t0 + eh_o     # floor come l occhio (int di un numero positivo)      # la testata: alta quanto l'occhio, larga quanto la lista meno l'occhio
-        st.append((x0 + ew_o, t0, x0 + larg + FONDO_MARGINE, t1, "titolo") if lato == "sinistra" else
-                  (x0 - FONDO_MARGINE, t0, x0 + larg - ew_o, t1, "titolo"))
+        st.append((vx0 + 1 + ew_o, t0, vx1, t1, "titolo") if lato == "sinistra" else (vx0, t0, vx1 - 1 - ew_o, t1, "titolo"))
+        self.testate[lato] = (t0, t1)
         # la cornice azzurra della testata, occhio compreso, nello stile dell'app (13 nov 2026, Autore: «piccolo frame azzurro in testa alla tendina stile
         # dell'app»): quattro linee appena fuori dalla striscia, cosi' la finestra dell'occhio non le copre
-        ca, cb = (x0 - 1, x0 + larg + FONDO_MARGINE) if lato == "sinistra" else (x0 - FONDO_MARGINE - 1, x0 + larg)
-        for xy in ((ca, t0 - 1, cb, t0 - 1), (ca, t1, cb, t1), (ca, t0 - 1, ca, t1 + 1), (cb, t0 - 1, cb, t1 + 1)):
+        # la cornice sul bordo del velo: la riga in cima e' la prima del velo, le colonne sono la prima e l'ultima; l'occhio sta dentro, a un pixel
+        for xy in ((vx0, t0 - 1, vx1, t0 - 1), (vx0, t1, vx1, t1), (vx0, t0 - 1, vx0, t1 + 1), (vx1 - 1, t0 - 1, vx1 - 1, t1 + 1)):
             cv.create_line(*xy, fill=COL["filo"], width=1, tags=("cornice", lato, "testa"))
         alto_c = int(alti["c"] * s * k)
         for r in rr:
@@ -814,7 +837,7 @@ def prova():
     sep = [w.cv.coords(i) for i in w.cv.find_withtag("sep")]
     sx_, dx_ = w.pannelli.get("sinistra"), w.pannelli.get("destra")
     casi.append(("la finestra copre Arena: il tuo mazzo sul bordo sinistro, il suo sul bordo destro", w.root.winfo_width() == 1920 and sx_ and dx_
-                 and sx_[0] == int(POSTO[0] * 1920) and dx_[2] == 1920 - int(POSTO[0] * 1920)))
+                 and sx_[0] == bordo(1920) and dx_[2] == 1920 - bordo(1920)))
     carte = sum(1 for x in tt if x.endswith("%") or x == "-")
     casi.append(("sfondo trasparente: nessun riquadro; una riga chiara sotto ogni carta, un'ombra sotto ogni testo",
                  not any(w.cv.type(i) == "rectangle" for i in w.cv.find_all()) and len(sep) >= carte and len(w.cv.find_withtag("ombra")) == len(w.cv.find_withtag("riga"))))
@@ -822,8 +845,10 @@ def prova():
         return w.rett_fondi.get(lato)
     fs, fd = rett_fondo("sinistra"), rett_fondo("destra")
     m = FONDO_MARGINE
-    casi.append(("il velo leggero sotto ogni lista, coi margini, e semitrasparente", fs == (area[0] + sx_[0] - m, sx_[1] - m, area[0] + sx_[2] + m, sx_[3] + m)
-                 and fd == (area[0] + dx_[0] - m, dx_[1] - m, area[0] + dx_[2] + m, dx_[3] + m)
+    casi.append(("il velo leggero sotto ogni lista, coi margini ai lati e sotto, dalla riga della cornice in giu', tutto sullo schermo, e semitrasparente",
+                 fs[0] == area[0] + sx_[0] - m and fs[2] == area[0] + sx_[2] + m and fs[3] == sx_[3] + m and fd[0] == area[0] + dx_[0] - m
+                 and fd[2] == area[0] + dx_[2] + m and fs[0] >= area[0] and fd[2] <= area[0] + 1920
+                 and fs[1] == min(w.cv.coords(i)[1] for i in w.cv.find_withtag("cornice") if "sinistra" in w.cv.gettags(i))
                  and abs(float(w.fondi["sinistra"][0].attributes("-alpha")) - FONDO_ALFA) < 0.01))
     if user32:
         r_ = wintypes.RECT(); user32.GetWindowRect(ctypes.c_void_p(w.hwnd), ctypes.byref(r_))
@@ -848,6 +873,10 @@ def prova():
         xs = [v for c_ in cor.get(lt, []) for v in (c_[0], c_[2])]; ys = [v for c_ in cor.get(lt, []) for v in (c_[1], c_[3])]
         o_ = ro_[lt]
         return xs and min(xs) + area[0] < o_[0] and max(xs) + area[0] >= o_[2] and min(ys) + area[1] < o_[1] and max(ys) + area[1] >= o_[3]
+    cs = [w.cv.coords(i) for i in w.cv.find_withtag("cornice") if "sinistra" in w.cv.gettags(i)]
+    casi.append(("la cornice sul bordo del velo: prima riga, prima e ultima colonna (negativa: nessun pixel di velo chiaro fuori dalla cornice in cima e ai lati)",
+                 min(c[0] for c in cs) + area[0] == fs[0] and max(c[2] if c[0] != c[2] else c[0] + 1 for c in cs) + area[0] == fs[2]
+                 and min(c[1] for c in cs) == fs[1]))
     casi.append(("la cornice azzurra della testata, occhio compreso, appena fuori dalla striscia", len(cor.get("sinistra", [])) == 4 == len(cor.get("destra", []))
                  and all(w.cv.itemcget(i, "fill") == COL["filo"] for i in w.cv.find_withtag("cornice")) and dentro("sinistra") and dentro("destra")))
     sez = [r for r in rs if r[4] == "sez"]
@@ -860,8 +889,9 @@ def prova():
     casi.append(("le due liste uguali: stessa larghezza, stessa cima, stessa altezza del velo (negativa: la sua, piu' corta, non e' piu' bassa)",
                  sx_[2] - sx_[0] == dx_[2] - dx_[0] and sx_[1] == dx_[1] and sx_[3] == dx_[3] and abs(sx_[6] - dx_[6]) <= 1))
     ro = w.rett_occhi
-    casi.append(("l'occhio sulla riga del titolo, al bordo del monitor (il tuo a sinistra, il suo a destra)", set(ro) == {"sinistra", "destra"} and ro["sinistra"][0] == area[0] + sx_[0]
-                 and abs((ro["sinistra"][1] + ro["sinistra"][3]) / 2 - sx_[6]) <= 1 and ro["destra"][2] == area[0] + dx_[2] and ro["sinistra"][4] and ro["destra"][4]))
+    casi.append(("l'occhio sulla riga del titolo, al bordo del monitor dentro la cornice (il tuo a sinistra, il suo a destra)", set(ro) == {"sinistra", "destra"}
+                 and ro["sinistra"][0] == fs[0] + 1 and ro["destra"][2] == fd[2] - 1
+                 and abs((ro["sinistra"][1] + ro["sinistra"][3]) / 2 - sx_[6]) <= 1 and ro["sinistra"][4] and ro["destra"][4]))
     ex_o = user32.GetWindowLongW(ctypes.c_void_p(w.occhi["sinistra"][2]), -20) if user32 else 0x8000000
     casi.append(("l'occhio prende il clic ma non il fuoco (negativa: niente WS_EX_TRANSPARENT)", ex_o & 0x8000000 and not ex_o & 0x20))
     vecchio_pref = PREF
@@ -878,7 +908,7 @@ def prova():
     os.remove(PREF)
     globals()["PREF"] = vecchio_pref
     casi.append(("piu' strette e attaccate ai bordi: al massimo 250 pixel a 1080, a 4 pixel dal bordo", sx_[2] - sx_[0] <= LARG_MAX and dx_[2] - dx_[0] <= LARG_MAX
-                 and sx_[0] <= 4 and 1920 - dx_[2] <= 4))
+                 and sx_[0] <= FONDO_MARGINE and 1920 - dx_[2] <= FONDO_MARGINE))
     sx = min(w.cv.coords(i)[0] for i in w.cv.find_withtag("riga") if w.cv.itemcget(i, "text") == "YOUR DECK")
     casi.append(("il tuo mazzo carta per carta: copie rimaste su quelle del mazzo e la P, le terre in fondo", sx < 960 and "4/4" in tt and "Ethereal Armor" in tt
                  and "40%" in tt and "6/6" in tt and "60%" in tt and tt.index("Ethereal Armor") < tt.index("Plains")))
