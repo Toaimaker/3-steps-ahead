@@ -1,6 +1,6 @@
 {
- "version": "0.1.68",
+ "version": "0.1.69",
  "date": "2026-11-13",
- "notes": "Performance: your question written on top, one piece per filter with an x to remove it, and the answer below; new filters: turn by turn (what you and the opponent cast on turns 1-5), game ended by your turn N, no creature cast by turn N, creatures, instants and sorceries in your opening hand, the opponent mulligans.",
+ "notes": "Performance: the question builder moves into its own window, Advanced filters: your question and its answer on top, your filters and the opponent's in two tabs (opening hand, game end, turn by turn 1-5, the opponent mulligans); the page is back as it was.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }
