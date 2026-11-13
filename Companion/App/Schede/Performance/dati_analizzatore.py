@@ -964,8 +964,13 @@ def riga_carte(r, chiave, quante=40, minimo=5):
 
 
 def filtra(righe_, filtri, tipo=None):
-    out = [x for x in righe_ if (tipo is None or x["tipo"] == tipo) and passa(x, filtri)]
-    return finestra_wr(out, filtri["wr_rif"]) if filtri.get("wr_rif") else out
+    """Le righe del tipo che passano i filtri. Il win rate (finestra_wr) si calcola dopo gli altri filtri ma prima di Result: con Result acceso il gruppo
+    sarebbe tutto vinto (100%) o tutto perso; cosi' «52% e le vittorie» sono le vittorie del gruppo di partite che fa il 52% (13 nov 2026)."""
+    if not filtri.get("wr_rif"):
+        return [x for x in righe_ if (tipo is None or x["tipo"] == tipo) and passa(x, filtri)]
+    senza = {k: v for k, v in filtri.items() if k != "esito"}
+    out = finestra_wr([x for x in righe_ if (tipo is None or x["tipo"] == tipo) and passa(x, senza)], filtri["wr_rif"])
+    return [x for x in out if passa(x, {"esito": filtri["esito"]})] if filtri.get("esito") else out
 
 
 def valori(righe_, k, massimo=80):
@@ -1553,6 +1558,10 @@ def prova():
     casi.append(("dopo gli altri filtri: con Mulligan 1 il gruppo e' fatto solo di partite con un mulligan", all(x["mull"] == "1" for x in filtra(w_r, {"mull": "1",
                  "wr_rif": [40, True, False]}, "Constructed")) and filtra(w_r, {"mull": "1", "wr_rif": [40, True, False]}, "Constructed")
                  and etichetta("wr_rif", [55, True, False]) == "≥ 55%"))
+    g60 = filtra(w_r, {"wr_rif": [60, False, False]}, "Constructed")
+    casi.append(("il win rate prima di Result: «60% e le vittorie» sono le vittorie del gruppo che fa il 60% (con Result prima sarebbero il 100%: nessuna)",
+                 filtra(w_r, {"wr_rif": [60, False, False], "esito": "Won"}, "Constructed") == [x for x in g60 if x["vinta"]] and len(g60) == 50
+                 and len([x for x in g60 if x["vinta"]]) == 30))
     casi.append(("negativa: un win rate che nessun gruppo di 10 partite raggiunge da' zero partite, e meno di 10 partite non bastano",
                  finestra_wr(w_r[:40], [99, True, False]) == [] and finestra_wr(w_r[-9:], [50, True, False]) == []))
     cr = [dict(vinta=True, mie_lanciate=["Shock", "Goblin"], in_mano=["Shock", "Goblin", "Owl"], bloccate=["Owl"]),
