@@ -86,7 +86,7 @@ class Condivisione:
         self.leva = tk.Canvas(riga, width=118, height=30, bg=self.bg, highlightthickness=0, bd=0, cursor="hand2"); self.leva.pack(side="right")
         self.leva.bind("<Button-1>", lambda e: self.cambia())
         testo = "Your finished games go to our server to build shared stats: only cards, results, mulligans and turns. Never your name, your account or " \
-                "your opponents' names. Off unless you turn it on."
+                "your opponents' names. Recommended: it gives you the best, most complete experience. Off unless you turn it on."
         if codice:
             testo += f" Your code for any privacy request: {condividi.codice(account.account().get('id') or '?')}"
         tk.Label(self.fr, text=testo, bg=self.bg, fg=C["grigio"], font=F(8), anchor="w", justify="left", wraplength=larga).pack(fill="x")
@@ -104,7 +104,7 @@ class Condivisione:
             n = sum(1 for r in open(coda, encoding="utf-8") if r.strip()) if os.path.exists(coda) else 0
         except OSError:
             n = 0
-        self.l_stato.configure(text=("Sharing your games" if si else "Not sharing") + (f" · {n} game{'s' if n != 1 else ''} waiting to be sent" if si and n else ""),
+        self.l_stato.configure(text=("Sharing your games" if si else "Not sharing · recommended: turn it on for the full experience") + (f" · {n} game{'s' if n != 1 else ''} waiting to be sent" if si and n else ""),
                                fg=C["verde_t"] if si else C["testo"])
         c = self.leva
         c.delete("all")
@@ -256,7 +256,7 @@ def prova():
         globals()["log_dettagliato"] = vero_log
         lv = p.cond.leva
         testo = lambda: lv.itemcget(lv.find_withtag("testo")[0], "text")
-        casi.append(("mai scelto: OFF, «Not sharing»", testo() == "OFF" and p.cond.l_stato.cget("text") == "Not sharing" and lv.stato is False))
+        casi.append(("mai scelto: OFF, «Not sharing»", testo() == "OFF" and p.cond.l_stato.cget("text").startswith("Not sharing · recommended") and lv.stato is False))
         lv.event_generate("<Button-1>", x=100, y=15); root.update()
         casi.append(("il clic sull'interruttore lo accende: ON, consenso si'", testo() == "ON" and mem["si"] is True
                      and p.cond.l_stato.cget("text").startswith("Sharing")))

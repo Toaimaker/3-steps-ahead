@@ -241,10 +241,11 @@ class Benvenuto:
     def disegna_condivisione(self):
         c, F = self.c, self.F
         c.create_text(32, 176, text="Data sharing", anchor="w", fill=C["titolo"], font=F(20, True))
-        c.create_text(32, 206, text="Share your games to build better stats? Pick one to continue.", anchor="w", fill=C["testo"], font=F(10))
+        c.create_text(32, 206, text="We recommend sharing: it gives you the best, most complete experience. Pick one to continue.", anchor="w",
+                      fill=C["testo"], font=F(10))
         c.create_text(32, 448, text="Either way the app works the same, and you can change it any time in Settings.", anchor="w",
                       fill=C["grigio"], font=F(8))
-        for k, titolo, righe, x in ((True, "Share my games", ("Your finished games feed shared stats:", "meta, matchups and better advice for all.",
+        for k, titolo, righe, x in ((True, "Share my games", ("The full experience: meta, matchups and", "advice built from everyone's games.",
                                                             "Only cards, results, mulligans, turns.", "Never your name or your opponents'."), 32),
                                     (False, "Keep them private", ("Nothing leaves your PC.", "Everything in the app still works on",
                                                                  "your own games.", ""), 358)):
@@ -259,6 +260,9 @@ class Benvenuto:
             c.create_image(x + larga - 22, y0 + 34, image=DG.tondo(16, on, C["accento"], C["fondo"], "#55555c", "#ffffff"), anchor="e")
             for i, r in enumerate(righe):
                 c.create_text(x + 22, y0 + 78 + i * 20, text=r, anchor="w", fill=C["testo"] if on else C["grigio"], font=F(9))
+            if k:       # il bollino sul bordo alto del riquadro consigliato
+                c.create_image(x + 20, y0, image=DG.pillola(118, 22, C["verde"], C["verde"]), anchor="w")
+                c.create_text(x + 79, y0, text="★ RECOMMENDED", fill="#ffffff", font=F(7, True), tags="consigliata")
             self.box.append((x, y0, x + larga, y0 + alta, ("scelta", k)))
         url = PS.privacy_url()
         if url:
@@ -450,7 +454,9 @@ def prova():
         mem["log"] = "nessun_log"; b.ricontrolla(); root.update()
         casi.append(("negativa: senza log di Arena non dice ON, dice di aprire Arena", not any("is ON" in t for t in testi()) and any("start Arena once" in t for t in testi())))
         b.avanti(); root.update()
-        casi.append(("passo 2: i due riquadri", b.passo == 2 and "Share my games" in testi() and "Keep them private" in testi() and "Step 2 of 4" in testi()))
+        casi.append(("passo 2: i due riquadri, «Share my games» consigliata (il bollino) ma non scelta di partenza", b.passo == 2 and "Share my games" in testi()
+                     and "Keep them private" in testi() and "Step 2 of 4" in testi() and "★ RECOMMENDED" in testi() and b.scelta is None
+                     and any("We recommend sharing" in t for t in testi())))
         casi.append(("negativa: senza una scelta Continue non va avanti", b.avanti() is False and b.passo == 2))
         dove = next(x for x in b.box if x[4] == ("scelta", True))
         b.c.event_generate("<Button-1>", x=dove[0] + 40, y=dove[1] + 40); root.update()

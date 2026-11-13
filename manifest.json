@@ -1,6 +1,6 @@
 {
- "version": "0.1.91",
+ "version": "0.1.92",
  "date": "2026-11-13",
- "notes": "Shared games now include the format (Standard, Historic, limited...), best-of-three and your rank at the time, so the stats can be split by format and league; the privacy notice lists them",
+ "notes": "Welcome window: sharing your games is marked as recommended for the most complete experience; Settings says the same",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }
