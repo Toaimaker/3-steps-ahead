@@ -1,6 +1,6 @@
 {
- "version": "0.1.90",
+ "version": "0.1.91",
  "date": "2026-11-13",
- "notes": "Beta donations: \u20ac2.99 whenever you like, a one-off tip, not a subscription; it still unlocks nothing",
+ "notes": "Shared games now include the format (Standard, Historic, limited...), best-of-three and your rank at the time, so the stats can be split by format and league; the privacy notice lists them",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

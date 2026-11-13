@@ -2,12 +2,14 @@
 
 Regole (sono anche nell'informativa, Distribuzione/modelli/PRIVACY.md):
 - spenta finche' l'utente non dice di si' (il primo avvio lo chiede; si cambia dalla scheda Help); il consenso sta in Log_Arena/utente.json («condividi»);
-- per ogni partita finita si manda solo: evento, giorno (senza ora), esito, chi comincia, mulligan, turni, le carte del mazzo, la mano tenuta, le carte
-  dell'avversario viste. Mai il nome in gioco, mai quello dell'avversario, mai l'id dell'account: al suo posto un codice (SHA-256 dell'id con un sale fisso
+- per ogni partita finita si manda solo: evento, formato (e se e' al meglio di tre), il tuo rango in quel momento, giorno (senza ora), esito, chi
+  comincia, mulligan, turni, le carte del mazzo, la mano tenuta, le carte dell'avversario viste (formato e rango dal 13 nov 2026, VERSIONE_DATI 2:
+  Autore, «dobbiamo tappare quei due buchi sono fondamentali», senza la Meta per formato e per lega non si fa). Mai il nome in gioco, mai quello dell'avversario, mai l'id dell'account: al suo posto un codice (SHA-256 dell'id con un sale fisso
   dell'app), lo stesso per le partite della stessa persona: dati pseudonimi, non anonimi, e l'informativa lo dice;
 - prima si mette in coda (Log_Arena/condivisione/coda.jsonl, si puo' leggere), poi si manda all'indirizzo del canale (manifest «endpoint_log»); finche' il
   canale non ne ha uno, resta in coda e non esce niente dal PC;
-- una partita si manda una volta (Log_Arena/condivisione/inviate.json);
+- una partita si manda una volta per versione dei dati (Log_Arena/condivisione/inviate_v<VERSIONE_DATI>.json; la 1 era inviate.json): quando la riga
+  cambia (versione nuova) ogni partita riparte una volta, e il server sostituisce la riga vecchia con la nuova;
 - il consenso e' di ogni account di Arena (10 nov 2026, Magic 12: due persone sullo stesso PC): sta in utente.json sotto il suo account («conti»), e si mettono in
   coda solo le partite degli account che hanno detto si'. Un account nuovo non ha ancora risposto: il primo avvio glielo chiede.
 
@@ -26,7 +28,8 @@ import json  # noqa: E402
 import re  # noqa: E402
 
 SALE = "companion-magic-arena/condivisione/v1"
-VERSIONE_DATI = 1
+VERSIONE_DATI = 2
+RANGHI = ("Bronze", "Silver", "Gold", "Platinum", "Diamond", "Mythic")
 CARTELLA = [os.path.join(percorsi.ROOT, "Log_Arena", "condivisione")]
 
 
@@ -77,6 +80,27 @@ def nomi(grp):
     return out
 
 
+def formato_di(evento):
+    """(formato, al meglio di tre) di un evento di Arena: lo stesso conto del Deck HUD (matchup_log.formato); Sparky e' «bot»."""
+    try:
+        import matchup_log
+        fmt = matchup_log.formato(evento)
+    except Exception:       # noqa: BLE001 - senza il modulo si manda il formato vuoto, mai una riga sbagliata
+        return None, None
+    return (fmt or "bot"), ("Traditional" in (evento or ""))
+
+
+def rango_di(p, limited):
+    """Il rango che avevi quando e' cominciata la partita, «Gold 3» o «Mythic»: quello del limited nei limited, se no del costruito. None se il log non lo dice."""
+    r = p.get("rango_prima")
+    if not r or len(r) < 6:
+        return None
+    classe, livello = (r[3], r[4]) if limited else (r[0], r[1])
+    if classe not in RANGHI:
+        return None
+    return classe if classe == "Mythic" or not isinstance(livello, int) or not 1 <= livello <= 4 else f"{classe} {livello}"
+
+
 def riga(p, id_account):
     """La riga di una partita del log (partite_log.partite) da mandare, o None se non e' finita."""
     if p.get("vinta") is None:
@@ -85,11 +109,13 @@ def riga(p, id_account):
     if mazzo is None:
         return None
     mani = p.get("mani") or []
-    return dict(v=VERSIONE_DATI, partita=codice(p["matchId"]), giocatore=codice(id_account or "?"), evento=p.get("evento"),
+    limited = bool(re.search(r"Draft|Sealed|Cube", p.get("evento") or ""))
+    fmt, bo3 = formato_di(p.get("evento"))
+    return dict(v=VERSIONE_DATI, formato=fmt, bo3=bo3, rango=rango_di(p, limited), partita=codice(p["matchId"]), giocatore=codice(id_account or "?"), evento=p.get("evento"),
                 giorno=datetime.date.fromtimestamp(p["inizio"] / 1000).isoformat(), vinta=bool(p["vinta"]),
                 inizia=(p.get("inizia") == p.get("seat")) if p.get("inizia") is not None else None, mulligan=max(0, len(mani) - 1), turni=p.get("turni"),
                 mazzo=mazzo, side=nomi(p.get("side") or []), mano=sorted(nomi(mani[-1]) if mani else {}), sue=sorted(nomi(p.get("sue") or []) or {}),
-                limited=bool(re.search(r"Draft|Sealed|Cube", p.get("evento") or "")))
+                limited=limited)
 
 
 def accoda(partite=None, id_account=None):
@@ -113,11 +139,11 @@ def accoda(partite=None, id_account=None):
     if not partite:
         return 0
     os.makedirs(CARTELLA[0], exist_ok=True)
-    f_coda, f_fatte = os.path.join(CARTELLA[0], "coda.jsonl"), os.path.join(CARTELLA[0], "inviate.json")
+    f_coda, f_fatte = os.path.join(CARTELLA[0], "coda.jsonl"), os.path.join(CARTELLA[0], f"inviate_v{VERSIONE_DATI}.json")
     gia = set()
     for f in (f_coda,):
         if os.path.exists(f):
-            gia |= {json.loads(r)["partita"] for r in open(f, encoding="utf-8") if r.strip()}
+            gia |= {o["partita"] for o in (json.loads(r) for r in open(f, encoding="utf-8") if r.strip()) if o.get("v") == VERSIONE_DATI}
     if os.path.exists(f_fatte):
         gia |= set(json.load(open(f_fatte, encoding="utf-8")))
     n = 0
@@ -132,7 +158,7 @@ def accoda(partite=None, id_account=None):
 
 def endpoint():
     """L'indirizzo a cui mandare le partite: nell'app pubblica da canale.json («endpoint_log»), in quella di Autore da Distribuzione/config.json (11 nov 2026:
-    anche le sue partite si condividono, col consenso dato in Help come tutti). "" finche' il server dei dati non e' online (Distribuzione/server_dati)."""
+    anche le sue partite si condividono, col consenso dato in Settings come tutti). "" finche' il server dei dati non e' online (Distribuzione/server_dati)."""
     for f in (os.path.join(percorsi.ROOT, "canale.json"), os.path.join(percorsi.ROOT, "Distribuzione", "config.json")):
         try:
             return str(json.load(open(f, encoding="utf-8")).get("endpoint_log") or "").strip()
@@ -165,7 +191,7 @@ def invia(endpoint, timeout=30):
     if not qualcuno() or not endpoint or not endpoint.startswith("https://"):
         return None
     import urllib.request
-    f_coda, f_fatte = os.path.join(CARTELLA[0], "coda.jsonl"), os.path.join(CARTELLA[0], "inviate.json")
+    f_coda, f_fatte = os.path.join(CARTELLA[0], "coda.jsonl"), os.path.join(CARTELLA[0], f"inviate_v{VERSIONE_DATI}.json")
     if not os.path.exists(f_coda):
         return 0
     righe = [r for r in open(f_coda, encoding="utf-8").read().splitlines() if r.strip()]
@@ -184,6 +210,13 @@ def invia(endpoint, timeout=30):
             with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
                 if r.status >= 300:
                     break
+                try:        # una partita scartata (un server indietro di versione) non conta come mandata: resta in coda per il giro dopo
+                    scartate = int(json.loads(r.read().decode("utf-8") or "{}").get("rejected") or 0)
+                except (ValueError, AttributeError):
+                    scartate = 0
+            if scartate:
+                print("condivisione: il server ha scartato", scartate, "partite su", len(pacco), "- restano in coda")
+                break
             mandate += pacco
     finally:
         if mandate:
@@ -206,7 +239,7 @@ def prova():
     t = DS.titoli()
     grp = list(t)[:3]
     pp = [dict(matchId="m-1", inizio=1794224501827, evento="Ladder", vinta=True, inizia=1, seat=1, turni=9, carte=grp * 2, side=[], mani=[grp[:2]], sue=[grp[2]],
-               avversario="NomeAvversario"),
+               avversario="NomeAvversario", rango_prima=["Gold", 3, 37, "Silver", 4, 5]),
           dict(matchId="m-2", inizio=1794224501827, evento="Play", vinta=None, inizia=1, seat=2, turni=3, carte=grp, mani=[], sue=[], avversario="Altro")]
     casi = []
     try:
@@ -219,12 +252,46 @@ def prova():
         casi.append(("niente nomi e niente id: ne' il tuo, ne' quello dell'avversario", "AAAAAAAAAAAAAAAAAAAAAAAAAA" not in testo and "NomeAvversario" not in testo
                      and "m-1" not in testo and r["giocatore"] == codice("AAAAAAAAAAAAAAAAAAAAAAAAAA")))
         casi.append(("il giorno senza l'ora, il mazzo coi nomi delle carte", len(r["giorno"]) == 10 and sum(r["mazzo"].values()) == 6 and r["mulligan"] == 0 and r["inizia"] is True))
+        casi.append(("formato e rango (VERSIONE_DATI 2): Ladder e' standard al meglio di uno, il rango del costruito «Gold 3»",
+                     r["v"] == 2 and r["formato"] == "standard" and r["bo3"] is False and r["rango"] == "Gold 3"))
+        casi.append(("il rango del limited nei limited, Sparky e' «bot», il Bo3 si riconosce",
+                     rango_di(dict(rango_prima=["Gold", 3, 0, "Silver", 4, 0]), True) == "Silver 4" and formato_di("AIBotMatch")[0] == "bot"
+                     and formato_di("Traditional_Historic_Ladder") == ("historic", True) and formato_di("QuickDraft_FRA_20261008")[0] == "limited"))
+        casi.append(("negativa: senza rango nel log niente rango, un rango sconosciuto non passa, il Mythic senza livello",
+                     rango_di({}, False) is None and rango_di(dict(rango_prima=["Wood", 1, 0, "x", 1, 0]), False) is None
+                     and rango_di(dict(rango_prima=["Mythic", 0, 0, "x", 1, 0]), False) == "Mythic"))
         casi.append(("una partita non si mette in coda due volte", accoda(pp, "AAAAAAAAAAAAAAAAAAAAAAAAAA") == 0))
         casi.append(("negativa: senza indirizzo https non si manda niente", invia("") is None and invia("http://x") is None))
         pp_ = list(pacchi(["x" * 1500] * 627))
         casi.append(("627 partite vanno in pacchi che il server accetta (13 nov 2026: in una richiesta sola erano oltre i suoi 500)",
                      sum(map(len, pp_)) == 627 and all(len(p) <= PACCO_RIGHE and sum(len(r) + 1 for r in p) <= PACCO_BYTE for p in pp_) and len(pp_) >= 2))
         casi.append(("negativa: una coda piccola resta un pacco solo", len(list(pacchi(["x"] * 3))) == 1))
+        import urllib.request as UR
+
+        class _Risposta:
+            def __init__(self, corpo):
+                self.status, self.corpo = 200, corpo
+
+            def read(self):
+                return self.corpo.encode("utf-8")
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+        vero_urlopen, f_c = UR.urlopen, os.path.join(d, "cond", "coda.jsonl")
+        try:
+            UR.urlopen = lambda *a, **k: _Risposta('{"accepted": 0, "rejected": 1}')
+            n_scarto = invia("https://example.invalid/games")
+            resta = sum(1 for r in open(f_c, encoding="utf-8") if r.strip())
+            UR.urlopen = lambda *a, **k: _Risposta('{"accepted": 1, "rejected": 0}')
+            n_ok = invia("https://example.invalid/games")
+            vuota = sum(1 for r in open(f_c, encoding="utf-8") if r.strip())
+        finally:
+            UR.urlopen = vero_urlopen
+        casi.append(("negativa: partite scartate dal server (versione vecchia) restano in coda; accettate escono",
+                     n_scarto is None and resta == 1 and n_ok == 1 and vuota == 0))
         imposta_consenso(False)
         casi.append(("negativa: tolto il consenso non si manda", invia("https://example.invalid/x") is None))
     finally:

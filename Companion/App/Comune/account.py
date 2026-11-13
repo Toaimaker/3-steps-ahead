@@ -36,7 +36,7 @@ import threading  # noqa: E402
 ROOT = percorsi.ROOT
 PUBBLICA = os.path.exists(os.path.join(ROOT, "PUBBLICA.txt"))
 # l'aspetto dell'app pubblica anche nell'app di Autore (11 nov 2026, Autore: «devo sempre avere tutte le funzioni sbloccate ma vedere l'app con tutto
-# cio' che l'utente scarica e utilizza»): quello che si vede (la riga dell'artista sulle copertine, Your collection e Data sharing in Help) e' lo stesso,
+# cio' che l'utente scarica e utilizza»): quello che si vede (la riga dell'artista sulle copertine, Your collection e Data sharing, in Settings dal 13 nov 2026) e' lo stesso,
 # tranne le carte che non hai, che restano opache (stesso giorno: «si le voglio opache»); le funzioni e i dati in piu' (Drafter, Untapped, meta completo) restano sbloccati. MIO_ASPETTO=1 torna a quello di prima
 ASPETTO_PUBBLICO = PUBBLICA or os.environ.get("MIO_ASPETTO") != "1"
 LOGDIR = os.path.join(ROOT, "Log_Arena")

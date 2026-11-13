@@ -40,6 +40,7 @@ from icone import emoji_png, icona_azione, icona_omino, icone_mana, logo_lega
 from pagina_base import Pagina, prepara_capsule
 from pagina_collezione import PaginaCollezione
 from pagina_help import PaginaHelp
+from pagina_settings import PaginaSettings
 from pagina_mazzi import PaginaMazzi
 from pagina_meta import PaginaMeta
 from pagina_performance import PaginaPerformance
@@ -62,10 +63,14 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
         CC.precarica()
         Pagina.AVVIO = True
         self._costruisci_finestra()
+        self._passo("Opening the chat…", 0.30)
         self._costruisci_chat()
+        self._passo("Loading your decks and the meta…", 0.45)
         self._costruisci_colonna()
         self._costruisci_schede()
+        self._passo("Reading your games…", 0.70)
         self._costruisci_avvio()
+        self._passo("Drawing the first tab…", 0.85)
 
     def _costruisci_finestra(self):
         """La finestra: posizione, logo, font, testata, barra delle schede, piede."""
@@ -85,6 +90,23 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
             pos_salvata = None
         self.geo0, ingrandita = posizione_iniziale(monitor(self.root), pos_salvata)
         self.root.geometry("900x960+5000+20" if FUORI_SCHERMO else self.geo0)
+        # la schermata di caricamento, come Steam (13 nov 2026, Autore: «al primo avvio una finestra di caricamento, poi parte l'app»): la finestra grande
+        # si costruisce trasparente (a schermo, le pagine si misurano giuste) e compare a prima scheda disegnata (mostra_app). Mai nelle prove fuori schermo,
+        # mai se chi l'ha creata l'ha gia' resa invisibile (il metro grafico: trasparente all'1%)
+        self.schermata, self._alpha_mio = None, False
+        if not FUORI_SCHERMO:
+            try:
+                if float(self.root.attributes("-alpha")) >= 1.0:
+                    self.root.attributes("-alpha", 0.0); self._alpha_mio = True
+                    import schermata_avvio as SA
+                    m_ = re.match(r"\d+x\d+\+(-?\d+)\+(-?\d+)$", self.geo0)
+                    sch = monitor(self.root)
+                    z_ = next((x_ for x_ in sch if m_ and x_[0] <= int(m_.group(1)) < x_[2] and x_[1] <= int(m_.group(2)) < x_[3]), sch[0] if sch else None)
+                    self.schermata = SA.Schermata(tk, self.root, geo=SA.centro(z_) if z_ else None, versione=VERSIONE)
+                    self.schermata.passo("Starting…", 0.12)
+            except Exception as e:      # noqa: BLE001 - senza schermata l'app parte lo stesso
+                print("schermata:", e)
+                self._mostra_subito()
         if ingrandita and not FUORI_SCHERMO:
             self.root.update_idletasks(); self.root.state("zoomed")
         # il logo dell'app, lo stesso del collegamento sul desktop: dal 10 nov 2026 le tre carte di 3 Steps Ahead (Distribuzione/logo.py; fino a quel giorno
@@ -144,7 +166,10 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
         # il nome del prodotto e la versione, sempre in fondo a destra (Autore, 4 nov 2026): si impacca prima del corpo, che se no si prende tutto lo spazio
         piede = tk.Frame(self.root, bg=CI["fondo"]); piede.pack(side="bottom", fill="x", padx=12, pady=(0, 4))
 
-        tk.Label(piede, text=f"{PRODOTTO}  v{VERSIONE}", bg=CI["fondo"], fg=CI["muto"], font=self.F(7), pady=0).pack(side="right")
+        # dal 13 nov 2026 la versione e' un pulsante ben visibile (Help/pulsante_versione.py): «Download version X» o «Up to date · latest version X»; nasce
+        # quando c'e' la scheda Help, qui il suo posto
+        self.piede_versione = tk.Frame(piede, bg=CI["fondo"]); self.piede_versione.pack(side="right", pady=(2, 0))
+        tk.Label(piede, text=PRODOTTO, bg=CI["fondo"], fg=CI["muto"], font=self.F(8), pady=0).pack(side="right", padx=(0, 10))
         colonna = self.colonna_social = SOC.ColonnaSocial(tk, self.root, self.F, CI, pulsante_solido, logo_lega)
         colonna.fr.pack(side="right", fill="y", padx=(0, 12), pady=(12, 4))
         self.root.minsize(1014 + SOC.LARGA + 12, 600)       # la larghezza di sempre piu' la colonna: i mazzi non si stringono
@@ -375,6 +400,7 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
         # le pagine dei tipi di gioco (Companion/App/Schede/) e le linguette che le aprono
         PaginaRisorse.PADRE_SALDO = self.barra_schede
         self.pagine = {"meta": PaginaMeta(tk, self.altre, self.F, self.mana), "corso": self.pag_corso, "performance": PaginaPerformance(tk, self.altre, self.F, self.mana), "mazzi": PaginaMazzi(tk, self.altre, self.F, self.mana), "risorse": PaginaRisorse(tk, self.altre, self.F, self.mana), "collezione": PaginaCollezione(tk, self.altre, self.F, self.mana),
+                       "settings": PaginaSettings(tk, self.altre, self.F, self.mana),
                        "help": PaginaHelp(tk, self.altre, self.F, self.mana, controlla=not FUORI_SCHERMO)}
         self.perf = self.pagine["performance"]
         for k_, pg_ in self.pagine.items():
@@ -405,7 +431,14 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
             import vista_hud
             self.hud = vista_hud.pulsante(self, tk)
         # un aggiornamento dell'app: un pallino sulla linguetta Help (10 nov 2026)
-        self.pagine["help"].su_aggiornamento = lambda nuova: self.linguette["help"][0].configure(text="Help  ●" if nuova else "Help")
+        import pulsante_versione
+        self.pulsante_versione = pulsante_versione.PulsanteVersione(tk, self.F, self.piede_versione, self.pagine["help"], bg=CI["fondo"])
+        self.pulsante_versione.c.pack()
+
+        def su_agg(nuova):
+            self.linguette["help"][0].configure(text="Help  ●" if nuova else "Help")
+            self.pulsante_versione.aggiorna()
+        self.pagine["help"].su_aggiornamento = su_agg
         self.pagine["help"].mostra_stato()
         scheda0 = sys.argv[sys.argv.index("--scheda") + 1] if "--scheda" in sys.argv else "meta"   # --scheda drafter|performance|limited|standard|risorse; si apre su Meta, la prima scheda (Autore,
         # 10 nov 2026: «il companion vedo che si apre sempre sulla scheda drafter invece che meta»): un draft o una partita che cominciano portano sul Drafter come prima
@@ -543,6 +576,7 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
 
         self.root.after(100, self.giro)
         self.root.after(60, self.fine_avvio)
+        self.root.after(15000, self.mostra_app)     # in ogni caso: la finestra non resta mai invisibile
         self.root.after(GC_PRIMO * 1000, self.congela)
 
     def congela(self):
@@ -560,6 +594,42 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
             gc.freeze()
         finally:
             self.root.after(GC_OGNI * 1000, self.congela)
+
+    def _passo(self, testo, frazione):
+        if getattr(self, "schermata", None) is not None:
+            self.schermata.passo(testo, frazione)
+
+    def _mostra_subito(self):
+        if getattr(self, "_alpha_mio", False):
+            try:
+                self.root.attributes("-alpha", 1.0)
+            except Exception:       # noqa: BLE001
+                pass
+            self._alpha_mio = False
+
+    def mostra_app(self):
+        """La prima scheda e' disegnata: la finestra grande compare, la schermata di caricamento si chiude e, la prima volta per l'account, la finestra di
+        benvenuto chiede la condivisione e il link di Untapped (Schede/Settings/benvenuto.py). Si chiama una volta sola."""
+        if getattr(self, "_mostrata", False):
+            return
+        self._mostrata = True
+        self._passo("Ready", 1.0)
+        self._mostra_subito()
+        if getattr(self, "schermata", None) is not None:
+            self.root.after(120, self.schermata.chiudi)
+            self.schermata = None
+        try:
+            self.root.lift(); self.root.focus_force()
+        except Exception:       # noqa: BLE001
+            pass
+        if not FUORI_SCHERMO:
+            try:
+                import pagina_settings as PS
+                if not PS.benvenuto_fatto():
+                    import benvenuto
+                    self.root.after(600, lambda: benvenuto.apri(tk, self.root, self.F, su_fatto=lambda: self.pagine["settings"].se_sporca()))
+            except Exception as e:      # noqa: BLE001 - il benvenuto non ferma l'app
+                print("benvenuto:", e)
 
     def fine_avvio(self, attesa=None):
         """La finestra e' a schermo: le pagine tornano a disegnarsi, e la scheda davanti si disegna adesso. Se e' la Meta, i suoi dati (collezione, quaderni delle
@@ -585,6 +655,7 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
             self.root.after(30, lambda: self.fine_avvio(attesa))
             return
         Pagina.AVVIO = False
+        self.root.after(150, self.mostra_app)       # la finestra compare a prima scheda disegnata
         if k != "corso" and pg is not None:
             try:
                 pg.fr.event_generate("<<Davanti>>")
@@ -827,7 +898,7 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
                 self.coda.put(("schede", sch))
             except Exception as e:
                 print("schede:", f"{type(e).__name__}: {e}")
-            if not PUBBLICA:        # le partite di Autore nella raccolta dai log, col suo consenso in Help come tutti (11 nov 2026; l'app pubblica lo fa
+            if not PUBBLICA:        # le partite di Autore nella raccolta dai log, col suo consenso in Settings come tutti (11 nov 2026; l'app pubblica lo fa
                 try:                # in avvio_pubblico.condividi_in_fondo): finche' il server dei dati non ha un indirizzo restano in coda sul PC
                     import condividi
                     if condividi.qualcuno():

@@ -26,7 +26,7 @@ def passaggi(ranghi):
             out.append((i, f"{'↑' if su else '↓'} {dopo}", dopo))
         ieri = dopo or ieri
     return out
-SCHEDE = (("meta", "Meta"), ("mazzi", "Your decks"), ("corso", "Drafter"), ("performance", "Performance"), ("risorse", "Resources"), ("collezione", "Collection"), ("help", "Help"))   # Your decks dopo Meta (Autore, 7 nov 2026); Help l'ultima (10 nov 2026)
+SCHEDE = (("meta", "Meta"), ("mazzi", "Your decks"), ("corso", "Drafter"), ("performance", "Performance"), ("risorse", "Resources"), ("collezione", "Collection"), ("settings", "Settings"), ("help", "Help"))   # Your decks dopo Meta (Autore, 7 nov 2026); Help l'ultima (10 nov 2026)
 TIPO = {"quick": "QuickDraft", "premier": "PremierDraft"}
 # i formati limited di Arena: il nome nel menu e i prefissi del nome dell'evento (QuickDraft_FRA_20261008 -> QuickDraft)
 FORMATI_LIMITED = (("Quick Draft", ("QuickDraft",)), ("Premier Draft", ("PremierDraft",)), ("Traditional Draft", ("TradDraft",)),

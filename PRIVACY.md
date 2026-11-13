@@ -23,7 +23,8 @@ You can change your choice any time in the Help tab.
 
 If you say yes, for each finished game the app sends:
 
-- the event name and the day (no time of day);
+- the event name, its format (Standard, Historic, limited...) and whether it is best-of-three, and the day (no time of day);
+- your Arena rank when the game started (for example "Gold 3"), to compare decks league by league;
 - the result, who started, how many mulligans, how many turns;
 - your deck list, your kept opening hand, the opposing cards you saw.
 

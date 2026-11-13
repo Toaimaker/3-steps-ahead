@@ -347,6 +347,20 @@ def pillola(l, h, bordo, fondo, larghezza=1.2):
     return _icona(("pillola", l, h, bordo, fondo, larghezza), fa)
 
 
+def interruttore(l, h, on, colore_on, fondo_off, bordo_off, pomello, pomello_off=None):
+    """L'interruttore on/off (13 nov 2026, Data sharing: «fai in modo che il pulsante di datasharing sia uno switcher on off»): una pillola, piena del colore
+    se accesa col pomello a destra, scura col bordo se spenta col pomello a sinistra."""
+    def fa():
+        d = Disegno(l, h)
+        r = (h - 1) / 2
+        d.rett(0.5, 0.5, l - 0.5, h - 0.5, riempi=colore_on if on else fondo_off, bordo=colore_on if on else bordo_off, larghezza=1.2, raggio=r)
+        rp = h / 2 - 3
+        cx = l - h / 2 if on else h / 2
+        d.cerchio(cx, h / 2, rp, riempi=pomello if on else (pomello_off or pomello))
+        return d
+    return _icona(("interruttore", l, h, on, colore_on, fondo_off, bordo_off, pomello, pomello_off), fa)
+
+
 def punto(diametro, colore, bordo=None, larghezza=0.0):
     """Un punto pieno (il led dell'ultima partita, i punti dei grafici), col bordo se serve."""
     def fa():

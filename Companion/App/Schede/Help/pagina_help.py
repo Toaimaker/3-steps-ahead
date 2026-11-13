@@ -151,6 +151,13 @@ SEZIONI = (
                          "opponent's deck on the right edge (both on by default)"), ("Esc", "closes the switches")]),
     ("social", "Social column", "On the right of every tab: your profile and the friends you follow, read from their public Untapped profile.",
      [("Avatar", "click: a card art or a file"), ("+", "adds a friend by the link of the Untapped profile"), ("✕", "on a friend: removes it")]),
+    ("settings", "Settings", "What Arena must do, what the app shares and where it reads your collection. The first time you open the app, a welcome "
+                             "window walks you through the same in four steps: Arena, Data sharing, Collection, Ready.",
+     [("Arena", "the app needs Detailed Logs (Plugin Support) on in Arena (Options › Account), then a restart of Arena; Check again reads Arena's log"),
+      ("Data sharing", "an on/off switch: on, your finished games (cards, results, mulligans, turns; never names) go to our server to build shared stats"),
+      ("Your collection", "paste the link of your public Untapped.gg profile, then Link: the app downloads the cards you own"),
+      ("Version (bottom right, every tab)", "orange \"Download version X\" when a new version is out: click opens the download; green \"Up to date · latest "
+                                            "version X\" when you have it; click to check again")]),
 )
 BOARD_EXTRA = (("Arrange ▾", "four ways, groups always whole: By mana cost, By groups, By connections (parents above children), Mixed (the network with the groups as nodes, everything else stacked below)"), ("Grid snap", "what you drop lines up on the grid"),
                ("Full page", "the Board on the whole screen"), ("Outliner", "on the left: every card with its copies; click, then F"),
@@ -202,10 +209,9 @@ class PaginaHelp:
         self.b_controlla = pulsante_solido(tk, F, riga, "Check now", False, self.controlla_ora, alto=30, bg=C["scheda"])
         self.b_controlla.configure(width=120); self.b_controlla.pack(side="right")
         self.l_note = tk.Label(upd, text="", bg=C["scheda"], fg=C["grigio"], font=F(9), anchor="w", justify="left", wraplength=900)
-        if ASPETTO_PUBBLICO:        # l'app pubblica (e quella di Autore, che la vede uguale: 11 nov 2026): la condivisione dei dati si cambia da qui (condividi.py; l'informativa lo promette), col codice da citare per i diritti
+        if ASPETTO_PUBBLICO:        # l'app pubblica (e quella di Autore, che la vede uguale: 11 nov 2026): il riquadro SUPPORT (la condivisione e la collezione di Untapped sono in Settings dal 13 nov 2026)
             self.riquadro_donazioni()
-            self.riquadro_untapped()
-            self.riquadro_condivisione()
+            # la collezione di Untapped e la condivisione dei dati stanno nella scheda Settings dal 13 nov 2026 (Schede/Settings/pagina_settings.py)
         # i collegamenti alle sezioni
         link = tk.Frame(self.fr, bg=C["fondo"]); link.pack(fill="x", padx=16, pady=(0, 6))
         for k, titolo, _d, _c in SEZIONI:
@@ -252,74 +258,6 @@ class PaginaHelp:
             import webbrowser
             b = self.b_dona = pulsante_solido(tk, F, riga, "Donate", False, lambda: webbrowser.open(url), alto=30, bg=C["scheda"], colori=ARANCIO)
             b.configure(width=140); b.pack(side="right")
-
-    def riquadro_untapped(self):
-        """YOUR COLLECTION: il link del profilo pubblico di Untapped (account.collega_untapped). Il log di Arena non scrive la collezione intera: senza, Your decks e
-        Collection non sanno quali carte hai. Collegato, si scarica subito la collezione (collezione_viva.aggiorna_scarico); limited e social dopo un riavvio."""
-        tk, F = self.tk, self.F
-        import account
-        box = tk.Frame(self.fr, bg=C["filo"], padx=1, pady=1); box.pack(fill="x", padx=16, pady=(0, 10))
-        d = tk.Frame(box, bg=C["scheda"]); d.pack(fill="x")
-        tk.Label(d, text="YOUR COLLECTION", bg=C["scheda"], fg=C["muto"], font=F(7, True)).pack(anchor="w", padx=12, pady=(8, 2))
-        riga = tk.Frame(d, bg=C["scheda"]); riga.pack(fill="x", padx=12, pady=(0, 4))
-        self.v_link = tk.StringVar()
-        e = tk.Entry(riga, textvariable=self.v_link, bg=C["fondo"], fg=C["titolo"], insertbackground=C["titolo"], relief="flat", font=F(9))
-        e.pack(side="left", fill="x", expand=True, ipady=5, padx=(0, 8))
-        b = pulsante_solido(tk, F, riga, "Link", False, self.collega, alto=30, bg=C["scheda"]); b.configure(width=110); b.pack(side="right")
-        a = account.account()
-        self.l_link = tk.Label(d, text="", bg=C["scheda"], fg=C["grigio"], font=F(8), anchor="w", justify="left", wraplength=900)
-        self.l_link.pack(fill="x", padx=12, pady=(0, 10))
-        self.l_link.configure(text=("Linked to your Untapped profile. " if a.get("untapped_player") else "Not linked. ")
-                              + "Arena's log does not list your whole collection: paste the link of your public Untapped.gg profile "
-                              "(mtga.untapped.gg/profile/...) to see the cards you own and the wildcards your decks need.")
-
-    def collega(self):
-        import account
-        if not account.collega_untapped(self.v_link.get()):
-            self.l_link.configure(text="That is not an Untapped profile link. It looks like https://mtga.untapped.gg/profile/<id>/<id>", fg=C["rosso_t"])
-            return
-        self.l_link.configure(text="Linked. Downloading your collection…", fg=C["testo"])
-
-        def lavoro():
-            try:
-                import collezione_viva as CV
-                esito = CV.aggiorna_scarico()
-            except Exception:       # noqa: BLE001
-                esito = None
-            msg = {True: "Collection downloaded. Restart the app to see limited games and your profile.", False: "Linked; the collection did not change.",
-                   None: "Linked, but Untapped did not answer. The app tries again in a few minutes."}[esito]
-            self.fr.after(0, lambda: self.l_link.configure(text=msg, fg=C["verde_t"] if esito else C["testo"]))
-        threading.Thread(target=lavoro, daemon=True).start()
-
-    def riquadro_condivisione(self):
-        """DATA SHARING: acceso o spento, il pulsante che lo cambia, il codice pseudonimo di chi usa l'app (condividi.codice dell'account) e quante partite aspettano."""
-        tk, F = self.tk, self.F
-        import account
-        import condividi
-        box = tk.Frame(self.fr, bg=C["filo"], padx=1, pady=1); box.pack(fill="x", padx=16, pady=(0, 10))
-        d = tk.Frame(box, bg=C["scheda"]); d.pack(fill="x")
-        tk.Label(d, text="DATA SHARING", bg=C["scheda"], fg=C["muto"], font=F(7, True)).pack(anchor="w", padx=12, pady=(8, 2))
-        riga = tk.Frame(d, bg=C["scheda"]); riga.pack(fill="x", padx=12, pady=(0, 10))
-        self.l_cond = tk.Label(riga, text="", bg=C["scheda"], fg=C["testo"], font=F(10, True), anchor="w", justify="left"); self.l_cond.pack(side="left")
-        self.b_cond = pulsante_solido(tk, F, riga, "Turn on", False, self.cambia_condivisione, alto=30, bg=C["scheda"]); self.b_cond.configure(width=150); self.b_cond.pack(side="right")
-        tk.Label(d, text="Only cards, results, mulligans and turns of your games. Never your name, your account or your opponents' names. "
-                 f"Your code for any privacy request: {condividi.codice(account.account().get('id') or '?')}", bg=C["scheda"], fg=C["grigio"], font=F(8),
-                 anchor="w", justify="left", wraplength=900).pack(fill="x", padx=12, pady=(0, 10))
-        self.mostra_condivisione()
-
-    def mostra_condivisione(self):
-        import condividi
-        si = condividi.consenso() is True
-        coda = os.path.join(condividi.CARTELLA[0], "coda.jsonl")
-        n = sum(1 for r in open(coda, encoding="utf-8") if r.strip()) if os.path.exists(coda) else 0
-        self.l_cond.configure(text=("On" if si else "Off") + (f" · {n} game{'s' if n != 1 else ''} waiting to be sent" if si and n else ""),
-                              fg=C["verde_t"] if si else C["testo"])
-        self.b_cond.metti("Turn off" if si else "Turn on", False)
-
-    def cambia_condivisione(self):
-        import condividi
-        condividi.imposta_consenso(condividi.consenso() is not True)
-        self.mostra_condivisione()
 
     def sezione(self, t, k, titolo, descr, comandi):
         """Una sezione nel testo: il titolo, cosa fa, i comandi in due colonne (il comando in azzurro, l'effetto accanto), su un blocco col fondo della scheda."""

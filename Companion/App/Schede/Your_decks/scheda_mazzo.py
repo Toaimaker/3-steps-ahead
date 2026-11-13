@@ -285,7 +285,7 @@ class SchedaMazzo:
         if collezione_nota():
             self.riquadro_jolly(barra_jolly, manca, si, jl)
         else:       # l'app pubblica senza la collezione (10 nov 2026): i jolly non si sanno
-            tk.Label(barra_jolly, text="WILDCARDS  ·  link your Untapped profile in Help to see the cards you own and the wildcards you need", bg=C["cap"],
+            tk.Label(barra_jolly, text="WILDCARDS  ·  link your Untapped profile in Settings to see the cards you own and the wildcards you need", bg=C["cap"],
                      fg=C["grigio"], font=F(8), anchor="w").pack(fill="x")
         # l'esportazione, sotto la lista: Arena e Magic Online, da copiare o da salvare in un file
         self.esportazione(esporta, nome, main, side, comandante, compagno, azioni_m)

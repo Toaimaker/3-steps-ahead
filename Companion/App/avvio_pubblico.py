@@ -1,5 +1,5 @@
-"""L'avvio dell'app pubblica (10 nov 2026): una finestrella che prepara i dati del primo avvio (primo_avvio.py), chiede una volta il consenso alla
-condivisione (condividi.py, spenta di partenza), poi apre la finestra grande. Lo lancia Avvia.bat dello zip pubblico. Nell'app di Autore non serve.
+"""L'avvio dell'app pubblica (10 nov 2026): la schermata di caricamento che prepara i dati del primo avvio (primo_avvio.py), poi la finestra grande, che a
+prima scheda disegnata chiede una volta il consenso alla condivisione (spenta di partenza) e il link di Untapped (Schede/Settings/benvenuto.py, dal 13 nov 2026). Lo lancia Avvia.bat dello zip pubblico. Nell'app di Autore non serve.
 
     py -I -X utf8 Companion/App/avvio_pubblico.py [--senza-finestra]     --senza-finestra: prepara e si ferma (collaudo)
 """
@@ -13,9 +13,8 @@ import percorsi  # noqa: E402
 import piattaforma  # noqa: E402  (Windows e Mac: flag dei processi, Python, percorsi)
 import json  # noqa: E402
 import threading  # noqa: E402
-import webbrowser  # noqa: E402
 
-FONDO, TESTO, TITOLO, ACCENTO, GRIGIO = "#101014", "#bebec2", "#ffffff", "#24baff", "#7a7a80"
+
 CANALE = os.path.join(percorsi.ROOT, "canale.json")
 
 
@@ -27,60 +26,35 @@ def canale():
         return {}
 
 
-def prepara(root):
+def prepara(root=None):
+    """La schermata di caricamento del primo avvio (la stessa della finestra grande, schermata_avvio.py: 13 nov 2026, «come si apre steam»): prepara i dati
+    (primo_avvio.py) con la riga di cosa sta facendo, poi si chiude. Il consenso alla condivisione e il link di Untapped li chiede la finestra di benvenuto,
+    dopo che l'app e' partita (Schede/Settings/benvenuto.py); fino al 13 nov 2026 il consenso lo chiedeva questa finestrella."""
     import tkinter as tk
-    import condividi
     import primo_avvio
-    stato = {"testo": "Preparing…", "fine": False, "esito": {}}
+    import schermata_avvio as SA
+    from ambiente import ASSET, VERSIONE
+    stato = {"testo": "Preparing…", "fine": False, "esito": {}, "n": 0}
 
     def lavoro():
-        stato["esito"] = primo_avvio.esegui(avviso=lambda t: stato.update(testo=t))
+        stato["esito"] = primo_avvio.esegui(avviso=lambda t: stato.update(testo=t, n=stato["n"] + 1))
         stato["fine"] = True
     threading.Thread(target=lavoro, daemon=True).start()
-    from ambiente import PRODOTTO
-    root.title(PRODOTTO)
-    root.configure(bg=FONDO)
-    root.geometry("560x320" + ("+-4000+0" if "--fuori-schermo" in sys.argv else ""))      # le prove non si aprono mai davanti a chi lavora
-    from ambiente import ASSET
+    geo = f"{SA.LARGA}x{SA.ALTA}+-4000+0" if "--fuori-schermo" in sys.argv else None      # le prove non si aprono mai davanti a chi lavora
+    s = SA.Schermata(tk, None, geo=geo, versione=VERSIONE)
     from tema import icona_finestra
-    root.after(50, lambda: icona_finestra(root, os.path.join(ASSET, "companion.ico")))       # il logo nella barra, non la piuma di Tk
-    tk.Label(root, text=PRODOTTO, bg=FONDO, fg=TITOLO, font=("Segoe UI", 16, "bold")).pack(pady=(24, 4))
-    tk.Label(root, text="Beta · free · unofficial fan content", bg=FONDO, fg=GRIGIO, font=("Segoe UI", 9)).pack()
-    riga = tk.Label(root, text="", bg=FONDO, fg=TESTO, font=("Segoe UI", 10)); riga.pack(pady=(28, 6))
-    tk.Label(root, text="The first start downloads card data (about 125 MB). Next starts are instant.", bg=FONDO, fg=GRIGIO, font=("Segoe UI", 8)).pack()
-    sotto = tk.Frame(root, bg=FONDO); sotto.pack(pady=18, fill="x")
-
-    def chiedi_consenso():
-        for w in sotto.winfo_children():
-            w.destroy()
-        tk.Label(sotto, text="Share your game data to improve the app?", bg=FONDO, fg=TITOLO, font=("Segoe UI", 10, "bold")).pack()
-        tk.Label(sotto, text="Only cards, results, mulligans and turns. Never your name, your account or your opponents' names.\nOff unless you say yes. You can change it in Help.",
-                 bg=FONDO, fg=TESTO, font=("Segoe UI", 8), justify="center").pack(pady=(4, 8))
-        b = tk.Frame(sotto, bg=FONDO); b.pack()
-        tk.Button(b, text="Yes, share", bg=ACCENTO, fg=FONDO, relief="flat", padx=14, command=lambda: scelta(True)).pack(side="left", padx=6)
-        tk.Button(b, text="No, thanks", bg="#303034", fg=TESTO, relief="flat", padx=14, command=lambda: scelta(False)).pack(side="left", padx=6)
-        url = canale().get("privacy")
-        if url:
-            l_ = tk.Label(sotto, text="Privacy notice ↗", bg=FONDO, fg=ACCENTO, font=("Segoe UI", 8), cursor="hand2"); l_.pack(pady=(6, 0))
-            l_.bind("<Button-1>", lambda e: webbrowser.open(url))
-
-    def scelta(si):
-        condividi.imposta_consenso(si)
-        root.destroy()
+    s.w.after(50, lambda: icona_finestra(s.w, os.path.join(ASSET, "companion.ico")))       # il logo nella barra, non la piuma di Tk
 
     def guarda():
-        riga.configure(text=stato["testo"])
+        s.passo(stato["testo"], min(0.9, 0.05 + 0.08 * stato["n"]))
         if not stato["fine"]:
-            root.after(150, guarda)
+            s.w.after(150, guarda)
             return
         errori = {k: v for k, v in stato["esito"].items() if v}
-        riga.configure(text="Ready" if not errori else f"Ready, without: {', '.join(errori)} (retried next start)")
-        if condividi.consenso() is None:
-            chiedi_consenso()
-        else:
-            root.after(400, root.destroy)
+        s.passo("Ready" if not errori else f"Ready, without: {', '.join(errori)} (retried next start)", 1.0)
+        s.w.after(300, s.chiudi)
     guarda()
-    root.mainloop()
+    s.w.mainloop()
 
 
 def condividi_in_fondo():
@@ -119,7 +93,7 @@ def main():
     from tema import id_app
     from ambiente import PRODOTTO
     id_app(PRODOTTO)        # il logo nella barra delle applicazioni, gia' dalla finestrella del primo avvio
-    prepara(tk.Tk())
+    prepara()
     if "--senza-finestra" in sys.argv:
         return
     manutenzione()
