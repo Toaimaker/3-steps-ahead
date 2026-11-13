@@ -52,6 +52,7 @@ ALTO_MAX = 0.82         # i pannelli non scendono oltre questa frazione di Arena
 FONDO, FONDO_ALFA = "#08080c", 0.50     # (poi: «sfondo generico ancora un po' piu' scuro»: 0,40 -> 0,50)    # (stesso giorno: «sfondo leggermente piu' scuro»: era 0,30)     # il velo dietro ogni lista (13 nov 2026, Autore: «con sfondo leggerissimo e trasparente»): una finestra a parte,
 # le strisce scure sopra il velo (13 nov 2026, Autore: «più oscurità sotto i numeri di carte quantità», «la striscia occhio e testo di appartenenza
 # deck tutta scura uguale», «striscia di testo lands più scura»): finestre come il velo, sotto i testi; l'occhio ha la stessa trasparenza della testata
+Y_TITOLO = 0.20                          # dove sta il titolo delle liste senza ancora una partita vista (a 1080: ~215 pixel)
 VERDE = "#6fdc7a"                        # il pallino e la scritta READY del badge fuori partita
 STRISCE_ALFA = {"titolo": 0.70, "sez": 0.45, "col": 0.45}
 FONDO_MARGINE = 5                        # semitrasparente, sotto i testi; Tk non sa fare un fondo semitrasparente nella finestra a colore chiave
@@ -149,6 +150,39 @@ def arena_in_cima(h, x, y):
 
 def _pct(p):
     return f"{round(100 * p)}%"
+
+
+def occhio_hud(lato, colore, chiuso=False):
+    """L'occhio dell'HUD, ridisegnato (13 nov 2026, Autore: «ridisegna meglio l'occhio»): aperto, la mandorla a punte con l'iride piena, la pupilla scura e
+    il riflesso; chiuso (lista nascosta), la palpebra abbassata con quattro ciglia. Su una griglia di 20 unita', col disegno a 4x di disegni."""
+    import disegni as DG
+
+    def fa():
+        d = DG.Disegno(lato, lato)
+        k = lato / 20
+        cx, cy, w = 10 * k, 10 * k, 8.4 * k
+
+        def arco(h, n=24):          # una parabola da punta a punta: le punte restano a spigolo come in un occhio vero
+            return [(cx - w + 2 * w * i / n, cy + h * (1 - (2 * i / n - 1) ** 2)) for i in range(n + 1)]
+        if chiuso:
+            d.linea(arco(3.4 * k), colore, 1.9 * k)
+            for t in (0.2, 0.4, 0.6, 0.8):      # le ciglia, perpendicolari alla palpebra
+                x = cx - w + 2 * w * t
+                y = cy + 3.4 * k * (1 - (2 * t - 1) ** 2)
+                pend = -2 * 3.4 * k * (2 * t - 1) / w        # dy/dx della parabola
+                nx, ny = -pend, 1.0
+                m = (nx * nx + ny * ny) ** 0.5
+                d.linea([(x, y), (x + nx / m * 2.6 * k, y + ny / m * 2.6 * k)], colore, 1.5 * k)
+            return d
+        su, giu = arco(-5.6 * k), arco(5.6 * k)
+        d.poligono(su + giu[::-1], riempi=(8, 8, 12, 140))       # dentro l'occhio un poco piu' scuro: l'iride stacca
+        d.cerchio(cx, cy, 3.9 * k, riempi=colore)
+        d.cerchio(cx, cy, 1.7 * k, riempi=(8, 8, 12, 255))
+        d.cerchio(cx + 1.3 * k, cy - 1.3 * k, 0.8 * k, riempi=(255, 255, 255, 230))
+        d.linea(su, colore, 1.8 * k)
+        d.linea(giu, colore, 1.8 * k)
+        return d
+    return DG._icona(("occhio_hud", lato, colore, chiuso), fa)
 
 
 def giocate(h):
@@ -346,7 +380,7 @@ class HudArena:
                 y = (H - eh) // 2
             a_vista = vista("mio" if lato == "sinistra" else "suo")
             c.delete("all")
-            img = self.D.occhio(int(17 * s), "#3cc4ff" if a_vista else "#9a9aa0", barrato=not a_vista)
+            img = occhio_hud(int(19 * s), "#3cc4ff" if a_vista else "#9a9aa0", chiuso=not a_vista)
             c.create_image(ew // 2, eh // 2, image=img)
             c.img = img
             x0, y0 = area[0] + x, area[1] + y
@@ -514,7 +548,8 @@ class HudArena:
             self.cv.move(lato, 0, dy)
             self.pannelli[lato] = (x0, y0 + dy, x1, y0 + dy + alto, sn, xn, yt + dy)
             self.strisce[lato] = [(a, b + dy, c, e + dy, t) for a, b, c, e, t in self.strisce.get(lato, [])]
-            self.titoli[lato] = (x0 if lato == "sinistra" else x1, yt + dy)       # dove sta l'occhio, al bordo del monitor: resta li' anche a lista chiusa (Autore, stesso giorno)
+            self.titoli[lato] = (x0 if lato == "sinistra" else x1, yt + dy)
+            self.ricorda_titolo((yt + dy) / H)       # dove sta l'occhio, al bordo del monitor: resta li' anche a lista chiusa (Autore, stesso giorno)
             if nascoste.get(lato):      # la lista chiusa: resta la testata con l'occhio, come una tendina richiusa (stesso giorno, Autore: «quando chiuso
                 # resta la tendina con your deck his deck»); il resto si toglie, il velo copre la sola testata
                 for i in self.cv.find_withtag(lato):
@@ -526,6 +561,23 @@ class HudArena:
         self.root.geometry(f"{W}x{H}+{area[0]}+{area[1]}")
         self.metti_fondi(area)      # i veli sotto le liste, e i testi di nuovo in cima alle finestre sempre-sopra
         self.metti_occhi(area, occhi)
+
+    def ricorda_titolo(self, frazione):
+        """Dove sta il titolo delle liste, in frazione dell'altezza di Arena: il badge fuori partita va li' (13 nov 2026, Autore: «deck hud ready tienilo alla
+        stessa altezza del titolo delle tendine»). In memoria, e in Log_Arena/hud_arena.json per il prossimo avvio (non nelle prove)."""
+        if abs(frazione - (self.y_titolo() or -1)) < 0.003:
+            return
+        self._y_tit = frazione
+        if self.area_finta is None:
+            d = _pref()
+            d["y_titolo"] = round(frazione, 4)
+            _scrivi(d)
+
+    def y_titolo(self):
+        v = getattr(self, "_y_tit", None)
+        if v is None and self.area_finta is None:
+            v = _pref().get("y_titolo")
+        return v
 
     def logo(self, n):
         """Il logo dell'app (Companion/Grafica/companion_icona.png) a n pixel, ricordato."""
@@ -546,10 +598,11 @@ class HudArena:
         s = max(0.6, H / 1080)
         cv = self.cv
         f_b = self.font(max(10, int(13 * s)), True)
-        pad, gap, alto, n = int(6 * s), int(7 * s), int(28 * s), int(20 * s)
+        pad, gap, alto, n = int(6 * s), int(7 * s), int(OCCHIO[1] * s), int(18 * s)     # alto come la testata delle liste
         x0 = int(POSTO[0] * W)
-        y0 = (H - alto) // 2
-        cy = y0 + alto // 2
+        yt = self.y_titolo()
+        cy = int((yt if yt else Y_TITOLO) * H)          # alla riga del titolo delle liste
+        y0 = cy - alto // 2
         x = x0 + pad
         img = self.logo(n)
         if img:
@@ -778,6 +831,7 @@ def prova():
         casi.append(("le finestre vere sono davvero dove le mette il disegno (negativa: dopo il SetWindowPos restavano al posto vecchio)",
                      (r_.left, r_.top) == (area[0], area[1]) and (rf.left, rf.top) == fs[:2]))
     casi.append(("a meta' altezza: la lista centrata su Arena (entro 2 pixel)", abs((sx_[1] + sx_[3]) / 2 - 540) <= 2))
+    y_tit_lista = sx_[6]
     rs = w.rett_strisce
     tit = [r for r in rs if r[4] == "titolo"]
     ro_ = w.rett_occhi
@@ -890,7 +944,8 @@ def prova():
     casi.append(("a partita finita le liste spariscono e resta il badge sul bordo sinistro: logo, DECK HUD, READY (negativa: niente occhi, niente carte)",
                  w.testi() == ["DECK HUD", "READY"] and bool(w.cv.find_withtag("logo")) and set(w.rett_fondi) == {"sinistra"} and w.rett_occhi == {}
                  and [r[4] for r in w.rett_strisce] == ["titolo"] and len(w.cv.find_withtag("cornice")) == 4
-                 and abs((w.rett_fondi["sinistra"][1] + w.rett_fondi["sinistra"][3]) / 2 - (area[1] + 540)) <= 2))
+                 and abs((w.rett_fondi["sinistra"][1] + w.rett_fondi["sinistra"][3]) / 2 - (area[1] + (w.y_titolo() or 0) * 1080)) <= 2
+                 and abs(w.y_titolo() * 1080 - y_tit_lista) < 60))
     w.sempre = False
     vecchio = PREF
     globals()["PREF"] = os.path.join(d, "pref_badge.json")
