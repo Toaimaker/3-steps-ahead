@@ -567,6 +567,57 @@ def chi2_p(oss, att, minimo=5.0):
     return 0.5 * math.erfc(z / math.sqrt(2))
 
 
+# ------------------------------------------------------------------ R1 + R6 · le due liste a lato del replayer
+# (13 nov 2026, Note/HANDOFF_Censimento_Performance.md voci R1 e R6: quello che il replay di Untapped ha e il nostro no; Autore: «Sì, R1+R6»)
+def _conta(nomi):
+    out = collections.Counter()
+    for n in nomi or []:
+        if n and n not in SENZA_FACCIA.values() and not n.startswith("#"):
+            out[nome_intero(n)] += 1
+    return out
+
+
+def lista_mia(deck, foto, rel=None):
+    """R6: il tuo mazzo a un momento del replay. deck {nome: copie} (la lista della partita), foto del momento (DA.foto_partita, gia' dal tuo lato), rel la
+    magia in pila (una tua magia sta fuori dal grimorio). -> dict(righe=[(nome, rimaste, nel mazzo, terra?)], grimorio). Rimaste = copie meno quelle viste
+    fuori dal grimorio (mano, campo senza pedine, cimitero, esilio, pila); mai sotto zero. Il grimorio e' il mazzo meno tutte le viste."""
+    if not deck:
+        return None
+    fuori = _conta(foto.get("mano")) + _conta(n for n, _t, ped, *_r in foto.get("mio") or [] if not ped)
+    fuori += _conta((foto.get("cim") or [[], []])[0]) + _conta((foto.get("esi") or [[], []])[0])
+    if rel and rel.get("tipo") == "spell" and rel.get("mio") and not rel.get("ab"):
+        fuori[nome_intero(rel["nome"])] += 1
+    righe, visti = [], 0
+    for n, q in deck.items():
+        ni = nome_intero(n)
+        v = min(q, fuori.get(ni, 0))
+        visti += v
+        righe.append((ni, q - v, q, e_terra(ni)))
+    cmc = lambda n: (_carta(n) or {}).get("cmc", 99)
+    righe.sort(key=lambda r_: (r_[3], cmc(r_[0]), r_[0]))
+    return dict(righe=righe, grimorio=sum(deck.values()) - visti)
+
+
+def lista_sua(passi, i):
+    """R1: le carte dell'avversario viste fino al momento i del replay: per nome il numero massimo di copie visto insieme in un momento (campo senza pedine,
+    cimitero, esilio, le sue magie in pila): un minimo, non il suo mazzo. passi = [(nome, foto, turno, rel)]. -> [(nome, copie, terra?)] per costo."""
+    massimo = collections.Counter()
+    for _n, f, _t, rel in passi[:i + 1]:
+        ora = _conta(n for n, _tp, ped, *_r in f.get("suo") or [] if not ped)
+        ora += _conta((f.get("cim") or [[], []])[1]) + _conta((f.get("esi") or [[], []])[1])
+        if rel and rel.get("tipo") == "spell" and not rel.get("mio") and not rel.get("ab"):
+            ora[nome_intero(rel["nome"])] += 1
+        for n, q in ora.items():
+            massimo[n] = max(massimo[n], q)
+    cmc = lambda n: (_carta(n) or {}).get("cmc", 99)
+    return sorted(((n, q, e_terra(n)) for n, q in massimo.items()), key=lambda r_: (r_[2], cmc(r_[0]), r_[0]))
+
+
+def testo_lista(righe):
+    """«Copy as list»: una carta per riga, «N Nome», come la importa Arena; le terre in fondo."""
+    return "\n".join(f"{q} {n}" for n, q, _t in righe)
+
+
 def contro_il_caso(r):
     """La cartella Luck: le partite r contro il caso. -> dict(turni={N: dict(partite, x, e, z, p, classi={voce: (tue, attese)})},
     mani=dict(n, oss[0..7], reg[0..7], liscia[0..7], bo1 = partite Bo1)). z e p: le terre pescate in tutto contro le attese (normale, p a due code)."""
@@ -612,7 +663,7 @@ def riga(p, r):
                     if cosa == "magia" and s_ == p.get("seat") and (nm := nome_intero(nome_grp(g_) or "")) and g_ not in SENZA_FACCIA})
     # le mani rimandate indietro al mulligan: le terre di ognuna (13 nov 2026, l'analisi dei mulligan di decisioni.py)
     scartate = [sum(q for n, q in (condividi.nomi(m) or {}).items() if e_terra(n)) for m in mani[:-1]]
-    return dict(r, seat=p.get("seat"), mazzo_id=p.get("mazzo"), mie_lanciate=mie_l, scartate=scartate, fortuna=fortuna(p, r, lista), **carte_partita(r, p.get("seat"), tenuta), economiche=econ, crea_mano=crea, crea_in_mano=creature_in_mano(tenuta),
+    return dict(r, seat=p.get("seat"), mazzo_id=p.get("mazzo"), mie_lanciate=mie_l, scartate=scartate, fortuna=fortuna(p, r, lista), deck=lista, **carte_partita(r, p.get("seat"), tenuta), economiche=econ, crea_mano=crea, crea_in_mano=creature_in_mano(tenuta),
                 suo_mull=suo_mulligan(r.get("partita"), p.get("seat")), crea_prima=prima_creatura(r.get("partita"), p.get("seat"), r.get("inizia")),
                 ist_mano=magie_in_mano(tenuta, "Instant"), str_mano=magie_in_mano(tenuta, "Sorcery"),
                 art_mano=magie_in_mano(tenuta, "Artifact"), inc_mano=magie_in_mano(tenuta, "Enchantment"), pw_mano=magie_in_mano(tenuta, "Planeswalker"),
@@ -1952,6 +2003,25 @@ def prova():
         for k in ("fx1", "fx2", "fx3"):
             _MANA.pop(k, None)
         _NOMI_GRP.pop(901, None); _NOMI_GRP.pop(902, None)
+    # R1 + R6 · le due liste del replayer (13 nov 2026)
+    deck_ = {"Opt": 4, "Island": 20, "Shock": 2}
+    foto_ = dict(mano=["Opt", "Island"], mio=[("Island", True, False), ("Island", False, False), ("Shark", False, True)], cim=(["Opt"], ["Bolt"]),
+                 esi=([], []), suo=[("Mountain", True, False), ("Goblin", False, False), ("Goblin Token", False, True)])
+    lm = lista_mia(deck_, foto_, dict(tipo="spell", mio=True, ab=False, nome="Shock"))
+    rig = {n: (rim, q) for n, rim, q, _t in lm["righe"]}
+    casi.append(("R6: rimaste = copie meno mano, campo (senza pedine), cimitero e la tua magia in pila; il grimorio e' il resto",
+                 rig["Opt"] == (2, 4) and rig["Island"] == (17, 20) and rig["Shock"] == (1, 2) and lm["grimorio"] == 26 - 6
+                 and [n for n, _r, _q, t in lm["righe"] if t] == ["Island"] and lm["righe"][-1][0] == "Island"))
+    casi.append(("negativa R6: una carta vista piu' volte di quante ne hai non va sotto zero; senza lista niente", lista_mia({"Opt": 1}, dict(mano=["Opt", "Opt"]))
+                 ["righe"][0][1] == 0 and lista_mia(None, foto_) is None))
+    passi_ = [("a", dict(suo=[("Goblin", False, False)], cim=([], []), esi=([], [])), 1, None),
+              ("b", dict(suo=[("Goblin", False, False), ("Goblin", False, False)], cim=([], ["Bolt"]), esi=([], [])), 2, None),
+              ("c", dict(suo=[], cim=([], ["Goblin", "Bolt"]), esi=([], [])), 3, dict(tipo="spell", mio=False, ab=False, nome="Lava Spike"))]
+    ls = {n: q for n, q, _t in lista_sua(passi_, 2)}
+    casi.append(("R1: le sue carte viste fino al momento: il massimo di copie insieme (2 Goblin, 1 Bolt), la magia in pila; le pedine no",
+                 ls == {"Goblin": 2, "Bolt": 1, "Lava Spike": 1}))
+    casi.append(("negativa R1: al primo momento vede solo quello che c'era allora; Copy as list una per riga",
+                 {n: q for n, q, _t in lista_sua(passi_, 0)} == {"Goblin": 1} and testo_lista([("Goblin", 2, False), ("Mountain", 1, True)]) == "2 Goblin\n1 Mountain"))
     casi.append(("i log veri: righe con le variabili (se ci sono partite)", not vere or all(k in vere[0] for k in ("tipo", "partenza", "terre", "sessione", "fascia"))))
     for n, ok in casi:
         print(("ok    " if ok else "ROSSO ") + n)

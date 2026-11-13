@@ -76,6 +76,8 @@ ALTO_PARTITA = 24                               # una riga della tabella delle p
 ALTO_CTRL = 158                                 # la barra del replayer della board: il grafico della partita sopra, i comandi sotto
 ALTO_GRAF = 92                                  # il grafico della partita nella barra
 LARGA_RACCONTO = 300                            # la colonna del racconto a destra della tavola
+LARGA_LISTA = 236                               # le due liste ai lati della tavola: il tuo mazzo (R6) e le sue carte viste (R1)
+ALTO_RIGA_LISTA = 18
 # per fasi della partita (12 nov 2026, Autore: «il menu a tendine creiamolo per macro fasi partita: formato evento e deck - poi start e mulligan - lands in
 # hand / cards in hand possiamo toglierlo, their card anche»): prima della partita (con By deck), l'apertura, l'avversario, com'e' finita, quando.
 # «deck» e' il pulsante By deck; Card in hand e Their card non sono tendine (restano in Split by, Group by e negli Spots)
@@ -1676,8 +1678,21 @@ class PaginaPerformance:
             f.bind("<t>", lambda e: self.vai_svolta())
             f.bind("<Destroy>", lambda e: e.widget is f and self.via_hover(), add="+")
             f.bind("<Destroy>", lambda e: e.widget is f and self.ferma_board(), add="+")
-            self.cv_board = tk.Canvas(f, bg="#141418", highlightthickness=1, highlightbackground=C["filo"], bd=0)
-            self.cv_board.pack(fill="both", expand=True, padx=12, pady=(4, 8))
+            # ai lati della tavola le due liste, come nel replay di Untapped (13 nov 2026, voci R1 e R6 del censimento; Autore: «Sì, R1+R6»): a sinistra
+            # il tuo mazzo con le copie rimaste nel grimorio a quel momento, a destra le sue carte viste fino a quel momento, con «Copy as list»
+            mezzo = tk.Frame(f, bg=C["scheda"]); mezzo.pack(fill="both", expand=True, padx=12, pady=(4, 8))
+            self.cv_lista_mio = tk.Canvas(mezzo, bg="#141418", highlightthickness=1, highlightbackground=C["filo"], bd=0, width=LARGA_LISTA)
+            self.cv_lista_mio.pack(side="left", fill="y", padx=(0, 8))
+            self.cv_lista_suo = tk.Canvas(mezzo, bg="#141418", highlightthickness=1, highlightbackground=C["filo"], bd=0, width=LARGA_LISTA)
+            self.cv_lista_suo.pack(side="right", fill="y", padx=(8, 0))
+            for cv_ in (self.cv_lista_mio, self.cv_lista_suo):
+                cv_.bind("<Configure>", lambda e: self.disegna_liste())
+                cv_.bind("<Motion>", self.sopra_lista)
+                cv_.bind("<Leave>", self.via_hover)
+                cv_.bind("<Button-1>", self.clic_lista)
+                cv_.bind("<MouseWheel>", lambda e: (self.via_hover(), e.widget.yview_scroll(-2 if e.delta > 0 else 2, "units")))
+            self.cv_board = tk.Canvas(mezzo, bg="#141418", highlightthickness=1, highlightbackground=C["filo"], bd=0)
+            self.cv_board.pack(side="left", fill="both", expand=True)
             self.cv_board.bind("<Configure>", lambda e: self.disegna_board())
             self.cv_board.bind("<Button-1>", self.clic_pila)
             self.cv_board.bind("<Motion>", self.sopra_carta_board)
@@ -2120,6 +2135,123 @@ class PaginaPerformance:
             cache[k] = ImageTk.PhotoImage(im)
         return cache[k]
 
+    def disegna_liste(self):
+        """Le due liste del momento: a sinistra il tuo mazzo (DA.lista_mia: copie rimaste nel grimorio su copie nel mazzo, la probabilita' di pescarla alla
+        prossima, finite in grigio, le terre in fondo), a destra le sue carte viste fino a qui (DA.lista_sua: un minimo, non il suo mazzo) col pulsante
+        «Copy as list». Il passaggio del mouse su una riga mostra la carta grande."""
+        b = getattr(self, "_board", None)
+        F = self.F
+        for c in (getattr(self, "cv_lista_mio", None), getattr(self, "cv_lista_suo", None)):
+            if c is None or not c.winfo_exists() or not b:
+                continue
+            c.delete("all")
+            c._righe, c._copia = [], None
+            mio = c is self.cv_lista_mio
+            _n, f, _t, rel = b["passi"][b["i"]][:4]
+            W = LARGA_LISTA
+            y = 14
+            if mio:
+                m = DA.lista_mia(b["x"].get("deck"), f, rel)
+                c.create_text(10, y, text="YOUR DECK", anchor="w", fill=C["azzurro"], font=F(8, True))
+                if not m:
+                    c.create_text(10, y + 26, text="The deck list of this game\nis not in the log.", anchor="nw", fill=C["grigio"], font=F(8))
+                    continue
+                c.create_text(W - 10, y, text=f"{m['grimorio']} in library", anchor="e", fill=C["grigio"], font=F(7))
+                y += 16
+                c.create_text(10, y, text="LEFT/DECK · NEXT DRAW", anchor="w", fill=C["muto"], font=F(6, True))
+                y += 14
+                terre_ = False
+                for n, rim, q, terra in m["righe"]:
+                    if terra and not terre_:
+                        terre_ = True
+                        y += 6
+                        c.create_text(10, y + 6, text="LANDS", anchor="w", fill=C["muto"], font=F(6, True))
+                        y += 14
+                    col = C["testo"] if rim else "#55555c"
+                    if len(c._righe) % 2 == 0:
+                        c.create_rectangle(4, y, W - 4, y + ALTO_RIGA_LISTA, fill="#1a1a20", outline="")
+                    c.create_text(10, y + ALTO_RIGA_LISTA / 2, text=f"{rim}/{q}", anchor="w", fill=C["titolo"] if rim else "#55555c", font=F(8, True))
+                    corto = n if len(n) <= 21 else n[:20] + "…"
+                    c.create_text(44, y + ALTO_RIGA_LISTA / 2, text=corto, anchor="w", fill=col, font=F(8))
+                    pc_ = 100 * rim / m["grimorio"] if m["grimorio"] and rim else 0
+                    c.create_text(W - 10, y + ALTO_RIGA_LISTA / 2, text=f"{pc_:.0f}%" if rim else "-", anchor="e",
+                                  fill=C["azzurro"] if rim else "#55555c", font=F(7, True))
+                    c._righe.append((0, y, W, y + ALTO_RIGA_LISTA, n))
+                    y += ALTO_RIGA_LISTA
+            else:
+                righe = DA.lista_sua(b["passi"], b["i"])
+                c.create_text(10, y, text="OPPONENT · CARDS SEEN", anchor="w", fill=C["arancio"], font=F(8, True))
+                c.create_text(W - 10, y, text=f"{sum(q for _n, q, _t in righe)} cards", anchor="e", fill=C["grigio"], font=F(7))
+                y += 16
+                c.create_text(10, y, text="up to this moment · not their whole deck", anchor="w", fill=C["muto"], font=F(6, True))
+                y += 14
+                if not righe:
+                    c.create_text(10, y + 6, text="Nothing seen yet.", anchor="nw", fill=C["grigio"], font=F(8))
+                    y += 24
+                terre_ = False
+                for n, q, terra in righe:
+                    if terra and not terre_:
+                        terre_ = True
+                        y += 6
+                        c.create_text(10, y + 6, text="LANDS", anchor="w", fill=C["muto"], font=F(6, True))
+                        y += 14
+                    if len(c._righe) % 2 == 0:
+                        c.create_rectangle(4, y, W - 4, y + ALTO_RIGA_LISTA, fill="#1a1a20", outline="")
+                    c.create_text(10, y + ALTO_RIGA_LISTA / 2, text=f"{q}x", anchor="w", fill=C["titolo"], font=F(8, True))
+                    c.create_text(36, y + ALTO_RIGA_LISTA / 2, text=n if len(n) <= 24 else n[:23] + "…", anchor="w", fill=C["testo"], font=F(8))
+                    c._righe.append((0, y, W, y + ALTO_RIGA_LISTA, n))
+                    y += ALTO_RIGA_LISTA
+                if righe:
+                    y += 10
+                    c.create_rectangle(10, y, W - 10, y + 26, fill="#303034", outline="", tags="copia")
+                    c.create_text(W / 2, y + 13, text=getattr(self, "_copiato", None) == b["x"].get("partita") and "Copied ✓" or "Copy as list",
+                                  fill="#ffffff", font=F(8, True), tags="copia")
+                    c._copia = (10, y, W - 10, y + 26, DA.testo_lista(righe))
+                    y += 34
+            c.configure(scrollregion=(0, 0, W, y + 10))
+
+    def sopra_lista(self, e):
+        """Il puntatore su una riga di una delle due liste: la carta grande accanto, come sulla tavola."""
+        c = e.widget
+        x, y = c.canvasx(e.x), c.canvasy(e.y)
+        n = next((r_[4] for r_ in getattr(c, "_righe", []) if r_[1] <= y <= r_[3]), None)
+        cp = getattr(c, "_copia", None)
+        c.configure(cursor="hand2" if cp and cp[0] <= x <= cp[2] and cp[1] <= y <= cp[3] else "")
+        if n == getattr(self, "_hover_nome", None):
+            if n is not None and getattr(self, "_hover", None) is not None:
+                self.metti_hover(e)
+            return
+        self.via_hover()
+        self._hover_nome = n
+        img = self.immagine_grande(n) if n else None
+        if img is None:
+            return
+        tk = self.tk
+        h = self._hover = tk.Toplevel(self.fin_board)
+        h.overrideredirect(True)
+        h.configure(bg="#101014")
+        try:
+            h.attributes("-topmost", True)
+        except Exception:      # noqa: BLE001
+            pass
+        tk.Label(h, image=img, bg="#101014", bd=0).pack(padx=2, pady=2)
+        self.metti_hover(e)
+
+    def clic_lista(self, e):
+        """«Copy as list» negli appunti: le sue carte viste, una per riga."""
+        c = e.widget
+        x, y = c.canvasx(e.x), c.canvasy(e.y)
+        cp = getattr(c, "_copia", None)
+        if not cp or not (cp[0] <= x <= cp[2] and cp[1] <= y <= cp[3]):
+            return None
+        try:
+            c.clipboard_clear(); c.clipboard_append(cp[4])
+        except Exception:      # noqa: BLE001 - senza appunti niente copia
+            return None
+        self._copiato = self._board["x"].get("partita")
+        self.disegna_liste()
+        return cp[4]
+
     def disegna_board(self):
         """La tavola del momento: il campo dell'avversario, il tuo, la tua mano; accanto a ogni campo il cimitero e l'esilio di quel giocatore; le carte arrivate
         dal momento prima col filo azzurro e «NEW»; forza e costituzione sulle creature; a destra il racconto di cosa e' successo (12 nov 2026, Autore:
@@ -2130,6 +2262,7 @@ class PaginaPerformance:
             return
         F = self.F
         import mazzi_salvati as MS
+        self.disegna_liste()
         # i momenti
         cp = self.cv_passi
         cp.delete("all")

@@ -85,7 +85,9 @@ SEZIONI = (
       ("Games in this situation", "under the chart, one game per row: deck, opponent, result, start, your opening hand and the board at the end; click the "
                                   "hand or the board to open the table of that game, turn by turn, with a replayer: first, back, play and pause, forward, last, "
                                   "the timeline and the speed (keys: space, arrows, Home, End, T); each player's graveyard and exile (click to see them all), the cards that just arrived marked "
-                                  "NEW, power and toughness, what happened in that moment, the chart of the game (life and power) and the turning point (★); the bar on the "
+                                  "NEW, power and toughness, what happened in that moment, the chart of the game (life and power) and the turning point (★); on the left your deck card "
+                                  "by card with the copies left in your library and the chance to draw each next, on the right the opponent's cards seen up to "
+                                  "that moment (not their whole deck) with Copy as list; the bar on the "
                                   "right scrolls the games, the mark on top opens them in their own window; click a column title to sort by it (again to "
                                   "reverse); the opponent's colors are mana symbols"),
       ("Spots", "Preset searches: the basic questions already built (opening hand, attack, defense, instant speed; life, board and removal), each with "
@@ -145,13 +147,14 @@ SEZIONI = (
       ("Hover", "the card large")]),
     ("board", "Board", "The deck as whole cards on a sheet, with the network of synergies: parent → child arrows, dots, labels. From the deck window it is "
               "view only; open it from the builder (Edit, then Board) to change it.", None),
-    ("hud", "Deck HUD", "The opponent's deck while you play, like a poker HUD but for decks, never for players: the archetype it most likely is, with how sure "
-            "(from the spells it has shown and the meta lists), the cards likely still in its 60, what it plays on its turns 2-4, the instants its open mana "
-            "can pay, and your record against it on the play and on the draw. In limited: its color pair with the public 17Lands numbers. Nothing about "
-            "the opponent is saved, and it stays off in sanctioned competitive events.",
+    ("hud", "Deck HUD", "Both decks while you play, on the edges of Arena, like a poker HUD but for decks, never for players. Yours on the left: every card "
+            "with the copies left and the chance to draw it next. The opponent's on the right: the archetype it most likely is, with how sure (from the spells "
+            "it has shown and the meta lists), the spells it has played, the cards likely in its 60 and the instants its open mana can pay. In limited: its "
+            "color pair with the public 17Lands numbers. Nothing about the opponent is saved, and it stays off in sanctioned competitive events.",
      [("Deck HUD", "the pill in the tab bar: blue ON when the HUD is on, grey OFF when it is off, a green dot and LIVE during a game"),
-      ("On Arena only", "the HUD shows only on top of Arena during your games, never in an app window, halfway down the screen; clicks pass through the lists"),
-      ("Eye above each list", "click it to hide that list during the game; the eye stays, crossed out, to bring it back"),
+      ("On Arena only", "the HUD shows only on top of Arena during your games, never in an app window; clicks pass through the lists"),
+      ("Eye in each list's header", "click it to fold that list to its header; click again to bring it back"),
+      ("DECK HUD · READY", "between games, the badge with the app logo on the left edge of Arena: the HUD is on and waiting for the next game"),
       ("Click the pill", "two switches: your deck on the left edge (every card: copies left / in the deck, chance to draw it next) and the "
                          "opponent's deck on the right edge (both on by default)"), ("Esc", "closes the switches")]),
     ("social", "Social column", "On the right of every tab: your profile and the friends you follow, read from their public Untapped profile.",
