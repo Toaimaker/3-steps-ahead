@@ -1,6 +1,6 @@
 {
- "version": "0.1.67",
+ "version": "0.1.68",
  "date": "2026-11-13",
- "notes": "Performance: Spots opens on preset searches (opening hand, attack, defense, instant speed): one click turns on all the filters of a search and opens the view that answers it; new filters for blocks, defense and all-in attacks into open mana.",
+ "notes": "Performance: your question written on top, one piece per filter with an x to remove it, and the answer below; new filters: turn by turn (what you and the opponent cast on turns 1-5), game ended by your turn N, no creature cast by turn N, creatures, instants and sorceries in your opening hand, the opponent mulligans.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

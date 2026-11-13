@@ -61,15 +61,18 @@ LARGA_RACCONTO = 300                            # la colonna del racconto a dest
 # hand / cards in hand possiamo toglierlo, their card anche»): prima della partita (con By deck), l'apertura, l'avversario, com'e' finita, quando.
 # «deck» e' il pulsante By deck; Card in hand e Their card non sono tendine (restano in Split by, Group by e negli Spots)
 FASI = (("BEFORE THE GAME", ("miei_colori",)),
-        ("OPENING AND FIRST TURNS", ("economiche", "crea_mano", "sit:io_terra", "sit:lui_terra", "sit:io_curva", "sit:io_crea2", "sit:lui_crea2")),
-        ("THE OPPONENT AND THE FIGHT", ("sit:io_primo", "sit:io_nel_suo", "sit:lui_nel_mio", "sit:lui_bersagli", "sit:io_att_aperto", "sit:io_att_chiuso",
+        ("OPENING AND FIRST TURNS", ("economiche", "crea_mano", "crea_in_mano", "ist_mano", "str_mano", "senza_crea", "sit:io_terra", "sit:lui_terra", "sit:io_curva", "sit:io_crea2", "sit:lui_crea2")),
+        # turno per turno (13 nov 2026, Autore: «bisogna estrarre dai replay delle azioni che possono essere trasformate in filtri: es ... vs oppo cast @ T1
+        # crea T2 instant T3 ench»): cosa hai lanciato tu e cosa l'avversario nei primi 5 turni di ognuno
+        ("TURN BY TURN", tuple(f"t_{chi}{n}" for chi in ("io", "lui") for n in range(1, DA.TURNI_FILTRO + 1))),
+        ("THE OPPONENT AND THE FIGHT", ("suo_mull", "sit:io_primo", "sit:io_nel_suo", "sit:lui_nel_mio", "sit:lui_bersagli", "sit:io_att_aperto", "sit:io_att_chiuso",
                                         "sit:lui_att_aperto", "sit:io_passa_aperto", "sit:lui_passa_aperto", "sit:io_blocca", "sit:io_difende",
                                         "sit:io_tutto", "sit:io_tutto_aperto")),
-        ("THE END OF THE GAME", ("fine", "sit:io_morti", "sit:lui_morti")),
+        ("THE END OF THE GAME", ("fine_entro", "fine", "sit:io_morti", "sit:lui_morti")),
         ("WHEN", ("giorno", "pausa")))      # i filtri in piu' di ogni fase, nel suo +
 LARGA_FASE = 780
 VALORI_FISSI = {"mull": ("0", "1", "2+"), "partenza": ("Play", "Draw"), "esito": ("Won", "Lost")}      # le tendine con le voci fisse
-SEZIONI_FILTRI = (("formato", "evento", "deck"), ("partenza", "mull", "terre", "esito"), ("suo", "colori"), ("lunga", "rango"), ("data", "fascia", "sessione"))
+SEZIONI_FILTRI = (("formato", "evento", "deck"), ("partenza", "mull", "terre", "esito"), (), ("suo", "colori"), ("lunga", "rango"), ("data", "fascia", "sessione"))
 
 
 def _cartella(x0, x1, top, H, sl=6, r=5):
@@ -321,6 +324,7 @@ class PaginaPerformance:
         self.cv_num = tk.Canvas(dx, bg=C["scheda"], highlightthickness=1, highlightbackground=C["filo"], height=108, bd=0)       # le tessere centrate fra la riga in alto e il fondo, con aria sotto (12 nov 2026, Autore: «le barre toccano la base della tabella, voglio le cose centrate»)
         self.cv_num.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         self.cv_num.bind("<Configure>", lambda e: self.disegna_numeri())
+        self.cv_num.bind("<Button-1>", self.clic_numeri)
         self.cv_tab = tk.Canvas(dx, bg=C["fondo"], highlightthickness=0, bd=0, height=ALTO_TAB)
         self.cv_tab.grid(row=1, column=0, sticky="ew")
         self.cv_tab.bind("<Configure>", lambda e: self.disegna_cartelle())
@@ -756,7 +760,38 @@ class PaginaPerformance:
         k = DA.conti(r)
         W = max(c.winfo_width(), 600)
         n_f = sum(1 for v in self.filtri.values() if v is not None)
-        c.create_text(16, 14, text=(f"THIS SITUATION · {k['n']} GAMES" if n_f else f"ALL {self.tipo.upper()} GAMES · {k['n']}"), anchor="w", fill=C["muto"], font=F(7, True))
+        c._pezzi = []
+        dy = 0
+        if not n_f:
+            c.create_text(16, 14, text=f"ALL {self.tipo.upper()} GAMES · {k['n']}", anchor="w", fill=C["muto"], font=F(7, True))
+        else:
+            # la domanda scritta (13 nov 2026, Autore: «io voglio una sezione dove posso ottenere una risposta in base a dei filtri ... mio wr quando ho 3 terre
+            # in mano on the draw e chiudo entro T5 senza creature e oppo mulliga ... tutto si deve allineare alla risposta che costruisco»): ogni filtro acceso e'
+            # un pezzo della domanda, con la sua x per toglierlo; la risposta sono le tessere sotto (e tutta la pagina segue gli stessi filtri)
+            i_ = c.create_text(16, 14, text=f"YOUR QUESTION · {k['n']} GAMES  ·  when", anchor="w", fill=C["azzurro"], font=F(7, True))
+            x = (c.bbox(i_) or (0, 0, 120, 0))[2] + 10
+            riga_ = 0
+            for kf, v in self.filtri.items():
+                if v is None:
+                    continue
+                testo = DA.etichetta(kf, v) if kf.startswith("sit:") else f"{DA.nome_var(kf)}: {DA.etichetta(kf, v)}"
+                t_ = c.create_text(0, -100, text=testo, anchor="w", font=F(7, True))
+                lw = (c.bbox(t_) or (0, 0, 80, 0))[2] - (c.bbox(t_) or (0, 0, 80, 0))[0]
+                c.delete(t_)
+                largo = lw + 34
+                if x + largo > W - 340 and x > 140:      # a destra resta il confronto con tutte le partite
+                    riga_ += 1
+                    x = 140
+                yc = 14 + 22 * riga_
+                c.create_rectangle(x, yc - 9, x + largo, yc + 9, fill="#1f3446", outline=C["azzurro"])
+                c.create_text(x + 8, yc, text=testo, anchor="w", fill=C["titolo"], font=F(7, True))
+                c.create_text(x + largo - 10, yc, text="x", anchor="center", fill=C["azzurro"], font=F(8, True))
+                c._pezzi.append((x + largo - 20, yc - 9, x + largo, yc + 9, kf))
+                x += largo + 6
+            dy = 22 * riga_
+        alto = 108 + dy
+        if int(c.cget("height")) != alto:
+            c.configure(height=alto)
         xd = W - 16
         if n_f:
             i_ = c.create_text(xd, 14, text=f"vs all your {self.tipo.lower()} games: {tot['wr'] if tot['wr'] is not None else '-'}%", anchor="e", fill=C["grigio"], font=F(7))
@@ -775,10 +810,19 @@ class PaginaPerformance:
         for i, (a, v, col, s) in enumerate(tess):
             x = 16 + i * cw
             # piu' aria fra nome, numero e riga sotto (12 nov 2026, Autore: «i testi qui sono tutti incollati, gestisci meglio le spaziature»)
-            c.create_line(x, 32, x, 96, fill=col, width=2)
-            c.create_text(x + 12, 36, text=a, anchor="nw", fill=C["muto"], font=F(7, True))
-            c.create_text(x + 12, 65, text=v, anchor="w", fill=col, font=F(17, True))
-            c.create_text(x + 12, 89, text=s, anchor="w", fill=C["grigio"], font=F(7))
+            c.create_line(x, 32 + dy, x, 96 + dy, fill=col, width=2)
+            c.create_text(x + 12, 36 + dy, text=a, anchor="nw", fill=C["muto"], font=F(7, True))
+            c.create_text(x + 12, 65 + dy, text=v, anchor="w", fill=col, font=F(17, True))
+            c.create_text(x + 12, 89 + dy, text=s, anchor="w", fill=C["grigio"], font=F(7))
+
+    def clic_numeri(self, e):
+        """La x di un pezzo della domanda: quel filtro si toglie (13 nov 2026)."""
+        for x0, y0, x1, y1, kf in getattr(self.cv_num, "_pezzi", []):
+            if x0 <= e.x <= x1 and y0 <= e.y <= y1:
+                self.filtri.pop(kf, None)
+                self.disegna()
+                return kf
+        return None
 
     def traccia(self, c, lin, box, metrica, asse, colori, titolo, vuoto="No games in this situation"):
         """Il grafico a linee su una tela qualsiasi (la cartella Chart, il confronto): assi, griglia, le linee in un'immagine nitida, il nome in fondo a ogni
@@ -2339,8 +2383,9 @@ class PaginaPerformance:
 
     def preset_attivo(self):
         """La ricerca preimpostata accesa: quella i cui filtri sono esattamente i filtri di adesso, o None."""
+        on = {k: v for k, v in self.filtri.items() if v is not None}
         for p_ in PRESET:
-            if p_[3] == self.filtri:
+            if p_[3] == on:
                 return p_
         return None
 
