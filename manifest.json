@@ -1,6 +1,6 @@
 {
- "version": "0.1.79",
+ "version": "0.1.80",
  "date": "2026-11-13",
- "notes": "Performance: Pairs on each Cards row opens a window with the pairs of cards that come together, by win rate.",
+ "notes": "Performance: a Decisions folder (attacks, blocks and mulligans with their outcome, a decision as a line on the chart), Trios, cards by turn 4, finishers and a Rows picker in Cards.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

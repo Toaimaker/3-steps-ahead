@@ -99,7 +99,13 @@ SEZIONI = (
                 "your turns 2, 3 and 4, your most cast spells, the opponent's most played cards, harder to cast (in your hand and never cast); no lands; under "
                 "each card the win rate and record of its games, and in how many; click a card to keep only its games, again to go back; hover to see it big; "
                 "Pairs › on each row opens a window with the pairs of cards that come together in the same game (from your turn 1: the pairs of your "
-                "opening hand), by win rate, 5 games together at least; click a pair to keep only the games with both"),
+                "opening hand), by win rate, 5 games together at least; Pairs or Trios; click one to keep only the games with them. Rows opens the "
+                "little window to pick which rows you see. Also: cast by your turn 4 (its Pairs: what you played together early) and Finishers (on your "
+                "battlefield at the end or cast in your last turn, by wins)"),
+      ("Decisions", "every combat as a decision with its outcome, by situation: your attacks (into untapped lands, with everything or holding back, "
+                    "blocked or not, by turn) and your defense; for each, how often you lost a creature, how often they did, the trade, the damage, "
+                    "their spell before damage and the game win rate; click a row to see its games as a line on the Chart against All. Mulligans: the "
+                    "hands you kept by lands on the play and on the draw (click a cell to filter), the hands you sent back, risky keeps, week by week"),
       ("The folders", "the mark on the right of each folder opens it in its own window, even on another screen; close it, or Bring it back, to dock it again"),
       ("Save as my filter", "keep a set of filters: it goes to the My filters folder, one under the other with its numbers; click to apply it, ✕ to "
                             "remove it; your filters are also a B of Compare"),
@@ -220,7 +226,8 @@ class PaginaHelp:
         t.configure(state="disabled")
 
     def riquadro_donazioni(self):
-        """SUPPORT: l'app e' gratis al 100%, solo donazioni (Autore, 11 nov 2026: «lanciamo l'app come 100% free e solo donazioni»). Il pulsante apre la pagina
+        """SUPPORT: l'app e' gratis al 100%, solo donazioni (Autore, 11 nov 2026: «lanciamo l'app come 100% free e solo donazioni»); in beta la donazione
+        e' di €2,99 al mese (13 nov 2026: «fase di beta test perciò tutto gratuito con donazione per sostenere il progetto a 2,99»). Il pulsante apre la pagina
         delle donazioni (url_donazioni); finche' non c'e', dice che apre presto."""
         tk, F = self.tk, self.F
         box = tk.Frame(self.fr, bg=C["filo"], padx=1, pady=1); box.pack(fill="x", padx=16, pady=(0, 10))
@@ -229,7 +236,7 @@ class PaginaHelp:
         riga = tk.Frame(d, bg=C["scheda"]); riga.pack(fill="x", padx=12, pady=(0, 10))
         url = url_donazioni()
         self.b_dona = None
-        self.l_dona = tk.Label(riga, text=f"{PRODOTTO} is 100% free, for everyone: nothing is locked. If it helps you, a donation of any amount keeps it going."
+        self.l_dona = tk.Label(riga, text=f"{PRODOTTO} is in beta and 100% free, for everyone: nothing is locked. If it helps you, support the project with €2.99 a month."
                                + ("" if url else " Donations open soon."), bg=C["scheda"], fg=C["testo"], font=F(9), anchor="w", justify="left", wraplength=700)
         self.l_dona.pack(side="left", fill="x", expand=True)
         if url:

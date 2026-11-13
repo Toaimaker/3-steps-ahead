@@ -26,6 +26,7 @@ import account  # noqa: E402
 
 SITUAZIONI = account.lega(globals(), "SITUAZIONI", "performance_situazioni.json")     # Log_Arena/performance_situazioni.json: le situazioni salvate
 SEGNALIBRI = account.lega(globals(), "SEGNALIBRI", "performance_segnalibri.json")     # gli spot segnati nel replayer (12 nov 2026)
+CARTE_SCELTE = account.lega(globals(), "CARTE_SCELTE", "performance_cards.json")      # le righe di Cards che vuoi vedere (13 nov 2026)
 SESSIONE_ORE = 1.0          # un'ora senza partite chiude la sessione
 RANGHI = ("Bronze", "Silver", "Gold", "Platinum", "Diamond", "Mythic")
 FASCE = (("Night (0-6)", 0, 6), ("Morning (6-12)", 6, 12), ("Afternoon (12-18)", 12, 18), ("Evening (18-24)", 18, 24))
@@ -465,7 +466,9 @@ def riga(p, r):
     lista = condividi.nomi(p.get("carte") or []) or {}
     mie_l = sorted({nm for t_, s_, cosa, g_, _tp in (_MANA.get(r.get("partita")) or {}).get("azioni") or []
                     if cosa == "magia" and s_ == p.get("seat") and (nm := nome_intero(nome_grp(g_) or "")) and g_ not in SENZA_FACCIA})
-    return dict(r, seat=p.get("seat"), mazzo_id=p.get("mazzo"), mie_lanciate=mie_l, **carte_partita(r, p.get("seat"), tenuta), economiche=econ, crea_mano=crea, crea_in_mano=creature_in_mano(tenuta),
+    # le mani rimandate indietro al mulligan: le terre di ognuna (13 nov 2026, l'analisi dei mulligan di decisioni.py)
+    scartate = [sum(q for n, q in (condividi.nomi(m) or {}).items() if e_terra(n)) for m in mani[:-1]]
+    return dict(r, seat=p.get("seat"), mazzo_id=p.get("mazzo"), mie_lanciate=mie_l, scartate=scartate, **carte_partita(r, p.get("seat"), tenuta), economiche=econ, crea_mano=crea, crea_in_mano=creature_in_mano(tenuta),
                 suo_mull=suo_mulligan(r.get("partita"), p.get("seat")), crea_prima=prima_creatura(r.get("partita"), p.get("seat"), r.get("inizia")),
                 ist_mano=magie_in_mano(tenuta, "Instant"), str_mano=magie_in_mano(tenuta, "Sorcery"),
                 art_mano=magie_in_mano(tenuta, "Artifact"), inc_mano=magie_in_mano(tenuta, "Enchantment"), pw_mano=magie_in_mano(tenuta, "Planeswalker"),
@@ -763,7 +766,7 @@ for _k, _n, _f in EXTRA:
 NOME["esito"], LEGGI["esito"] = "Result", (lambda x: "Won" if x["vinta"] else "Lost")
 NOME["wr_rif"] = "Win rate"
 NOME["lanciate"] = "Card you cast"
-NOME.update(in_mano="Card in your hand", sue_lanciate="Card the opponent cast", bloccate="Card stuck in your hand",
+NOME.update(lanc_t4="Card you cast by your turn 4", finisher="Card in your finish", in_mano="Card in your hand", sue_lanciate="Card the opponent cast", bloccate="Card stuck in your hand",
             **{f"pesc{n}": f"Card found on your turn {n}" for n in range(1, 5)})       # 4 = TURNI_CARTE; i clic della cartella Cards, fuori dagli Spots
 ORDINE_VALORI.update(esito=("Won", "Lost"), miei_colori=VARIANTI, economiche=("0", "1", "2+"), crea_mano=("Yes", "No"),
                      fine=("You conceded", "Opponent conceded", "Played to the end", "Timeout"), giorno=GIORNI,
@@ -811,7 +814,7 @@ def valori_di(k, x):
         return x.get("sue_viste") or []
     if k == "lanciate":         # le tue magie lanciate (la cartella Cards, 13 nov 2026)
         return x.get("mie_lanciate") or []
-    if k in ("in_mano", "sue_lanciate", "bloccate") or re.fullmatch(r"pesc\d", k):      # le altre righe della cartella Cards
+    if k in ("in_mano", "sue_lanciate", "bloccate", "lanc_t4", "finisher") or re.fullmatch(r"pesc\d", k):      # le altre righe della cartella Cards
         return x.get(k) or []
     if k == "data":
         giorni = (datetime.datetime.now() - x["quando"]).days
@@ -901,7 +904,7 @@ def carte_partita(r, seat, tenuta):
       «bloccate»     le carte che hai avuto in mano e non hai mai lanciato in quella partita.
     Dalle azioni di mana_aperto (VERSIONE 13, le pescate); senza azioni, o senza sapere chi ha cominciato, le righe di quella partita restano vuote."""
     az = (_MANA.get(r.get("partita")) or {}).get("azioni")
-    out = dict(in_mano=[], sue_lanciate=[], bloccate=[], **{f"pesc{n}": [] for n in range(1, TURNI_CARTE + 1)})
+    out = dict(in_mano=[], sue_lanciate=[], bloccate=[], lanc_t4=[], finisher=[], **{f"pesc{n}": [] for n in range(1, TURNI_CARTE + 1)})
     if not az or seat not in (1, 2) or r.get("inizia") is None:
         return out
     magia = lambda nm: bool(nm) and not e_terra(nm)
@@ -925,6 +928,22 @@ def carte_partita(r, seat, tenuta):
     pesc = {f"pesc{n}": sorted(n_ for n_ in ((mano | pescate[1]) if n == 1 else pescate[n]) if magia(n_)) for n in range(1, TURNI_CARTE + 1)}
     out.update(pesc if mano_p is not None else {})
     out["sue_lanciate"] = sorted(n_ for n_ in sue if magia(n_))
+    # entro il tuo turno 4 (13 nov 2026, Autore: «le carte che hanno interagito generando più valore o sinergia entro il t4»): le tue magie lanciate fino
+    # alla fine del tuo turno 4, anche nei suoi turni; il turno 4 tuo e' il 7 di Arena se cominci, l'8 se no
+    fine_t4 = 2 * TURNI_CARTE - (1 if r["inizia"] else 0)
+    out["lanc_t4"] = sorted({nome_g(g_) for t, s_, cosa, g_, _tp in az if cosa == "magia" and s_ == seat and t <= fine_t4 and magia(nome_g(g_))})
+    # i finisher (stesso messaggio: «le carte che hanno generato le migliori finish»): le tue carte (non pedine, non terre) in campo all'ultimo stato della
+    # partita e le magie lanciate nel tuo ultimo turno
+    ult = (_MANA.get(r.get("partita")) or {}).get("ultima")
+    campo_fine = set()
+    if ult and isinstance(ult[-1], dict):
+        for c_ in ((ult[-1].get("c") or [[], []])[seat - 1] or []):
+            if not c_[2]:
+                campo_fine.add(nome_g(c_[0]))
+    miei_t = [t for t, s_, cosa, _g, _tp in az if s_ == seat and mio_turno(t)]
+    ultimo = max(miei_t) if miei_t else None
+    campo_fine |= {nome_g(g_) for t, s_, cosa, g_, _tp in az if cosa == "magia" and s_ == seat and t == ultimo}
+    out["finisher"] = sorted(n_ for n_ in campo_fine if magia(n_))
     if mano_p is not None:
         out["in_mano"] = sorted(n_ for n_ in mano_p if magia(n_))
         out["bloccate"] = sorted(n_ for n_ in mano_p if magia(n_) and n_ not in mie)
@@ -934,7 +953,8 @@ def carte_partita(r, seat, tenuta):
 RIGHE_CARTE = [("in_mano", "MOST FOUND IN YOUR HAND · opening hand and draws"),
                ("pesc1", "YOUR TURN 1 · the opening hand and the first draw"), ("pesc2", "YOUR TURN 2 · drawn on it"),
                ("pesc3", "YOUR TURN 3 · drawn on it"), ("pesc4", "YOUR TURN 4 · drawn on it"),
-               ("lanciate", "YOUR MOST CAST SPELLS"), ("sue_lanciate", "THE MATCHUPS · the opponent's most played cards"),
+               ("lanciate", "YOUR MOST CAST SPELLS"), ("lanc_t4", "CAST BY YOUR TURN 4 · Pairs: what you played together early"),
+               ("finisher", "FINISHERS · on your battlefield at the end or cast in your last turn, by wins"), ("sue_lanciate", "THE MATCHUPS · the opponent's most played cards"),
                ("bloccate", "HARDER TO CAST · in your hand and never cast")]
 CAMPO_CARTE = {"lanciate": "mie_lanciate"}       # la chiave del filtro -> il campo della riga (le altre si chiamano uguali)
 
@@ -958,12 +978,14 @@ def riga_carte(r, chiave, quante=40, minimo=5):
             c["bloccata"] = round(100 * c["n"] / c["mano"]) if c["mano"] else 0
         out = [c for c in out if c["mano"] >= minimo]
         out.sort(key=lambda c: (-c["bloccata"], -c["n"], c["nome"]))
+    elif chiave == "finisher":      # dalle piu' presenti nelle vittorie
+        out.sort(key=lambda c: (-c["vinte"], -c["n"], c["nome"]))
     else:
         out.sort(key=lambda c: (-c["n"], c["nome"]))
     return out[:quante]
 
 
-def coppie_carte(r, chiave, quante=60, minimo=5):
+def coppie_carte(r, chiave, quante=60, minimo=5, k=2):
     """Le coppie di carte di una riga di Cards, dalla piu' vincente (13 nov 2026, Autore: «come imposteresti i filtri per determinare al di sopra del 51% di
     win rate quale combinazione di carte vince almeno il 60% delle volte in starting hand?», poi «non aggiungere le coppie come righe ma come finestre extra che
     si aprono dalla riga e mostrano le coppie»): due carte della riga nella stessa partita, una volta per partita, da `minimo` partite; a parita' di win rate
@@ -973,12 +995,12 @@ def coppie_carte(r, chiave, quante=60, minimo=5):
     conta, vinte = collections.Counter(), collections.Counter()
     for x in r:
         m = sorted({n for n in x.get(campo) or [] if not e_terra(n)})
-        for cp in itertools.combinations(m, 2):
+        for cp in itertools.combinations(m, k):
             conta[cp] += 1
             vinte[cp] += 1 if x["vinta"] else 0
     tot = len(r) or 1
-    out = [dict(nome=f"{a} + {b}", nomi=(a, b), n=n, vinte=vinte[(a, b)], perse=n - vinte[(a, b)], wr=round(100 * vinte[(a, b)] / n, 1),
-                quota=round(100 * n / tot, 1), filtro=(fk, [a, b])) for (a, b), n in conta.items() if n >= minimo]
+    out = [dict(nome=" + ".join(cp), nomi=cp, n=n, vinte=vinte[cp], perse=n - vinte[cp], wr=round(100 * vinte[cp] / n, 1),
+                quota=round(100 * n / tot, 1), filtro=(fk, list(cp))) for cp, n in conta.items() if n >= minimo]
     out.sort(key=lambda c: (-c["wr"], -c["n"], c["nome"]))
     return out[:quante]
 
@@ -1156,10 +1178,14 @@ def serie(r, metrica="wr", asse="games", finestra="20", posto=None):
     return out
 
 
-def linee(r, metrica, asse, finestra, dividi=None, quante=5):
-    """Le linee del grafico: [(nome, punti)]. Con dividi una per valore (i piu' giocati, al massimo quante), piu' All."""
+def linee(r, metrica, asse, finestra, dividi=None, quante=5, extra=None):
+    """Le linee del grafico: [(nome, punti)]. Con dividi una per valore (i piu' giocati, al massimo quante), piu' All. extra = (nome, partite): una linea in
+    piu' sulle partite di una decisione di Decisions, sull'asse di tutte (13 nov 2026, Autore: «li dobbiamo vedere anche sul grafico aggiungendo una linea
+    sul grafico vs quella totale ... tipo holdem manager»)."""
     posto = {x.get("partita") or id(x): i + 1 for i, x in enumerate(sorted(r, key=lambda x: x["quando"]))}
     out = [("All", serie(r, metrica, asse, finestra))]
+    if extra:
+        out.append((extra[0], serie([x for x in r if x.get("partita") in extra[1]], metrica, asse, finestra, posto=posto)))
     if dividi:
         for v, _n in sorted(valori(r, dividi), key=lambda t: -t[1])[:quante]:
             out.append((etichetta(dividi, v), serie([x for x in r if v in valori_di(dividi, x)], metrica, asse, finestra, posto=posto)))
@@ -1339,6 +1365,23 @@ def togli_situazione(i):
         d.pop(i)
         _scrivi(d)
     return d
+
+
+def righe_carte_scelte():
+    """Le righe di Cards da mostrare (13 nov 2026, Autore: «creiamo un menu filtri in cards per non avere mille righe ma solo quelle che cerchiamo
+    combinando da una sotto finestrella di filtri dedicato alla sezione cards»): le chiavi spuntate, nell'ordine di RIGHE_CARTE; tutte se non hai mai scelto."""
+    try:
+        with open(CARTE_SCELTE, encoding="utf-8") as f:
+            d = json.load(f)
+        if isinstance(d, list):
+            return [k for k, _t in RIGHE_CARTE if k in d]
+    except (OSError, ValueError):
+        pass
+    return [k for k, _t in RIGHE_CARTE]
+
+
+def salva_righe_carte(chiavi):
+    _scrivi_in(CARTE_SCELTE, [k for k, _t in RIGHE_CARTE if k in chiavi])
 
 
 def segnalibri():
