@@ -797,6 +797,29 @@ class TavoloCarte:
     def visibile(self, vid):
         return not self.filtro or bool(self.tipi_di(vid) & self.filtro)
 
+    def etichetta_vista(self, k):
+        """Il riquadro del gruppo k si vede col filtro per tipo? (13 nov 2026, Autore: «quando accendo o spengo i filtri tipo delle carte se quelle carte sono
+        in un gruppo deve accendersi o spegnersi (visibile invisibile) anche il quadro del gruppo».) Senza filtro sempre; col filtro solo se almeno una sua carta
+        passa: una pila a vista dentro di lui (le carte nascoste stanno da parte e le loro pile escono), o, per la copia di un gruppo, una delle carte scritte.
+        Un gruppo vuoto col filtro acceso non si vede. Nascosto non si disegna, quindi non si prende col mouse, come le carte nascoste."""
+        if not self.filtro or not 0 <= k < len(self.etichette):
+            return True
+        lb = self.etichette[k]
+        if lb.get("copia"):
+            for nome in (lb.get("carte") or {}):
+                c = self.carte_db.get(nome) or self.carte_db.get(nome.split(" // ")[0].strip()) or {}
+                riga = (c.get("tipo") or tipo_arena(nome) or "").lower()
+                if {t for t, _n in TIPI[1:] if t in riga} & self.filtro:
+                    return True
+            return False
+        x0, y0, x1, y1 = lb["x"], lb["y"], lb["x"] + lb["w"], lb["y"] + lb["h"]
+        for pl in self.pile:
+            if pl["zona"] == "main" and pl["carte"]:
+                r = self.ingombro(pl)
+                if x0 <= (r[0] + r[2]) / 2 <= x1 and y0 <= (r[1] + r[3]) / 2 <= y1:
+                    return True
+        return False
+
     def sfiltra(self):
         """Rimette nelle pile le carte tenute da parte (e le pile uscite perche' vuote)."""
         for pl, _tolta, carte in reversed(self._riposte):
@@ -1113,7 +1136,7 @@ class TavoloCarte:
     def rett_tutto(self):
         """Il rettangolo di tutta la rete del mazzo, in pixel della tela: le pile, le label, i dot."""
         rr = [self.ingombro_px(pl) for pl in self.pile if pl["zona"] == "main"]
-        rr += [self.lb_px(k) for k in range(len(self.etichette))]
+        rr += [self.lb_px(k) for k in range(len(self.etichette)) if self.etichetta_vista(k)]       # i gruppi spenti dal filtro no
         rr += [(lambda pt: (pt[0] - 10, pt[1] - 10, pt[0] + 26, pt[1] + 10))(self.punto_xy(q)) for q in self.punti]
         return self.unione(rr)
 
@@ -4213,6 +4236,8 @@ class TavoloCarte:
         """Ogni label: il riquadro, il titolo col nome (si trascina; doppio clic lo rinomina), la ✕ che la toglie (le carte restano), l'angolo che la allarga."""
         cv, z, o = self.cv, self.zoom, self.oy("main")
         for k, lb in enumerate(self.etichette):
+            if not self.etichetta_vista(k):      # col filtro per tipo, il gruppo senza carte a vista si spegne con loro
+                continue
             x0, y0 = lb["x"] * z, o + lb["y"] * z
             x1, y1 = x0 + lb["w"] * z, y0 + lb["h"] * z
             th = max(16, TIT_L * z)
@@ -5943,6 +5968,22 @@ def prova():
     casi.append(("Mixed col filtro acceso: ogni carta in una pila sola, e il filtro resta acceso", sorted(c for _pl, cc in tA.pile_tutte() for c in cc) == sorted(tA.voci)
                  and bool(tA._riposte)))
     tA.scegli_filtro("all"); root.update()
+    # il filtro per tipo spegne e accende anche il riquadro del gruppo (13 nov 2026): si vede se almeno una sua carta passa il filtro
+    kB_, kT_ = tA.etichette.index(gl_(tA, "Burn")), tA.etichette.index(gl_(tA, "Top"))
+    kC_ = next(k_ for k_, lb in enumerate(tA.etichette) if lb.get("copia"))
+    disegnata_ = lambda k_: bool(tA.cv.find_withtag(f"lt{k_}"))
+    vis_ = lambda: (disegnata_(kB_), disegnata_(kT_), disegnata_(kC_))
+    tA.scegli_filtro("instant"); root.update()
+    v_ist = vis_()
+    tA.scegli_filtro("all"); tA.scegli_filtro("creature"); root.update()
+    v_cre = vis_()
+    tA.scegli_filtro("all"); tA.scegli_filtro("land"); root.update()
+    v_ter = vis_()
+    tA.scegli_filtro("all"); root.update()
+    v_all = vis_()
+    casi.append(("filtro Instants: Burn (Bolt) e la sua copia accesi, Top (solo creature) spento; Creatures: tutti accesi", v_ist == (True, False, True)
+                 and v_cre == (True, True, True)))
+    casi.append(("negativa: filtro Lands, nessun gruppo ha terre: tutti spenti; tornato All si riaccendono", v_ter == (False, False, False) and v_all == (True, True, True)))
     # il pulsante e il menu
     pA = tA.menu_disponi(); root.update()
     testi_A = [w_.cget("text") for w_ in pA.winfo_children()[0].winfo_children() for w_ in ([w_] + list(w_.winfo_children())) if isinstance(w_, tk.Label)]

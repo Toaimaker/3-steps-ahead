@@ -1,6 +1,6 @@
 {
- "version": "0.1.73",
+ "version": "0.1.74",
  "date": "2026-11-13",
- "notes": "Board: Arrange has four modes (by mana cost, by groups, by connections, mixed); groups always stay whole and nothing is left scattered.",
+ "notes": "Board: with a card type filter on, a group frame shows only when at least one of its cards does.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }
