@@ -25,6 +25,27 @@ LINEE = ("#d8d8dc", "#24baff", "#f0ad4e", "#a58cff", "#5cb85c", "#ee8a87")      
 COLONNE = (("nome", "", 250), ("n", "GAMES", 70), ("wl", "W-L", 80), ("wr", "WIN RATE", 180), ("play", "PLAY", 70), ("draw", "DRAW", 70), ("mull", "MULL.", 70),
            ("turni", "AVG T", 70), ("delta", "Δ VS ALL", 90))
 TIPI = ("Constructed", "Limited")
+# le ricerche preimpostate di Spots (13 nov 2026, Autore: «spots ... deve dare una combo di filtri preimpostati per risolvere le ricerche fondamentali tra le
+# partite / ne schiaccio uno e tutti i filtri si combinano per quella ricerca»): (gruppo, nome, cosa cerca, filtri, vista che risponde, Group by del Report)
+PRESET = (
+    ("OPENING HAND", "Kept 7 · which cards win", "No mulligan · the Report by card in your opening hand", {"mull": "0"}, "report", "mano"),
+    ("OPENING HAND", "After a mulligan · which cards win", "One mulligan · the Report by card in your opening hand", {"mull": "1"}, "report", "mano"),
+    ("OPENING HAND", "Kept 7 on the draw", "No mulligan, on the draw · by card in hand", {"mull": "0", "partenza": "Draw"}, "report", "mano"),
+    ("OPENING HAND", "You missed a land drop", "By your 4th turn", {"sit:io_terra": "Yes"}, "chart", None),
+    ("OPENING HAND", "You curved out", "A spell on each of your turns 2, 3 and 4", {"sit:io_curva": "Yes"}, "chart", None),
+    ("ATTACK", "All-in into open mana", "Everything attacked, the opponent had 2+ untapped lands", {"sit:io_tutto_aperto": "Yes"}, "chart", None),
+    ("ATTACK", "Held back against open mana", "2+ untapped lands: you never attacked with everything", {"sit:io_tutto_aperto": "No"}, "chart", None),
+    ("ATTACK", "Attacked into a tapped-out opponent", "The opponent had no untapped land", {"sit:io_att_chiuso": "Yes"}, "chart", None),
+    ("ATTACK", "You attacked first", "The first attack of the game was yours", {"sit:io_primo": "Yes"}, "chart", None),
+    ("DEFENSE", "On defense", "You defended more than you attacked", {"sit:io_difende": "Yes"}, "chart", None),
+    ("DEFENSE", "Opponent attacked · you blocked", "At least one block when attacked", {"sit:io_blocca": "Yes"}, "chart", None),
+    ("DEFENSE", "Opponent attacked · you never blocked", "Attacked, and no block in the whole game", {"sit:io_blocca": "No"}, "chart", None),
+    ("DEFENSE", "Opponent attacked into your open mana", "You had 2+ untapped lands", {"sit:lui_att_aperto": "Yes"}, "chart", None),
+    ("INSTANT SPEED", "You cast on the opponent's turn", "Instants and flash", {"sit:io_nel_suo": "Yes"}, "chart", None),
+    ("INSTANT SPEED", "Opponent cast on your turn", "Their instants and flash", {"sit:lui_nel_mio": "Yes"}, "chart", None),
+    ("INSTANT SPEED", "You passed with mana up", "2+ untapped lands at the end of your turn", {"sit:io_passa_aperto": "Yes"}, "chart", None),
+)
+SPOT_MODI = (("preset", "Preset searches"), ("auto", "Auto spots"))
 VISTE = (("chart", "Chart"), ("spots", "Spots"), ("report", "Report"), ("matchups", "Matchups"), ("compare", "Compare"), ("mine", "My filters"))
 DISEGNI = {"chart": "disegna_grafico", "spots": "disegna_spot", "report": "disegna_report", "matchups": "disegna_matchup", "compare": "disegna_confronto",
            "mine": "disegna_miei"}
@@ -42,7 +63,8 @@ LARGA_RACCONTO = 300                            # la colonna del racconto a dest
 FASI = (("BEFORE THE GAME", ("miei_colori",)),
         ("OPENING AND FIRST TURNS", ("economiche", "crea_mano", "sit:io_terra", "sit:lui_terra", "sit:io_curva", "sit:io_crea2", "sit:lui_crea2")),
         ("THE OPPONENT AND THE FIGHT", ("sit:io_primo", "sit:io_nel_suo", "sit:lui_nel_mio", "sit:lui_bersagli", "sit:io_att_aperto", "sit:io_att_chiuso",
-                                        "sit:lui_att_aperto", "sit:io_passa_aperto", "sit:lui_passa_aperto")),
+                                        "sit:lui_att_aperto", "sit:io_passa_aperto", "sit:lui_passa_aperto", "sit:io_blocca", "sit:io_difende",
+                                        "sit:io_tutto", "sit:io_tutto_aperto")),
         ("THE END OF THE GAME", ("fine", "sit:io_morti", "sit:lui_morti")),
         ("WHEN", ("giorno", "pausa")))      # i filtri in piu' di ogni fase, nel suo +
 LARGA_FASE = 780
@@ -126,6 +148,7 @@ class PaginaPerformance:
         self.con, self.staccate, self.vs_modo, self.ord_deck = "rest", {}, "all", "n"
         self.partite_fuori = None       # la tabella delle partite nella sua finestra: dict(win, lista, l)        # B del confronto (rest, all, s<i>); le viste staccate: {vista: dict(win, o, l)}
         self.righe, self.sporca, self.deciso, self.modo = None, True, False, "Standard"
+        self.spot_modo = "preset"       # Spots: le ricerche preimpostate (di partenza) o gli spot automatici
         self._lavoro, self.l_carica = None, None
         self.costruisci()
         self.fr.bind("<<Davanti>>", lambda e: self.se_sporca(), add="+")
@@ -363,6 +386,12 @@ class PaginaPerformance:
                                   lambda v: self.cambia("dividi", None if v == "None" else v), etichette={"None": "None", **et_var})
             ctl["dividi"].set(self.dividi or "None")
             asse_e_finestra()
+        elif k == "spots":       # le ricerche preimpostate o gli spot automatici di prima (13 nov 2026)
+            ctl["smodo"] = {}
+            for m, n in SPOT_MODI:
+                b = pulsante_solido(tk, F, riga, n, m == self.spot_modo, lambda m=m: self.cambia_spot(m), alto=26, bg=C["scheda"], colori=GRIGI)
+                b.configure(width=130); b.pack(side="left", padx=(0, 6), anchor="s", pady=(0, 2))
+                ctl["smodo"][m] = b
         elif k == "report":
             ctl["per"] = Tendina(tk, riga, "Group by", F, larga=220, bg=C["scheda"]); ctl["per"].fr.pack(side="right")
             ctl["per"].opzioni([k_ for k_, _n, _f in DA.VARIABILI if k_ != "data"] + ["vs"] + [k_ for k_, _n, _f in DA.EXTRA] + sit_k, lambda v: self.cambia("per", v), etichette=et_var)
@@ -404,6 +433,7 @@ class PaginaPerformance:
             c.bind("<Leave>", lambda e: e.widget.delete("punta"))
         elif k == "spots":
             c.bind("<Button-1>", self.clic_spot)
+            c.bind("<MouseWheel>", lambda e: self.spot_modo == "preset" and e.widget.yview_scroll(-2 if e.delta > 0 else 2, "units"))
         elif k == "report":
             c.bind("<Button-1>", self.clic_report)
             c.configure(yscrollincrement=24)       # la rotella scorre di una riga intera
@@ -441,6 +471,8 @@ class PaginaPerformance:
             ctl = o["ctl"]
             for m, b in ctl.get("metr", {}).items():
                 b.metti(dict(DA.METRICHE)[m], m == self.metrica)
+            for m, b in ctl.get("smodo", {}).items():
+                b.metti(dict(SPOT_MODI)[m], m == self.spot_modo)
             for k, v in (("asse", self.asse), ("fin", self.finestra), ("dividi", self.dividi or "None"), ("per", self.per), ("con", self.con)):
                 if k in ctl:
                     ctl[k].set(v)
@@ -2299,14 +2331,92 @@ class PaginaPerformance:
         """Report o Matchups, l'ultima delle due aperta (il nome di prima)."""
         self.disegna_vista(self.basso)
 
+    def cambia_spot(self, m):
+        """Le ricerche preimpostate o gli spot automatici di prima (13 nov 2026)."""
+        self.spot_modo = m
+        self.sincronizza()
+        self.disegna_vista("spots")
+
+    def preset_attivo(self):
+        """La ricerca preimpostata accesa: quella i cui filtri sono esattamente i filtri di adesso, o None."""
+        for p_ in PRESET:
+            if p_[3] == self.filtri:
+                return p_
+        return None
+
+    def usa_preset(self, p_):
+        """Una ricerca preimpostata (13 nov 2026, Autore: «spots ... deve dare una combo di filtri preimpostati per risolvere le ricerche fondamentali tra le
+        partite / ne schiaccio uno e tutti i filtri si combinano per quella ricerca»): i suoi filtri al posto di quelli di adesso, il raggruppamento del Report
+        se lo vuole, e la vista che risponde. Premuta di nuovo, se e' ancora quella accesa, si toglie (tutte le partite)."""
+        _g, _n, _s, filtri, vista, per = p_
+        if self.preset_attivo() is p_:
+            self.filtri = {}
+            self.disegna()
+            return None
+        self.filtri = dict(filtri)
+        if per:
+            self.per = per
+            self.basso = "report"
+        self.sincronizza()
+        self.disegna()
+        if vista and vista != self.vista:
+            self.cambia_vista(vista)
+        return p_
+
+    def disegna_preset(self, c):
+        """Le ricerche preimpostate a gruppi, ognuna con le partite e il win rate che darebbe adesso (sui filtri di nessun'altra ricerca: ogni ricerca parte da
+        tutte le partite del tipo). Quella accesa ha il bordo azzurro. Il clic la usa (usa_preset)."""
+        F = self.F
+        W = max(c.winfo_width(), 400)
+        tutte = [x for x in self.righe or [] if x["tipo"] == self.tipo]
+        accesa = self.preset_attivo()
+        corto = lambda t, n: t if len(t) <= n else t[:max(1, n - 1)] + "…"
+        gruppi = []
+        for p_ in PRESET:
+            if not gruppi or gruppi[-1][0] != p_[0]:
+                gruppi.append((p_[0], []))
+            gruppi[-1][1].append(p_)
+        per_riga = 2 if W >= 1000 else 1
+        larga = (W - 8 - 14 * (per_riga - 1)) / per_riga
+        alto = 46
+        y_col = [4] * per_riga
+        for gi, (nome_g, lista) in enumerate(gruppi):
+            col = y_col.index(min(y_col))
+            x0, y = col * (larga + 14), y_col[col]
+            c.create_text(x0 + 4, y + 9, text=nome_g, anchor="w", fill=C["titolo"], font=F(9, True))
+            y += 24
+            for p_ in lista:
+                _g, nome, sotto, filtri, vista, per = p_
+                r = DA.filtra(tutte, filtri)
+                k = DA.conti(r)
+                on = p_ is accesa
+                c.create_rectangle(x0, y, x0 + larga, y + alto, fill="#22262c" if on else "#1c1c20", outline=C["azzurro"] if on else "#2c2c32", width=2 if on else 1)
+                c.create_text(x0 + 12, y + 15, text=corto(nome, int((larga - 150) / 6.6)), anchor="w", fill=C["azzurro"] if on else C["titolo"], font=F(8, True))
+                c.create_text(x0 + 12, y + 32, text=corto(sotto, int((larga - 150) / 5.6)), anchor="w", fill=C["grigio"], font=F(7))
+                wr = k.get("wr")
+                pochi = len(r) < 15
+                c.create_text(x0 + larga - 12, y + 15, text=f"{wr:.0f}%" if wr is not None else "-", anchor="e",
+                              fill=C["muto"] if wr is None or pochi else (C["azzurro"] if wr >= 50 else C["rosso"]), font=F(11, True))
+                c.create_text(x0 + larga - 12, y + 33, text=f"{len(r):,} games" + (" · a hint" if pochi and r else ""), anchor="e", fill=C["muto"], font=F(7))
+                c._dom_box.append((x0, y, x0 + larga, y + alto, p_))
+                y += alto + 6
+            y_col[col] = y + 12
+        c.create_text(4, max(y_col) + 6, text="One click turns on every filter of the search and opens the view that answers it; click it again to go back to all "
+                                             "games  ·  the filters stay on the left: change them to narrow the search", anchor="w", fill=C["muto"], font=F(7))
+        c.configure(scrollregion=(0, 0, W, max(y_col) + 24))
+
     def disegna_spot(self):
         """Dove vinci e dove perdi di piu': due elenchi (affiancati a tutta larghezza), quanti ne stanno nell'altezza (niente si taglia), gli spot che reggono in
         testa (l'intervallo sta tutto dalla loro parte: «strong»). Il clic mette le condizioni fra i filtri."""
         c = self.tela("spots")
         c.delete("all")
-        c._spot_box = []
+        c._spot_box, c._dom_box = [], []
         if self.righe is None:
             return
+        if self.spot_modo == "preset":
+            return self.disegna_preset(c)
+        c.configure(scrollregion=(0, 0, max(c.winfo_width(), 300), max(c.winfo_height(), 200)))
+        c.yview_moveto(0)
         F = self.F
         r = self.scelte()
         W, H = max(c.winfo_width(), 300), max(c.winfo_height(), 200)
@@ -2341,8 +2451,14 @@ class PaginaPerformance:
             y += 6
 
     def clic_spot(self, e):
-        """Uno spot: le sue condizioni fra i filtri."""
+        """Uno spot: le sue condizioni fra i filtri. Fra le ricerche preimpostate, la ricerca (usa_preset)."""
         c = getattr(e, "widget", None) or self.tela("spots")
+        if self.spot_modo == "preset":
+            yy = c.canvasy(e.y)
+            for x0, y0, x1, y1, p_ in getattr(c, "_dom_box", []):
+                if x0 <= e.x <= x1 and y0 <= yy <= y1:
+                    return self.usa_preset(p_) or "tolta"
+            return None
         for x0, y0, x1, y1, s in getattr(c, "_spot_box", []):
             if x0 <= e.x <= x1 and y0 <= e.y <= y1:
                 for k, v in s["condizioni"]:

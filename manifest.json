@@ -1,6 +1,6 @@
 {
- "version": "0.1.66",
+ "version": "0.1.67",
  "date": "2026-11-13",
- "notes": "Performance: a Loading your games message in the middle of the page while the logs are read the first time, with the seconds.",
+ "notes": "Performance: Spots opens on preset searches (opening hand, attack, defense, instant speed): one click turns on all the filters of a search and opens the view that answers it; new filters for blocks, defense and all-in attacks into open mana.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

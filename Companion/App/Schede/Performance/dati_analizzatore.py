@@ -46,7 +46,11 @@ SIT = [("io_terra", "You missed a land drop (by your 4th turn)"), ("lui_terra", 
        # il mana aperto (stesso giorno, «vs mana untapped / with mana untapped»): dai pezzi di log di ogni partita (mana_aperto.py)
        ("io_att_aperto", "You attacked into 2+ untapped lands"), ("io_att_chiuso", "You attacked when the opponent was tapped out"),
        ("lui_att_aperto", "Opponent attacked into your 2+ untapped lands"), ("io_passa_aperto", "You passed your turn with 2+ lands untapped"),
-       ("lui_passa_aperto", "Opponent passed the turn with 2+ lands untapped")]
+       ("lui_passa_aperto", "Opponent passed the turn with 2+ lands untapped"),
+       # i combattimenti (13 nov 2026, per le ricerche preimpostate di Spots): dai momenti di mana_aperto, VERSIONE 12
+       ("io_blocca", "Opponent attacked and you blocked"), ("io_difende", "You defended more than you attacked"),
+       ("io_tutto", "You attacked with everything (2+ creatures could attack)"),
+       ("io_tutto_aperto", "You attacked with everything into 2+ untapped lands")]
 _MANA = {}      # {matchId: dato di mana_aperto}, riempito da righe()
 NOME_SIT = dict(SIT)
 _SCHEDE = {}

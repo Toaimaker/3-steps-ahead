@@ -24,12 +24,13 @@ import re  # noqa: E402
 
 from ambiente import LOGDIR  # noqa: E402
 
-VERSIONE = 11       # 2: le foto della partita; 3: cimitero, esilio, forza e costituzione; 4: i momenti del combattimento e delle magie coi bersagli;
+VERSIONE = 12       # 2: le foto della partita; 3: cimitero, esilio, forza e costituzione; 4: i momenti del combattimento e delle magie coi bersagli;
 #                    5: ogni istantaneo e stregoneria in pila (anche senza bersagli) e i permanenti che ha tolto dal campo (i board wipe);
 #                    6: per le partite lette dagli archivi, dove stanno («dove»: archivio, byte di inizio e di fine), per il replay azione per azione;
 #                    7: debug del 12 nov 2026: le cancellazioni, chi e' in campo dalle zone, le vite a 0, l'annullamento, emblemi e inneschi, i riassunti;
 #                    8: i bersagli fuori dal campo («fuori»: cimitero, esilio, pila); 9: l'emblema risale alla carta;
-#                    10: forza e costituzione a zero; 11: «fatti», i permanenti che la magia ha spostato lei (affectorId), e le abilita' coi bersagli
+#                    10: forza e costituzione a zero; 11: «fatti», i permanenti che la magia ha spostato lei (affectorId), e le abilita' coi bersagli;
+#                    12: «azioni» (terre giocate e magie lanciate turno per turno, col tipo) e nel combattimento «pot» e «aperte»
 CARTELLA = os.path.join(LOGDIR, "partite")
 COPIA = os.path.join(LOGDIR, "mana_aperto.json")
 
@@ -89,7 +90,9 @@ def fuori_campo(bers, zone, zids, zown, obj):
     return out
 
 
-RIASSUNTO = "[Message summarized because"       # Arena non scrive i messaggi oltre 50 oggetti o 50 azioni: solo i conteggi
+RIASSUNTO = "[Message summarized because"
+TIPI_LETTERA = {"CardType_Creature": "C", "CardType_Instant": "I", "CardType_Sorcery": "S", "CardType_Artifact": "A", "CardType_Enchantment": "E",
+                "CardType_Planeswalker": "P", "CardType_Battle": "B", "CardType_Land": "L"}       # Arena non scrive i messaggi oltre 50 oggetti o 50 azioni: solo i conteggi
 
 
 def leggi(righe):
@@ -105,7 +108,7 @@ def leggi(righe):
     obj, zone, ti = {}, {}, {}
     zown, zids, vite = {}, {}, {}
     # ogni cosa annotata porta lo stato del gioco in cui e' nata, cosi' un annullamento la toglie: [(stato, elemento)]
-    st = dict(attacchi=[], fine=[], foto=[], momenti=[], mano0=None, pend=None)
+    st = dict(attacchi=[], fine=[], foto=[], momenti=[], mano0=None, pend=None, azioni=[])
     riassunti = 0
     visti_ts = {}               # {id dell'annotazione TargetSpec: stato}
     # i momenti in ordine (12 nov 2026, Autore: «una freccia che definisce quali carte interagiscono con quali altre, per vedere come si e' bloccato in
@@ -166,7 +169,7 @@ def leggi(righe):
 
     def annulla(fino):
         """L'annullamento di Arena: via quello che e' nato da questo stato in poi (lo stato Full che segue lo rimanda)."""
-        for k in ("attacchi", "fine", "foto", "momenti"):
+        for k in ("attacchi", "fine", "foto", "momenti", "azioni"):
             st[k] = [x for x in st[k] if x[0] < fino]
         for dd in (mom_di, in_pila):
             for k in [k for k, v in dd.items() if v[0] >= fino]:
@@ -236,6 +239,20 @@ def leggi(righe):
                 continue
             campo = ids_di("ZoneType_Battlefield")
             sul = [obj[i] for i in campo if i in obj]
+            # le azioni del turno (13 nov 2026, Autore: «filtri avanzati per noi e per oppo ... che tipo di carte giochiamo: es t1 instant oppure T3 play creature
+            # attack w 2 creature»): ogni terra giocata e ogni magia lanciata, [turno, posto, «terra»|«magia», grpId, tipi in lettere (C creatura, I istantaneo,
+            # S stregoneria, A artefatto, E incantesimo, P planeswalker, B battaglia, L terra)]
+            for a in gs.get("annotations") or []:
+                if "AnnotationType_ZoneTransfer" not in (a.get("type") or []):
+                    continue
+                cat = next(((x.get("valueString") or [None])[0] for x in a.get("details") or [] if x.get("key") == "category"), None)
+                if cat not in ("PlayLand", "CastSpell"):
+                    continue
+                for x in a.get("affectedIds") or []:
+                    o = obj.get(x)
+                    if o and o.get("controllerSeatId") in (1, 2):
+                        st["azioni"].append((sid, [t, o["controllerSeatId"], "terra" if cat == "PlayLand" else "magia", grp_vero(o, obj) or 0,
+                                                "".join(TIPI_LETTERA[k] for k in o.get("cardTypes") or [] if k in TIPI_LETTERA)]))
             attaccanti = [o for o in sul if o.get("attackState") in ("AttackState_Declared", "AttackState_Attacking")]
             if t not in {a[1][0] for a in st["attacchi"]} and any(o.get("controllerSeatId") == att for o in attaccanti):
                 difende = 2 if att == 1 else 1
@@ -251,7 +268,12 @@ def leggi(righe):
                 if att_ids:
                     blocchi = [[o["instanceId"], (o.get("blockInfo") or {}).get("attackerIds") or []] for o in sul if (o.get("blockInfo") or {}).get("attackerIds")]
                     posto = pend[0] if pend else len(st["momenti"])
-                    st["pend"] = (posto, pend[1] if pend else sid, ["comb", t, att, foto(), dict(att=att_ids, blocchi=blocchi)])
+                    # chi poteva attaccare (gli attaccanti e le sue creature stappate senza debolezza da evocazione) e le terre stappate di chi difende: per
+                    # «ha attaccato con tutto» e «contro mana aperto» (13 nov 2026)
+                    pot = sum(1 for o in sul if o.get("controllerSeatId") == att and "CardType_Creature" in (o.get("cardTypes") or [])
+                              and (o in attaccanti or (not o.get("isTapped") and not o.get("hasSummoningSickness"))))
+                    aperte = terre(2 if att == 1 else 1, campo)[0]
+                    st["pend"] = (posto, pend[1] if pend else sid, ["comb", t, att, foto(), dict(att=att_ids, blocchi=blocchi, pot=pot, aperte=aperte)])
             elif pend:
                 st["momenti"].insert(pend[0], (pend[1], pend[2]))
                 st["pend"] = None
@@ -307,7 +329,7 @@ def leggi(righe):
         m_[4]["fatti"] = sorted(x for x in fatti_da.get(i, ()) if x in prima_)
     ultima = [ti.get("turnNumber"), ti.get("activePlayer"), foto()] if ti.get("turnNumber") else None
     via = lambda lst: [x[1] for x in lst]
-    return dict(attacchi=via(st["attacchi"]), fine=via(st["fine"]), mano0=st["mano0"][1] if st["mano0"] else None, foto=via(st["foto"]), ultima=ultima,
+    return dict(azioni=via(st["azioni"]), attacchi=via(st["attacchi"]), fine=via(st["fine"]), mano0=st["mano0"][1] if st["mano0"] else None, foto=via(st["foto"]), ultima=ultima,
                 momenti=via(st["momenti"]), riassunti=riassunti)
 
 
@@ -399,15 +421,28 @@ def tutti(ids=None, archivi=True):
 
 def situazioni(d, seat):
     """Le situazioni del mana aperto di una partita, dal tuo posto: {chiave: True, False o None}."""
-    chiavi = ("io_att_aperto", "io_att_chiuso", "lui_att_aperto", "io_passa_aperto", "lui_passa_aperto")
+    chiavi = ("io_att_aperto", "io_att_chiuso", "lui_att_aperto", "io_passa_aperto", "lui_passa_aperto", "io_blocca", "io_difende", "io_tutto",
+              "io_tutto_aperto")
     if not d or seat is None:
         return {k: None for k in chiavi}
     mie = [a for a in d["attacchi"] if a[1] == seat]
     sue = [a for a in d["attacchi"] if a[1] != seat]
     fm = [f for f in d["fine"] if f[1] == seat and f[3] >= 3]      # dal momento che hai almeno 3 terre: prima passare con 2 aperte non e' una scelta
     fs = [f for f in d["fine"] if f[1] != seat and f[3] >= 3]
+    # i combattimenti (13 nov 2026, Autore: «win / loss in difesa ... non attaccare con tutto se avversario ha mana stappato»), dai momenti della VERSIONE 12:
+    # chi attacca, quanti attaccanti, chi poteva attaccare (pot), i blocchi, le terre stappate di chi difende (aperte). None quando la situazione non c'e' stata
+    comb = [(att == seat, info) for kind, _t, att, _f, info in d.get("momenti") or [] if kind == "comb" and info and info.get("att")]
+    suoi = [i for mio, i in comb if not mio]
+    miei = [i for mio, i in comb if mio and (i.get("pot") or 0) >= 2]          # attacchi in cui avevi almeno 2 creature che potevano attaccare
+    miei_ap = [i for i in miei if (i.get("aperte") or 0) >= 2]
+    tutto = lambda i: len(i["att"]) >= i["pot"]
+    n_s, n_m = len(suoi), sum(1 for mio, _i in comb if mio)
     return dict(io_att_aperto=any(a[2] >= 2 for a in mie), io_att_chiuso=any(a[2] == 0 and a[3] >= 2 for a in mie), lui_att_aperto=any(a[2] >= 2 for a in sue),
-                io_passa_aperto=any(f[2] >= 2 for f in fm), lui_passa_aperto=any(f[2] >= 2 for f in fs))
+                io_passa_aperto=any(f[2] >= 2 for f in fm), lui_passa_aperto=any(f[2] >= 2 for f in fs),
+                io_blocca=any(i.get("blocchi") for i in suoi) if suoi else None,
+                io_difende=(n_s > n_m) if n_s != n_m else None,
+                io_tutto=any(tutto(i) for i in miei) if miei else None,
+                io_tutto_aperto=any(tutto(i) for i in miei_ap) if miei_ap else None)
 
 
 def prova():
@@ -480,8 +515,40 @@ def prova():
              persistentAnnotations=[dict(id=9, type=["AnnotationType_TargetSpec"], affectorId=30, affectedIds=[20])]),
           gs(type="GameStateType_Diff", turnInfo=dict(step="Step_End"))]
     dm = leggi(fc)["momenti"]
+    # chi poteva attaccare e le terre stappate di chi difende (13 nov 2026): la 10 attacca, la 11 stappata poteva, la 12 e' appena entrata, la 13 e' tappata;
+    # chi difende ha 2 terre, una stappata
+    tl = lambda i, seat, **k: dict(instanceId=i, grpId=1, type="GameObjectType_Card", zoneId=28, controllerSeatId=seat, ownerSeatId=seat, cardTypes=["CardType_Land"], **k)
+    fp = [gs(type="GameStateType_Full", zones=[dict(zoneId=28, type="ZoneType_Battlefield", objectInstanceIds=[10, 11, 12, 13, 40, 41]), dict(zoneId=27, type="ZoneType_Stack")],
+             turnInfo=dict(turnNumber=5, activePlayer=1, step="Step_DeclareAttack"),
+             gameObjects=[cr(10, 1, attackState="AttackState_Attacking", attackInfo=dict(targetId=2), isTapped=True), cr(11, 1), cr(12, 1, hasSummoningSickness=True),
+                          cr(13, 1, isTapped=True), tl(40, 2), tl(41, 2, isTapped=True)]),
+          gs(type="GameStateType_Diff", turnInfo=dict(step="Step_CombatDamage"))]
+    cp = [m_[4] for m_ in leggi(fp)["momenti"] if m_[0] == "comb"]
+    casi.append(("il combattimento: chi poteva attaccare (l'attaccante e la creatura stappata) e le terre stappate di chi difende",
+                 len(cp) == 1 and cp[0]["pot"] == 2 and cp[0]["aperte"] == 1))
+    casi.append(("negativa: la creatura appena entrata e quella tappata non potevano attaccare", cp and cp[0]["pot"] != 4 and cp[0]["pot"] != 3))
+    # le situazioni dei combattimenti per le ricerche di Spots: tu (1) attacchi con tutto (2 su 2) contro 3 terre stappate; lui attacca due volte, blocchi una
+    cb = lambda att, n, pot, ap, blk: ["comb", 3, att, None, dict(att=[[k, 2] for k in range(n)], blocchi=[[9, [0]]] if blk else [], pot=pot, aperte=ap)]
+    sd = situazioni(dict(attacchi=[], fine=[], momenti=[cb(1, 2, 2, 3, False), cb(2, 1, 1, 0, True), cb(2, 2, 2, 0, False)]), 1)
+    casi.append(("le situazioni del combattimento: hai bloccato, hai difeso piu' che attaccato, hai attaccato con tutto contro mana aperto",
+                 sd["io_blocca"] is True and sd["io_difende"] is True and sd["io_tutto"] is True and sd["io_tutto_aperto"] is True))
+    sn = situazioni(dict(attacchi=[], fine=[], momenti=[cb(1, 1, 3, 3, False)]), 1)
+    casi.append(("negativa: un attacco con 1 creatura su 3 contro mana aperto e' No; senza suoi attacchi il blocco non si sa (None)",
+                 sn["io_tutto_aperto"] is False and sn["io_tutto"] is False and sn["io_blocca"] is None and sn["io_difende"] is False))
+    # le azioni del turno: una terra giocata, una creatura lanciata; una terra messa in campo da un effetto no
+    def zt_(i, cat):
+        return dict(type=["AnnotationType_ZoneTransfer"], affectedIds=[i], details=[dict(key="category", valueString=[cat])])
+    fa = [gs(type="GameStateType_Full", zones=[dict(zoneId=28, type="ZoneType_Battlefield"), dict(zoneId=27, type="ZoneType_Stack")],
+             turnInfo=dict(turnNumber=3, activePlayer=2, phase="Phase_Main1")),
+          gs(type="GameStateType_Diff", zones=[dict(zoneId=28, type="ZoneType_Battlefield", objectInstanceIds=[50, 52])], gameObjects=[tl(50, 2), tl(52, 2)],
+             annotations=[zt_(50, "PlayLand"), zt_(52, "Put")]),
+          gs(type="GameStateType_Diff", zones=[dict(zoneId=27, type="ZoneType_Stack", objectInstanceIds=[51])],
+             gameObjects=[dict(cr(51, 2), zoneId=27, cardTypes=["CardType_Artifact", "CardType_Creature"])], annotations=[zt_(51, "CastSpell")])]
+    az = leggi(fa)["azioni"]
+    casi.append(("le azioni del turno: la terra giocata e la creatura artefatto lanciata, col turno, il posto e i tipi",
+                 az == [[3, 2, "terra", 1, "L"], [3, 2, "magia", 151, "AC"]]))
     casi.append(("i momenti: il combattimento coi blocchi, la magia col bersaglio, la fine del turno, in ordine",
-                 [m_[0] for m_ in dm] == ["comb", "spell", "fine"] and dm[0][4] == dict(att=[[10, 2]], blocchi=[[20, [10]]])
+                 [m_[0] for m_ in dm] == ["comb", "spell", "fine"] and {k: dm[0][4][k] for k in ("att", "blocchi")} == dict(att=[[10, 2]], blocchi=[[20, [10]]])
                  and dm[1][4]["g"] == 555 and dm[1][4]["bers"] == [20]))
     # un board wipe: una stregoneria senza bersagli entra in pila, si risolve, e dal campo mancano le due creature
     sw = lambda i, **k: dict(instanceId=i, grpId=777, type="GameObjectType_Card", zoneId=27, controllerSeatId=2, ownerSeatId=2, cardTypes=["CardType_Sorcery"], **k)
