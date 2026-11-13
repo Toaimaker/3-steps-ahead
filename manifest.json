@@ -1,6 +1,6 @@
 {
  "version": "0.1.99",
  "date": "2026-11-13",
- "notes": "Deck HUD: between games a small READY badge with the app logo on the left edge of Arena shows the HUD is on",
+ "notes": "Performance: a new number, how often you start on the play, tested against a coin flip",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

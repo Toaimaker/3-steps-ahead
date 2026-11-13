@@ -5,6 +5,7 @@ CATALOGO: (chiave, nome, cosa dice). valori(r, tutte) -> {chiave: (testo, tono, 
 tono «su» (sopra il 50% o meglio), «giu», «neutro», «vuoto». La scelta (anche tutti, nell'ordine del catalogo) sta in Log_Arena/performance_numeri.json
 dell'account (dati_analizzatore.numeri_scelti).
 """
+import math
 import os, sys
 _casa = os.path.dirname(os.path.abspath(__file__))
 while not os.path.isfile(os.path.join(_casa, "percorsi.py")):
@@ -21,6 +22,7 @@ CATALOGO = (("wr", "Win rate", "with its 95% interval"),
             ("turni", "Game length · avg turns", "the length of your wins and your losses"),
             ("mull", "Mulligan rate · % of games", "games where you sent at least one hand back"),
             ("play", "Win rate on the play", "win rate when you start"),
+            ("quota_play", "On the play · % of games", "how often you start, against the 50% of a coin flip (C11)"),
             ("draw", "Win rate on the draw", "win rate when the opponent starts"),
             ("wr_mull", "Win rate after a mulligan", "win rate of the games with a mulligan"),
             ("wr_sette", "Win rate keeping 7", "win rate of the games where you kept seven"),
@@ -56,6 +58,15 @@ def valori(r, tutte):
     out["mull"] = (pc(k["mull"]), "neutro", f"{sum(1 for x in r if (x.get('mulligan') or 0) > 0)} games with a mulligan")
     out["play"] = (pc(k["play"]), tono_wr(k["play"]), f"in {k['n_play']} games on the play")
     out["draw"] = (pc(k["draw"]), tono_wr(k["draw"]), f"in {k['n_draw']} games on the draw")
+    n_pd = k["n_play"] + k["n_draw"]
+    if n_pd:
+        q_ = 100 * k["n_play"] / n_pd
+        z_ = (k["n_play"] - n_pd / 2) / math.sqrt(n_pd / 4)
+        p_ = math.erfc(abs(z_) / math.sqrt(2))
+        out["quota_play"] = (pc(q_), "neutro" if p_ >= 0.05 else ("su" if q_ > 50 else "giu"),
+                             f"{k['n_play']} of {n_pd} games · p {p_:.2f} vs 50%" + ("" if p_ >= 0.05 else ": not a coin flip"))
+    else:
+        out["quota_play"] = ("-", "vuoto", "")
     mm = [x for x in r if (x.get("mulligan") or 0) > 0]
     out["wr_mull"] = (pc(_wr(mm)), tono_wr(_wr(mm)), f"in {len(mm)} games")
     sette = [x for x in r if not (x.get("mulligan") or 0)]
@@ -96,6 +107,12 @@ def prova():
     casi.append(("dopo il mulligan 0%, tenute a 7 100%, vittorie veloci 1 su 2, partite lunghe 50%, concessioni 1 su 1, terre 3.0, vittorie decise 1 su 2",
                  v["wr_mull"][0] == "0%" and v["wr_sette"][0] == "100%" and v["veloci"][2] == "1 of 2 wins" and v["lunghe"][0] == "50%"
                  and v["concedi"][2] == "1 of 1 losses" and v["terre"][0] == "3.0" and v["finisher"][2] == "1 of 2 wins"))
+    casi.append(("C11: on the play 1 partita su 3, 33%, col test contro il 50%", v["quota_play"][0] == "33%" and "1 of 3 games" in v["quota_play"][2]
+                 and "vs 50%" in v["quota_play"][2]))
+    r60 = [dict(r[0], partenza="Play") for _ in range(70)] + [dict(r[1], partenza="Draw") for _ in range(30)]
+    casi.append(("C11: 70 su 100 non e' una moneta (p sotto 5%, azzurro); negativa: 50 su 100 si', neutro",
+                 valori(r60, r60)["quota_play"][1] == "su" and "not a coin flip" in valori(r60, r60)["quota_play"][2]
+                 and valori(r60[20:70] + r60[70:] + r60[70:90], r60)["quota_play"][1] == "neutro"))
     v0 = valori([], r)
     casi.append(("negativa: senza partite i numeri sono vuoti, non sbagliati", v0["wr"][0] == "-" and v0["wr_mull"][0] == "-" and v0["veloci"][0] == "-"))
     for n, ok in casi:

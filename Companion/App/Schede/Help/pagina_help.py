@@ -103,7 +103,7 @@ SEZIONI = (
                 "little window to pick which rows you see. Also: cast by your turn 4 (its Pairs: what you played together early) and Finishers (the decisive play of your "
                 "wins: in the turn with the biggest swing after which you stayed ahead, the spells you cast and the creatures you attacked with, 2+ cards; "
                 "the pairs that decided the most wins, with the average swing)"),
-      ("⚙ on the numbers", "top right: pick the numbers you want on top (all of them if you like: 8 a row, then two rows), every name says what it measures (win rate, % of games, average); among win rate, record, games, turns, mulligan, play, draw, win rate after "
+      ("⚙ on the numbers", "top right: pick the numbers you want on top (all of them if you like: 8 a row, then two rows), every name says what it measures (win rate, % of games, average); among win rate, record, games, turns, mulligan, play, draw, how often you start (on the play · % of games, tested against a coin flip), win rate after "
                            "a mulligan or keeping seven, fast wins, long games, concessions, lands kept, attack and defense gain, decided wins"),
       ("Chart, under it", "vs filter: all your games against the filtered ones (the blue line); Gained by decisions: a panel with your decisions "
                           "(the ones picked in Decisions) against the average one, as gain of advantage (life + 2 × power), cumulative: green above zero, "
