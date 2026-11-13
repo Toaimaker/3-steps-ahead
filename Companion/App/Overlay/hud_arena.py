@@ -52,6 +52,7 @@ ALTO_MAX = 0.82         # i pannelli non scendono oltre questa frazione di Arena
 FONDO, FONDO_ALFA = "#08080c", 0.50     # (poi: «sfondo generico ancora un po' piu' scuro»: 0,40 -> 0,50)    # (stesso giorno: «sfondo leggermente piu' scuro»: era 0,30)     # il velo dietro ogni lista (13 nov 2026, Autore: «con sfondo leggerissimo e trasparente»): una finestra a parte,
 # le strisce scure sopra il velo (13 nov 2026, Autore: «più oscurità sotto i numeri di carte quantità», «la striscia occhio e testo di appartenenza
 # deck tutta scura uguale», «striscia di testo lands più scura»): finestre come il velo, sotto i testi; l'occhio ha la stessa trasparenza della testata
+VERDE = "#6fdc7a"                        # il pallino e la scritta READY del badge fuori partita
 STRISCE_ALFA = {"titolo": 0.70, "sez": 0.45, "col": 0.45}
 FONDO_MARGINE = 5                        # semitrasparente, sotto i testi; Tk non sa fare un fondo semitrasparente nella finestra a colore chiave
 OCCHIO = (32, 20)                        # l'occhio sulla riga del titolo di ogni lista, in pixel a 1080
@@ -455,13 +456,18 @@ class HudArena:
                     mio, stato = [], stato + ", left covered"
                 if suo and not arena_in_cima(h, area[2] - (POSTO[0] + 0.02) * W, area[1] + 0.5 * H):
                     suo, stato = [], stato + ", right covered"
+        # fuori partita il badge «pronto» sul bordo sinistro: il logo e DECK HUD · READY (13 nov 2026, Autore: «quando non c'è partita mettiamo cmq un hud
+        # sulla sinistra che ha il logo dell'app e indica che l'hud è attivo e ready»); mai in una partita, nemmeno in un evento competitivo
+        pronto = bool((st is None or st.get("finita")) and area and (self.sempre or preferenza("mio") or preferenza("suo"))
+                      and (self.area_finta is not None or arena_in_cima(h, area[0] + (POSTO[0] + 0.02) * (area[2] - area[0]), area[1] + 0.5 * (area[3] - area[1]))))
         occhi = {"sinistra": bool(mio), "destra": bool(suo)}        # l'occhio c'e' finche' la lista potrebbe esserci
         nascoste = {"sinistra": bool(mio) and not vista("mio"), "destra": bool(suo) and not vista("suo")}
         stato += "".join(f", {n} hidden by its eye" for n, k in (("yours", "sinistra"), ("theirs", "destra")) if nascoste[k])
         v_mio = [] if nascoste["sinistra"] else mio
         v_suo = [] if nascoste["destra"] else suo
-        self.nota(stato + (f": showing {'yours' if v_mio else ''}{' + ' if v_mio and v_suo else ''}{'theirs' if v_suo else ''}" if v_suo or v_mio else ": hidden"))
-        self.disegna(suo, mio, area, occhi, nascoste)
+        self.nota(stato + (f": showing {'yours' if v_mio else ''}{' + ' if v_mio and v_suo else ''}{'theirs' if v_suo else ''}" if v_suo or v_mio
+                           else ": ready badge" if pronto and not (suo or mio) else ": hidden"))
+        self.disegna(suo, mio, area, occhi, nascoste, pronto=pronto)
         return v_suo, v_mio
 
     def _rileggi(self):
@@ -471,17 +477,20 @@ class HudArena:
         except Exception:       # noqa: BLE001
             pass
 
-    def disegna(self, suo, mio, area, occhi=None, nascoste=None):
+    def disegna(self, suo, mio, area, occhi=None, nascoste=None, pronto=False):
         """La finestra copre Arena (il colore chiave e' trasparente e lascia passare i clic); il tuo mazzo sul bordo sinistro, il suo sul bordo destro, a meta'
         altezza (13 nov 2026, Autore: «abbassalo a centro schermo»), e sopra ogni lista il suo occhio, l'unica cosa che prende i clic."""
         occhi = occhi if occhi is not None else {"sinistra": bool(mio), "destra": bool(suo)}
         nascoste = nascoste or {}
-        chiave = (tuple(suo), tuple(mio), area, tuple(sorted(occhi.items())), tuple(sorted(nascoste.items())), vista("mio"), vista("suo"))
+        chiave = (tuple(suo), tuple(mio), area, tuple(sorted(occhi.items())), tuple(sorted(nascoste.items())), vista("mio"), vista("suo"), pronto)
         if chiave == self.disegnato:
             return
         self.disegnato = chiave
         self.cv.delete("all")
         self.pannelli, self.titoli, self.strisce = {}, {}, {}
+        if area and pronto and not (suo or mio or any(occhi.values())):
+            self.badge(area)
+            return
         if not area or not (suo or mio or any(occhi.values())):
             self.root.geometry("10x10+-3000+0")
             self.metti_fondi(None)
@@ -517,6 +526,55 @@ class HudArena:
         self.root.geometry(f"{W}x{H}+{area[0]}+{area[1]}")
         self.metti_fondi(area)      # i veli sotto le liste, e i testi di nuovo in cima alle finestre sempre-sopra
         self.metti_occhi(area, occhi)
+
+    def logo(self, n):
+        """Il logo dell'app (Companion/Grafica/companion_icona.png) a n pixel, ricordato."""
+        self._loghi = getattr(self, "_loghi", {})
+        if n not in self._loghi:
+            try:
+                from PIL import Image, ImageTk
+                im = Image.open(os.path.join(percorsi.GRAFICA, "companion_icona.png")).convert("RGBA").resize((n, n), Image.LANCZOS)
+                self._loghi[n] = ImageTk.PhotoImage(im, master=self.root)
+            except Exception:       # noqa: BLE001 - senza il logo il badge dice solo il testo
+                self._loghi[n] = None
+        return self._loghi[n]
+
+    def badge(self, area):
+        """Fuori partita: sul bordo sinistro, a meta' altezza, una testata come quella delle liste (velo, striscia scura, cornice azzurra) col logo dell'app,
+        DECK HUD e il pallino verde READY. Lascia passare i clic come il resto."""
+        W, H = area[2] - area[0], area[3] - area[1]
+        s = max(0.6, H / 1080)
+        cv = self.cv
+        f_b = self.font(max(10, int(13 * s)), True)
+        pad, gap, alto, n = int(6 * s), int(7 * s), int(28 * s), int(20 * s)
+        x0 = int(POSTO[0] * W)
+        y0 = (H - alto) // 2
+        cy = y0 + alto // 2
+        x = x0 + pad
+        img = self.logo(n)
+        if img:
+            cv.create_image(x, cy, image=img, anchor="w", tags=("logo", "sinistra", "testa"))
+            x += n + gap
+        for testo, colore in (("DECK HUD", COL["titolo"]), (None, VERDE), ("READY", VERDE)):
+            if testo is None:       # il pallino verde
+                r = max(3, int(4 * s))
+                cv.create_oval(x, cy - r, x + 2 * r, cy + r, fill=VERDE, outline="", tags=("punto", "sinistra", "testa"))
+                x += 2 * r + int(5 * s)
+                continue
+            cv.create_text(x + 1, cy + 1, text=testo, font=f_b, fill=OMBRA, anchor="w", tags=("ombra", "sinistra", "testa"))
+            it = cv.create_text(x, cy, text=testo, font=f_b, fill=colore, anchor="w", tags=("riga", "sinistra", "testa"))
+            x = cv.bbox(it)[2] + gap
+        x1 = x - gap + pad
+        m = FONDO_MARGINE
+        for xy in ((x0 - m - 1, y0 - 1, x1 + m, y0 - 1), (x0 - m - 1, y0 + alto, x1 + m, y0 + alto), (x0 - m - 1, y0 - 1, x0 - m - 1, y0 + alto + 1),
+                   (x1 + m, y0 - 1, x1 + m, y0 + alto + 1)):
+            cv.create_line(*xy, fill=COL["filo"], width=1, tags=("cornice", "sinistra", "testa"))
+        cv.tag_raise("riga")
+        self.pannelli = {"sinistra": (x0, y0, x1, y0 + alto, 0, x0, cy)}
+        self.strisce = {"sinistra": [(x0 - m, y0, x1 + m, y0 + alto, "titolo")]}
+        self.root.geometry(f"{W}x{H}+{area[0]}+{area[1]}")
+        self.metti_fondi(area)
+        self.metti_occhi(area, {})
 
     def font(self, px, grassetto=False):
         """Un font di Tk per misurare e disegnare, ricordato per misura."""
@@ -829,7 +887,19 @@ def prova():
     with open(f1, "a", encoding="utf-8") as fh:
         fh.write(stanza("m1", "Ladder", "MatchCompleted"))
     w.giro(); w.root.update()
-    casi.append(("negativa: a partita finita i pannelli spariscono, e i veli con loro", w.testi() == [] and w.rett_fondi == {} and w.rett_occhi == {} and w.rett_strisce == []))
+    casi.append(("a partita finita le liste spariscono e resta il badge sul bordo sinistro: logo, DECK HUD, READY (negativa: niente occhi, niente carte)",
+                 w.testi() == ["DECK HUD", "READY"] and bool(w.cv.find_withtag("logo")) and set(w.rett_fondi) == {"sinistra"} and w.rett_occhi == {}
+                 and [r[4] for r in w.rett_strisce] == ["titolo"] and len(w.cv.find_withtag("cornice")) == 4
+                 and abs((w.rett_fondi["sinistra"][1] + w.rett_fondi["sinistra"][3]) / 2 - (area[1] + 540)) <= 2))
+    w.sempre = False
+    vecchio = PREF
+    globals()["PREF"] = os.path.join(d, "pref_badge.json")
+    imposta(False, "mio"); imposta(False, "suo")
+    w.disegnato = None; w.giro(); w.root.update()
+    casi.append(("negativa: con l'HUD spento tutti e due, niente badge", w.testi() == [] and w.rett_fondi == {}))
+    os.remove(PREF)
+    globals()["PREF"] = vecchio
+    w.sempre = True
     w.root.destroy()
     f2 = os.path.join(d, "q.log")
     open(f2, "w", encoding="utf-8").write(stanza("m2", "Arena_Championship_Qualifier_X", "Playing") + gs([(7, g("Opt"), False)], 3, 2))

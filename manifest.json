@@ -1,6 +1,6 @@
 {
- "version": "0.1.98",
+ "version": "0.1.99",
  "date": "2026-11-13",
- "notes": "Deck HUD: darker backdrop, darker strips under each list header, section titles and copy counts; a thin blue frame around each list header; the record against the archetype is gone",
+ "notes": "Deck HUD: between games a small READY badge with the app logo on the left edge of Arena shows the HUD is on",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }
