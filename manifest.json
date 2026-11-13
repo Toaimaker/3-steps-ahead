@@ -1,6 +1,6 @@
 {
- "version": "0.1.99",
+ "version": "0.1.100",
  "date": "2026-11-13",
- "notes": "Performance: a new number, how often you start on the play, tested against a coin flip",
+ "notes": "Performance: a new number, how often you start on the play, tested against a coin flip; Deck HUD READY badge between games",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }
