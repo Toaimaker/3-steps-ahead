@@ -1,6 +1,6 @@
 {
- "version": "0.1.80",
+ "version": "0.1.81",
  "date": "2026-11-13",
- "notes": "Performance: a Decisions folder (attacks, blocks and mulligans with their outcome, a decision as a line on the chart), Trios, cards by turn 4, finishers and a Rows picker in Cards.",
+ "notes": "Beta: the app is free for everyone; you can support the project with a \u20ac2.99 monthly donation, which unlocks nothing.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }
