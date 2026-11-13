@@ -126,7 +126,7 @@ class PaginaPerformance:
         self.con, self.staccate, self.vs_modo, self.ord_deck = "rest", {}, "all", "n"
         self.partite_fuori = None       # la tabella delle partite nella sua finestra: dict(win, lista, l)        # B del confronto (rest, all, s<i>); le viste staccate: {vista: dict(win, o, l)}
         self.righe, self.sporca, self.deciso, self.modo = None, True, False, "Standard"
-        self._lavoro = None
+        self._lavoro, self.l_carica = None, None
         self.costruisci()
         self.fr.bind("<<Davanti>>", lambda e: self.se_sporca(), add="+")
         self.fr.bind("<Map>", lambda e: self.se_sporca(), add="+")
@@ -169,16 +169,41 @@ class PaginaPerformance:
                 esito["r"], esito["e"] = [], e
         self._lavoro = threading.Thread(target=lavora, daemon=True)
         self._lavoro.start()
+        if self.righe is None:      # la prima lettura: la scritta al centro della pagina, coi secondi
+            self.mostra_carica(0)
+        inizio = datetime.datetime.now()
 
         def aspetta():
             if self._lavoro.is_alive():
+                if self.l_carica is not None:
+                    self.mostra_carica((datetime.datetime.now() - inizio).total_seconds())
                 self.fr.after(150, aspetta)
                 return
             self.righe = esito.get("r") or []
+            self.togli_carica()
             self.disegna()
             if self._di_nuovo:
                 self.ricarica()
         self.fr.after(150, aspetta)
+
+    def mostra_carica(self, secondi):
+        """«Loading your games…» al centro della pagina mentre la prima lettura dei log e' in corso (13 nov 2026, Autore: «la scheda performance non carica i
+        dati»: dopo un aggiornamento la prima lettura rifa' tutte le partite, fino a un minuto e mezzo, e la pagina restava vuota con una scritta piccola in alto)."""
+        testo = "Loading your games…\nreading your Arena logs" + (f"  ·  {int(secondi)} s" if secondi >= 1 else "") \
+                + ("\nthe first time after an update it reads every game again (up to a minute or two)" if secondi >= 5 else "")
+        if self.l_carica is None or not self.l_carica.winfo_exists():
+            self.l_carica = self.tk.Label(self.fr, text=testo, bg=C["cap"], fg=C["titolo"], font=self.F(11, True), padx=36, pady=24, justify="center",
+                                          highlightthickness=1, highlightbackground=C["filo"])
+            self.l_carica.place(relx=0.5, rely=0.45, anchor="center")
+        else:
+            self.l_carica.configure(text=testo)
+        self.l_carica.lift()
+
+    def togli_carica(self):
+        if self.l_carica is not None:
+            if self.l_carica.winfo_exists():
+                self.l_carica.destroy()
+            self.l_carica = None
 
     # ------------------------------------------------------------ la costruzione
     def costruisci(self):

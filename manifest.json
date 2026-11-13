@@ -1,6 +1,6 @@
 {
- "version": "0.1.65",
+ "version": "0.1.66",
  "date": "2026-11-13",
- "notes": "Replayer: opens centered on the app window; spells that target a player but remove permanents (Settle the Wreckage, edicts) point their arrows at the exiled or sacrificed permanents, not at the life total; abilities that exile or bounce are marked too.",
+ "notes": "Performance: a Loading your games message in the middle of the page while the logs are read the first time, with the seconds.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }
