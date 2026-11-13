@@ -141,8 +141,27 @@ def endpoint():
     return ""
 
 
+PACCO_RIGHE, PACCO_BYTE = 400, 800_000    # sotto i limiti del server (worker.js: 500 righe e 1 MB a richiesta)
+
+
+def pacchi(righe):
+    """Le righe della coda a pacchi che il server accetta: al massimo PACCO_RIGHE righe e PACCO_BYTE byte ognuno."""
+    pacco, peso = [], 0
+    for r in righe:
+        n = len(r.encode("utf-8")) + 1
+        if pacco and (len(pacco) >= PACCO_RIGHE or peso + n > PACCO_BYTE):
+            yield pacco
+            pacco, peso = [], 0
+        pacco.append(r)
+        peso += n
+    if pacco:
+        yield pacco
+
+
 def invia(endpoint, timeout=30):
-    """Manda la coda all'indirizzo (POST, JSON lines), solo col consenso e con un indirizzo https. -> quante mandate, o None se non si manda."""
+    """Manda la coda all'indirizzo (POST, JSON lines), solo col consenso e con un indirizzo https, a pacchi (13 nov 2026: le 627 partite di Autore
+    in una richiesta sola erano oltre il limite del server). Ogni pacco arrivato esce dalla coda; se uno cade, il resto resta per il giro dopo.
+    -> quante mandate, o None se non si manda niente."""
     if not qualcuno() or not endpoint or not endpoint.startswith("https://"):
         return None
     import urllib.request
@@ -152,16 +171,29 @@ def invia(endpoint, timeout=30):
     righe = [r for r in open(f_coda, encoding="utf-8").read().splitlines() if r.strip()]
     if not righe:
         return 0
-    req = urllib.request.Request(endpoint, data="\n".join(righe).encode("utf-8"), method="POST",
-                                 headers={"Content-Type": "application/x-ndjson", "User-Agent": "companion-magic-arena/1.0"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        if r.status >= 300:
-            return None
-    fatte = set(json.load(open(f_fatte, encoding="utf-8"))) if os.path.exists(f_fatte) else set()
-    fatte |= {json.loads(r)["partita"] for r in righe}
-    json.dump(sorted(fatte), open(f_fatte, "w", encoding="utf-8"))
-    open(f_coda, "w", encoding="utf-8").close()
-    return len(righe)
+    try:        # i certificati di certifi, come capsule.contesto: con quelli di Windows visti da Python l'invio cadeva («certificate has expired»,
+        import ssl, certifi     # 13 nov 2026, il primo invio vero al server)
+        ctx = ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        ctx = None
+    mandate = []
+    try:
+        for pacco in pacchi(righe):
+            req = urllib.request.Request(endpoint, data="\n".join(pacco).encode("utf-8"), method="POST",
+                                         headers={"Content-Type": "application/x-ndjson", "User-Agent": "companion-magic-arena/1.0"})
+            with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
+                if r.status >= 300:
+                    break
+            mandate += pacco
+    finally:
+        if mandate:
+            fatte = set(json.load(open(f_fatte, encoding="utf-8"))) if os.path.exists(f_fatte) else set()
+            fatte |= {json.loads(r)["partita"] for r in mandate}
+            json.dump(sorted(fatte), open(f_fatte, "w", encoding="utf-8"))
+            resto = righe[len(mandate):]
+            with open(f_coda, "w", encoding="utf-8") as c:
+                c.write("".join(r + "\n" for r in resto))
+    return len(mandate) if mandate else None
 
 
 def prova():
@@ -189,6 +221,10 @@ def prova():
         casi.append(("il giorno senza l'ora, il mazzo coi nomi delle carte", len(r["giorno"]) == 10 and sum(r["mazzo"].values()) == 6 and r["mulligan"] == 0 and r["inizia"] is True))
         casi.append(("una partita non si mette in coda due volte", accoda(pp, "AAAAAAAAAAAAAAAAAAAAAAAAAA") == 0))
         casi.append(("negativa: senza indirizzo https non si manda niente", invia("") is None and invia("http://x") is None))
+        pp_ = list(pacchi(["x" * 1500] * 627))
+        casi.append(("627 partite vanno in pacchi che il server accetta (13 nov 2026: in una richiesta sola erano oltre i suoi 500)",
+                     sum(map(len, pp_)) == 627 and all(len(p) <= PACCO_RIGHE and sum(len(r) + 1 for r in p) <= PACCO_BYTE for p in pp_) and len(pp_) >= 2))
+        casi.append(("negativa: una coda piccola resta un pacco solo", len(list(pacchi(["x"] * 3))) == 1))
         imposta_consenso(False)
         casi.append(("negativa: tolto il consenso non si manda", invia("https://example.invalid/x") is None))
     finally:
