@@ -1,6 +1,6 @@
 {
- "version": "0.1.84",
+ "version": "0.1.85",
  "date": "2026-11-13",
- "notes": "Performance: the Decisions table sorts by any column title.",
+ "notes": "Performance: a gear on the numbers on top to pick the six you want.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

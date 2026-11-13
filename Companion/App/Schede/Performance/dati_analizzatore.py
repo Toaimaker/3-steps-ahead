@@ -27,6 +27,7 @@ import account  # noqa: E402
 SITUAZIONI = account.lega(globals(), "SITUAZIONI", "performance_situazioni.json")     # Log_Arena/performance_situazioni.json: le situazioni salvate
 SEGNALIBRI = account.lega(globals(), "SEGNALIBRI", "performance_segnalibri.json")     # gli spot segnati nel replayer (12 nov 2026)
 CARTE_SCELTE = account.lega(globals(), "CARTE_SCELTE", "performance_cards.json")      # le righe di Cards che vuoi vedere (13 nov 2026)
+NUMERI_SCELTI = account.lega(globals(), "NUMERI_SCELTI", "performance_numeri.json")    # i sei numeri in cima a Performance (13 nov 2026)
 SESSIONE_ORE = 1.0          # un'ora senza partite chiude la sessione
 RANGHI = ("Bronze", "Silver", "Gold", "Platinum", "Diamond", "Mythic")
 FASCE = (("Night (0-6)", 0, 6), ("Morning (6-12)", 6, 12), ("Afternoon (12-18)", 12, 18), ("Evening (18-24)", 18, 24))
@@ -1424,6 +1425,24 @@ def righe_carte_scelte():
     except (OSError, ValueError):
         pass
     return [k for k, _t in RIGHE_CARTE]
+
+
+def numeri_scelti():
+    """I numeri in cima a Performance (numeri_partite.CATALOGO), al massimo sei, nell'ordine del catalogo; quelli di partenza se non hai mai scelto."""
+    import numeri_partite as NP
+    try:
+        with open(NUMERI_SCELTI, encoding="utf-8") as f:
+            d = json.load(f)
+        if isinstance(d, list):
+            return [k for k, _n, _d in NP.CATALOGO if k in d][:NP.MASSIMO]
+    except (OSError, ValueError):
+        pass
+    return list(NP.PARTENZA)
+
+
+def salva_numeri(chiavi):
+    import numeri_partite as NP
+    _scrivi_in(NUMERI_SCELTI, [k for k, _n, _d in NP.CATALOGO if k in chiavi][:NP.MASSIMO])
 
 
 def salva_righe_carte(chiavi):

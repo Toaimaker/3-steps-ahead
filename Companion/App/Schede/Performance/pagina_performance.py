@@ -18,6 +18,7 @@ import threading
 
 import dati_analizzatore as DA
 import decisioni as DEC
+import numeri_partite as NP
 import righe_filtri as R_F
 import disegni as DG
 from tema import CI as C
@@ -393,6 +394,7 @@ class PaginaPerformance:
         self.cv_num = tk.Canvas(dx, bg=C["scheda"], highlightthickness=1, highlightbackground=C["filo"], height=108, bd=0)       # le tessere centrate fra la riga in alto e il fondo, con aria sotto (12 nov 2026, Autore: «le barre toccano la base della tabella, voglio le cose centrate»)
         self.cv_num.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         self.cv_num.bind("<Configure>", lambda e: self.disegna_numeri())
+        self.cv_num.bind("<Button-1>", self.clic_numeri_rotella)
         self.cv_tab = tk.Canvas(dx, bg=C["fondo"], highlightthickness=0, bd=0, height=ALTO_TAB)
         self.cv_tab.grid(row=1, column=0, sticky="ew")
         self.cv_tab.bind("<Configure>", lambda e: self.disegna_cartelle())
@@ -960,20 +962,24 @@ class PaginaPerformance:
         n_f = sum(1 for v in self.filtri.values() if v is not None)
         dy = 0
         c.create_text(16, 14, text=(f"THIS SITUATION · {k['n']} GAMES" if n_f else f"ALL {self.tipo.upper()} GAMES · {k['n']}"), anchor="w", fill=C["muto"], font=F(7, True))
-        xd = W - 16
+        xd = W - 46        # a destra la rotellina dei numeri
         if n_f:
             i_ = c.create_text(xd, 14, text=f"vs all your {self.tipo.lower()} games: {tot['wr'] if tot['wr'] is not None else '-'}%", anchor="e", fill=C["grigio"], font=F(7))
             xd = (c.bbox(i_) or (xd, 0, xd, 0))[0] - 14
         if k["n"] and k["n"] < 30:      # in alto, accanto: in fondo usciva dalla tela
             c.create_text(xd, 14, text="under 30 games: a hint, not a fact", anchor="e", fill=C["arancio"], font=F(7, True))
-        col_wr = lambda v: C["muto"] if v is None else (C["azzurro"] if v >= 50 else C["rosso"])
-        tess = [("WIN RATE", f"{k['wr']:.0f}%" if k["wr"] is not None else "-", col_wr(k["wr"]),
-                 f"95% CI {k['ic'][0]}–{k['ic'][1]}%" if k["ic"] else ""),
-                ("RECORD", f"{k['vinte']}-{k['perse']}", C["testo"], f"Δ {k['wr'] - tot['wr']:+.1f} vs all" if n_f and k["wr"] is not None and tot["wr"] is not None else ""),
-                ("AVG TURNS", f"T{k['turni']}" if k["turni"] else "-", C["testo"], f"wins T{k['turni_v'] or '-'} · losses T{k['turni_p'] or '-'}"),
-                ("MULLIGAN", f"{k['mull']:.0f}%" if k["mull"] is not None else "-", C["testo"], "games with a mulligan"),
-                ("ON THE PLAY", f"{k['play']:.0f}%" if k["play"] is not None else "-", col_wr(k["play"]), f"{k['n_play']} games"),
-                ("ON THE DRAW", f"{k['draw']:.0f}%" if k["draw"] is not None else "-", col_wr(k["draw"]), f"{k['n_draw']} games")]
+        # i numeri scelti con la rotellina (13 nov 2026, Autore: «in alto a dx creiamo una rotellina di impostazioni con i 6 dati che vogliamo avere su
+        # questa tabella»): numeri_partite.CATALOGO, la scelta in dati_analizzatore.numeri_scelti
+        val = NP.valori(r, [x for x in self.righe if x["tipo"] == self.tipo])
+        toni = {"su": C["azzurro"], "giu": C["rosso"], "neutro": C["testo"], "vuoto": C["muto"]}
+        tess = [(NP.NOMI[k_].upper(), val[k_][0], toni[val[k_][1]], val[k_][2]) for k_ in DA.numeri_scelti() if k_ in val]
+        # la rotellina, in alto a destra
+        i_r = c.create_text(W - 14, 14, text="⚙", anchor="e", fill=C["accento"], font=F(12, True))
+        bb_r = c.bbox(i_r)
+        c._box_rotella = (bb_r[0] - 6, bb_r[1] - 4, bb_r[2] + 6, bb_r[3] + 4)
+        if not tess:
+            c.create_text(16, 60, text="No numbers picked: click ⚙ and tick the ones you want here.", anchor="w", fill=C["grigio"], font=F(9))
+            return
         cw = (W - 32) / len(tess)
         for i, (a, v, col, s) in enumerate(tess):
             x = 16 + i * cw
@@ -982,6 +988,73 @@ class PaginaPerformance:
             c.create_text(x + 12, 36 + dy, text=a, anchor="nw", fill=C["muto"], font=F(7, True))
             c.create_text(x + 12, 65 + dy, text=v, anchor="w", fill=col, font=F(17, True))
             c.create_text(x + 12, 89 + dy, text=s, anchor="w", fill=C["grigio"], font=F(7))
+
+    def clic_numeri_rotella(self, e):
+        b = getattr(self.cv_num, "_box_rotella", None)
+        if b and b[0] <= e.x <= b[2] and b[1] <= e.y <= b[3]:
+            return self.apri_numeri()
+        return None
+
+    def apri_numeri(self):
+        """La finestrella della rotellina: una spunta per numero del catalogo, sei al massimo; si applica subito e resta."""
+        tk = self.tk
+        f = getattr(self, "fin_numeri", None)
+        if f is None or not f.winfo_exists():
+            f = self.fin_numeri = tk.Toplevel(self.fr)
+            f.title("Performance · Numbers")
+            f.configure(bg=C["scheda"])
+            f.resizable(False, False)
+            f.bind("<Escape>", lambda e: f.destroy())
+            c = self.cv_numeri = tk.Canvas(f, bg=C["scheda"], highlightthickness=0, bd=0, width=620, height=60 + 28 * len(NP.CATALOGO) + 30)
+            c.pack(padx=8, pady=8)
+            c.bind("<Button-1>", self.clic_numeri)
+            try:
+                f.geometry(f"+{self.fr.winfo_pointerx() - 600}+{self.fr.winfo_pointery() + 16}")
+            except Exception:      # noqa: BLE001
+                pass
+        self.disegna_scelta_numeri()
+        f.lift()
+        return f
+
+    def disegna_scelta_numeri(self, avviso=""):
+        c = getattr(self, "cv_numeri", None)
+        if c is None or not c.winfo_exists():
+            return
+        F = self.F
+        c.delete("all")
+        c._box = []
+        scelti = DA.numeri_scelti()
+        c.create_text(12, 16, text=f"THE NUMBERS ON TOP · {len(scelti)} of {NP.MASSIMO} · tick the ones you want to see", anchor="w", fill=C["azzurro"],
+                      font=F(8, True))
+        y = 40
+        for k, nome, cosa in NP.CATALOGO:
+            on = k in scelti
+            c.create_image(14, y + 10, image=DG.spunta(14, on, C["azzurro"], C["fondo"], C["grigio"], C["fondo"]), anchor="w")
+            i_ = c.create_text(38, y + 10, text=nome, anchor="w", fill=C["titolo"] if on else C["grigio"], font=F(9, True))
+            bb = c.bbox(i_)
+            c.create_text(max(bb[2] + 10, 190), y + 10, text=cosa, anchor="w", fill=C["muto"], font=F(7))
+            c._box.append((6, y, 612, y + 22, k))
+            y += 28
+        if avviso:
+            c.create_text(12, y + 12, text=avviso, anchor="w", fill=C["arancio"], font=F(8, True))
+
+    def clic_numeri(self, e):
+        b = next((b for b in getattr(self.cv_numeri, "_box", []) if b[0] <= e.x <= b[2] and b[1] <= e.y <= b[3]), None)
+        if b is None:
+            return None
+        scelti = DA.numeri_scelti()
+        k = b[4]
+        if k in scelti:
+            scelti.remove(k)
+        elif len(scelti) >= NP.MASSIMO:
+            self.disegna_scelta_numeri(f"{NP.MASSIMO} at most: untick one first")
+            return None
+        else:
+            scelti.append(k)
+        DA.salva_numeri(scelti)
+        self.disegna_scelta_numeri()
+        self.disegna_numeri()
+        return k
 
     def traccia(self, c, lin, box, metrica, asse, colori, titolo, vuoto="No games in this situation"):
         """Il grafico a linee su una tela qualsiasi (la cartella Chart, il confronto): assi, griglia, le linee in un'immagine nitida, il nome in fondo a ogni
