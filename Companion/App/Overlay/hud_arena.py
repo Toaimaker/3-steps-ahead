@@ -569,6 +569,11 @@ class HudArena:
         t0 = int(math.floor(y_tit - eh_o / 2)); t1 = t0 + eh_o     # floor come l occhio (int di un numero positivo)      # la testata: alta quanto l'occhio, larga quanto la lista meno l'occhio
         st.append((x0 + ew_o, t0, x0 + larg + FONDO_MARGINE, t1, "titolo") if lato == "sinistra" else
                   (x0 - FONDO_MARGINE, t0, x0 + larg - ew_o, t1, "titolo"))
+        # la cornice azzurra della testata, occhio compreso, nello stile dell'app (13 nov 2026, Autore: «piccolo frame azzurro in testa alla tendina stile
+        # dell'app»): quattro linee appena fuori dalla striscia, cosi' la finestra dell'occhio non le copre
+        ca, cb = (x0 - 1, x0 + larg + FONDO_MARGINE) if lato == "sinistra" else (x0 - FONDO_MARGINE - 1, x0 + larg)
+        for xy in ((ca, t0 - 1, cb, t0 - 1), (ca, t1, cb, t1), (ca, t0 - 1, ca, t1 + 1), (cb, t0 - 1, cb, t1 + 1)):
+            cv.create_line(*xy, fill=COL["filo"], width=1, tags=("cornice", lato, "testa"))
         alto_c = int(alti["c"] * s * k)
         for r in rr:
             if r[0] == "t":
@@ -722,6 +727,17 @@ def prova():
                  and any(r[0] == ro_["sinistra"][2] and r[1] == ro_["sinistra"][1] and r[3] == ro_["sinistra"][3] for r in tit)
                  and any(r[2] == ro_["destra"][0] for r in tit)
                  and abs(float(w.occhi["sinistra"][0].attributes("-alpha")) - STRISCE_ALFA["titolo"]) < 0.01))
+    cor = {}
+    for i in w.cv.find_withtag("cornice"):
+        lt = "sinistra" if "sinistra" in w.cv.gettags(i) else "destra"
+        c_ = w.cv.coords(i)
+        cor.setdefault(lt, []).append((c_[0], c_[1], c_[2], c_[3]))
+    def dentro(lt):
+        xs = [v for c_ in cor.get(lt, []) for v in (c_[0], c_[2])]; ys = [v for c_ in cor.get(lt, []) for v in (c_[1], c_[3])]
+        o_ = ro_[lt]
+        return xs and min(xs) + area[0] < o_[0] and max(xs) + area[0] >= o_[2] and min(ys) + area[1] < o_[1] and max(ys) + area[1] >= o_[3]
+    casi.append(("la cornice azzurra della testata, occhio compreso, appena fuori dalla striscia", len(cor.get("sinistra", [])) == 4 == len(cor.get("destra", []))
+                 and all(w.cv.itemcget(i, "fill") == COL["filo"] for i in w.cv.find_withtag("cornice")) and dentro("sinistra") and dentro("destra")))
     sez = [r for r in rs if r[4] == "sez"]
     casi.append(("una striscia scura sotto ogni titolo di sezione (LIKELY IN ITS 60, WITH 1 OPEN, PLAYED...)", len(sez) >= 3))
     cols = [r for r in rs if r[4] == "col"]
