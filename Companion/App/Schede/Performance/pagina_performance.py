@@ -961,7 +961,7 @@ class PaginaPerformance:
         if (tipo, nome) not in cache:
             import icone
             try:
-                f = icone.emoji_png("🏆", "coppa", 18) if nome == "coppa" else icone.logo_lega(tipo, (nome or "").split(" ")[0], 26)
+                f = icone.emoji_png("🏆", "coppa", 20) if nome == "coppa" else icone.logo_lega(tipo, (nome or "").split(" ")[0], 26)
                 cache[(tipo, nome)] = self.tk.PhotoImage(file=f) if f else None
             except Exception:      # noqa: BLE001 - senza il file resta il nome
                 cache[(tipo, nome)] = None

@@ -1,6 +1,6 @@
 {
- "version": "0.1.71",
+ "version": "0.1.72",
  "date": "2026-11-13",
- "notes": "Performance: situational filters from the replays (land drops, lowest life, life and creatures at the end of your turns, removal, board wipes, counterspells, graveyard targets, spells cast) in Advanced filters and new Spots searches; Ranks and Trophies switches under the chart; faster reload. Board: opens framed with the whole deck, a single outliner list with the groups inside, the type filter keeps the cards in view, several editor bugs fixed.",
+ "notes": "The trophy cup on the Performance chart uses an icon that ships with the app (it showed only on Windows).",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }
