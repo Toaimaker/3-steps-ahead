@@ -1,6 +1,6 @@
 {
- "version": "0.1.93",
+ "version": "0.1.94",
  "date": "2026-11-13",
- "notes": "The welcome window shows once per PC: once finished it never comes back, even before Arena tells the app your account",
+ "notes": "Deck HUD on Arena: narrower lists hugging the edges, a light see-through backdrop, and it shows as soon as the log is read.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

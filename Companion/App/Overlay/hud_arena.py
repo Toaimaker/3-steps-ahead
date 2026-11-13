@@ -33,6 +33,7 @@ import matchup_log as ML  # noqa: E402
 
 LOGDIR = os.path.join(percorsi.ROOT, "Log_Arena")
 PREF = os.path.join(LOGDIR, "hud_arena.json")
+DIARIO = os.path.join(LOGDIR, "hud_arena_diario.txt")     # quando il pannello si accende e si spegne, e perche' (13 nov 2026: «non parte in automatico»)
 PIDFILE = os.path.join(LOGDIR, "hud_arena.pid")
 CHIAVE = "#010203"      # il colore che la finestra rende trasparente
 COL = dict(fondo="#101014", filo="#24baff", titolo="#ffffff", testo="#f0f0f2", grigio="#cacace", azzurro="#3cc4ff", arancio="#ffbe5c", rosso="#ff9a97")
@@ -41,9 +42,12 @@ ALFA = 1.0              # i testi pieni: lo sfondo dei pannelli e' gia' traspare
 OMBRA = "#000000"       # l'ombra dei testi: diversa dal colore chiave, quindi si vede
 SEPARA = "#a0a0a6"      # le righe fra le carte, sottili e chiare
 SPENTA = "#8a8a90"      # una carta finita
-POSTO = (0.006, 0.10)   # dal bordo (sinistro per il tuo mazzo, destro per il suo) e dall'alto, in frazioni dell'area di Arena
-LARG_MIN, LARG_MAX = 230, 380     # la larghezza dei pannelli, in pixel a 1080 di altezza: in mezzo quanto chiede il contenuto
+POSTO = (0.002, 0.10)   # dal bordo (sinistro per il tuo mazzo, destro per il suo) e dall'alto, in frazioni dell'area di Arena
+LARG_MIN, LARG_MAX = 150, 250     # la larghezza dei pannelli, in pixel a 1080 di altezza: in mezzo quanto chiede il contenuto (13 nov 2026, Autore:
+                                  # «ridisegnalo più stretto verso sinistra il mio e verso destra oppo»: era 230-380, a 0,6% dal bordo)
 ALTO_MAX = 0.82         # i pannelli non scendono oltre questa frazione di Arena: con piu' carte le righe si stringono
+FONDO, FONDO_ALFA = "#08080c", 0.30     # il velo dietro ogni lista (13 nov 2026, Autore: «con sfondo leggerissimo e trasparente»): una finestra a parte,
+FONDO_MARGINE = 5                        # semitrasparente, sotto i testi; Tk non sa fare un fondo semitrasparente nella finestra a colore chiave
 OGNI = 700              # ms fra un giro e l'altro
 
 
@@ -92,6 +96,7 @@ if sys.platform == "win32":
     user32.GetClientRect.argtypes = [ctypes.c_void_p, ctypes.POINTER(wintypes.RECT)]
     user32.ClientToScreen.argtypes = [ctypes.c_void_p, ctypes.POINTER(wintypes.POINT)]
     user32.WindowFromPoint.argtypes = [wintypes.POINT]
+    user32.SetWindowPos.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_uint]
 else:
     user32 = None
 
@@ -221,16 +226,76 @@ class HudArena:
         if user32 and prima and prima != self.hwnd and user32.GetForegroundWindow() == self.hwnd:
             user32.SetForegroundWindow(prima)       # se comparendo si e' presa il fuoco, lo rende
         self.esclusa = bool(user32.SetWindowDisplayAffinity(self.hwnd, 0x11)) if user32 and not in_cattura else False
+        self.fondi = {lato: self._fondo(in_cattura) for lato in ("sinistra", "destra")}
         threading.Thread(target=self._primo, daemon=True).start()
 
+    def _fondo(self, in_cattura):
+        """Il velo dietro una lista: una finestra scura semitrasparente, senza bordo, che lascia passare i clic e non prende il fuoco. -> (Toplevel, hwnd)."""
+        tk = self.tk
+        prima = user32.GetForegroundWindow() if user32 else None
+        f = tk.Toplevel(self.root)
+        f.withdraw()
+        f.overrideredirect(True)
+        f.attributes("-topmost", True)
+        f.attributes("-alpha", FONDO_ALFA)
+        f.configure(bg=FONDO)
+        f.geometry("10x10+-3000+0")
+        f.update_idletasks()
+        h = int(f.wm_frame(), 16)
+        if user32:
+            st = user32.GetWindowLongW(h, -20)
+            user32.SetWindowLongW(h, -20, st | 0x80000 | 0x20 | 0x8000000 | 0x80 | 0x8)
+        f.deiconify()
+        f.update()
+        if user32 and prima and user32.GetForegroundWindow() == h:
+            user32.SetForegroundWindow(prima)
+        if user32 and not in_cattura:
+            user32.SetWindowDisplayAffinity(h, 0x11)
+        return f, h
+
+    def metti_fondi(self, area):
+        """Ogni velo sotto la sua lista (coi margini), o fuori dallo schermo se la lista non c'e'; poi i testi in cima e i veli subito sotto."""
+        self.rett_fondi = {}
+        for lato, (f, h) in self.fondi.items():
+            p = self.pannelli.get(lato) if area else None
+            if p:
+                m = FONDO_MARGINE
+                x0, y0 = area[0] + p[0] - m, area[1] + p[1] - m
+                self.rett_fondi[lato] = (x0, y0, x0 + p[2] - p[0] + 2 * m, y0 + p[3] - p[1] + 2 * m)
+                f.geometry(f"{p[2] - p[0] + 2 * m}x{p[3] - p[1] + 2 * m}+{x0}+{y0}")
+            else:
+                f.geometry("10x10+-3000+0")
+        if user32:
+            user32.SetWindowPos(self.hwnd, -1, 0, 0, 0, 0, 0x13)        # HWND_TOPMOST, NOMOVE NOSIZE NOACTIVATE
+            for _f, h in self.fondi.values():
+                user32.SetWindowPos(h, self.hwnd, 0, 0, 0, 0, 0x13)      # subito sotto i testi
+
     def _primo(self):
-        self.seg.aggiorna()         # la prima lettura del log intero, in un filo
+        """La prima lettura del log intero, in un filo; poi il pannello puo' gia' comparire. Il record delle tue partite arriva dopo (la prima lettura dei
+        log di Arena dopo un aggiornamento puo' durare minuti: fino al 13 nov 2026 il pannello lo aspettava e in quel tempo non compariva)."""
+        self.seg.aggiorna()
+        self.letto.set()
+        self.nota("log read")
         if self.recs is None:
             try:
                 self.recs = ML.records()
             except Exception:       # noqa: BLE001 - senza le tue partite l'HUD dice solo il mazzo
                 self.recs = []
-        self.letto.set()
+            self.firma = None       # si rifa' la scheda col record
+
+    def nota(self, cosa):
+        """Una riga nel diario del pannello (Log_Arena/hud_arena_diario.txt), solo quando lo stato cambia. Niente nomi ne' id dell'avversario."""
+        if cosa == getattr(self, "_ultima", None) or self.area_finta is not None:
+            return
+        self._ultima = cosa
+        try:
+            import time
+            if os.path.exists(DIARIO) and os.path.getsize(DIARIO) > 1 << 20:
+                os.replace(DIARIO, DIARIO + ".1")
+            with open(DIARIO, "a", encoding="utf-8") as f:
+                f.write(f"{time.strftime('%d/%m %H:%M:%S')} pid {os.getpid()} {cosa}\n")
+        except OSError:
+            pass
 
     def da_chiudere(self):
         if self.pid and not _vivo(self.pid):
@@ -253,17 +318,22 @@ class HudArena:
             self.h = HM.scheda(st, recs=self.recs or [], meta=self.meta) if st else None
         suo = righe(self.h) if self.sempre or preferenza("suo") else []
         mio = righe_mio(self.h) if self.sempre or preferenza("mio") else []
+        stato = ("no game" if st is None else "game over" if st.get("finita") else "competitive event: off" if st.get("competitivo")
+                 else f"game {self.h.get('tipo') if self.h else '?'}, turn {st.get('turno')}")
         area = self.area_finta
         if area is None:
             h, area = finestra_arena()
             if area is None:
+                if suo or mio:
+                    stato += ", Arena " + ("minimized" if h else "not found")
                 suo = mio = []
             else:       # ogni pannello si vede solo se in quel punto la finestra in cima e' Arena
                 W, H = area[2] - area[0], area[3] - area[1]
-                if not arena_in_cima(h, area[0] + (POSTO[0] + 0.02) * W, area[1] + (POSTO[1] + 0.02) * H):
-                    mio = []
-                if not arena_in_cima(h, area[2] - (POSTO[0] + 0.02) * W, area[1] + (POSTO[1] + 0.02) * H):
-                    suo = []
+                if mio and not arena_in_cima(h, area[0] + (POSTO[0] + 0.02) * W, area[1] + (POSTO[1] + 0.02) * H):
+                    mio, stato = [], stato + ", left covered"
+                if suo and not arena_in_cima(h, area[2] - (POSTO[0] + 0.02) * W, area[1] + (POSTO[1] + 0.02) * H):
+                    suo, stato = [], stato + ", right covered"
+        self.nota(stato + (f": showing {'yours' if mio else ''}{' + ' if mio and suo else ''}{'theirs' if suo else ''}" if suo or mio else ": hidden"))
         self.disegna(suo, mio, area)
         return suo, mio
 
@@ -281,8 +351,10 @@ class HudArena:
             return
         self.disegnato = chiave
         self.cv.delete("all")
+        self.pannelli = {}
         if not area or not (suo or mio):
             self.root.geometry("10x10+-3000+0")
+            self.metti_fondi(None)
             return
         W, H = area[2] - area[0], area[3] - area[1]
         s = max(0.6, H / 1080)
@@ -292,6 +364,7 @@ class HudArena:
         if suo:
             self.pannello("OPPONENT DECK", suo, "destra", W, y0, s, int(ALTO_MAX * H) - y0)
         self.root.geometry(f"{W}x{H}+{area[0]}+{area[1]}")
+        self.metti_fondi(area)      # i veli sotto le liste, e i testi di nuovo in cima alle finestre sempre-sopra
 
     def font(self, px, grassetto=False):
         """Un font di Tk per misurare e disegnare, ricordato per misura."""
@@ -310,13 +383,13 @@ class HudArena:
         - sfondo trasparente, un'ombra scura di un pixel sotto ogni testo, una riga sottile e chiara sotto ogni carta; i nomi normali, i numeri in grassetto.
         lato: «sinistra» (dal bordo sinistro di Arena) o «destra» (dal bordo destro)."""
         cv = self.cv
-        alti = {"titolo": 27, "t": 20, "s": 22, "c": 22}
+        alti = {"titolo": 24, "t": 18, "s": 20, "c": 20}
         stima = 18 + sum(alti["titolo"] if r[0] == "t" and r[2] == "titolo" else alti[r[0]] for r in rr)
         k = min(1.0, alto_max / (stima * s))         # tutto sulla stessa pagina
         px = lambda d: max(10, int(d * s * k))      # noqa: E731
-        f_nome, f_num, f_t, f_tit, f_sez = (self.font(px(14)), self.font(px(14), True), self.font(px(13), True), self.font(px(19), True),
+        f_nome, f_num, f_t, f_tit, f_sez = (self.font(px(13)), self.font(px(13), True), self.font(px(12), True), self.font(px(17), True),
                                             self.font(px(10), True))
-        pad, gap = int(6 * s), int(10 * s)
+        pad, gap = int(3 * s), int(6 * s)
         carte = [r for r in rr if r[0] == "c"]
         wc = max([f_num.measure(r[1]) for r in carte if r[1]] + [0])
         wp = max([f_num.measure(r[3]) for r in carte if r[3]] + [0])
@@ -456,6 +529,15 @@ def prova():
     carte = sum(1 for x in tt if x.endswith("%") or x == "-")
     casi.append(("sfondo trasparente: nessun riquadro; una riga chiara sotto ogni carta, un'ombra sotto ogni testo",
                  not any(w.cv.type(i) == "rectangle" for i in w.cv.find_all()) and len(sep) >= carte and len(w.cv.find_withtag("ombra")) == len(w.cv.find_withtag("riga"))))
+    def rett_fondo(lato):
+        return w.rett_fondi.get(lato)
+    fs, fd = rett_fondo("sinistra"), rett_fondo("destra")
+    m = FONDO_MARGINE
+    casi.append(("il velo leggero sotto ogni lista, coi margini, e semitrasparente", fs == (area[0] + sx_[0] - m, sx_[1] - m, area[0] + sx_[2] + m, sx_[3] + m)
+                 and fd == (area[0] + dx_[0] - m, dx_[1] - m, area[0] + dx_[2] + m, dx_[3] + m)
+                 and abs(float(w.fondi["sinistra"][0].attributes("-alpha")) - FONDO_ALFA) < 0.01))
+    casi.append(("piu' strette e attaccate ai bordi: al massimo 250 pixel a 1080, a 4 pixel dal bordo", sx_[2] - sx_[0] <= LARG_MAX and dx_[2] - dx_[0] <= LARG_MAX
+                 and sx_[0] <= 4 and 1920 - dx_[2] <= 4))
     sx = min(w.cv.coords(i)[0] for i in w.cv.find_withtag("riga") if w.cv.itemcget(i, "text") == "YOUR DECK")
     casi.append(("il tuo mazzo carta per carta: copie rimaste su quelle del mazzo e la P, le terre in fondo", sx < 960 and "4/4" in tt and "Ethereal Armor" in tt
                  and "40%" in tt and "6/6" in tt and "60%" in tt and tt.index("Ethereal Armor") < tt.index("Plains")))
@@ -478,7 +560,7 @@ def prova():
     sotto = min((c[1] for c in (w.cv.coords(i) for i in w.cv.find_withtag("sep")) if c[1] > w.cv.bbox(nome_l)[1]), default=0)
     casi.append(("il nome lunghissimo intero dentro la sua colonna, sopra la riga che lo separa (negativa: mai tagliato ne' sovrapposto)",
                  w.cv.bbox(nome_l)[2] <= pan[5] + pan[4] + 2 and w.cv.bbox(nome_l)[3] <= sotto + 1))
-    medio = "Hallowed Fountain of the Unbelievable Endings"
+    medio = "Brightling of the Starfield"        # un nome lungo vero di Arena e' sotto le 30 lettere
     w.cv.delete("all")
     w.pannello("YOUR DECK", [("c", "1/1", medio, "2%", "testo", False)], "sinistra", 1920, 100, 1.0, 800)
     nm = next(i for i in w.cv.find_withtag("riga") if w.cv.itemcget(i, "text") == medio)
@@ -513,7 +595,7 @@ def prova():
     with open(f1, "a", encoding="utf-8") as fh:
         fh.write(stanza("m1", "Ladder", "MatchCompleted"))
     w.giro(); w.root.update()
-    casi.append(("negativa: a partita finita i pannelli spariscono", w.testi() == []))
+    casi.append(("negativa: a partita finita i pannelli spariscono, e i veli con loro", w.testi() == [] and w.rett_fondi == {}))
     w.root.destroy()
     f2 = os.path.join(d, "q.log")
     open(f2, "w", encoding="utf-8").write(stanza("m2", "Arena_Championship_Qualifier_X", "Playing") + gs([(7, g("Opt"), False)], 3, 2))
