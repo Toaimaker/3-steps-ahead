@@ -1,6 +1,6 @@
 {
- "version": "0.1.100",
+ "version": "0.1.101",
  "date": "2026-11-13",
- "notes": "Performance: a new number, how often you start on the play, tested against a coin flip; Deck HUD READY badge between games",
+ "notes": "Deck HUD: the READY badge sits on the list header row, and a redrawn eye (open with the iris, closed with lashes)",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }
