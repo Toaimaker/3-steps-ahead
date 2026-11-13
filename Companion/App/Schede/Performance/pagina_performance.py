@@ -77,6 +77,8 @@ ALTO_CTRL = 158                                 # la barra del replayer della bo
 ALTO_GRAF = 92                                  # il grafico della partita nella barra
 LARGA_RACCONTO = 300                            # la colonna del racconto a destra della tavola
 LARGA_LISTA = 236                               # le due liste ai lati della tavola: il tuo mazzo (R6) e le sue carte viste (R1)
+LARGA_CHIUSA = 26                               # una lista chiusa verso il suo lato: la striscia col nome in verticale
+LARGA_PILA_SOLA = 160                           # col racconto staccato, sulla tavola resta la colonna della magia in pila (da li' partono le frecce)
 ALTO_RIGA_LISTA = 18
 # per fasi della partita (12 nov 2026, Autore: «il menu a tendine creiamolo per macro fasi partita: formato evento e deck - poi start e mulligan - lands in
 # hand / cards in hand possiamo toglierlo, their card anche»): prima della partita (con By deck), l'apertura, l'avversario, com'e' finita, quando.
@@ -2145,14 +2147,32 @@ class PaginaPerformance:
             if c is None or not c.winfo_exists() or not b:
                 continue
             c.delete("all")
-            c._righe, c._copia = [], None
+            c._righe, c._copia, c._chiudi = [], None, None
             mio = c is self.cv_lista_mio
             _n, f, _t, rel = b["passi"][b["i"]][:4]
+            # chiudibili, ognuna verso il suo lato (13 nov 2026, Autore: «nel replayer rendi le liste dei mazzi chiudibili ognuna verso il suo lato»): chiusa
+            # resta una striscia col nome in verticale, il clic la riapre; la scelta resta per le partite dopo
+            chiusa = self.liste_chiuse()["mio" if mio else "suo"]
+            larga_ = LARGA_CHIUSA if chiusa else LARGA_LISTA
+            if int(c.cget("width")) != larga_:
+                c.configure(width=larga_)
+            if chiusa:
+                Hc = max(c.winfo_height(), 200)
+                c.create_text(LARGA_CHIUSA / 2, 16, text="▸" if mio else "◂", fill=C["accento"], font=F(10, True))
+                c.create_text(LARGA_CHIUSA / 2, 40, text="YOUR DECK" if mio else "OPPONENT · CARDS SEEN", angle=90 if mio else 270, anchor="e" if mio else "w",
+                              fill=C["azzurro"] if mio else C["arancio"], font=F(8, True))
+                c._chiudi = (0, 0, LARGA_CHIUSA, Hc)
+                c.configure(scrollregion=(0, 0, LARGA_CHIUSA, Hc))
+                continue
             W = LARGA_LISTA
+            # il segno per chiuderla, verso il suo lato: a sinistra per il tuo mazzo, a destra per le sue carte
+            xc_ = 12 if mio else W - 12
+            c.create_text(xc_, 14, text="◂" if mio else "▸", fill=C["accento"], font=F(10, True), tags="chiudi")
+            c._chiudi = (xc_ - 10, 2, xc_ + 10, 26)
             y = 14
             if mio:
                 m = DA.lista_mia(b["x"].get("deck"), f, rel)
-                c.create_text(10, y, text="YOUR DECK", anchor="w", fill=C["azzurro"], font=F(8, True))
+                c.create_text(26, y, text="YOUR DECK", anchor="w", fill=C["azzurro"], font=F(8, True))
                 if not m:
                     c.create_text(10, y + 26, text="The deck list of this game\nis not in the log.", anchor="nw", fill=C["grigio"], font=F(8))
                     continue
@@ -2181,7 +2201,7 @@ class PaginaPerformance:
             else:
                 righe = DA.lista_sua(b["passi"], b["i"])
                 c.create_text(10, y, text="OPPONENT · CARDS SEEN", anchor="w", fill=C["arancio"], font=F(8, True))
-                c.create_text(W - 10, y, text=f"{sum(q for _n, q, _t in righe)} cards", anchor="e", fill=C["grigio"], font=F(7))
+                c.create_text(W - 26, y, text=f"{sum(q for _n, q, _t in righe)} cards", anchor="e", fill=C["grigio"], font=F(7))
                 y += 16
                 c.create_text(10, y, text="up to this moment · not their whole deck", anchor="w", fill=C["muto"], font=F(6, True))
                 y += 14
@@ -2215,8 +2235,9 @@ class PaginaPerformance:
         c = e.widget
         x, y = c.canvasx(e.x), c.canvasy(e.y)
         n = next((r_[4] for r_ in getattr(c, "_righe", []) if r_[1] <= y <= r_[3]), None)
-        cp = getattr(c, "_copia", None)
-        c.configure(cursor="hand2" if cp and cp[0] <= x <= cp[2] and cp[1] <= y <= cp[3] else "")
+        cp, ch = getattr(c, "_copia", None), getattr(c, "_chiudi", None)
+        sopra_ = any(b_ and b_[0] <= x <= b_[2] and b_[1] <= y <= b_[3] for b_ in (cp, ch))
+        c.configure(cursor="hand2" if sopra_ else "")
         if n == getattr(self, "_hover_nome", None):
             if n is not None and getattr(self, "_hover", None) is not None:
                 self.metti_hover(e)
@@ -2237,10 +2258,24 @@ class PaginaPerformance:
         tk.Label(h, image=img, bg="#101014", bd=0).pack(padx=2, pady=2)
         self.metti_hover(e)
 
+    def liste_chiuse(self):
+        return self.__dict__.setdefault("_liste_chiuse", {"mio": False, "suo": False})
+
+    def chiudi_lista(self, lato, chiusa=None):
+        """Chiude (o riapre) una delle due liste del replayer verso il suo lato; la tavola prende il posto."""
+        st = self.liste_chiuse()
+        st[lato] = (not st[lato]) if chiusa is None else bool(chiusa)
+        self.disegna_liste()
+        return st[lato]
+
     def clic_lista(self, e):
-        """«Copy as list» negli appunti: le sue carte viste, una per riga."""
+        """Il segno ◂ ▸ chiude la lista verso il suo lato (chiusa, il clic sulla striscia la riapre); «Copy as list» negli appunti: le sue carte viste, una per
+        riga."""
         c = e.widget
         x, y = c.canvasx(e.x), c.canvasy(e.y)
+        ch = getattr(c, "_chiudi", None)
+        if ch and ch[0] <= x <= ch[2] and ch[1] <= y <= ch[3]:
+            return self.chiudi_lista("mio" if c is self.cv_lista_mio else "suo")
         cp = getattr(c, "_copia", None)
         if not cp or not (cp[0] <= x <= cp[2] and cp[1] <= y <= cp[3]):
             return None
@@ -2306,7 +2341,9 @@ class PaginaPerformance:
         self._box_pile, self._box_carte = [], []
         self.via_hover()
         W, H = max(c.winfo_width(), 900), max(c.winfo_height(), 560)
-        Wt = W - LARGA_RACCONTO - 12          # la tavola; a destra il racconto
+        cr = self.tela_racconto()           # il racconto staccato nella sua finestra (13 nov 2026), o None
+        larga_col = LARGA_RACCONTO if cr is None else LARGA_PILA_SOLA
+        Wt = W - larga_col - 12          # la tavola; a destra il racconto (staccato: la sola colonna della magia in pila)
         nome, f, _t, rel = b["passi"][b["i"]][:4]
         prima = b["passi"][b["i"] - 1][1] if b["i"] > 0 else None
         if getattr(self, "b_segna", None) is not None:
@@ -2471,46 +2508,69 @@ class PaginaPerformance:
         c.create_line(0, 2 * terzo, Wt, 2 * terzo, fill=C["filo"])
         zona("YOUR HAND" + ("  ·  the hand you kept" if nome == "Opening hand" else ""), [(n, False, False) for n in f["mano"]], 2 * terzo + 4, terzo + 12,
              C["titolo"], [("carte", str(len(f["mano"])))], prima["mano"] if prima else None, Wt, "mano")
-        # il racconto del momento
+        # il racconto del momento: nella colonna a destra o, staccato, nella sua finestra (13 nov 2026, Autore: «la chat staccabile se vogliamo aumentare le
+        # dimensioni del campo»); staccato, sulla tavola resta la colonna stretta della magia in pila, da cui partono le frecce verso i bersagli
         xr = Wt + 12
         c.create_rectangle(xr, 0, W, H, fill="#18181e", outline="")
-        c.create_text(xr + 14, 16, text="WHAT HAPPENED", anchor="w", fill=C["muto"], font=F(7, True))
-        tit_ = c.create_text(xr + 14, 25, text=nome + ("   ★ turning point" if b["i"] == b.get("svolta") else ""), anchor="nw",
-                             fill="#ffd23f" if b["i"] == b.get("svolta") else C["titolo"], font=F(10, True), width=LARGA_RACCONTO - 28)
-        y = max(58, (c.bbox(tit_) or (0, 0, 0, 46))[3] + 14)     # un nome lungo va a capo verso il basso, non sopra «WHAT HAPPENED» (debug del 12 nov 2026)
+        if cr is None:
+            c.create_text(xr + 14, 16, text="WHAT HAPPENED", anchor="w", fill=C["muto"], font=F(7, True))
+            i_s = c.create_text(W - 12, 16, text="⧉ Detach", anchor="e", fill=C["accento"], font=F(7, True), tags="stacca")
+            bb_s = c.bbox(i_s)
+            self._box_stacca = (bb_s[0] - 4, bb_s[1] - 4, bb_s[2] + 4, bb_s[3] + 4) if bb_s else None
+            cc, x0_r, larga_r, Hc = c, xr, LARGA_RACCONTO, H
+        else:
+            self._box_stacca = None
+            c.create_text(xr + 14, 16, text="ON THE STACK", anchor="w", fill=C["muto"], font=F(7, True))
+            cc = cr
+            cc.delete("all")
+            larga_r, Hc = max(cc.winfo_width(), 260), max(cc.winfo_height(), 300)
+            x0_r = 0
+            cc.create_rectangle(0, 0, larga_r, Hc, fill="#18181e", outline="")
+            cc.create_text(14, 16, text="WHAT HAPPENED", anchor="w", fill=C["muto"], font=F(7, True))
+        tit_ = cc.create_text(x0_r + 14, 25, text=nome + ("   ★ turning point" if b["i"] == b.get("svolta") else ""), anchor="nw",
+                              fill="#ffd23f" if b["i"] == b.get("svolta") else C["titolo"], font=F(10, True), width=larga_r - 28)
+        y = max(58, (cc.bbox(tit_) or (0, 0, 0, 46))[3] + 14)     # un nome lungo va a capo verso il basso, non sopra «WHAT HAPPENED» (debug del 12 nov 2026)
+        yp = 36 if cr is not None else y        # dove va la carta in pila sulla tavola: sotto il titolo del racconto, o in cima alla colonna stretta
         pila_box = None
         if rel and rel["tipo"] == "spell":      # la magia (o l'abilita') in pila, da cui partono le frecce verso i bersagli
             chi = "You" if rel["mio"] else "Opponent"
-            c.create_text(xr + 14, y, text=f"ON THE STACK · {chi.upper()}" + (" · ABILITY OF" if rel["ab"] else ""), anchor="w",
-                          fill="#b58cff", font=F(7, True))
+            c.create_text(xr + 14, yp, text=f"{chi.upper()}" + (" · ABILITY OF" if rel["ab"] else "") if cr is not None else
+                          f"ON THE STACK · {chi.upper()}" + (" · ABILITY OF" if rel["ab"] else ""), anchor="w", fill="#b58cff", font=F(7, True))
             w_p = 130
             img = self.immagine_carta(rel["nome"], w_p, False)
             hp = round(w_p * 279 / 200)
             if img is not None:
-                c.create_image(xr + 14, y + 12, image=img, anchor="nw")
-                self._box_carte.append((xr + 14, y + 12, xr + 14 + w_p, y + 12 + hp, rel["nome"]))
+                c.create_image(xr + 14, yp + 12, image=img, anchor="nw")
+                self._box_carte.append((xr + 14, yp + 12, xr + 14 + w_p, yp + 12 + hp, rel["nome"]))
             else:
-                c.create_rectangle(xr + 14, y + 12, xr + 14 + w_p, y + 12 + hp, fill="#26262c", outline="#b58cff")
-                c.create_text(xr + 14 + w_p / 2, y + 12 + hp / 2, text=rel["nome"], width=w_p - 10, fill=C["titolo"], font=F(8, True), justify="center")
-            pila_box = (xr + 14, y + 12, xr + 14 + w_p, y + 12 + hp)
+                c.create_rectangle(xr + 14, yp + 12, xr + 14 + w_p, yp + 12 + hp, fill="#26262c", outline="#b58cff")
+                c.create_text(xr + 14 + w_p / 2, yp + 12 + hp / 2, text=rel["nome"], width=w_p - 10, fill=C["titolo"], font=F(8, True), justify="center")
+            pila_box = (xr + 14, yp + 12, xr + 14 + w_p, yp + 12 + hp)
             self._pila_ora = (pila_box, rel["nome"])
-            y += hp + 28
+            if cr is None:
+                y += hp + 28
+            else:       # nella finestra del racconto: la magia in parole
+                cc.create_text(x0_r + 14, y, text=f"ON THE STACK · {chi.upper()}" + (" · ABILITY OF" if rel["ab"] else "") + f" · {rel['nome']}", anchor="w",
+                               fill="#b58cff", font=F(7, True), width=larga_r - 28)
+                y += 26
             dove_n = {"cim_mio": "in your graveyard", "cim_suo": "in the opponent's graveyard", "esi_mio": "in your exile", "esi_suo": "in the opponent's exile",
                       "pila": "on the stack", "mano": "in hand", "grimorio": "in the library"}
             for _i, (z_, _l, n_) in (rel.get("fuori") or {}).items():      # i bersagli che non sono in campo: una contromagia, una rianimazione
-                c.create_text(xr + 14, y - 6, text=f"→ {n_ or 'a card'} {dove_n.get(z_, '')}", anchor="w", fill="#b58cff", font=F(7, True),
-                              width=LARGA_RACCONTO - 28)
+                cc.create_text(x0_r + 14, y - 6, text=f"→ {n_ or 'a card'} {dove_n.get(z_, '')}", anchor="w", fill="#b58cff", font=F(7, True),
+                               width=larga_r - 28)
                 y += 16
             nc = len(rel.get("colpiti") or [])
             if nc:      # l'effetto: quanti permanenti ha tolto
-                c.create_text(xr + 14, y - 6, text=f"REMOVED {nc} PERMANENT{'S' if nc > 1 else ''}" + ("  ·  a sweeper" if nc >= 3 else ""), anchor="w",
-                              fill="#ff5d5d", font=F(7, True))
+                cc.create_text(x0_r + 14, y - 6, text=f"REMOVED {nc} PERMANENT{'S' if nc > 1 else ''}" + ("  ·  a sweeper" if nc >= 3 else ""), anchor="w",
+                               fill="#ff5d5d", font=F(7, True))
                 y += 16
         elif rel and rel["tipo"] == "comb":
             nb = len(rel["blocchi"])
-            c.create_text(xr + 14, y, text=f"COMBAT · {len(rel['att'])} attacking · {nb} block{'s' if nb != 1 else ''}", anchor="w", fill="#ff6b6b",
-                          font=F(7, True))
+            cc.create_text(x0_r + 14, y, text=f"COMBAT · {len(rel['att'])} attacking · {nb} block{'s' if nb != 1 else ''}", anchor="w", fill="#ff6b6b",
+                           font=F(7, True))
             y += 22
+        elif cr is not None:
+            c.create_text(xr + 14, 36, text="nothing on the stack", anchor="w", fill=C["grigio"], font=F(7))
         self.frecce_board(c, rel, pila_box, W, H)
         if "spalla" not in b:       # cosa diceva la spalla (solo nei limited seguiti dal companion)
             try:
@@ -2532,23 +2592,23 @@ class PaginaPerformance:
             if righe_r is not None or consigli:
                 righe_r = consigli + (righe_r or [])
         if righe_r is None:
-            c.create_text(xr + 14, y, text="No turn record for this game.", anchor="w", fill=C["grigio"], font=F(8))
+            cc.create_text(x0_r + 14, y, text="No turn record for this game.", anchor="w", fill=C["grigio"], font=F(8))
         elif not righe_r:
-            c.create_text(xr + 14, y, text="Nothing cast or attacked.", anchor="w", fill=C["grigio"], font=F(8))
+            cc.create_text(x0_r + 14, y, text="Nothing cast or attacked.", anchor="w", fill=C["grigio"], font=F(8))
         for mio_, testo in righe_r or []:
-            if y > H - 24:
-                c.create_text(xr + 14, y, text="…", anchor="w", fill=C["grigio"], font=F(9, True))
+            if y > Hc - 24:
+                cc.create_text(x0_r + 14, y, text="…", anchor="w", fill=C["grigio"], font=F(9, True))
                 break
             if mio_ is None:        # un titoletto
-                c.create_text(xr + 14, y + 6, text=testo, anchor="w", fill=C["muto"], font=F(7, True))
+                cc.create_text(x0_r + 14, y + 6, text=testo, anchor="w", fill=C["muto"], font=F(7, True))
                 y += 20
                 continue
             sp_ = mio_ == "spalla"
-            c.create_oval(xr + 14, y + 4, xr + 22, y + 12, fill="#b58cff" if sp_ else "#24baff" if mio_ else "#f0ad4e", outline="")
+            cc.create_oval(x0_r + 14, y + 4, x0_r + 22, y + 12, fill="#b58cff" if sp_ else "#24baff" if mio_ else "#f0ad4e", outline="")
             forte = testo.startswith("▸ ")
-            i_ = c.create_text(xr + 30, y, text=testo[2:] if forte else testo, anchor="nw", fill="#d6c8ff" if sp_ else C["titolo"] if forte else C["testo"],
-                               font=F(7 if sp_ else 8, forte), width=LARGA_RACCONTO - 46)      # dall'alto: a capo non copre la riga dopo
-            bb = c.bbox(i_)
+            i_ = cc.create_text(x0_r + 30, y, text=testo[2:] if forte else testo, anchor="nw", fill="#d6c8ff" if sp_ else C["titolo"] if forte else C["testo"],
+                               font=F(7 if sp_ else 8, forte), width=larga_r - 46)      # dall'alto: a capo non copre la riga dopo
+            bb = cc.bbox(i_)
             y = (bb[3] if bb else y + 16) + 6
         if anima and prima is not None:
             self.anima_board(c, prima_zone, prima_pile, prima, f)
@@ -2809,6 +2869,56 @@ class PaginaPerformance:
                 cache.pop(next(iter(cache)))
         return cache.get(nome)
 
+    def tela_racconto(self):
+        """La tela del racconto staccato, o None se sta nella colonna a destra della tavola."""
+        f = getattr(self, "fin_racconto", None)
+        try:
+            return f.cv if f is not None and f.winfo_exists() else None
+        except Exception:      # noqa: BLE001 - gia' chiusa
+            return None
+
+    def stacca_racconto(self):
+        """Il racconto (WHAT HAPPENED) in una finestra sua, accanto al replayer: la tavola prende il posto della colonna (resta la colonna stretta della magia
+        in pila). Chiusa, il racconto torna nella colonna."""
+        tk = self.tk
+        if self.tela_racconto() is not None:
+            self.fin_racconto.lift()
+            return self.fin_racconto
+        fb = self.fin_board
+        f = self.fin_racconto = tk.Toplevel(fb)
+        f.title("The board · what happened")
+        f.configure(bg=C["scheda"])
+        try:
+            from tema import barra_scura
+            barra_scura(f, C["testa"], C["titolo"], C["filo"])
+        except Exception:      # noqa: BLE001 - fuori da Windows la barra resta quella del sistema
+            pass
+        try:
+            fb.update_idletasks()
+            f.geometry(f"{LARGA_RACCONTO + 60}x{max(500, fb.winfo_height() - 120)}+{fb.winfo_rootx() + fb.winfo_width() - LARGA_RACCONTO - 80}+{fb.winfo_rooty() + 80}")
+        except Exception:      # noqa: BLE001
+            pass
+        f.cv = tk.Canvas(f, bg="#18181e", highlightthickness=0, bd=0)
+        f.cv.pack(fill="both", expand=True)
+        f.cv.bind("<Configure>", lambda e: self.disegna_board())
+        f.protocol("WM_DELETE_WINDOW", self.riattacca_racconto)
+        f.bind("<Escape>", lambda e: self.riattacca_racconto())
+        for tasto, fn in (("<Left>", lambda e: self.passo_board(-1)), ("<Right>", lambda e: self.passo_board(1))):
+            f.bind(tasto, fn)
+        self.disegna_board()
+        return f
+
+    def riattacca_racconto(self):
+        f = getattr(self, "fin_racconto", None)
+        self.fin_racconto = None
+        if f is not None:
+            try:
+                f.destroy()
+            except Exception:      # noqa: BLE001
+                pass
+        if getattr(self, "cv_board", None) is not None and self.cv_board.winfo_exists():
+            self.disegna_board()
+
     def clic_pila(self, e):
         """Il clic sulla tavola: con un cimitero o un esilio aperto, la ✕ o il clic fuori dal riquadro lo chiudono; se no il clic su una pila la apre."""
         if getattr(self, "_pila_aperta", None):
@@ -2817,6 +2927,9 @@ class PaginaPerformance:
             if not (x0 <= e.x <= x1 and y0 <= e.y <= y1) or (cx0 <= e.x <= cx1 and cy0 <= e.y <= cy1):
                 self.chiudi_pila()
             return None
+        bs_ = getattr(self, "_box_stacca", None)
+        if bs_ and bs_[0] <= e.x <= bs_[2] and bs_[1] <= e.y <= bs_[3]:      # «⧉ Detach»: il racconto nella sua finestra
+            return self.stacca_racconto()
         for x0, y0, x1, y1, tit, k, carte in getattr(self, "_box_pile", []):
             if x0 <= e.x <= x1 and y0 <= e.y <= y1:
                 return self.apri_pila(tit, carte, k)

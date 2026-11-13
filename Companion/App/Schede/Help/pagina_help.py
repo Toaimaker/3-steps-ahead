@@ -87,7 +87,8 @@ SEZIONI = (
                                   "the timeline and the speed (keys: space, arrows, Home, End, T); each player's graveyard and exile (click to see them all), the cards that just arrived marked "
                                   "NEW, power and toughness, what happened in that moment, the chart of the game (life and power) and the turning point (★); on the left your deck card "
                                   "by card with the copies left in your library and the chance to draw each next, on the right the opponent's cards seen up to "
-                                  "that moment (not their whole deck) with Copy as list; the bar on the "
+                                  "that moment (not their whole deck) with Copy as list; ◂ and ▸ close each list towards its side, and «⧉ Detach» moves what happened to its own "
+                                  "window so the table gets the room; the bar on the "
                                   "right scrolls the games, the mark on top opens them in their own window; click a column title to sort by it (again to "
                                   "reverse); the opponent's colors are mana symbols"),
       ("Spots", "Preset searches: the basic questions already built (opening hand, attack, defense, instant speed; life, board and removal), each with "

@@ -585,7 +585,7 @@ def lista_mia(deck, foto, rel=None):
         return None
     fuori = _conta(foto.get("mano")) + _conta(n for n, _t, ped, *_r in foto.get("mio") or [] if not ped)
     fuori += _conta((foto.get("cim") or [[], []])[0]) + _conta((foto.get("esi") or [[], []])[0])
-    if rel and rel.get("tipo") == "spell" and rel.get("mio") and not rel.get("ab"):
+    if isinstance(rel, dict) and rel.get("tipo") == "spell" and rel.get("mio") and not rel.get("ab") and rel.get("nome"):
         fuori[nome_intero(rel["nome"])] += 1
     righe, visti = [], 0
     for n, q in deck.items():
@@ -602,10 +602,11 @@ def lista_sua(passi, i):
     """R1: le carte dell'avversario viste fino al momento i del replay: per nome il numero massimo di copie visto insieme in un momento (campo senza pedine,
     cimitero, esilio, le sue magie in pila): un minimo, non il suo mazzo. passi = [(nome, foto, turno, rel)]. -> [(nome, copie, terra?)] per costo."""
     massimo = collections.Counter()
-    for _n, f, _t, rel in passi[:i + 1]:
+    for p_ in passi[:i + 1]:            # (nome, foto, turno, rel, ...): in Every action i passi hanno piu' campi
+        f, rel = p_[1], (p_[3] if len(p_) > 3 and isinstance(p_[3], dict) else None)
         ora = _conta(n for n, _tp, ped, *_r in f.get("suo") or [] if not ped)
         ora += _conta((f.get("cim") or [[], []])[1]) + _conta((f.get("esi") or [[], []])[1])
-        if rel and rel.get("tipo") == "spell" and not rel.get("mio") and not rel.get("ab"):
+        if rel and rel.get("tipo") == "spell" and not rel.get("mio") and not rel.get("ab") and rel.get("nome"):
             ora[nome_intero(rel["nome"])] += 1
         for n, q in ora.items():
             massimo[n] = max(massimo[n], q)

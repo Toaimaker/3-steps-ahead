@@ -1,6 +1,6 @@
 {
- "version": "0.1.103",
+ "version": "0.1.104",
  "date": "2026-11-13",
- "notes": "Deck HUD on the site and in the guide, with an animation; the Help page describes both lists, the eye and the READY badge",
+ "notes": "Replayer: your deck with the copies left and the opponent cards seen beside the table (Copy as list), lists that close to their side, a detachable story panel; fixes the replayer in Every action",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }
