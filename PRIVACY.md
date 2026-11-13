@@ -1,6 +1,6 @@
 # Privacy notice · 3 Steps Ahead (beta)
 
-_Last updated: 2026-11-13. Data controller: [to be filled in before any data is collected]. Contact: [to be filled in]._
+_Last updated: 2026-11-13. Data controller: Francesco Latini. Contact: fun4graphic@gmail.com._
 
 ## What the app does on your PC
 
@@ -33,7 +33,7 @@ is **pseudonymous**, not anonymous. Before sending, games wait in a queue you ca
 
 **Why**: to measure which cards, decks and choices win, and to improve the app's advice for everyone.
 **Legal basis**: your consent (GDPR art. 6(1)(a)); you can withdraw it at any time in Help, without affecting what was sent before.
-**Where and how long**: on a server in the EU chosen by the project, for as long as the project runs; this notice will name it before any data is sent.
+**Where and how long**: on Cloudflare (Cloudflare, Inc., acting as our processor), in a D1 database restricted to the EU jurisdiction, for as long as the project runs; you can ask us to delete your games at any time.
 **Your rights**: access, rectification, erasure, restriction, portability and objection (GDPR art. 15-21), by writing to the contact above
 and quoting the code shown in Help. You can also lodge a complaint with your data protection authority (in Italy: Garante per la protezione dei dati personali).
 

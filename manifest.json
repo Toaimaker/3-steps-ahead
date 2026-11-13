@@ -1,6 +1,6 @@
 {
- "version": "0.1.87",
+ "version": "0.1.88",
  "date": "2026-11-13",
- "notes": "Performance: per-turn casts are plain types (Instant + Instant = two instants that turn); every number and column now says what it measures (win rate, % of games, average)",
+ "notes": "Data sharing goes live: games you choose to share now reach our server (Cloudflare, EU only); the privacy notice names the controller and contact",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }
