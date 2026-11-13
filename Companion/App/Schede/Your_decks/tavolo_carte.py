@@ -891,8 +891,8 @@ class TavoloCarte:
                     w_ = tk.Label(dx, text=testo, bg=C["cap"], fg=C["muto"], font=F(9, True), padx=6, cursor="hand2")
                     w_.pack(side="right", padx=(6, 0)); w_.bind("<Button-1>", lambda e, fa=fa: fa())
                     setattr(self, chi, w_)
-            b = pulsante_solido(tk, F, dx, "Arrange network", False, lambda: self.disponi_rete(), alto=28, bg=C["cap"])
-            b.configure(width=140); b.pack(side="right", padx=(4, 12))
+            b = self.b_arrange = pulsante_solido(tk, F, dx, "Arrange ▾", False, self.menu_disponi, alto=28, bg=C["cap"])
+            b.configure(width=120); b.pack(side="right", padx=(4, 12))
             self.b_griglia = tk.Label(dx, text="  Grid snap", bg=C["cap"], fg=C["testo"], font=F(9, True), compound="left", cursor="hand2")
             self.b_griglia.pack(side="right", padx=(4, 10))
             self.b_griglia.bind("<Button-1>", lambda e: self.cambia_griglia())
@@ -1868,92 +1868,270 @@ class TavoloCarte:
             return min(int(c.get("cmc", 0) or 0), 7)
         return 0 if "Creature" in tipo else 1 if ("Instant" in tipo or "Sorcery" in tipo) else 2
 
+    # ------------------------------------------------ Arrange: per costo, per gruppi, per connessioni, mixed (13 nov 2026)
+    # Autore: «in board editor creiamo 3 diversi tipi di arrange network: per carte costo mana, per gruppi e per connessioni / poi un mixed per casi in cui abbiamo
+    # tutti e 3 in modo che cmq il programma stakki in maniera ordinata carte e gruppi senza lasciare gli elementi sparsi in giro». In nessun modo un gruppo si
+    # rompe (nome, colore, nota e carte restano insieme): ogni gruppo e' un blocco intero, e il modo decide cosa sta in cima e come stanno le carte dentro. Fino a
+    # quel giorno Arrange network rifaceva le pile e lasciava le label dov'erano, vuote o intorno a carte che non c'entravano.
+    ARRANGE = (("costo", "By mana cost", "Loose cards in cost columns · the groups below, whole, their cards by cost"),
+               ("gruppi", "By groups", "Every group a block, its cards side by side · the loose cards below by cost"),
+               ("rete", "By connections", "The network, parents above children · the groups and the other cards below"),
+               ("misto", "Mixed", "The network with the groups as nodes · the other groups, then the loose cards by cost"))
+
+    def menu_disponi(self):
+        """Il menu del pulsante Arrange: i quattro modi, ognuno con la riga che dice cosa fa."""
+        tk, F = self.tk, self.F
+        self.nome_chiudi()
+        p = self._nome_pop = tk.Toplevel(self.fin); p.overrideredirect(True); p.configure(bg=C["accento"])
+        dentro = tk.Frame(p, bg=C["cap"]); dentro.pack(padx=1, pady=1)
+        tk.Label(dentro, text="Arrange the board", bg=C["cap"], fg=C["titolo"], font=F(9, True)).pack(anchor="w", padx=10, pady=(8, 4))
+        for modo, nome, riga in self.ARRANGE:
+            r = tk.Frame(dentro, bg=C["cap"], cursor="hand2"); r.pack(fill="x", padx=10, pady=3)
+            a = tk.Label(r, text=nome, bg=C["cap"], fg=C["accento"], font=F(9, True), anchor="w", cursor="hand2"); a.pack(fill="x")
+            b = tk.Label(r, text=riga, bg=C["cap"], fg=C["grigio"], font=F(7), anchor="w", cursor="hand2"); b.pack(fill="x")
+            for w_ in (r, a, b):
+                w_.bind("<Button-1>", lambda ev, m=modo: (self.nome_chiudi(), self.disponi_modo(m, inquadra=True)))
+        tk.Label(dentro, text="Groups stay whole in every mode · Undo brings the board back", bg=C["cap"], fg=C["muto"], font=F(7)).pack(anchor="w", padx=10, pady=(4, 8))
+        p.bind("<Escape>", lambda ev: self.nome_chiudi())
+        p.update_idletasks()
+        p.geometry(f"+{max(0, self.fin.winfo_pointerx() - p.winfo_reqwidth() + 40)}+{self.fin.winfo_pointery() + 14}")
+        p.focus_force()
+        return p
+
+    def struttura(self):
+        """Chi sta in quale gruppo, prima di riordinare: ogni pila del mazzo va alla label piu' piccola che contiene il suo centro (come quando la label si sposta),
+        ogni label alla label piu' piccola che la contiene tutta; le copie dei gruppi non contengono niente. -> ({k: [vid]}, {k: label madre o None}, [vid liberi])."""
+        E = self.etichette
+        area = lambda k: E[k]["w"] * E[k]["h"]
+        dentro = lambda k, x, y: E[k]["x"] <= x <= E[k]["x"] + E[k]["w"] and E[k]["y"] <= y <= E[k]["y"] + E[k]["h"]
+        piene = [k for k, lb in enumerate(E) if not lb.get("copia")]
+        padre = {}
+        for k, lb in enumerate(E):      # a parita' d'area decide l'indice: niente giri
+            cand = [j for j in piene if j != k and (area(j) > area(k) or (area(j) == area(k) and j < k))
+                    and dentro(j, lb["x"], lb["y"]) and dentro(j, lb["x"] + lb["w"], lb["y"] + lb["h"])]
+            padre[k] = min(cand, key=lambda j: (area(j), j)) if cand else None
+        carte, libere = {k: [] for k in piene}, []
+        for pl in self.pile:
+            if pl["zona"] != "main":
+                continue
+            r = self.ingombro(pl)
+            cand = [k for k in piene if dentro(k, (r[0] + r[2]) / 2, (r[1] + r[3]) / 2)]
+            (carte[min(cand, key=lambda j: (area(j), j))] if cand else libere).extend(pl["carte"])
+        return carte, padre, libere
+
     def disponi_rete(self, salva=True):
-        """Il pulsante Arrange network (Autore, 10 nov 2026: «aggiungi un pulsante che riordina la rete per connessioni»): le carte del mazzo legate fra loro
-        diventano un grafo a livelli, come in Nuke: i padri in alto, ogni figlio nella riga sotto il suo padre piu' in basso (il cammino piu' lungo; i giri chiusi si
-        rompono dove si chiudono), l'ordine nella riga per baricentro dei vicini (quattro passate giu' e su, meno incroci). Ogni carta della rete e' una pila sua.
-        Le carte senza connessioni vanno per costo in un blocco sotto la rete; sideboard e comandante restano; i dot tornano a meta' fra ingressi e uscite; le
-        label restano dove sono. -> quante carte ha messo in rete (0: niente da riordinare)."""
-        self.sfiltra()      # col filtro acceso le carte nascoste stavano ancora nelle pile vecchie: finivano in due pile (13 nov 2026, lo stress); il disegno rifiltra
+        """Il vecchio Arrange network: ora e' il modo By connections. -> quante carte libere ha messo in rete (0: niente connessioni, niente toccato)."""
+        return self.disponi_modo("rete", salva=salva)
+
+    def disponi_modo(self, modo="misto", salva=True, inquadra=False):
+        """Riordina il mazzo sul foglio in uno dei quattro modi (ARRANGE), sulla griglia, senza sovrapposizioni. I gruppi restano interi: una label e' un blocco con le
+        sue carte (e le label che ha dentro) e si ridimensiona sul contenuto; la copia di un gruppo va accanto al suo gruppo. Dentro un gruppo le carte stanno in
+        pile per costo (By mana cost, By connections) o una accanto all'altra, al massimo sei per riga (By groups, Mixed). La rete e' quella di sempre: i padri in
+        alto, ogni figlio nella riga sotto il suo padre piu' in basso, i giri chiusi rotti dove si chiudono, l'ordine nella riga per baricentro; in Mixed un gruppo
+        e' un nodo, e una connessione fra una sua carta e una carta fuori lo lega. Sideboard e comandante restano; i dot tornano a meta' fra ingressi e uscite.
+        -> By mana cost le carte libere; By groups i gruppi; By connections e Mixed i nodi della rete. By connections senza connessioni e By groups senza gruppi
+        non toccano niente e lo dicono (0)."""
+        self.sfiltra()      # col filtro acceso le carte nascoste stavano nelle pile vecchie: finirebbero in due pile (il disegno rifiltra)
         w, h, off, _p = misure(1.0)
+        su = lambda y: -(-y // PASSO_Y) * PASSO_Y               # il passo verticale della griglia, per eccesso
+        TOP = su(TIT_L + PAD_L)                                 # dal bordo alto della label alla prima carta: il titolo e l'aria, sulla griglia
+        LX = PASSO_X // 2 - (PAD_L + 14)                        # la colonna del blocco -> il bordo sinistro della label (le carte a mezza colonna)
+        DW = PASSO_X + SPAZIO - 2 * PAD_L - 20                  # colonne del blocco -> larghezza della label (a destra l'aria del pallino)
+        W_, _H = self.misura_tela()
+        larga = max(4, int((max(800, W_ / self.zoom) - MARGINE) // PASSO_X))       # quante colonne stanno nella finestra: li' si va a capo
+        E = self.etichette
+        carte_l, padre, libere = self.struttura()
         main = {}
         for i, v in self.voci.items():
             if v["zona"] == "main":
                 main.setdefault(v["nome"], i)
         archi = [(p_, c_) for p_, c_, _f in self.rete.legami(set(main)) if p_ != c_]
         archi += [(p_, c_) for q in self.punti for (p_, c_), r in self.vie.items() if r == q and p_ in main and c_ in main and (p_, c_) not in archi]
-        nodi = sorted({n for a in archi for n in a}, key=lambda n: (self.ordine(main[n])))
-        if not nodi:
-            self.filtra()       # niente da riordinare: il filtro torna com'era
+        if modo == "rete" and not archi:
+            self.filtra()
             self.dici("No connections between the deck's cards to arrange")
             return 0
-        figli = collections.defaultdict(list)
-        padri = collections.defaultdict(list)
-        # i giri chiusi: un arco che torna su un antenato nella visita si salta
-        stato, tieni = {}, []
-
-        def visita(n):
-            stato[n] = 1
-            for p_, c_ in archi:
-                if p_ != n:
-                    continue
-                if stato.get(c_) == 1:
-                    continue
-                tieni.append((p_, c_))
-                if c_ not in stato:
-                    visita(c_)
-            stato[n] = 2
-        for n in nodi:
-            if n not in stato:
-                visita(n)
-        for p_, c_ in dict.fromkeys(tieni):
-            figli[p_].append(c_)
-            padri[c_].append(p_)
-        livello = {}
-
-        def liv(n, visti=()):
-            if n in livello:
-                return livello[n]
-            livello[n] = 0 if not padri[n] else 1 + max(liv(p_, visti + (n,)) for p_ in padri[n] if p_ not in visti)
-            return livello[n]
-        for n in nodi:
-            liv(n)
-        righe = collections.defaultdict(list)
-        for n in nodi:
-            righe[livello[n]].append(n)
-        k_max = max(righe)
-        for _passata in range(4):
-            for k in range(1, k_max + 1):
-                pos = {n: i for i, n in enumerate(righe[k - 1])}
-                righe[k].sort(key=lambda n: (sum(pos[p_] for p_ in padri[n] if p_ in pos) / max(1, sum(1 for p_ in padri[n] if p_ in pos)) if any(p_ in pos for p_ in padri[n])
-                                             else len(pos)))
-            for k in range(k_max - 1, -1, -1):
-                pos = {n: i for i, n in enumerate(righe[k + 1])}
-                righe[k].sort(key=lambda n: (sum(pos[c_] for c_ in figli[n] if c_ in pos) / max(1, sum(1 for c_ in figli[n] if c_ in pos)) if any(c_ in pos for c_ in figli[n])
-                                             else len(pos)))
-        passo_x = PASSO_X                                   # sulla griglia: una colonna fra due carte della stessa riga
-        passo_y = -(-(h + 110) // PASSO_Y) * PASSO_Y        # e righe a multipli del passo verticale, con l'aria per le frecce
-        larga = max(len(r) for r in righe.values()) * passo_x
-        in_rete = set(nodi)
-        restano = [pl for pl in self.pile if pl["zona"] != "main"]
+        if modo == "gruppi" and not E:
+            self.filtra()
+            self.dici("No groups to arrange: select some cards and make one from ≡ on the frame")
+            return 0
         nuove = []
-        for k in range(k_max + 1):
-            x0 = a_griglia(MARGINE + (larga - len(righe[k]) * passo_x) / 2, 0)[0]
-            for j, n in enumerate(righe[k]):
-                nuove.append(dict(zona="main", x=round(x0 + j * passo_x), y=k * passo_y, carte=[main[n]], aperta=None))
-        # le altre carte del mazzo: per costo, in un blocco sotto la rete
-        y0 = (k_max + 1) * passo_y
-        gruppi = collections.OrderedDict()
-        for i in sorted((i for i, v in self.voci.items() if v["zona"] == "main" and not (v["nome"] in in_rete and main[v["nome"]] == i)), key=self.ordine):
-            gruppi.setdefault(self.gruppo(i, "cost"), []).append(i)
-        x = MARGINE
-        for _g, carte in sorted(gruppi.items()):
-            for a in range(0, len(carte), MAX_PILA):
-                nuove.append(dict(zona="main", x=x, y=y0, carte=carte[a:a + MAX_PILA], aperta=None))
-                x += w + SPAZIO
-        self.pile = restano + nuove
+
+        def blocco_pila(vids):
+            vids = list(vids)
+            return dict(c=1, h=h + (len(vids) - 1) * off, metti=lambda bx, by: nuove.append(dict(zona="main", x=bx, y=by, carte=vids, aperta=None)))
+
+        def pile_costo(vids):
+            gr = collections.OrderedDict()
+            for i in sorted(vids, key=self.ordine):
+                gr.setdefault(self.gruppo(i, "cost"), []).append(i)
+            return [blocco_pila(cc[a:a + MAX_PILA]) for _g, cc in sorted(gr.items()) for a in range(0, len(cc), MAX_PILA)]
+
+        def impacca(blocchi, max_c):
+            """In righe, da sinistra, a capo oltre max_c colonne. -> le posizioni (colonna, y), le colonne usate, l'altezza."""
+            col = y = alta = usate = 0
+            pos = []
+            for b in blocchi:
+                if col and col + b["c"] > max_c:
+                    y, col, alta = su(y + alta + SPAZIO * 2), 0, 0
+                pos.append((col, y))
+                col += b["c"]
+                alta, usate = max(alta, b["h"]), max(usate, col)
+            return pos, usate, (y + alta if blocchi else 0)
+
+        def blocco_label(k, stile):
+            lb = E[k]
+            if lb.get("copia"):         # la copia di un gruppo: le sue righe di carte, la misura la decide lei
+                self.misura_copia(k)
+                T = max(2, -(-(lb["w"] + DW) // PASSO_X))
+
+                def metti_c(bx, by):
+                    lb["x"], lb["y"] = bx + LX, by
+                return dict(c=T, h=lb["h"], metti=metti_c)
+            vids = sorted(carte_l.get(k, []), key=self.ordine)
+            figlie = sorted((j for j in padre if padre[j] == k), key=lambda j: (E[j]["y"], E[j]["x"]))
+            dentro = (pile_costo(vids) if stile == "pila" else [blocco_pila([v]) for v in vids]) + [blocco_label(j, stile) for j in figlie]
+            pos, cols, alta = impacca(dentro, 10 ** 6 if stile == "pila" else 6)
+            cols, alta = max(cols, 1), max(alta, h)         # una label vuota tiene il posto di una carta: ci si lascia una carta dentro
+            T, H = max(cols + 1, 3), TOP + max(alta, h) + PAD_L     # almeno tre colonne: il nome si legge accanto alle icone del titolo
+
+            def metti(bx, by):
+                lb["x"], lb["y"], lb["w"], lb["h"] = bx + LX, by, T * PASSO_X - DW, H
+                for b, (c, y) in zip(dentro, pos):
+                    b["metti"](bx + PASSO_X // 2 + c * PASSO_X, by + TOP + y)
+            return dict(c=T, h=H, metti=metti)
+
+        def ordina_gruppi(ks):
+            """I gruppi nell'ordine in cui stanno sul foglio (righe dall'alto, da sinistra), ognuno seguito dalle sue copie."""
+            ks = list(ks)
+            base = sorted((k for k in ks if not E[k].get("copia")), key=lambda k: (E[k]["y"], E[k]["x"]))
+            copie = sorted((k for k in ks if E[k].get("copia")), key=lambda k: (E[k]["y"], E[k]["x"]))
+            out = []
+            for k in base:
+                out.append(k)
+                out += [j for j in copie if j not in out and E[k].get("id") and E[j].get("origine") == E[k].get("id")]
+            return out + [j for j in copie if j not in out]
+
+        y0 = 0
+
+        def sezione(blocchi):
+            nonlocal y0
+            if not blocchi:
+                return
+            pos, _cols, alta = impacca(blocchi, larga)
+            for b, (c, y) in zip(blocchi, pos):
+                b["metti"](MARGINE + c * PASSO_X, y0 + y)
+            y0 = su(y0 + alta + 3 * PASSO_Y)
+
+        def rete(nodo_di, blocco_di, chiave):
+            """La rete a livelli coi nodi che nodo_di da' alle carte (None: fuori). -> i nodi messi."""
+            nonlocal y0
+            ar = []
+            for p_, c_ in archi:
+                a, b = nodo_di(p_), nodo_di(c_)
+                if a is not None and b is not None and a != b and (a, b) not in ar:
+                    ar.append((a, b))
+            nodi = sorted({n for e in ar for n in e}, key=chiave)
+            if not nodi:
+                return []
+            figli, padri, stato, tieni = collections.defaultdict(list), collections.defaultdict(list), {}, []
+
+            def visita(n):      # i giri chiusi: un arco che torna su un antenato nella visita si salta
+                stato[n] = 1
+                for a, b in ar:
+                    if a == n and stato.get(b) != 1:
+                        tieni.append((a, b))
+                        if b not in stato:
+                            visita(b)
+                stato[n] = 2
+            for n in nodi:
+                if n not in stato:
+                    visita(n)
+            for a, b in dict.fromkeys(tieni):
+                figli[a].append(b)
+                padri[b].append(a)
+            livello = {}
+
+            def liv(n):
+                if n not in livello:
+                    livello[n] = 0 if not padri[n] else 1 + max(liv(a) for a in padri[n])
+                return livello[n]
+            for n in nodi:
+                liv(n)
+            righe = collections.defaultdict(list)
+            for n in nodi:
+                righe[livello[n]].append(n)
+            k_max = max(righe)
+            media = lambda n, vicini, pos, dopo: (sum(pos[m] for m in vicini[n] if m in pos) / sum(1 for m in vicini[n] if m in pos)
+                                                   if any(m in pos for m in vicini[n]) else dopo)
+            for _passata in range(4):       # l'ordine nella riga per baricentro dei vicini: meno incroci
+                for k in range(1, k_max + 1):
+                    pos = {n: i for i, n in enumerate(righe[k - 1])}
+                    righe[k].sort(key=lambda n: media(n, padri, pos, len(pos)))
+                for k in range(k_max - 1, -1, -1):
+                    pos = {n: i for i, n in enumerate(righe[k + 1])}
+                    righe[k].sort(key=lambda n: media(n, figli, pos, len(pos)))
+            blocchi = {n: blocco_di(n) for n in nodi}
+            largo = max(sum(blocchi[n]["c"] for n in righe[k]) for k in righe)
+            for k in range(k_max + 1):
+                c = (largo - sum(blocchi[n]["c"] for n in righe[k])) // 2
+                for n in righe[k]:
+                    blocchi[n]["metti"](MARGINE + c * PASSO_X, y0)
+                    c += blocchi[n]["c"]
+                y0 = su(y0 + max(blocchi[n]["h"] for n in righe[k]) + 110)     # con l'aria per le frecce
+            return nodi
+
+        cima = [k for k in range(len(E)) if padre[k] is None]
+        sciolte = set(libere)
+        if modo == "costo":
+            sezione(pile_costo(libere))
+            sezione([blocco_label(k, "pila") for k in ordina_gruppi(cima)])
+            n_fatti, cosa = len(libere), f"Arranged by mana cost: the loose cards in cost columns, {len(cima)} group{'s' * (len(cima) != 1)} below, whole"
+        elif modo == "gruppi":
+            sezione([blocco_label(k, "fila") for k in ordina_gruppi(cima)])
+            sezione(pile_costo(libere))
+            n_fatti, cosa = len(cima), f"Arranged by groups: {len(cima)} group{'s' * (len(cima) != 1)} on top, the loose cards below by cost"
+        elif modo == "rete":
+            nodi = rete(lambda n: n if main[n] in sciolte else None, lambda n: blocco_pila([main[n]]), lambda n: self.ordine(main[n]))
+            messe = {main[n] for n in nodi}
+            sezione([blocco_label(k, "pila") for k in ordina_gruppi(cima)])
+            sezione(pile_costo([v for v in libere if v not in messe]))
+            n_fatti = len(nodi)
+            cosa = (f"Arranged by connections: {len(nodi)} linked cards, parents above children · groups and the other cards below" if nodi
+                    else "The connections all touch cards in groups: groups and loose cards arranged, try Mixed for the network")
+        else:
+            top = {}
+            for k, vv in carte_l.items():
+                t = k
+                while padre[t] is not None:
+                    t = padre[t]
+                for v in vv:
+                    top[v] = t
+            nodo = lambda n: n if main[n] in sciolte else ("L", top[main[n]]) if main[n] in top else None
+            chiave = lambda n: (False, -1, False, "~" + E[n[1]]["nome"]) if isinstance(n, tuple) else self.ordine(main[n])
+            nodi = rete(nodo, lambda n: blocco_label(n[1], "fila") if isinstance(n, tuple) else blocco_pila([main[n]]), chiave)
+            in_rete = {n[1] for n in nodi if isinstance(n, tuple)}
+            messe = {main[n] for n in nodi if not isinstance(n, tuple)}
+            altri = [k for k in ordina_gruppi(cima) if k not in in_rete]
+            sezione([blocco_label(k, "fila") for k in altri])
+            sezione(pile_costo([v for v in libere if v not in messe]))
+            n_fatti = len(nodi)
+            cosa = (f"Mixed: the network of {len(messe)} cards and {len(in_rete)} groups on top · {len(altri)} other groups, then the loose cards by cost"
+                    if nodi else f"Mixed: no connections · {len(altri)} groups, then the loose cards by cost")
+        self.pile = [pl for pl in self.pile if pl["zona"] != "main"] + nuove
         self.vuota_sel()
-        # i dot: a meta' fra i loro ingressi e le loro uscite (due giri, per le catene)
+        self.rimetti_punti(main)
+        self.disegna()
+        if salva:
+            self.salva()
+        if inquadra:
+            self.inquadra_tutto()
+        self.dici(cosa)
+        return n_fatti
+
+    def rimetti_punti(self, main):
+        """I dot a meta' fra i loro ingressi e le loro uscite (due giri, per le catene)."""
+        w, h, _off, _p = misure(1.0)
         for _giro in range(2):
             for q in self.punti:
                 fonti, uscite = [], []
@@ -1972,12 +2150,15 @@ class TavoloCarte:
                 if pts:
                     gx, gy = a_griglia(sum(x_ for x_, _y in pts) / len(pts) + (0 if len(pts) > 1 else 40),
                                        sum(y_ for _x, y_ in pts) / len(pts) + (0 if len(pts) > 1 else 40), mezza=True)
+                    # un dot sopra una carta o un gruppo non si vede e non si prende: scende sotto l'ostacolo (13 nov 2026, dalle foto di Arrange)
+                    ostacoli = [self.ingombro(pl) for pl in self.pile if pl["zona"] == "main"]
+                    ostacoli += [(lb["x"], lb["y"], lb["x"] + lb["w"], lb["y"] + lb["h"]) for lb in self.etichette]
+                    for _ in range(12):
+                        r_ = next((r_ for r_ in ostacoli if r_[0] - 12 <= gx <= r_[2] + 12 and r_[1] - 12 <= gy <= r_[3] + 34), None)
+                        if r_ is None:
+                            break
+                        gy = a_griglia(gx, r_[3] + 48, mezza=True)[1]
                     self.punti[q]["x"], self.punti[q]["y"] = gx, gy
-        self.disegna()
-        if salva:
-            self.salva()
-        self.dici(f"Network arranged: {len(nodi)} linked cards in {k_max + 1} row{'s' if k_max else ''}, parents above children · the others below by cost")
-        return len(nodi)
 
     def fascia_sta(self):
         """Le carte della fascia stanno tutte nella larghezza della finestra? (La fascia e' ferma in cima alla finestra: quel che esce a destra non si vede mai.
@@ -5651,6 +5832,129 @@ def prova():
     tR2 = nuovo_t("build:rete_ord")
     casi.append(("riaperto, la rete riordinata resta", sorted((q["x"], q["y"], tuple(tR2.voci[c_]["nome"] for c_ in q["carte"])) for q in tR2.pile) == disp_))
     tR2.salva_tutto(); tR2.chiudi()
+    # Arrange: i quattro modi (13 nov 2026). Un mazzo con due gruppi, una copia di gruppo e connessioni dentro, fuori e fra i gruppi: dopo ogni modo ogni carta in
+    # una pila sola, i gruppi con le stesse carte di prima, niente sovrapposizioni, tutto sulla griglia, e cosa sta in cima lo decide il modo
+    dbA = dict(dbr, **{"One Drop": dict(cmc=1, tipo="Creature — Elf", testo=""), "Two Drop": dict(cmc=2, tipo="Creature — Elf", testo=""),
+                       "Three Drop": dict(cmc=3, tipo="Creature — Elf", testo=""), "Bolt": dict(cmc=1, tipo="Instant", testo="Bolt deals 3 damage to any target."),
+                       "Engine": dict(cmc=2, tipo="Enchantment", testo=""), "Payoff": dict(cmc=4, tipo="Creature — Elf", testo=""),
+                       "Finisher": dict(cmc=5, tipo="Creature — Dragon", testo=""), "Forest": dict(cmc=0, tipo="Basic Land — Forest", testo="")})
+    mainA = {"One Drop": 4, "Two Drop": 4, "Three Drop": 3, "Bolt": 4, "Engine": 2, "Payoff": 2, "Finisher": 1, "Forest": 9, "Plains": 8}
+
+    def nuovo_a(chiave):
+        t_ = TavoloCarte(tk, F, root, "Arrange", dict(mainA), {"Side Anthem": 1}, carte_db=dbA, chiave=chiave, file_tavoli=ft, file_mazzi=fm, file_rete=fr,
+                         fuori=True, limite=lim, editore=lambda a_, b_: None)
+        root.update()
+        return t_
+
+    tA = nuovo_a("build:arrange")
+    posti_ = {"Bolt": (0, 0), "Two Drop": (1, 0), "Payoff": (0, 702), "Finisher": (1, 702), "One Drop": (0, 1404), "Engine": (1, 1404), "Three Drop": (2, 1404),
+              "Forest": (3, 1404), "Plains": (4, 1404)}
+    tA.pile = [pl for pl in tA.pile if pl["zona"] != "main"] + [dict(zona="main", x=MARGINE + c_ * PASSO_X, y=y_, carte=[vid_di(tA, n_)], aperta=None)
+                                                                  for n_, (c_, y_) in posti_.items()]
+    tA.sel = [tA.pila_di(vid_di(tA, "Bolt")), tA.pila_di(vid_di(tA, "Two Drop"))]
+    gBurn = tA.crea_etichetta("Burn", "#d9534f")
+    tA.sel = [tA.pila_di(vid_di(tA, "Payoff")), tA.pila_di(vid_di(tA, "Finisher"))]
+    gTop = tA.crea_etichetta("Top", "#5cb85c")
+    cpA = tA.duplica_gruppo(tA.etichette.index(gBurn))
+    for k_ in (("One Drop", "Engine"), ("Engine", "Payoff"), ("Bolt", "Three Drop")):
+        tA.rete.lega(k_[0], k_[1], dbA)
+    tA.disegna(); root.update()
+    side_A = [(q["x"], q["y"], list(q["carte"])) for q in tA.pile if q["zona"] != "main"]
+
+    def gruppi_di(t_):
+        cl_, _pa, lib_ = t_.struttura()
+        return {t_.etichette[k]["nome"]: sorted(t_.voci[v]["nome"] for v in vv) for k, vv in cl_.items()}, sorted(t_.voci[v]["nome"] for v in lib_)
+    gr_prima = gruppi_di(tA)
+    tocca_ = lambda a, b: a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+    sulla_ = lambda x_, y_: (abs(a_griglia(x_, y_)[0] - x_) < 1e-6 and abs(a_griglia(x_, y_)[1] - y_) < 1e-6)
+
+    def ordinato(t_):
+        """Le regole che ogni modo deve rispettare. -> la lista di quello che non torna (vuota: tutto in ordine)."""
+        male = []
+        tutte = sorted(c for pl in t_.pile if pl["zona"] == "main" for c in pl["carte"])
+        if tutte != sorted(v for v, x in t_.voci.items() if x["zona"] == "main"):
+            male.append("carte perse o doppie")
+        if gruppi_di(t_) != gr_prima:
+            male.append("gruppi cambiati")
+        if [(q["x"], q["y"], list(q["carte"])) for q in t_.pile if q["zona"] != "main"] != side_A:
+            male.append("sideboard mossa")
+        rp = [t_.ingombro(pl) for pl in t_.pile if pl["zona"] == "main"]
+        if any(tocca_(rp[i], rp[j]) for i in range(len(rp)) for j in range(i + 1, len(rp))):
+            male.append("pile sovrapposte")
+        rl = [(lb["x"], lb["y"], lb["x"] + lb["w"], lb["y"] + lb["h"]) for lb in t_.etichette]
+        if any(tocca_(rl[i], rl[j]) for i in range(len(rl)) for j in range(i + 1, len(rl))):
+            male.append("gruppi sovrapposti")
+        cl_, _pa, lib_ = t_.struttura()
+        for pl in t_.pile:
+            if pl["zona"] == "main" and set(pl["carte"]) <= set(lib_) and any(tocca_(t_.ingombro(pl), r_) for r_ in rl):
+                male.append("carta libera sopra un gruppo")
+                break
+        if not all(sulla_(pl["x"], pl["y"]) for pl in t_.pile if pl["zona"] == "main"):
+            male.append("fuori griglia")
+        return male
+    ya_ = lambda t_, n_: t_.pila_di(vid_di(t_, n_))["y"]
+    gl_ = lambda t_, nome: next(lb for lb in t_.etichette if lb["nome"] == nome and not lb.get("copia"))
+    casi.append(("negativa: il riordino di prima (per costo, label ferme) e' preso dal controllo: gruppi cambiati o carte sopra i gruppi",
+                 (tA.disponi("cost", salva=False), bool(ordinato(tA)))[1]))
+    tA.pile =[pl for pl in tA.pile if pl["zona"] != "main"] + [dict(zona="main", x=MARGINE + c_ * PASSO_X, y=y_, carte=[vid_di(tA, n_)], aperta=None)
+                                                                  for n_, (c_, y_) in posti_.items()]
+    casi.append(("prima del riordino il mazzo di prova e' in ordine (il controllo non da' falsi rossi)", not ordinato(tA)))
+    lbB = lambda t_: [gl_(t_, "Burn")] + [lb for lb in t_.etichette if lb.get("copia")]
+    # By mana cost
+    nC = tA.disponi_modo("costo"); root.update()
+    libere_y = [pl["y"] for pl in tA.pile if pl["zona"] == "main" and set(pl["carte"]) <= set(tA.struttura()[2])]
+    casi.append(("By mana cost: tutto in ordine, le carte libere in colonne per costo sopra i gruppi interi", not ordinato(tA) and nC == 5
+                 and max(libere_y) < min(lb["y"] for lb in tA.etichette)
+                 and all(len({tA.gruppo(c, "cost") for c in pl["carte"]}) == 1 for pl in tA.pile if pl["zona"] == "main")))
+    casi.append(("By mana cost: la copia del gruppo accanto al suo gruppo, sulla stessa riga", len(lbB(tA)) == 2 and lbB(tA)[0]["y"] == lbB(tA)[1]["y"]
+                 and next(lb for lb in lbB(tA) if lb.get("copia"))["x"] > gl_(tA, "Burn")["x"]))
+    disp_c = sorted((q["x"], q["y"], tuple(q["carte"])) for q in tA.pile)
+    tA.disponi_modo("costo"); root.update()
+    casi.append(("By mana cost rifatto da' la stessa disposizione", sorted((q["x"], q["y"], tuple(q["carte"])) for q in tA.pile) == disp_c))
+    # By groups
+    tA.disponi_modo("gruppi"); root.update()
+    cl_A = tA.struttura()[0]
+    casi.append(("By groups: tutto in ordine, i gruppi in cima con una carta per pila, le carte libere sotto per costo", not ordinato(tA)
+                 and min(lb["y"] for lb in tA.etichette) == 0
+                 and all(len(tA.pila_di(v)["carte"]) == 1 for vv in cl_A.values() for v in vv)
+                 and min(pl["y"] for pl in tA.pile if pl["zona"] == "main" and set(pl["carte"]) <= set(tA.struttura()[2]))
+                 > max(lb["y"] + lb["h"] for lb in tA.etichette)))
+    # By connections
+    nR = tA.disponi_modo("rete"); root.update()
+    casi.append(("By connections: tutto in ordine, One Drop sopra Engine (le carte libere legate), gruppi e altre carte sotto", not ordinato(tA) and nR == 2
+                 and ya_(tA, "One Drop") < ya_(tA, "Engine") < min(lb["y"] for lb in tA.etichette)))
+    # Mixed
+    nM = tA.disponi_modo("misto"); root.update()
+    casi.append(("Mixed: tutto in ordine, i gruppi nodi della rete (One Drop sopra Engine sopra Top; Burn sopra Three Drop)", not ordinato(tA) and nM == 5
+                 and ya_(tA, "One Drop") < ya_(tA, "Engine") < gl_(tA, "Top")["y"] and gl_(tA, "Burn")["y"] < ya_(tA, "Three Drop")))
+    casi.append(("Mixed: le terre (senza connessioni) sotto la rete, e la copia del gruppo fuori dalla rete sotto", ya_(tA, "Forest") > gl_(tA, "Top")["y"] + gl_(tA, "Top")["h"]
+                 and next(lb for lb in lbB(tA) if lb.get("copia"))["y"] > gl_(tA, "Top")["y"]))
+    disp_m = sorted((q["x"], q["y"], tuple(q["carte"])) for q in tA.pile)
+    lab_m = [(lb["x"], lb["y"], lb["w"], lb["h"]) for lb in tA.etichette]
+    tA.disponi_modo("misto"); root.update()
+    casi.append(("Mixed rifatto da' la stessa disposizione, gruppi compresi", sorted((q["x"], q["y"], tuple(q["carte"])) for q in tA.pile) == disp_m
+                 and [(lb["x"], lb["y"], lb["w"], lb["h"]) for lb in tA.etichette] == lab_m))
+    tA.disponi_modo("costo"); root.update()
+    tA.annulla(); root.update()
+    casi.append(("Undo dopo un Arrange torna alla disposizione di prima", sorted((q["x"], q["y"], tuple(q["carte"])) for q in tA.pile) == disp_m))
+    # col filtro acceso: niente carte in due pile, e il filtro resta
+    tA.scegli_filtro("instant"); root.update()
+    tA.disponi_modo("misto"); root.update()
+    casi.append(("Mixed col filtro acceso: ogni carta in una pila sola, e il filtro resta acceso", sorted(c for _pl, cc in tA.pile_tutte() for c in cc) == sorted(tA.voci)
+                 and bool(tA._riposte)))
+    tA.scegli_filtro("all"); root.update()
+    # il pulsante e il menu
+    pA = tA.menu_disponi(); root.update()
+    testi_A = [w_.cget("text") for w_ in pA.winfo_children()[0].winfo_children() for w_ in ([w_] + list(w_.winfo_children())) if isinstance(w_, tk.Label)]
+    casi.append(("il pulsante Arrange ▾ apre i quattro modi", tA.b_arrange is not None and all(n_ in testi_A for _m, n_, _r in tA.ARRANGE)))
+    tA.nome_chiudi()
+    tA.salva_tutto(); tA.chiudi()
+    # le negative: By groups senza gruppi e By connections senza connessioni non toccano niente
+    tN = nuovo_t("build:arrange_vuoto")
+    pile_N = [(q["x"], q["y"], list(q["carte"])) for q in tN.pile]
+    casi.append(("negativa: By groups senza gruppi non tocca niente, e lo dice", tN.disponi_modo("gruppi") == 0
+                 and [(q["x"], q["y"], list(q["carte"])) for q in tN.pile] == pile_N and "No groups" in tN.aiuto.cget("text")))
+    tN.salva_tutto(); tN.chiudi()
     # una disposizione col dot del primo giro (padre e da): si riprende con l'ingresso giusto
     vecchia_d = carica_tavoli(ft).get("build:dot2")
     if vecchia_d and vecchia_d.get("punti"):

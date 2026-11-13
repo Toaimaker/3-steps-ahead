@@ -128,7 +128,7 @@ SEZIONI = (
     ("social", "Social column", "On the right of every tab: your profile and the friends you follow, read from their public Untapped profile.",
      [("Avatar", "click: a card art or a file"), ("+", "adds a friend by the link of the Untapped profile"), ("✕", "on a friend: removes it")]),
 )
-BOARD_EXTRA = (("Arrange network", "parents above children, the other cards below by cost"), ("Grid snap", "what you drop lines up on the grid"),
+BOARD_EXTRA = (("Arrange ▾", "four ways, groups always whole: By mana cost, By groups, By connections (parents above children), Mixed (the network with the groups as nodes, everything else stacked below)"), ("Grid snap", "what you drop lines up on the grid"),
                ("Full page", "the Board on the whole screen"), ("Outliner", "on the left: every card with its copies; click, then F"),
                ("Label (≡ next to a selection)", "a named frame: locked it moves with its cards"), ("HUD", "top right: cards and mana curve; its head closes it"))
 
