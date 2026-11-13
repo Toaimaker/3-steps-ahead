@@ -1,6 +1,6 @@
 {
- "version": "0.1.95",
+ "version": "0.1.96",
  "date": "2026-11-13",
- "notes": "Deck HUD on Arena: fixed the lists staying off screen after the new backdrop.",
+ "notes": "Deck HUD on Arena: your list no longer shows the deck name.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

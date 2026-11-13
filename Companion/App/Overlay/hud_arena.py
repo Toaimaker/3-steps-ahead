@@ -176,12 +176,12 @@ def righe(h):
 
 
 def righe_mio(h):
-    """Il pannello del tuo mazzo: il nome, il grimorio, poi ogni carta con le copie rimaste su quelle del mazzo e la P di pescarla alla prossima pescata (le
+    """Il pannello del tuo mazzo: il grimorio (il nome del mazzo no: 13 nov 2026, Autore, «non mostrare il nome del mazzo sull'hud»), poi ogni carta con le copie rimaste su quelle del mazzo e la P di pescarla alla prossima pescata (le
     magie per costo, le terre in fondo; una carta finita resta, spenta), il record del mazzo."""
     if not h or h.get("tipo") in (None, "spento") or h.get("finita") or not h.get("mio"):
         return []
     m = h["mio"]
-    out = [("t", m["nome"], "titolo"), ("t", f"{m['grimorio']} cards in library", "grigio"), ("s", "NEXT DRAW")]
+    out = [("t", f"{m['grimorio']} cards in library", "grigio"), ("s", "NEXT DRAW")]
     terre = False
     for n, _cmc, rim, tot, p, terra in m.get("lista") or []:
         if terra and not terre:
@@ -548,6 +548,7 @@ def prova():
     sx = min(w.cv.coords(i)[0] for i in w.cv.find_withtag("riga") if w.cv.itemcget(i, "text") == "YOUR DECK")
     casi.append(("il tuo mazzo carta per carta: copie rimaste su quelle del mazzo e la P, le terre in fondo", sx < 960 and "4/4" in tt and "Ethereal Armor" in tt
                  and "40%" in tt and "6/6" in tt and "60%" in tt and tt.index("Ethereal Armor") < tt.index("Plains")))
+    casi.append(("negativa: il nome del tuo mazzo non c'e' sull'HUD", w.h and w.h.get("mio") and w.h["mio"]["nome"] not in tt))
     casi.append(("negativa: nome e id dell'avversario mai nel pannello", not any("NomeAvversario" in x or "OPPID" in x for x in tt)))
     ex = w.root.tk.call("wm", "attributes", w.root._w, "-topmost")
     casi.append(("sopra le altre finestre, lascia passare i clic e non prende il fuoco", bool(int(ex)) and (user32 is None or (user32.GetWindowLongW(w.hwnd, -20) & 0x8000020) == 0x8000020)))
