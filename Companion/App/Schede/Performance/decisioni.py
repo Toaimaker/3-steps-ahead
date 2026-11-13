@@ -88,6 +88,85 @@ def per_partita(x):
     return out
 
 
+def per_partita_magie(x):
+    """Le tue magie coi bersagli (e i board wipe) come decisioni (R8, 13 nov 2026): il guadagno e' quanto cambia il vantaggio dallo stato con la magia in
+    pila al momento dopo. [dict(tipo="magia", t, turno, partita, nome, guadagno)]."""
+    d = DA._MANA.get(x.get("partita")) or {}
+    seat = x.get("seat")
+    mom = d.get("momenti") or []
+    if seat not in (1, 2):
+        return []
+    out = []
+    for i, m in enumerate(mom):
+        if m[0] != "spell" or len(m) < 5 or not m[4] or m[4].get("chi") != seat or m[4].get("ab"):
+            continue
+        dopo = next((m2[3] for m2 in mom[i + 1:] if isinstance(m2[3], dict)), None)
+        prima = m[3] if isinstance(m[3], dict) else None
+        nome = DA.nome_grp(m[4].get("g")) if m[4].get("g") not in DA.SENZA_FACCIA else None
+        out.append(dict(tipo="magia", t=m[1], turno=(m[1] + 1) // 2, partita=x.get("partita"), vinta=x.get("vinta"), quando=x.get("quando"), nome=nome or "a spell",
+                        guadagno=DA.vantaggio(dopo, seat) - DA.vantaggio(prima, seat) if prima and dopo else None))
+    return out
+
+
+# R8, il costo delle decisioni (13 nov 2026, come GTO Wizard): il guadagno di ogni tua decisione contro la media delle tue decisioni dello stesso tipo nella
+# stessa fase della partita; rosso sotto COSTO_ROSSO punti di vantaggio, giallo sotto COSTO_GIALLO, verde il resto; senza il dato «not estimable».
+# Il vantaggio e' quello del punto di svolta (vite + 2 × forza): grado C, un indizio, mai una sentenza; il numero vero sta sempre accanto al colore.
+COSTO_ROSSO, COSTO_GIALLO = -5.0, -2.0
+
+
+def colore_costo(v):
+    return "nd" if v is None else "rosso" if v <= COSTO_ROSSO else "giallo" if v <= COSTO_GIALLO else "verde"
+
+
+def costi(r, base_r):
+    """Le decisioni delle partite r (i tuoi attacchi e blocchi, le tue magie coi bersagli) col costo contro la media di base_r (di solito tutte le partite
+    del tipo). -> [dict(..., media, costo, colore)], dalla piu' costosa."""
+    def tutte_d(rr):
+        out = []
+        for x in rr:
+            out += [dd for dd in per_partita(x) if dd["tipo"] in ("attacco", "blocco")] + per_partita_magie(x)
+        return out
+    somme = {}
+    for dd in tutte_d(base_r):
+        if dd["guadagno"] is not None:
+            k = (dd["tipo"], _fascia_turno(dd["turno"]))
+            s_, n_ = somme.get(k, (0.0, 0))
+            somme[k] = (s_ + dd["guadagno"], n_ + 1)
+    out = []
+    for dd in tutte_d(r):
+        s_, n_ = somme.get((dd["tipo"], _fascia_turno(dd["turno"])), (0.0, 0))
+        media = s_ / n_ if n_ else None
+        costo = dd["guadagno"] - media if dd["guadagno"] is not None and media is not None else None
+        out.append(dict(dd, media=media, costo=costo, colore=colore_costo(costo)))
+    out.sort(key=lambda z: (z["costo"] is None, z["costo"] if z["costo"] is not None else 0))
+    return out
+
+
+# R9, «cosa faresti qui?» (13 nov 2026, come chess.com e lichess): le scelte di una decisione e quanto hanno reso nelle tue partite
+OPZIONI = {"attacco": (("tutto", "Attack with everything"), ("parte", "Attack with some"), ("niente", "Don't attack")),
+           "blocco": (("blocca", "Block"), ("lascia", "Don't block"))}
+
+
+def scelta_fatta(dd):
+    """La scelta che hai fatto davvero in una decisione di combattimento."""
+    if dd["tipo"] == "attacco":
+        return "tutto" if dd.get("tutto") else "parte"
+    return "blocca" if dd.get("bloccato") else "lascia"
+
+
+def medie_opzioni(base_r, tipo, fascia):
+    """Quanto ha reso ogni scelta nelle tue partite (base_r), nella stessa fase: {scelta: (guadagno medio, quante)}. «Don't attack» non e' un combattimento:
+    nel log non c'e', quindi non ha media."""
+    acc = {}
+    for x in base_r:
+        for dd in per_partita(x):
+            if dd["tipo"] != tipo or dd["guadagno"] is None or _fascia_turno(dd["turno"]) != fascia:
+                continue
+            s_, n_ = acc.get(scelta_fatta(dd), (0.0, 0))
+            acc[scelta_fatta(dd)] = (s_ + dd["guadagno"], n_ + 1)
+    return {k: (s_ / n_, n_) for k, (s_, n_) in acc.items() if n_}
+
+
 def tutte(r):
     """Le decisioni delle partite r, in ordine di tempo."""
     out = []
@@ -255,6 +334,44 @@ def settimane(r, quante=8):
     return out
 
 
+def prova_opzioni():
+    casi = []
+    casi.append(("R9: la scelta fatta", scelta_fatta(dict(tipo="attacco", tutto=True)) == "tutto" and scelta_fatta(dict(tipo="attacco", tutto=False)) == "parte"
+                 and scelta_fatta(dict(tipo="blocco", bloccato=False)) == "lascia"))
+    vero = per_partita
+    try:
+        dd = {"a": [dict(tipo="attacco", turno=2, guadagno=4.0, tutto=True)], "b": [dict(tipo="attacco", turno=3, guadagno=-2.0, tutto=False)],
+              "c": [dict(tipo="attacco", turno=3, guadagno=2.0, tutto=True)], "d": [dict(tipo="attacco", turno=9, guadagno=9.0, tutto=True)]}
+        globals()["per_partita"] = lambda x: dd[x["partita"]]
+        m = medie_opzioni([dict(partita=k) for k in dd], "attacco", "Turns 1-3")
+        casi.append(("R9: le medie delle scelte nella stessa fase (con tutto 3 su 2, con una parte -2 su 1); negativa: il turno 9 non entra, «Don't attack» non ha media",
+                     m == {"tutto": (3.0, 2), "parte": (-2.0, 1)}))
+    finally:
+        globals()["per_partita"] = vero
+    return casi
+
+
+def prova_costi():
+    """R8: il costo contro la media dello stesso tipo e fase; i colori; senza il dato «nd»."""
+    casi = []
+    casi.append(("i colori: -6 rosso, -3 giallo, 0 verde, None non stimabile", [colore_costo(v) for v in (-6, -3, 0, None)] == ["rosso", "giallo", "verde", "nd"]))
+    vero = (per_partita, per_partita_magie)
+    try:
+        dd = {"a": [dict(tipo="attacco", turno=2, guadagno=4.0)], "b": [dict(tipo="attacco", turno=3, guadagno=-4.0)],
+              "c": [dict(tipo="attacco", turno=8, guadagno=-10.0)]}
+        globals()["per_partita"] = lambda x: [dict(z, partita=x["partita"], t=2 * z["turno"]) for z in dd[x["partita"]]]
+        globals()["per_partita_magie"] = lambda x: []
+        tutte_ = [dict(partita=k) for k in dd]
+        cc = costi(tutte_, tutte_)
+        b_ = next(z for z in cc if z["partita"] == "b")
+        casi.append(("il costo: -4 contro la media dei primi turni (0) = -4, giallo; il turno 8 ha la sua media (nessun confronto coi primi turni)",
+                     abs(b_["costo"] + 4) < 1e-9 and b_["colore"] == "giallo" and next(z for z in cc if z["partita"] == "c")["costo"] == 0))
+        casi.append(("in ordine dalla piu' costosa", cc[0]["partita"] == "b"))
+    finally:
+        globals()["per_partita"], globals()["per_partita_magie"] = vero
+    return casi
+
+
 def prova():
     casi = []
     q = datetime.datetime(2026, 11, 10)
@@ -311,6 +428,8 @@ def prova():
     casi.append(("settimana per settimana: due settimane, la seconda col mulligan al 50% e una rischiosa su una tenuta", len(st) == 2 and st[1]["mull"] == 50.0
                  and st[1]["rischiose"] == 100.0 and st[0]["rischiose"] == 50.0 and st[1]["wr_mull"] == 100.0))
     casi.append(("negativa: una mano a 2-4 terre non e' rischiosa", not _rischiosa(2) and not _rischiosa(4) and _rischiosa(1) and _rischiosa(5)))
+    casi += prova_costi()
+    casi += prova_opzioni()
     for n, ok in casi:
         print(("ok    " if ok else "ROSSO ") + n)
     print(f"{sum(1 for _n, ok in casi if ok)}/{len(casi)}")

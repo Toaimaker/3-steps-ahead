@@ -193,6 +193,55 @@ def python_grafico():
     return sys.executable
 
 
+def sopra_di(finestra, padre):
+    """Tiene una finestrella senza bordo (overrideredirect) sempre sopra la finestra da cui nasce (13 nov 2026, Autore: «debugga tutte le finestre dei mazzi
+    ed editor perche' una volta aperte non si chiudono e non chiedono il messaggio di salva non salvare annulla»). Su Windows Tk non applica «wm transient»
+    alle finestre senza bordo: la domanda Save / Don't save / Cancel nasceva senza proprietaria, un clic sulla finestra dietro la copriva, e lei, che tiene
+    il mouse (grab), lasciava tutte le finestre dell'app senza risposta, X compresa. Qui la proprietaria e' la finestra di primo livello di padre
+    (GWLP_HWNDPARENT): Windows la tiene sopra di lei e la porta in cima con lei. Su Mac e Linux basta lift. -> True se fatto."""
+    try:
+        finestra.update_idletasks()
+        if not WINDOWS:
+            finestra.lift()
+            return True
+        import ctypes
+        from ctypes import wintypes
+        u = ctypes.WinDLL("user32", use_last_error=True)        # una copia sua: pyglet cambia gli argtypes di ctypes.windll.user32
+        u.GetAncestor.restype = wintypes.HWND
+        u.GetAncestor.argtypes = [wintypes.HWND, ctypes.c_uint]
+        u.SetWindowLongPtrW.restype = ctypes.c_ssize_t
+        u.SetWindowLongPtrW.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_ssize_t]
+        u.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_uint]
+        radice = lambda w: u.GetAncestor(wintypes.HWND(int(w.winfo_id())), 2)       # GA_ROOT: la finestra vera di Windows, non quella interna di Tk
+        h, p = radice(finestra), radice(padre.winfo_toplevel())
+        if not h or not p or h == p:
+            return False
+        u.SetWindowLongPtrW(h, -8, p)       # GWLP_HWNDPARENT: la proprietaria
+        u.SetWindowPos(h, wintypes.HWND(0), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0040)       # HWND_TOP; SWP_NOSIZE | SWP_NOMOVE | SWP_SHOWWINDOW
+        finestra.lift()
+        return True
+    except Exception:       # noqa: BLE001 - senza proprietaria la finestrella resta come prima
+        return False
+
+
+def proprietaria(finestra):
+    """Per le prove: (la finestra vera di Windows di finestra, quella della sua proprietaria, quella di primo livello di finestra.master). None fuori da
+    Windows. Una domanda sopra la sua finestra ha la proprietaria uguale alla finestra di primo livello da cui nasce."""
+    if not WINDOWS:
+        return None
+    import ctypes
+    from ctypes import wintypes
+    u = ctypes.WinDLL("user32", use_last_error=True)
+    u.GetAncestor.restype = wintypes.HWND
+    u.GetAncestor.argtypes = [wintypes.HWND, ctypes.c_uint]
+    u.GetWindow.restype = wintypes.HWND
+    u.GetWindow.argtypes = [wintypes.HWND, ctypes.c_uint]
+    finestra.update_idletasks()
+    radice = lambda w: u.GetAncestor(wintypes.HWND(int(w.winfo_id())), 2)
+    h = radice(finestra)
+    return h, u.GetWindow(h, 4), radice(finestra.master.winfo_toplevel())       # GW_OWNER
+
+
 def apri(percorso):
     """Un file, una cartella o un link col programma del sistema."""
     if WINDOWS:

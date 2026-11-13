@@ -36,7 +36,7 @@ from pagina_base import prepara_capsule
 from pagina_collezione import PaginaCollezione
 from pagina_standard import PaginaStandard
 from tema import CI as C, barra_scura
-from widget import ARANCIO, Tendina, pronta_poi, pulsante_solido, svuota
+from widget import ARANCIO, VERDE_P, Tendina, pronta_poi, pulsante_solido, svuota
 
 DOVE = ("Deck", "Sideboard", "Commander")
 LARGA, ALTA = 1180, 900
@@ -104,7 +104,7 @@ class Costruttore:
         e = tk.Entry(cap, textvariable=self.v_nome, bg=C["cap"], fg=C["titolo"], insertbackground=C["titolo"], relief="flat", font=F(14, True),
                      highlightthickness=1, highlightbackground=C["cap"], highlightcolor=C["accento"])
         e.pack(side="left", fill="x", expand=True, ipady=2); self.v_nome.trace_add("write", lambda *a: self.nome_cambiato())
-        self.b_salva = pulsante_solido(tk, F, cap, "Save", False, self.salva, alto=30, bg=C["cap"], colori=ARANCIO)       # Save, a destra di tutto (12 nov 2026)
+        self.b_salva = pulsante_solido(tk, F, cap, "Save", False, self.salva, alto=30, bg=C["cap"], colori=VERDE_P)       # Save, a destra di tutto (12 nov 2026), verde (13 nov 2026: «save ovunque sull'app sempre verde»)
         self.b_salva.configure(width=100); self.b_salva.pack(side="right", padx=(8, 12), pady=(14, 0))
         self.t_dove = Tendina(tk, cap, "Add to", F, larga=120, bg=C["cap"]); self.t_dove.fr.pack(side="right", padx=(8, 4), pady=(4, 6))
         self.t_dove.opzioni(DOVE, lambda o: None); self.t_dove.set("Deck")
@@ -692,8 +692,9 @@ class Costruttore:
         if chiedi and self.da_salvare():
             from widget import conferma
             self.w.lift()
-            self.domanda = conferma(self.tk, self.F, self.w, "Save the changes?", f"«{self.v_nome.get() or 'New build'}» has changes you did not save.", "Save",
-                                    lambda: (self.salva(), self.chiudi(chiedi=False, poi=poi)), colori=ARANCIO,
+            t = self.tavolo_aperto()       # col Board aperto (copre il builder, stessa misura) la domanda nasce sul Board, se no finirebbe sotto di lui
+            self.domanda = conferma(self.tk, self.F, t.fin if t is not None else self.w, "Save the changes?", f"«{self.v_nome.get() or 'New build'}» has changes you did not save.", "Save",
+                                    lambda: (self.salva(), self.chiudi(chiedi=False, poi=poi)), colori=VERDE_P,
                                     altro=("Don't save", lambda: self.chiudi(chiedi=False, poi=poi)))
             return False
         t = self.tavolo_aperto()

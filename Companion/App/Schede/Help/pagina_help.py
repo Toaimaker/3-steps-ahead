@@ -71,6 +71,11 @@ SEZIONI = (
                    "≤ before it: at most that, ≥ after it: at least that; 10 games at least. So the number on top is the one you typed"),
       ("By deck", "pick one of your decks (one box each, with its colors; sorted by most played, win rate or name), against everyone or against one exact color variant of the opponent's deck (vs colors: flag the colors, mono-color to "
                   "five colors or colorless); the table is your deck against every variant you met, click a row to pick it"),
+      ("More filters", "your deck's lands and removal (per 60 cards), removal in your opening hand and your first removal cast, an opening hand "
+                       "missing one of your deck's colors and a color still missing on your battlefield at your turn 3, cards left in your hand and in "
+                       "theirs at the end of your turns 3, 5 and 7 (Advanced filters); the game before (after a win, after a loss, first of the session) "
+                       "and the losses in a row before it (When › + more); in Cards the row DRAWN VS NOT DRAWN, your win rate when a card came to your hand "
+                       "minus when it stayed in the deck; on the numbers bar your longest losing streak"),
       ("Advanced filters", "the button under the smart filters opens your question: every filter you turn on is a piece with its x, the answer (win rate, "
                            "games, record, interval, against all your games) right below, and the whole page follows it. Two tabs, You and Opponent, each with "
                            "its phases: opening hand (your deck's colors, creatures, instants, sorceries, artifacts, enchantments, planeswalkers, battles; the "
@@ -87,7 +92,13 @@ SEZIONI = (
                                   "the timeline and the speed (keys: space, arrows, Home, End, T); each player's graveyard and exile (click to see them all), the cards that just arrived marked "
                                   "NEW, power and toughness, what happened in that moment, the chart of the game (life and power) and the turning point (★); on the left your deck card "
                                   "by card with the copies left in your library and the chance to draw each next, on the right the opponent's cards seen up to "
-                                  "that moment (not their whole deck) with Copy as list; ◂ and ▸ close each list towards its side, and «⧉ Detach» moves what happened to its own "
+                                  "that moment (not their whole deck) with Copy as list; diamonds over the timeline and «Key ›» (key K) for the key moments, where "
+                                  "the advantage swings most (blue to you, orange to the opponent; «Keys» picks yours, theirs or both); red marks under the timeline and «Leak ›» (key L) for the leaks a coach looks for "
+                                  "(a missed land drop with a land in hand, unused mana with a castable creature in hand, a creature cast before "
+                                  "your attack, a chump block at high life, an unfavourable trade, an instant on their turn while they were tapped out on "
+                                  "yours, a concession with outs, lands tapped the wrong way: clues, not verdicts, also as filters in Advanced filters › "
+                                  "You › Game); the tab on each list's inner edge (◀ ▶, as in the Board's outliner) closes it towards its side, «Note» writes a note on the game (and "
+                                  "on the spot, if bookmarked: the note shows in My filters too), and the header says your record that day before the game, and «⧉ Detach» moves what happened to its own "
                                   "window so the table gets the room; the bar on the "
                                   "right scrolls the games, the mark on top opens them in their own window; click a column title to sort by it (again to "
                                   "reverse); the opponent's colors are mana symbols"),
@@ -118,6 +129,12 @@ SEZIONI = (
                "gave (the deck minus your first 7), in total with a z test and game by game: screw and flood are the 5% tails, fewer and more the 25% "
                "tails, each next to what chance would give; click one to keep only those games. Below, your first 7 cards against one random hand "
                "and against Arena's Bo1 smoothing (best of 2). The same five levels are filters (Opening and first turns › + more, and Advanced filters)"),
+      ("Decisions › Costliest", "the decisions that cost you most: your attacks, blocks and spells with targets, each with the gain of advantage (life + "
+                                 "2 × power) to the next moment and how far it is from the average of your decisions of the same kind in the same part of the "
+                                 "game (red 5+ points worse, yellow 2+, green the rest; not estimable without the data); click a row to open the replayer on that "
+                                 "moment, where the story says YOUR DECISION with the same numbers; «What would you do?» shows the red ones one at a time, you choose (attack with "
+                                 "everything, with some, don't attack; block or not), then you see what you did and what each choice gained on average in your "
+                                 "games. A clue, not a verdict"),
       ("Decisions", "every combat as a decision with its outcome, by situation: your attacks (into untapped lands, with everything or holding back, "
                     "blocked or not, by turn) and your defense; for each, how often you lost a creature, how often they did, the trade, the damage, "
                     "their spell before damage and the game win rate; click a row to see its games as a line on the Chart against All, click a column title to sort by it. Mulligans: the "
@@ -168,8 +185,15 @@ SEZIONI = (
       ("Version (bottom right, every tab)", "orange \"Download version X\" when a new version is out: click opens the download; green \"Up to date · latest "
                                             "version X\" when you have it; click to check again")]),
 )
-BOARD_EXTRA = (("Arrange ▾", "four ways, groups always whole: By mana cost, By groups, By connections (parents above children), Mixed (the network with the groups as nodes, everything else stacked below)"), ("Grid snap", "what you drop lines up on the grid"),
-               ("Full page", "the Board on the whole screen"), ("Outliner", "on the left: every card with its copies; click, then F"),
+BOARD_EXTRA = (("Arrange ▾", "next to Add card, groups always whole · CARDS: by mana cost, type, color or rarity, lands last · GROUPS: one under the other · "
+                              "CONNECTIONS: Network (parents left, children right, a free lane between columns so every arrow shows) and Network with groups"),
+               ("Groups ▾", "next to Arrange · NEW: group the selection or the visible cards · FROM YOUR GAMES: best performers, hard to cast, weak in losses · "
+                            "YOUR GROUPS: click one to find it, ≡ for name, color, lock, note, duplicate, swap, delete · TIDY: lock or unlock all, remove the "
+                            "empty groups, remove all groups (the cards stay)"),
+               ("Grid snap", "what you drop lines up on the grid"),
+               ("Full page", "the Board on the whole screen"), ("Outliner", "on the left: every card with its copies; click, then F · the eye shows or hides a card or a group like "
+                                                                                  "layers: a hidden group hides its cards, Alt+click shows only that one (again to undo), drag over the eyes for many, SHOW ALL turns everything back on"),
+               ("Mini-menus", "every menu of the board in one style: sections, rows that light up, Save always green"),
                ("Label (≡ next to a selection)", "a named frame: locked it moves with its cards"), ("HUD", "top right: cards and mana curve; its head closes it"))
 
 

@@ -28,6 +28,7 @@ SITUAZIONI = account.lega(globals(), "SITUAZIONI", "performance_situazioni.json"
 SEGNALIBRI = account.lega(globals(), "SEGNALIBRI", "performance_segnalibri.json")     # gli spot segnati nel replayer (12 nov 2026)
 CARTE_SCELTE = account.lega(globals(), "CARTE_SCELTE", "performance_cards.json")      # le righe di Cards che vuoi vedere (13 nov 2026)
 NUMERI_SCELTI = account.lega(globals(), "NUMERI_SCELTI", "performance_numeri.json")    # i sei numeri in cima a Performance (13 nov 2026)
+NOTE = account.lega(globals(), "NOTE", "performance_note.json")      # R3: le note sulle partite (13 nov 2026)
 SESSIONE_ORE = 1.0          # un'ora senza partite chiude la sessione
 RANGHI = ("Bronze", "Silver", "Gold", "Platinum", "Diamond", "Mythic")
 FASCE = (("Night (0-6)", 0, 6), ("Morning (6-12)", 6, 12), ("Afternoon (12-18)", 12, 18), ("Evening (18-24)", 18, 24))
@@ -664,7 +665,11 @@ def riga(p, r):
                     if cosa == "magia" and s_ == p.get("seat") and (nm := nome_intero(nome_grp(g_) or "")) and g_ not in SENZA_FACCIA})
     # le mani rimandate indietro al mulligan: le terre di ognuna (13 nov 2026, l'analisi dei mulligan di decisioni.py)
     scartate = [sum(q for n, q in (condividi.nomi(m) or {}).items() if e_terra(n)) for m in mani[:-1]]
-    return dict(r, seat=p.get("seat"), mazzo_id=p.get("mazzo"), mie_lanciate=mie_l, scartate=scartate, fortuna=fortuna(p, r, lista), deck=lista, **carte_partita(r, p.get("seat"), tenuta), economiche=econ, crea_mano=crea, crea_in_mano=creature_in_mano(tenuta),
+    import variabili_c as VC
+    c_ = VC.campi(p, r, lista, tenuta)
+    import leak as LK
+    leak_ = LK.per_partita(dict(r, seat=p.get("seat"), fine=come_finita(p.get("motivo"), r["vinta"]), quando=quando))
+    return dict(r, **c_, seat=p.get("seat"), mazzo_id=p.get("mazzo"), mie_lanciate=mie_l, scartate=scartate, fortuna=fortuna(p, r, lista), deck=lista, leak=leak_, **carte_partita(r, p.get("seat"), tenuta), economiche=econ, crea_mano=crea, crea_in_mano=creature_in_mano(tenuta),
                 suo_mull=suo_mulligan(r.get("partita"), p.get("seat")), crea_prima=prima_creatura(r.get("partita"), p.get("seat"), r.get("inizia")),
                 ist_mano=magie_in_mano(tenuta, "Instant"), str_mano=magie_in_mano(tenuta, "Sorcery"),
                 art_mano=magie_in_mano(tenuta, "Artifact"), inc_mano=magie_in_mano(tenuta, "Enchantment"), pw_mano=magie_in_mano(tenuta, "Planeswalker"),
@@ -855,6 +860,8 @@ def righe(partite=None):
         if r:
             out.append(riga(p, r))
     sessioni(out)
+    import variabili_c as VC
+    VC.serie(out)       # C6: la partita prima e le sconfitte di fila
     out.sort(key=lambda x: x["quando"])
     _CACHE.update(firma=firma, righe=out)
     return out
@@ -955,6 +962,15 @@ EXTRA += [(f"t_pe{chi}", f"{tu} · extra draws in one turn (turns 1-{TURNI_FILTR
 # i filtri situazionali dai replay (13 nov 2026, situazioni_replay) e la prima creatura dell'avversario
 EXTRA += [("s_" + k_, nome_, (lambda x, k=k_: (x.get("situa") or {}).get(k))) for k_, (nome_, _o) in SITUA_NOMI.items()]
 EXTRA += [("senza_lui", "Opponent · no creature cast by", lambda x: (valori_di("senza_lui", x) or [None])[0])]
+# i leak (13 nov 2026, leak.py, voci L1, L4, L7 del censimento): Yes o No per partita; indizi di grado C
+EXTRA += [(f"leak_{k_}", f"Leak · {n_}", (lambda x, k_=k_: (None if x.get("leak") is None else ("Yes" if x["leak"].get(k_) else "No"))))
+          for k_, n_ in (("l1", "missed a land drop with a land in hand"), ("l2", "unused mana with a castable creature in hand"),
+                         ("l3", "creature cast before your attack"), ("l4", "chump block at high life"), ("l5", "unfavourable trade"),
+                         ("l6", "instant on their turn while they were tapped out on yours"), ("l7", "conceded with outs"),
+                         ("l8", "lands tapped the wrong way"))]
+# C2, C3, C6, C7, C9 (13 nov 2026, variabili_c.py)
+import variabili_c as _VC  # noqa: E402
+EXTRA += [(k_, n_, (lambda x, k_=k_: x.get(k_))) for k_, n_ in _VC.NOMI.items()]
 # C1 (13 nov 2026): le terre pescate contro il caso, entro il tuo turno 3, 5, 7
 EXTRA += [(f"luck{N}", f"Lands drawn by your turn {N} · vs chance", (lambda x, N=N: (((x.get("fortuna") or {}).get("turni") or {}).get(N) or {}).get("classe")))
           for N in TURNI_FORTUNA]
@@ -978,7 +994,8 @@ ORDINE_VALORI.update(esito=("Won", "Lost"), miei_colori=VARIANTI, economiche=("0
                                              ("m", "", ORDINE_APERTE), ("p", "", ORDINE_PESCATE), ("p", "x", ORDINE_PESCATE_X))},
                      t_peio=ORDINE_EXTRA, t_pelui=ORDINE_EXTRA,
                      **{"s_" + k_: ORDINE_SITUA[o_] for k_, (_n, o_) in SITUA_NOMI.items()},
-                     senza_lui=tuple(f"Their turn {n}" for n in SENZA) + ("The whole game",), **{f"luck{N}": FORTUNA for N in TURNI_FORTUNA})
+                     senza_lui=tuple(f"Their turn {n}" for n in SENZA) + ("The whole game",), **{f"luck{N}": FORTUNA for N in TURNI_FORTUNA},
+                     **{f"leak_l{i}": ("Yes", "No") for i in range(1, 9)}, **_VC.ORDINE)
 
 
 def per_varianti(r):
@@ -1013,6 +1030,8 @@ def valori_di(k, x):
         return x.get("sue_viste") or []
     if k == "lanciate":         # le tue magie lanciate (la cartella Cards, 13 nov 2026)
         return x.get("mie_lanciate") or []
+    if k == "iwd":              # la riga IWD di Cards (C4): una carta pescata o tenuta, come «in_mano»
+        return x.get("in_mano") or []
     if k in ("in_mano", "sue_lanciate", "bloccate", "lanc_t4", "finisher") or re.fullmatch(r"pesc\d", k):      # le altre righe della cartella Cards
         return x.get(k) or []
     if k == "data":
@@ -1184,8 +1203,10 @@ RIGHE_CARTE = [("in_mano", "MOST FOUND IN YOUR HAND · opening hand and draws"),
                ("pesc3", "YOUR TURN 3 · drawn on it"), ("pesc4", "YOUR TURN 4 · drawn on it"),
                ("lanciate", "YOUR MOST CAST SPELLS"), ("lanc_t4", "CAST BY YOUR TURN 4 · Pairs: what you played together early"),
                ("finisher", "FINISHERS · the decisive play of your wins: the biggest swing after which you stayed ahead, 2+ cards"), ("sue_lanciate", "THE MATCHUPS · the opponent's most played cards"),
-               ("bloccate", "HARDER TO CAST · in your hand and never cast")]
-CAMPO_CARTE = {"lanciate": "mie_lanciate"}       # la chiave del filtro -> il campo della riga (le altre si chiamano uguali)
+               ("bloccate", "HARDER TO CAST · in your hand and never cast"),
+               ("iwd", "DRAWN VS NOT DRAWN · IWD: your win rate when the card came to your hand minus when it stayed in the deck (grey under 15 games)")]
+CAMPO_CARTE = {"lanciate": "mie_lanciate", "iwd": "in_mano"}
+NOME["iwd"] = "Card drawn (IWD)"       # la chiave del filtro -> il campo della riga (le altre si chiamano uguali)
 
 
 def riga_carte(r, chiave, quante=40, minimo=5):
@@ -1194,6 +1215,9 @@ def riga_carte(r, chiave, quante=40, minimo=5):
     -> [dict(nome, n, vinte, perse, wr, quota[, mano, bloccata])]."""
     if chiave == "finisher":
         return finisher_coppie(r, quante)
+    if chiave == "iwd":     # C4 (variabili_c.iwd)
+        import variabili_c as VC
+        return VC.iwd(r, quante)
     campo = CAMPO_CARTE.get(chiave, chiave)
     conta, vinte = collections.Counter(), collections.Counter()
     for x in r:
@@ -1493,7 +1517,7 @@ COPPIE = ("mio", "suo", "colori", "vs", "partenza", "mull", "terre", "lunga", "r
 FDR = 0.05          # gli spot «strong»: i falsi positivi attesi fra loro (Benjamini-Hochberg)
 # le variabili che sono il risultato, non una situazione: negli Spots spiegherebbero da sole il win rate (13 nov 2026, le simulazioni: in testa «Opponent
 # conceded» al 100% e «la tua vita piu' bassa: 0 o meno» allo 0%). Restano filtri; Result non c'era gia'
-FUORI_SPOT = {"fine", "s_vita_io", "s_vita_lui"}
+FUORI_SPOT = {"fine", "s_vita_io", "s_vita_lui", "leak_l7"}      # leak_l7 e' sempre una sconfitta (una concessione): spiegherebbe il risultato
 
 
 def spot(r, minimo=15, quanti=8, coppie=True, gia=None):
@@ -1671,6 +1695,47 @@ def segna(x, modo, i, passo, t_):
                          suo=x.get("suo"), vinta=bool(x.get("vinta")), modo=modo, i=i, passo=passo, t=t_))
     _scrivi_in(SEGNALIBRI, d[:200])
     return not gia
+
+
+def note():
+    try:
+        with open(NOTE, encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def nota_partita(partita):
+    """R3: la nota scritta su una partita ("" se non c'e')."""
+    return note().get(partita or "", "")
+
+
+def salva_nota_partita(partita, testo):
+    d = note()
+    testo = (testo or "").strip()
+    if testo:
+        d[partita] = testo
+    else:
+        d.pop(partita, None)
+    _scrivi_in(NOTE, d)
+    return testo
+
+
+def nota_segnalibro(partita, modo, i, testo=None):
+    """R3: la nota di uno spot segnato (testo None la legge, "" la toglie). None se lo spot non e' segnato."""
+    d = segnalibri()
+    s_ = next((s for s in d if s.get("partita") == partita and s.get("modo") == modo and s.get("i") == i), None)
+    if s_ is None:
+        return None
+    if testo is None:
+        return s_.get("nota", "")
+    if testo.strip():
+        s_["nota"] = testo.strip()
+    else:
+        s_.pop("nota", None)
+    _scrivi_in(SEGNALIBRI, d)
+    return s_.get("nota", "")
 
 
 def togli_segnalibro(k):

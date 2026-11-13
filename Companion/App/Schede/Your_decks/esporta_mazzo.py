@@ -4,7 +4,7 @@ import re
 import prezzi_carte as PZ
 
 from tema import CI as C
-from widget import ARANCIO, pulsante_solido
+from widget import ARANCIO, VERDE_P, pulsante_solido
 
 
 def lista_arena(main, side=None, comandante=None, compagno=None):
@@ -94,7 +94,8 @@ class EsportaMazzo:
                 ("Save file for Arena", salva, "arena"), ("Save file for MTGO", salva, "mtgo"))
         for i, (t, f_, chi) in enumerate(voci):
             casa = {}
-            b = casa["b"] = pulsante_solido(tk, F, g, t, False, lambda casa=casa, f_=f_, chi=chi, t=t: f_(casa["b"], chi, t), alto=28, bg=C["scheda"])
+            b = casa["b"] = pulsante_solido(tk, F, g, t, False, lambda casa=casa, f_=f_, chi=chi, t=t: f_(casa["b"], chi, t), alto=28, bg=C["scheda"],
+                                                 colori=VERDE_P if t.startswith("Save") else None)      # Save sempre verde (13 nov 2026)
             b.grid(row=i // 2, column=i % 2, sticky="ew", padx=(0, 6 if i % 2 == 0 else 0), pady=(0, 6))
         if azioni:      # le altre azioni del mazzo, sotto l'esportazione
             self.riga_azioni(padre, azioni)

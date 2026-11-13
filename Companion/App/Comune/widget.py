@@ -401,6 +401,9 @@ def a_riposo(w, f, ms=100):
 
 
 ROSSO_P = ("#b8433f", "#d9534f", "#8e322f")     # normale, sotto il mouse, premuto: le azioni che tolgono qualcosa (Delete; 12 nov 2026)
+# Save sempre verde, in tutta l'app (13 nov 2026, Autore: «save ovunque sull'app sempre verde»): il builder, il Board, la domanda «Save the changes?», Save as
+# my filter, Save file, le note e i gruppi. Il verde e' piu' scuro del verde dei dati (#5cb85c) perche' il testo bianco si legga: 4,5 sul normale
+VERDE_P = ("#2b8541", "#35a04f", "#216632")      # normale, sotto il mouse, premuto
 
 
 def conferma(tk, F, padre, titolo, testo, si, fa, colori=ROSSO_P, altro=None):
@@ -457,6 +460,8 @@ def conferma(tk, F, padre, titolo, testo, si, fa, colori=ROSSO_P, altro=None):
     x = radice.winfo_rootx() + (radice.winfo_width() - f.winfo_reqwidth()) // 2
     y = radice.winfo_rooty() + (radice.winfo_height() - f.winfo_reqheight()) // 3
     f.geometry(f"+{x}+{y}")
+    import piattaforma
+    piattaforma.sopra_di(f, radice)     # sempre sopra la sua finestra: senza, un clic dietro la copriva e lei, col grab, lasciava l'app ferma (13 nov 2026)
     try:
         f.grab_set()
     except tk.TclError:       # un'altra finestra tiene gia' il mouse: la domanda resta lo stesso

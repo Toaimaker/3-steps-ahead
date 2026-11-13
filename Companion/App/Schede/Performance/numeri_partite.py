@@ -23,6 +23,7 @@ CATALOGO = (("wr", "Win rate", "with its 95% interval"),
             ("mull", "Mulligan rate · % of games", "games where you sent at least one hand back"),
             ("play", "Win rate on the play", "win rate when you start"),
             ("quota_play", "On the play · % of games", "how often you start, against the 50% of a coin flip (C11)"),
+            ("serie", "Longest losing streak · games", "the most losses in a row in these games, and the most wins (C6)"),
             ("draw", "Win rate on the draw", "win rate when the opponent starts"),
             ("wr_mull", "Win rate after a mulligan", "win rate of the games with a mulligan"),
             ("wr_sette", "Win rate keeping 7", "win rate of the games where you kept seven"),
@@ -67,6 +68,9 @@ def valori(r, tutte):
                              f"{k['n_play']} of {n_pd} games · p {p_:.2f} vs 50%" + ("" if p_ >= 0.05 else ": not a coin flip"))
     else:
         out["quota_play"] = ("-", "vuoto", "")
+    import variabili_c as VC
+    vv_, pp_ = VC.serie_piu_lunghe(r) if r else (0, 0)
+    out["serie"] = (str(pp_) if r else "-", "neutro" if r else "vuoto", f"longest winning streak {vv_}" if r else "")
     mm = [x for x in r if (x.get("mulligan") or 0) > 0]
     out["wr_mull"] = (pc(_wr(mm)), tono_wr(_wr(mm)), f"in {len(mm)} games")
     sette = [x for x in r if not (x.get("mulligan") or 0)]

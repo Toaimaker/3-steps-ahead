@@ -24,7 +24,7 @@ import re  # noqa: E402
 
 from ambiente import LOGDIR  # noqa: E402
 
-VERSIONE = 13       # 2: le foto della partita; 3: cimitero, esilio, forza e costituzione; 4: i momenti del combattimento e delle magie coi bersagli;
+VERSIONE = 14       # 14 (13 nov 2026, i leak L3 e L6): «fasi», la fase di ogni tua e sua magia lanciata ([turno, posto, grpId, fase di Arena]); 2: le foto della partita; 3: cimitero, esilio, forza e costituzione; 4: i momenti del combattimento e delle magie coi bersagli;
 #                    5: ogni istantaneo e stregoneria in pila (anche senza bersagli) e i permanenti che ha tolto dal campo (i board wipe);
 #                    6: per le partite lette dagli archivi, dove stanno («dove»: archivio, byte di inizio e di fine), per il replay azione per azione;
 #                    7: debug del 12 nov 2026: le cancellazioni, chi e' in campo dalle zone, le vite a 0, l'annullamento, emblemi e inneschi, i riassunti;
@@ -109,7 +109,7 @@ def leggi(righe):
     obj, zone, ti = {}, {}, {}
     zown, zids, vite = {}, {}, {}
     # ogni cosa annotata porta lo stato del gioco in cui e' nata, cosi' un annullamento la toglie: [(stato, elemento)]
-    st = dict(attacchi=[], fine=[], foto=[], momenti=[], mano0=None, pend=None, azioni=[])
+    st = dict(attacchi=[], fine=[], foto=[], momenti=[], mano0=None, pend=None, azioni=[], fasi=[])
     riassunti = 0
     visti_ts = {}               # {id dell'annotazione TargetSpec: stato}
     # i momenti in ordine (12 nov 2026, Autore: «una freccia che definisce quali carte interagiscono con quali altre, per vedere come si e' bloccato in
@@ -170,7 +170,7 @@ def leggi(righe):
 
     def annulla(fino):
         """L'annullamento di Arena: via quello che e' nato da questo stato in poi (lo stato Full che segue lo rimanda)."""
-        for k in ("attacchi", "fine", "foto", "momenti", "azioni"):
+        for k in ("attacchi", "fine", "foto", "momenti", "azioni", "fasi"):
             st[k] = [x for x in st[k] if x[0] < fino]
         for dd in (mom_di, in_pila):
             for k in [k for k, v in dd.items() if v[0] >= fino]:
@@ -262,6 +262,8 @@ def leggi(righe):
                     if o and o.get("controllerSeatId") in (1, 2):
                         st["azioni"].append((sid, [t, o["controllerSeatId"], "terra" if cat == "PlayLand" else "magia", grp_vero(o, obj) or 0,
                                                 "".join(TIPI_LETTERA[k] for k in o.get("cardTypes") or [] if k in TIPI_LETTERA)]))
+                        if cat == "CastSpell":      # la fase in cui e' stata lanciata (VERSIONE 14): prima o dopo il combattimento, nel turno di chi
+                            st["fasi"].append((sid, [t, o["controllerSeatId"], grp_vero(o, obj) or 0, ti.get("phase") or ti.get("step") or ""]))
             attaccanti = [o for o in sul if o.get("attackState") in ("AttackState_Declared", "AttackState_Attacking")]
             if t not in {a[1][0] for a in st["attacchi"]} and any(o.get("controllerSeatId") == att for o in attaccanti):
                 difende = 2 if att == 1 else 1
@@ -338,7 +340,7 @@ def leggi(righe):
         m_[4]["fatti"] = sorted(x for x in fatti_da.get(i, ()) if x in prima_)
     ultima = [ti.get("turnNumber"), ti.get("activePlayer"), foto()] if ti.get("turnNumber") else None
     via = lambda lst: [x[1] for x in lst]
-    return dict(azioni=via(st["azioni"]), attacchi=via(st["attacchi"]), fine=via(st["fine"]), mano0=st["mano0"][1] if st["mano0"] else None, foto=via(st["foto"]), ultima=ultima,
+    return dict(azioni=via(st["azioni"]), fasi=via(st["fasi"]), attacchi=via(st["attacchi"]), fine=via(st["fine"]), mano0=st["mano0"][1] if st["mano0"] else None, foto=via(st["foto"]), ultima=ultima,
                 momenti=via(st["momenti"]), riassunti=riassunti)
 
 
@@ -630,6 +632,8 @@ def prova():
           gs(gameStateId=12, type="GameStateType_Diff", zones=[pl(4)], gameObjects=[ist(4, 300)], annotations=[zt(4, "CastSpell")])]
     mu = [m_[4]["g"] for m_ in leggi(fu)["momenti"] if m_[0] == "spell"]
     casi.append(("l'annullamento: via la magia annullata, il momento della magia vera c'e' (anche con lo stesso id)", mu == [300]))
+    casi.append(("le fasi delle magie (VERSIONE 14): la magia lanciata in Main1, col turno, il posto e il grpId; negativa: quella annullata no",
+                 leggi(fu)["fasi"] == [[5, 1, 300, "Phase_Main1"]] and leggi(fa)["fasi"] == [[3, 2, 151, "Phase_Main1"]]))
     # chi e' in campo lo dice la zona: un oggetto che resta in memoria con la zona del campo ma non e' nella lista non attacca e non e' una terra
     vecchio = [gs(type="GameStateType_Full", zones=campo(1), turnInfo=dict(turnNumber=7, activePlayer=1, step="Step_DeclareAttack"),
                   gameObjects=[terra(1, 1, False), dict(crea(10, 1, True)), terra(4, 2, False)])]

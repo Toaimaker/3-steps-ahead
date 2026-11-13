@@ -91,6 +91,14 @@ class FinestraMazzo:
         """Un mazzo cliccato si apre nella sua finestra, sopra il Companion e piu' ordinata (Autore, 6 nov 2026: «i decks cliccati si aprono in una nuova finestra sovraimpressa piu' ordinata»): a sinistra
         la lista, a destra i dati dall'alto in basso. E' la stessa da Performance e da Your decks. Si chiude con la X o con Esc."""
         if not self.aperto:
+            # il Board view sopra la finestra del mazzo si chiude con lei (13 nov 2026): la finestra si nasconde e si riusa, e il Board, suo figlio, restava aperto
+            # da solo. E' in sola lettura: chiudendo scrive solo dove hai spostato le carte, senza domande
+            tv = getattr(self, "tavolo", None)
+            try:
+                if tv is not None and tv.fin.winfo_exists() and tv.fin.master is self.fin:
+                    tv.chiudi()
+            except Exception:       # noqa: BLE001 - un Board gia' a meta' della chiusura: niente da fare
+                pass
             if self.fin is not None and self.fin.winfo_exists():
                 # non si distrugge: si nasconde e si riusa al prossimo mazzo (11 nov 2026). Il contenuto se ne va a pezzi, a finestra libera
                 f = self.fin

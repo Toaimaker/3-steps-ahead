@@ -49,11 +49,13 @@ import threading
 import capsule as CAP
 import disegni as DG
 import mazzi_salvati as MS
+import menu_board as MB
+import piattaforma
 import rete_sinergie as RS
 import tela_gpu as TG
 
 from tema import CI as C, barra_scura
-from widget import ARANCIO as ARANCIO_P, pronta_poi, pulsante_solido
+from widget import VERDE_P, pronta_poi, pulsante_solido
 
 import account as _ACC  # noqa: E402
 FILE = _ACC.lega(globals(), "FILE", "tavoli_mazzi.json")     # Log_Arena/tavoli_mazzi.json; nell'app pubblica uno per account (10 nov 2026, Magic 12)
@@ -70,7 +72,8 @@ ETICHETTA = 30                  # la riga del titolo di una zona
 APERTA = 8                      # lo spazio sotto la carta aperta in mezzo a una pila
 # le label (Autore, 9 nov 2026: «la possibilita' di creare delle label di carte dentro le quali diamo un nome: es le carte in una label sono le carte finisher»;
 # scelta «riquadro sul foglio»): un riquadro col nome in alto, sotto le carte; misure in coordinate del mazzo (scala 1)
-LARGO_OUT, RIGA_OUT = 220, 20     # l'outliner: la larghezza e l'altezza di una riga
+LARGO_OUT, RIGA_OUT = 236, 20     # l'outliner: la larghezza e l'altezza di una riga
+OCCHIO_OUT = 20                    # la colonna degli occhi, a sinistra dell'outliner (13 nov 2026)
 FG_AIUTO, FG_DICI = "#ffffff", "#fff2c4"
 INFO_L, INFO_H, TESTA_HUD = 236, 84, 22     # l'HUD delle carte e della curva, in alto a destra sul foglio: larghezza, corpo, testa
 FONDO_HUD = (16, 16, 20, 168)       # lo sfondo semitrasparente dell'HUD      # il testo sulla testa azzurra dei comandi: il titolo e cosa e' appena successo
@@ -78,6 +81,8 @@ TIT_L, PAD_L = 26, 18           # l'altezza del titolo, l'aria intorno alle pile
 FONDO_L, TESTA_L, BORDO_L, SEGNO_L = "#26262c", "#303038", "#55555f", "#7a7a86"
 R_PUNTO = 7                     # il raggio del dot di una linea, in pixel
 GRIGIO_L = "#6a6a76"            # il colore di una label nuova
+CONT_PIENO, CONT_MINIMO = 108, 40       # la carta (pixel) da cui il contatore e' intero (− N +), e sotto cui non c'e' (13 nov 2026)
+STRUMENTI_MIN = 90              # sotto questa larghezza della carta, alla base resta solo il pallino d'oro (⇄ e + nota quando ti avvicini)
 OPZIONI = "_opzioni"            # nel file delle disposizioni: le preferenze del tavolo (non e' un mazzo)
 # i comandi del tavolo: solo nella finestrella in basso a destra (Autore, 10 nov 2026: «il menu dei comandi deve esistere solo e unicamente in basso a destra
 # come piccola finestra»); prima erano una riga sotto la testata
@@ -87,7 +92,7 @@ COMANDI = (("Wheel", "zoom"), ("Middle-drag", "pan"), ("Drag a card", "move · d
            ("A", "frame the whole network"), ("F", "frame the selection (or the card picked in the outliner)"), ("Esc", "clear the selection, then close"))
 COMANDI_MOD = (("− +", "copies"), ("⇄", "replace the card"), ("Ctrl+Z · Ctrl+Y", "undo · redo (also Ctrl+Shift+Z)"),
                ("Save", "nothing is saved by itself: Save writes the deck and the board"), ("+ note beside the gold dot", "a note on the card"),
-               ("+ note on a group title", "a note on the group"), ("Auto groups", "from the analysis, or the visible cards of the type filter"))
+               ("+ note on a group title", "a note on the group"), ("Groups ▾", "new group, groups from your games, every group with its ≡, lock and tidy"))
 COMANDI_VISTA = (("Wheel", "zoom"), ("Middle-drag", "pan"), ("Drag a card", "move it (deck and sideboard stay as they are)"), ("Click", "opens a pile, selects the card"),
                  ("A", "frame the whole network"),
                  ("F", "frame the selection"), ("Hover", "the card large"), ("Edit the deck", "to change the board"), ("Esc", "close"))
@@ -218,6 +223,37 @@ def tipo_arena(nome):
         except Exception:       # noqa: BLE001 - senza database niente tipo: la carta resta con All
             _TIPO_ARENA["?"] = ""
     return _TIPO_ARENA.get((nome or "").split(" // ")[0].strip().lower(), "")
+
+
+_COL_RAR_ARENA = {}
+COLORI_ARENA = {1: "W", 2: "U", 3: "B", 4: "R", 5: "G"}      # i numeri dei colori nel database di Arena
+
+
+def colore_rarita_arena(nome):
+    """(colori «WUBRG», rarita' 1-5) di una carta per nome dal database di Arena, per gli Arrange per colore e per rarita' (13 nov 2026). La rarita' e' la piu'
+    bassa fra le stampe, come il jolly (dati_app.rarita_nome): 2 comune, 3 non comune, 4 rara, 5 mitica, 1 terra base. Le stampe ribilanciate di Alchemy, le
+    pedine e le seconde facce non contano. Una carta che il database non ha: ("", None)."""
+    if not _COL_RAR_ARENA:
+        try:
+            import db_carte
+            t = db_carte.testi()
+            for c in db_carte.carte():
+                if c.get("IsRebalanced") or c.get("isToken") or c.get("isSecondaryCard"):
+                    continue
+                n = t.get(c.get("titleId"))
+                if not n:
+                    continue
+                k = n.split(" // ")[0].strip().lower()
+                col = "".join(COLORI_ARENA[x] for x in sorted(c.get("colors") or []) if x in COLORI_ARENA)
+                r = c.get("rarity") if c.get("rarity") in (1, 2, 3, 4, 5) else None
+                v = _COL_RAR_ARENA.setdefault(k, ["", None])
+                if col and not v[0]:
+                    v[0] = col
+                if r is not None and (v[1] is None or r < v[1]):
+                    v[1] = r
+        except Exception:       # noqa: BLE001 - senza database ogni carta resta incolore e senza rarita': l'Arrange la mette in fondo
+            _COL_RAR_ARENA["?"] = ["", None]
+    return tuple(_COL_RAR_ARENA.get((nome or "").split(" // ")[0].strip().lower(), ("", None)))
 
 
 CARTELLA_TIPI = os.path.join(percorsi.GRAFICA, "tipi")
@@ -513,6 +549,8 @@ class TavoloCarte:
         self._ordine_pile = []  # l'ordine delle pile prima del filtro: sfiltra lo rimette
         self._riposte = []      # [(pila, tolta, [(indice, vid)])]: le carte tenute da parte per il filtro, e se la pila e' uscita perche' non ne restava nessuna
         self.note = {}          # le note personali sulle carte (12 nov 2026): {nome della carta: dict(testo, aperta)}; quelle delle label stanno nella label
+        self.occhi = set()      # le carte spente con l'occhio dell'outliner (13 nov 2026): {(nome, zona)}; i gruppi spenti hanno «nascosta» nella label
+        self._spente = set()    # le carte che l'occhio tiene fuori adesso: le loro e quelle dei gruppi spenti (filtra)
         self.etichette = []     # le label: dict(nome, x, y, w, h) in coordinate del mazzo (scala 1), riquadri col nome; le carte dentro ne fanno parte
         # i dot delle linee (Autore, 9 nov 2026: «la possibilita' di spezzare le linee con dei dot dai quali possiamo fare partire altre linee (come in nuke)»):
         # id -> dict(x, y nel mazzo a scala 1, padre = la carta da cui viene il segnale, da = il dot prima nella catena o None); vie: (padre, figlio) -> l'ultimo dot
@@ -661,18 +699,12 @@ class TavoloCarte:
             c.create_text(x + (28 if chiave != "all" else 12), 20, text=etichetta, anchor="w", fill=C["titolo"] if on else C["grigio"], font=F(8, True))
             self._box_filtri.append((x, x + lg, chiave))
             x += lg + 6
-        if self.modifica:       # i gruppi automatici (12 nov 2026), a destra
-            W = max(c.winfo_width(), x + 200)
-            testo = "AUTO GROUPS ▾"
-            lg = 24 + 7 * len(testo)
-            c.create_rectangle(W - 14 - lg, 7, W - 14, 33, fill=C["scheda"], outline=C["accento"])
-            c.create_text(W - 14 - lg / 2, 20, text=testo, fill=C["accento"], font=F(8, True))
-            self._box_filtri.append((W - 14 - lg, W - 14, "auto"))
+        # Auto groups non sta piu' qui (13 nov 2026): le sue funzioni sono nel menu Groups della testata (menu_gruppi)
 
     def clic_filtro(self, e):
         for x0, x1, chiave in getattr(self, "_box_filtri", []):
             if x0 <= e.x <= x1:
-                return self.menu_auto() if chiave == "auto" else self.scegli_filtro(chiave)
+                return self.scegli_filtro(chiave)
 
     def scegli_filtro(self, chiave):
         """All e' assoluto: lo accende e spegne gli altri. Un tipo spegne All e si somma agli altri accesi; spento l'ultimo, torna All."""
@@ -690,23 +722,107 @@ class TavoloCarte:
 
     # i gruppi automatici (12 nov 2026, Autore: «aggiungiamo la possibilita' di creare autogruppi di carte in base ai dati di analysis / autogruppi in base alle
     # carte visibili contro quelle nascoste»): ogni gruppo nasce come label, con le sue carte in fila, a destra di tutto, uno sotto l'altro
-    def menu_auto(self):
+    # ------------------------------------------------ il menu Groups (13 nov 2026 sera)
+    # Autore: «acanto all'arrange mettimao il menu dei groups con tutto il necessario per gestire i gruppi: il menu autogroups non esisterà più e le sue
+    # funzioni si troveranno qui d'ora in poi». NEW (la selezione, le carte a vista del filtro), FROM YOUR GAMES (l'ex Auto groups dall'analisi), YOUR GROUPS
+    # (ogni gruppo: il clic lo sceglie e lo inquadra, ≡ apre il suo menu con nome, colore, lucchetto, nota, Duplicate, Swap, Delete), TIDY (lucchetti per tutti,
+    # via i gruppi vuoti, via tutti i gruppi lasciando le carte).
+    def menu_gruppi(self):
+        """Il menu del pulsante Groups, nello stile comune dei mini-menu (menu_board). -> la finestrella (p.voci: {testo: azione}, per le prove)."""
         tk, F = self.tk, self.F
         self.nome_chiudi()
-        p = self._nome_pop = tk.Toplevel(self.fin); p.overrideredirect(True); p.configure(bg=C["accento"])
-        dentro = tk.Frame(p, bg=C["cap"]); dentro.pack(padx=1, pady=1)
-        tk.Label(dentro, text="Auto groups", bg=C["cap"], fg=C["titolo"], font=F(9, True)).pack(anchor="w", padx=10, pady=(8, 4))
-        voci = [("From analysis: best performers, hard to cast, weak in losses", self.auto_analisi),
-                ("Visible cards (the type filter)", self.auto_visibili)]
-        for testo, fa in voci:
-            b = tk.Label(dentro, text=testo, bg=C["cap"], fg=C["accento"], font=F(8, True), cursor="hand2", anchor="w")
-            b.pack(fill="x", padx=10, pady=2)
-            b.bind("<Button-1>", lambda ev, fa=fa: (self.nome_chiudi(), fa()))
-        tk.Label(dentro, text="Esc closes", bg=C["cap"], fg=C["grigio"], font=F(7)).pack(anchor="w", padx=10, pady=(4, 8))
-        p.bind("<Escape>", lambda ev: self.nome_chiudi())
-        p.geometry(f"+{self.fin.winfo_pointerx() - 320}+{self.fin.winfo_pointery() + 14}")
-        p.focus_force()
-        return p
+        m = MB.Menu(tk, F, self.fin, "Groups", chiudi=self.nome_chiudi)
+        self._nome_pop = p = m.p
+        sel = any(q["zona"] == "main" for q in self.sel) or bool(self.sel_punti) or bool(self.sel_label)
+        m.sezione("New")
+        m.voce("Group the selection", "Name and color for the cards you selected" if sel else "Select some cards first: drag a box on the empty sheet",
+               lambda: self.crea_etichetta(None), spenta=not sel)
+        m.voce("Group the visible cards", "The cards the type filter shows, in one group" if self.filtro else "Turn on a type filter first (Creatures, Lands...)",
+               self.auto_visibili, spenta=not self.filtro)
+        m.sezione("From your games")
+        m.voce("Best performers · Hard to cast · Weak in losses", "Three groups from the analysis of this deck in your logs", self.auto_analisi)
+        m.sezione(f"Your groups · {len(self.etichette)}")
+        if not self.etichette:
+            tk.Label(m.corpo, text="No groups yet", bg=MB.FONDO, fg=C["grigio"], font=F(8)).pack(anchor="w", padx=20, pady=(2, 2))
+        for k, lb in enumerate(self.etichette):
+            n = sum(self.carte_gruppo(k).values()) if not lb.get("copia") else sum((lb.get("carte") or {}).values())
+            r = m.riga(padx=8, pady=1)
+            r.configure(cursor="hand2")
+            tk.Frame(r, bg=lb.get("colore") or GRIGIO_L, width=4).pack(side="left", fill="y", padx=(0, 8))
+            nome = tk.Label(r, text=lb["nome"].upper() + ("  · COPY" if lb.get("copia") else ""), bg=MB.FONDO, fg="#ffffff", font=F(9, True), anchor="w",
+                            cursor="hand2")
+            nome.pack(side="left", fill="x", expand=True, pady=4)
+            menu = tk.Label(r, image=segno_menu(18), bg=MB.FONDO, cursor="hand2"); menu.pack(side="right", padx=(6, 0))
+            tk.Label(r, image=DG.lucchetto(13, lb.get("lucchetto", True), "#f0ad4e" if lb.get("lucchetto", True) else "#bebec2"), bg=MB.FONDO).pack(side="right", padx=4)
+            tk.Label(r, text=f"{n} CARDS" if n else "EMPTY", bg=MB.FONDO, fg=C["grigio"] if n else C["rosso"], font=F(7, True), padx=6).pack(side="right")
+            ww = [r, nome] + [w_ for w_ in r.winfo_children() if isinstance(w_, tk.Label)]
+
+            def acc(on, ww=ww):
+                for w_ in ww:
+                    w_.configure(bg=MB.RIGA_SU if on else MB.FONDO)
+            for w_ in ww:
+                w_.bind("<Enter>", lambda ev, f=acc: f(True)); w_.bind("<Leave>", lambda ev, f=acc: f(False))
+            for w_ in (r, nome):
+                w_.bind("<Button-1>", lambda ev, k=k: (self.nome_chiudi(), self.scegli_gruppo(k)))
+            menu.bind("<Button-1>", lambda ev, k=k: (self.nome_chiudi(), self.menu_label(k)))
+            m.voci[f"group:{k}"] = lambda k=k: self.scegli_gruppo(k)
+            m.voci[f"menu:{k}"] = lambda k=k: self.menu_label(k)
+        if self.etichette:
+            m.sezione("Tidy")
+            tutti_chiusi = all(lb.get("lucchetto", True) for lb in self.etichette)
+            m.voce("Unlock all groups" if tutti_chiusi else "Lock all groups",
+                   "Every group moves alone: drop it over cards to take them in" if tutti_chiusi else "Every group moves with its cards",
+                   lambda: self.lucchetti_tutti(not tutti_chiusi))
+            vuoti = [k for k, lb in enumerate(self.etichette) if not lb.get("copia") and not self.carte_gruppo(k)]
+            m.voce("Remove empty groups", f"{len(vuoti)} without cards" if vuoti else "Every group has cards", self.togli_vuoti, spenta=not vuoti)
+            m.voce("Remove all groups", "The frames go, the cards stay where they are (Undo brings them back)", self.togli_tutti_gruppi, colore=C["rosso"])
+        m.piede("Click a group to find it · ≡ name, color, lock, note, duplicate, swap, delete")
+        p.voci = m.voci
+        return m.posa(sotto=self.b_gruppi)
+
+    def scegli_gruppo(self, k):
+        """Il gruppo k scelto (come una selezione) e inquadrato: dall'outliner e dal menu Groups."""
+        if not 0 <= k < len(self.etichette):
+            return
+        self.vuota_sel()
+        self.sel_label = {k}
+        lb = self.etichette[k]
+        z, o = self.zoom, self.oy("main")
+        self.inquadra((lb["x"] * z, o + lb["y"] * z, (lb["x"] + lb["w"]) * z, o + (lb["y"] + lb["h"]) * z), zmax=max(1.0, self.zoom))
+        self.disegna_sel()
+        if getattr(self, "out_cv", None) is not None:
+            self.disegna_outliner()
+
+    def lucchetti_tutti(self, on):
+        """Tutti i gruppi col lucchetto chiuso (si spostano con le loro carte) o aperto (da soli)."""
+        for lb in self.etichette:
+            lb["lucchetto"] = bool(on)
+        self.disegna(); self.salva()
+        self.dici("All groups locked: each moves with its cards" if on else "All groups unlocked: each moves alone, drop it over cards to take them in")
+
+    def togli_vuoti(self):
+        """Via i gruppi senza carte (le copie no: le loro carte sono scritte). -> quanti."""
+        vuoti = [k for k, lb in enumerate(self.etichette) if not lb.get("copia") and not self.carte_gruppo(k)]
+        for k in reversed(vuoti):
+            self.etichette.pop(k)
+        self.sel_label = set()
+        self.disegna(); self.salva()
+        self.dici(f"{len(vuoti)} empty group{'s' * (len(vuoti) != 1)} removed" if vuoti else "No empty group")
+        return len(vuoti)
+
+    def togli_tutti_gruppi(self):
+        """Via tutti i gruppi e le loro copie; le carte restano dove sono. Prima la domanda. -> la finestrella della domanda."""
+        from widget import conferma, ROSSO_P
+
+        def via():
+            n = len(self.etichette)
+            self.etichette = []
+            self.sel_label = set()
+            self.disegna(); self.salva()
+            self.dici(f"{n} group{'s' * (n != 1)} removed: the cards stay where they are · Undo brings them back")
+        self.domanda_gruppi = conferma(self.tk, self.F, self.fin, "Remove all groups?", f"The {len(self.etichette)} frames go, the cards stay where they are. "
+                                       "Undo brings them back.", "Remove", via, colori=ROSSO_P)
+        return self.domanda_gruppi
 
     def gruppi_auto(self, gruppi):
         """gruppi: [(nome, colore, [nomi delle carte])]. Le carte del mazzo con quei nomi escono dalle loro pile, una pila ciascuna, in fila a destra di tutto,
@@ -795,13 +911,44 @@ class TavoloCarte:
         return {k for k, _t in TIPI[1:] if k in riga}
 
     def visibile(self, vid):
+        if vid in self._spente:         # spenta con l'occhio dell'outliner, sua o del suo gruppo
+            return False
         return not self.filtro or bool(self.tipi_di(vid) & self.filtro)
+
+    # ------------------------------------------------ la visibilita' coi livelli, come in Photoshop (13 nov 2026)
+    # Autore: «mettiamo la visibility di gruppi e carte nell'outliner con l'occhietto proprio come i layer di photoshop e il loro comportamento per visibility di
+    # elementi gruppi e elementi nei gruppi». Ogni riga dell'outliner ha l'occhio. Una carta spenta esce dal foglio (come col filtro per tipo: resta nel mazzo, nei
+    # conti e nella disposizione); un gruppo spento spegne la sua cornice e tutto quello che ha dentro, anche i gruppi dentro di lui. Come nei livelli, una carta
+    # dentro un gruppo spento tiene il suo occhio (riacceso il gruppo torna com'era) e nell'outliner la sua riga si fa grigia. Alt+clic su un occhio: solo quella
+    # voce a vista; un altro Alt+clic rimette tutto com'era. Trascinando sugli occhi si accendono o si spengono in fila.
+    def contiene(self, a, b):
+        return a["x"] <= b["x"] and b["x"] + b["w"] <= a["x"] + a["w"] and a["y"] <= b["y"] and b["y"] + b["h"] <= a["y"] + a["h"]
+
+    def label_spenta(self, k):
+        """Il gruppo k non si vede: spento lui, o un gruppo che lo contiene."""
+        if not 0 <= k < len(self.etichette):
+            return False
+        lb = self.etichette[k]
+        if lb.get("nascosta"):
+            return True
+        return any(l2.get("nascosta") and not l2.get("copia") and j != k and self.contiene(l2, lb) for j, l2 in enumerate(self.etichette))
+
+    def nascoste_ora(self):
+        """Le carte che l'occhio tiene fuori: le spente e quelle dentro un gruppo spento (sulle pile di adesso)."""
+        out = {vid for vid, v in self.voci.items() if (v["nome"], v["zona"]) in self.occhi}
+        for k, lb in enumerate(self.etichette):
+            if lb.get("nascosta") and not lb.get("copia"):
+                pile, _a = self.membri(k)
+                out |= {c for pl in pile for c in pl["carte"]}
+        return out
 
     def etichetta_vista(self, k):
         """Il riquadro del gruppo k si vede col filtro per tipo? (13 nov 2026, Autore: «quando accendo o spengo i filtri tipo delle carte se quelle carte sono
         in un gruppo deve accendersi o spegnersi (visibile invisibile) anche il quadro del gruppo».) Senza filtro sempre; col filtro solo se almeno una sua carta
         passa: una pila a vista dentro di lui (le carte nascoste stanno da parte e le loro pile escono), o, per la copia di un gruppo, una delle carte scritte.
         Un gruppo vuoto col filtro acceso non si vede. Nascosto non si disegna, quindi non si prende col mouse, come le carte nascoste."""
+        if 0 <= k < len(self.etichette) and self.label_spenta(k):        # spento con l'occhio dell'outliner (13 nov 2026)
+            return False
         if not self.filtro or not 0 <= k < len(self.etichette):
             return True
         lb = self.etichette[k]
@@ -844,8 +991,9 @@ class TavoloCarte:
         self._ordine_pile = []
 
     def filtra(self):
-        """Tiene da parte le carte fuori dal filtro; una pila che resta vuota esce dal foglio finche' il filtro c'e'."""
-        if not self.filtro:
+        """Tiene da parte le carte fuori dal filtro e quelle spente con l'occhio; una pila che resta vuota esce dal foglio finche' il filtro (o l'occhio) c'e'."""
+        self._spente = self.nascoste_ora() if (self.occhi or any(lb.get("nascosta") for lb in self.etichette)) else set()
+        if not self.filtro and not self._spente:
             return
         self._ordine_pile = list(self.pile)
         for pl in list(self.pile):
@@ -886,7 +1034,23 @@ class TavoloCarte:
 
         if self.nomi_ricerca is not None and self.modifica:
             self.ricerca(t)
+        # Arrange accanto ad Add card (13 nov 2026, Autore: «afianco a add card metterei il menù arrange»); prima stava a destra, vicino a Grid snap
+        self.b_arrange = None
+        if not self.sola:
+            b = self.b_arrange = pulsante_solido(tk, F, t, "Arrange ▾", False, self.menu_disponi, alto=28, bg=C["cap"])
+            b.configure(width=120); b.pack(side="left", padx=(10, 0))
+        # Groups accanto ad Arrange (13 nov 2026 sera, Autore: «acanto all'arrange mettimao il menu dei groups con tutto il necessario per gestire i gruppi: il
+        # menu autogroups non esisterà più e le sue funzioni si troveranno qui d'ora in poi»): solo in modalita' edit, come Auto groups prima
+        self.b_gruppi = None
+        if self.modifica:
+            b = self.b_gruppi = pulsante_solido(tk, F, t, "Groups ▾", False, self.menu_gruppi, alto=28, bg=C["cap"])
+            b.configure(width=120); b.pack(side="left", padx=(8, 0))
         dx = tk.Frame(t, bg=C["cap"]); dx.pack(side="right", padx=10)
+        # Save in fondo a destra, dopo lo zoom, e verde come in tutta l'app (13 nov 2026, Autore: «e save lo sposti tutto a destra e save ovunque sull'app
+        # sempre verde»); prima stava fra Redo e Full page, in arancio
+        if not self.sola and self.modifica:
+            self.b_salva = pulsante_solido(tk, F, dx, "Save", False, self.salva_tutto, alto=28, bg=C["cap"], colori=VERDE_P)
+            self.b_salva.configure(width=96); self.b_salva.pack(side="right", padx=(14, 0))
         # lo zoom del foglio (al posto di S M L): − e + a passi, il numero torna al 100%, Fit fa stare il mazzo nella finestra; anche Ctrl+rotella
         for testo, azione in (("Fit", lambda: self.adatta()), ("+", lambda: self.zoom_a(self.zoom * 1.15)), ("%", None), ("−", lambda: self.zoom_a(self.zoom / 1.15))):
             if azione is None:
@@ -907,15 +1071,11 @@ class TavoloCarte:
                      bg=C["cap"], fg=C["muto"], font=F(8, True)).pack(side="right", padx=(4, 12))
             self.b_griglia = None
         else:
-            if self.modifica:       # Save, Undo, Redo (12 nov 2026): a destra di tutto, Save in arancio come le azioni principali di un mazzo
-                self.b_salva = pulsante_solido(tk, F, dx, "Save", False, self.salva_tutto, alto=28, bg=C["cap"], colori=ARANCIO_P)
-                self.b_salva.configure(width=96); self.b_salva.pack(side="right", padx=(10, 0))
+            if self.modifica:       # Undo e Redo (12 nov 2026); Save sta in fondo a destra, dopo lo zoom (sopra)
                 for chi, testo, fa in (("b_redo", "Redo ↷", self.ripeti), ("b_undo", "↶ Undo", self.annulla)):
                     w_ = tk.Label(dx, text=testo, bg=C["cap"], fg=C["muto"], font=F(9, True), padx=6, cursor="hand2")
                     w_.pack(side="right", padx=(6, 0)); w_.bind("<Button-1>", lambda e, fa=fa: fa())
                     setattr(self, chi, w_)
-            b = self.b_arrange = pulsante_solido(tk, F, dx, "Arrange ▾", False, self.menu_disponi, alto=28, bg=C["cap"])
-            b.configure(width=120); b.pack(side="right", padx=(4, 12))
             self.b_griglia = tk.Label(dx, text="  Grid snap", bg=C["cap"], fg=C["testo"], font=F(9, True), compound="left", cursor="hand2")
             self.b_griglia.pack(side="right", padx=(4, 10))
             self.b_griglia.bind("<Button-1>", lambda e: self.cambia_griglia())
@@ -944,11 +1104,19 @@ class TavoloCarte:
         self.b_out.bind("<Button-1>", lambda e: self.apri_outliner(not self.outliner_aperto))
         corpo = self.out_corpo = tk.Frame(f, bg=C["fondo"], width=LARGO_OUT)
         corpo.pack_propagate(False)
-        tk.Label(corpo, text="OUTLINER", bg=C["fondo"], fg=C["muto"], font=F(7, True), anchor="w").pack(fill="x", padx=10, pady=(8, 4))
+        testa = tk.Frame(corpo, bg=C["fondo"]); testa.pack(fill="x", padx=(10, 8), pady=(8, 4))
+        tk.Label(testa, text="OUTLINER", bg=C["fondo"], fg=C["muto"], font=F(7, True), anchor="w").pack(side="left")
+        # SHOW ALL (13 nov 2026): con qualcosa di spento con l'occhio, riaccende tutto in un clic
+        self.b_tutti = tk.Label(testa, text="SHOW ALL", bg=C["fondo"], fg=C["accento"], font=F(7, True), cursor="hand2")
+        self.b_tutti.bind("<Button-1>", lambda e: self.mostra_tutto())
         self.out_cv = tk.Canvas(corpo, bg=C["fondo"], highlightthickness=0, bd=0, width=LARGO_OUT)
         self.out_cv.pack(fill="both", expand=True)
         self.out_cv.bind("<Button-1>", lambda e: self.scegli_outliner(e))
-        self.out_cv.bind("<Double-Button-1>", lambda e: (self.scegli_outliner(e), self.inquadra_selezione()))
+        self.out_cv.bind("<B1-Motion>", lambda e: self.occhi_trascina(e))
+        self.out_cv.bind("<ButtonRelease-1>", lambda e: setattr(self, "_occhi_drag", None))
+        self.out_cv.bind("<Double-Button-1>", self.doppio_outliner)
+        self.out_cv.bind("<Motion>", self.passa_outliner)
+        self.out_cv.bind("<Leave>", lambda e: (self.out_cv.delete("su"), setattr(self, "_out_su", None)))
         self.out_cv.bind("<MouseWheel>", lambda e: self.out_cv.yview_scroll(-1 if e.delta > 0 else 1, "units"))
         self.out_cv.bind("<Configure>", lambda e: self.disegna_outliner())
         self._out_righe = []
@@ -1066,10 +1234,13 @@ class TavoloCarte:
                 copia = bool(lb.get("copia"))
                 if k in self.sel_label:
                     cv.create_rectangle(0, y, L, y + RIGA_OUT, fill="#1d3a52", width=0)
-                cv.create_rectangle(4, y + 4, 8, y + RIGA_OUT - 4, fill=col, width=0)
+                spento = self.label_spenta(k)
+                self.occhio_riga(cv, y, not lb.get("nascosta"), spento)
+                cv.create_rectangle(OCCHIO_OUT + 4, y + 4, OCCHIO_OUT + 8, y + RIGA_OUT - 4, fill=col, width=0)
                 testo = (lb["nome"] + ("  · copy" if copia else "")).upper()
-                cv.create_text(14, y + RIGA_OUT / 2, text=corto(testo, L - 52, fnt_b), fill=C["grigio"] if copia else "#ffffff", font=F(8, True), anchor="w")
-                cv.create_text(L - 10, y + RIGA_OUT / 2, text=str(n_), fill=col, font=F(8, True), anchor="e")
+                cv.create_text(OCCHIO_OUT + 14, y + RIGA_OUT / 2, text=corto(testo, L - 52 - OCCHIO_OUT, fnt_b),
+                               fill=C["muto"] if spento else C["grigio"] if copia else "#ffffff", font=F(8, True), anchor="w")
+                cv.create_text(L - 10, y + RIGA_OUT / 2, text=str(n_), fill=C["muto"] if spento else col, font=F(8, True), anchor="e")
                 self._out_righe.append((y, y + RIGA_OUT, ("l", k)))
                 y += RIGA_OUT
             else:
@@ -1078,30 +1249,163 @@ class TavoloCarte:
                 scelta = vid == self.sel_carta
                 if scelta:
                     cv.create_rectangle(0, y, L, y + RIGA_OUT, fill="#1d3a52", width=0)
-                x0 = 10
+                spento = vid in self._spente
+                self.occhio_riga(cv, y, (v["nome"], v["zona"]) not in self.occhi, spento)
+                spento = spento or self.pila_di(vid) is None        # fuori dal filtro per tipo: grigia anche lei, la carta non e' sul foglio
+                x0 = OCCHIO_OUT + 10
                 if col is not None:     # dentro un gruppo: rientrata, col filo del colore del gruppo
-                    cv.create_rectangle(10, y, 12, y + RIGA_OUT, fill=col, width=0)
-                    x0 = 22
-                cv.create_text(x0, y + RIGA_OUT / 2, text=corto(v["nome"], L - 34 - x0, fnt), fill="#ffffff" if scelta else C["testo"], font=F(8), anchor="w")
-                cv.create_text(L - 10, y + RIGA_OUT / 2, text=str(v["q"]), fill=C["accento"] if scelta else C["grigio"], font=F(8, True), anchor="e")
+                    cv.create_rectangle(OCCHIO_OUT + 10, y, OCCHIO_OUT + 12, y + RIGA_OUT, fill=col, width=0)
+                    x0 = OCCHIO_OUT + 22
+                cv.create_text(x0, y + RIGA_OUT / 2, text=corto(v["nome"], L - 34 - x0, fnt), fill=C["muto"] if spento else "#ffffff" if scelta else C["testo"],
+                               font=F(8), anchor="w")
+                cv.create_text(L - 10, y + RIGA_OUT / 2, text=str(v["q"]), fill=C["muto"] if spento else C["accento"] if scelta else C["grigio"],
+                               font=F(8, True), anchor="e")
                 self._out_righe.append((y, y + RIGA_OUT, vid))
                 y += RIGA_OUT
         cv.configure(scrollregion=(0, 0, L, y + 6))
+        b_t = getattr(self, "b_tutti", None)
+        if b_t is not None:
+            if self.occhi or any(lb.get("nascosta") for lb in self.etichette):
+                b_t.pack(side="right")
+            else:
+                b_t.pack_forget()
+        su = getattr(self, "_out_su", None)
+        r = next(((y0, y1) for y0, y1, v in self._out_righe if v == su), None) if su is not None else None
+        if r:
+            cv.create_rectangle(0, r[0], L, r[1], fill="#17202b", width=0, tags="su")
+            cv.tag_lower("su")
+
+    def doppio_outliner(self, e):
+        """Il doppio clic: sul nome sceglie e inquadra; sull'occhio e' solo il secondo clic (prima inquadrava anche, e la vista saltava)."""
+        if e.x < OCCHIO_OUT:
+            return self.scegli_outliner(e)
+        self.scegli_outliner(e)
+        self.inquadra_selezione()
+
+    def passa_outliner(self, e):
+        """La riga sotto il mouse si accende appena, come le righe dei menu; sulle righe la manina."""
+        cv = self.out_cv
+        voce = self.riga_outliner(e.y)
+        if voce == getattr(self, "_out_su", None):
+            return
+        self._out_su = voce
+        cv.delete("su")
+        r = next(((y0, y1) for y0, y1, v in self._out_righe if v == voce), None)
+        if r:
+            cv.create_rectangle(0, r[0], max(cv.winfo_width(), LARGO_OUT), r[1], fill="#17202b", width=0, tags="su")
+            cv.tag_lower("su")
+        cv.configure(cursor="hand2" if r else "")
+
+    def mostra_tutto(self):
+        """SHOW ALL: ogni carta e ogni gruppo di nuovo a vista (anche dopo un Alt+clic). -> quante voci ha riacceso."""
+        n = len(self.occhi) + sum(1 for lb in self.etichette if lb.get("nascosta"))
+        if not n:
+            return 0
+        self.occhi = set()
+        for lb in self.etichette:
+            lb.pop("nascosta", None)
+        self._solo = None
+        self.disegna()
+        self.salva()
+        self.disegna_outliner()
+        self.dici(f"Everything in sight again ({n} item{'s' * (n != 1)} turned back on)")
+        return n
+
+    def occhio_riga(self, cv, y, acceso, spento):
+        """L'occhio della riga: aperto se la voce e' accesa, barrato se e' spenta lei; aperto ma grigio se si spegne per il gruppo che la contiene."""
+        col = C["muto"] if (acceso and spento) else C["accento"] if acceso else C["muto"]
+        cv.create_image(3, y + RIGA_OUT / 2 - 8, image=DG.occhio(16, col, barrato=not acceso), anchor="nw")
+
+    def riga_outliner(self, ey):
+        y = self.out_cv.canvasy(ey)
+        return next((v for y0, y1, v in self._out_righe if y0 <= y < y1), None)
+
+    def acceso(self, voce):
+        """La voce dell'outliner ha l'occhio aperto? voce: un vid o ("l", k)."""
+        if isinstance(voce, tuple):
+            return not self.etichette[voce[1]].get("nascosta")
+        v = self.voci[voce]
+        return (v["nome"], v["zona"]) not in self.occhi
+
+    def metti_occhio(self, voce, on):
+        """Accende (on) o spegne la voce, senza ridisegnare."""
+        if isinstance(voce, tuple):
+            lb = self.etichette[voce[1]]
+            if on:
+                lb.pop("nascosta", None)
+            else:
+                lb["nascosta"] = True
+            return
+        v = self.voci[voce]
+        (self.occhi.discard if on else self.occhi.add)((v["nome"], v["zona"]))
+
+    def occhio(self, voce, on=None, alt=False):
+        """Il clic sull'occhio: accende o spegne la voce (on None: il contrario di adesso). alt: solo questa a vista, come Alt+clic nei livelli di Photoshop; di
+        nuovo Alt+clic sulla stessa rimette la visibilita' di prima."""
+        if alt:
+            solo = getattr(self, "_solo", None)
+            if solo is not None and solo[0] == voce:
+                self.occhi, nascoste = set(solo[1]), set(solo[2])
+                for k, lb in enumerate(self.etichette):
+                    if lb.get("id", f"#{k}") in nascoste:
+                        lb["nascosta"] = True
+                    else:
+                        lb.pop("nascosta", None)
+                self._solo = None
+                self.dici("Every item back as it was")
+            else:
+                self._solo = (voce, set(self.occhi), {lb.get("id", f"#{k}") for k, lb in enumerate(self.etichette) if lb.get("nascosta")})
+                self.sfiltra()
+                tieni_k = voce[1] if isinstance(voce, tuple) else None
+                if tieni_k is not None:
+                    pile, altre = self.membri(tieni_k)
+                    dentro = {c for pl in pile for c in pl["carte"]}
+                    tieni_l = {tieni_k} | set(altre) | {j for j, l2 in enumerate(self.etichette) if j != tieni_k and self.contiene(l2, self.etichette[tieni_k])}
+                else:
+                    dentro = {voce}
+                    tieni_l = {j for j, l2 in enumerate(self.etichette) if not l2.get("copia") and voce in {c for pl in self.membri(j)[0] for c in pl["carte"]}}
+                self.occhi = {(v["nome"], v["zona"]) for i, v in self.voci.items() if i not in dentro}
+                for k, lb in enumerate(self.etichette):
+                    if k in tieni_l:
+                        lb.pop("nascosta", None)
+                    else:
+                        lb["nascosta"] = True
+                nome = self.etichette[tieni_k]["nome"] if tieni_k is not None else self.voci[voce]["nome"]
+                self.dici(f"Only «{nome}» in sight · Alt+click its eye again to bring everything back")
+        else:
+            self.metti_occhio(voce, (not self.acceso(voce)) if on is None else on)
+            self._solo = None
+        self.disegna()
+        self.salva()
+        self.disegna_outliner()
+
+    def occhi_trascina(self, e):
+        """Trascinando sulla colonna degli occhi, ogni riga che tocchi prende lo stato del primo occhio premuto (come nei livelli di Photoshop)."""
+        d = getattr(self, "_occhi_drag", None)
+        if d is None:
+            return
+        voce = self.riga_outliner(e.y)
+        if voce is None or voce in d["fatte"] or self.acceso(voce) == d["on"]:
+            return
+        d["fatte"].add(voce)
+        self.metti_occhio(voce, d["on"])
+        self.disegna()
+        self.salva()
+        self.disegna_outliner()
 
     def scegli_outliner(self, e):
         y = self.out_cv.canvasy(e.y)
         vid = next((v for y0, y1, v in self._out_righe if y0 <= y < y1), None)
         if vid is None:
             return
-        if isinstance(vid, tuple):      # la riga di un gruppo: la label scelta e inquadrata
-            k = vid[1]
-            self.vuota_sel()
-            self.sel_label = {k}
-            lb = self.etichette[k]
-            z, o = self.zoom, self.oy("main")
-            self.inquadra((lb["x"] * z, o + lb["y"] * z, (lb["x"] + lb["w"]) * z, o + (lb["y"] + lb["h"]) * z), zmax=max(1.0, self.zoom))
-            self.disegna_sel(); self.disegna_outliner()
+        if e.x < OCCHIO_OUT:        # l'occhio (13 nov 2026): visibilita' come i livelli di Photoshop
+            alt = bool((getattr(e, "state", 0) or 0) & (0x20000 if piattaforma.WINDOWS else 0x10))
+            if not alt:
+                self._occhi_drag = dict(on=not self.acceso(vid), fatte={vid})
+            self.occhio(vid, alt=alt)
             return
+        if isinstance(vid, tuple):      # la riga di un gruppo: la label scelta e inquadrata
+            return self.scegli_gruppo(vid[1])
         if self.sel or self.sel_punti or self.sel_label:        # la carta scelta prende il posto della selezione (prima restava, e F inquadrava quella)
             self.sel, self.sel_punti, self.sel_label = [], set(), set()
         self.sel_carta = vid
@@ -1110,7 +1414,8 @@ class TavoloCarte:
         if not self.mostra_carta(vid):
             pl = self.pila_di(vid)
             if pl is None:
-                self.dici(f"{self.voci[vid]['nome']} is hidden by the type filter")
+                self.dici(f"{self.voci[vid]['nome']} is hidden: its eye or its group's eye in the outliner" if vid in self._spente
+                          else f"{self.voci[vid]['nome']} is hidden by the type filter")
             elif pl["zona"] != "main" and self.nascosta():
                 self.dici(f"{self.voci[vid]['nome']} is in the sideboard: drag the bar down to open it")
         self.disegna_sel()
@@ -1896,30 +2201,54 @@ class TavoloCarte:
     # tutti e 3 in modo che cmq il programma stakki in maniera ordinata carte e gruppi senza lasciare gli elementi sparsi in giro». In nessun modo un gruppo si
     # rompe (nome, colore, nota e carte restano insieme): ogni gruppo e' un blocco intero, e il modo decide cosa sta in cima e come stanno le carte dentro. Fino a
     # quel giorno Arrange network rifaceva le pile e lasciava le label dov'erano, vuote o intorno a carte che non c'entravano.
-    ARRANGE = (("costo", "By mana cost", "Loose cards in cost columns · the groups below, whole, their cards by cost"),
-               ("gruppi", "By groups", "Every group a block, its cards side by side · the loose cards below by cost"),
-               ("rete", "By connections", "The network, parents above children · the groups and the other cards below"),
-               ("misto", "Mixed", "The network with the groups as nodes · the other groups, then the loose cards by cost"))
+    # Il menu in tre sezioni, accanto ad Add card (13 nov 2026 sera, Autore: «afianco a add card metterei il menù arrange: con gli arragiamenti per carte, poi
+    # sezione per gruppi, poi sezione per connessioni / gli arrangiamenti per carte usi quelli più classici, per gruppi li metti sempre uno sotto l'altro, per
+    # connessioni fai in modo che le connessioni siano belle visibili»). CARDS sono le colonne classiche dei deck builder (costo, tipo, colore, rarita'), le terre
+    # sempre in fondo; GROUPS un gruppo per riga, uno sotto l'altro; CONNECTIONS la rete che scorre da sinistra a destra (sotto).
+    SEZIONI_ARRANGE = (
+        ("CARDS", (("costo", "By mana cost", "One column per mana value, lands last · the groups below, whole"),
+                   ("tipo", "By type", "Creatures, planeswalkers, instants, sorceries, artifacts, enchantments, lands"),
+                   ("colore", "By color", "White, blue, black, red, green, multicolor, colorless, lands"),
+                   ("rarita", "By rarity", "Mythic, rare, uncommon, common, lands"))),
+        ("GROUPS", (("gruppi", "One under the other", "Every group on its own row, its cards side by side · loose cards below by cost"),
+                    ("gruppi_costo", "One under the other · by cost", "Every group on its own row, its cards in cost columns"))),
+        ("CONNECTIONS", (("rete", "Network", "Parents left, children right, a free lane between columns: every arrow in sight"),
+                         ("misto", "Network with groups", "The same flow with whole groups as nodes · the other groups, then the loose cards"))))
+    ARRANGE = tuple(v for _s, vv in SEZIONI_ARRANGE for v in vv)
+    CRITERI = {"costo": "cost", "tipo": "type", "colore": "color", "rarita": "rarity"}     # i modi della sezione CARDS -> la colonna di ogni carta
 
     def menu_disponi(self):
-        """Il menu del pulsante Arrange: i quattro modi, ognuno con la riga che dice cosa fa."""
-        tk, F = self.tk, self.F
+        """Il menu del pulsante Arrange: tre sezioni (carte, gruppi, connessioni), ogni modo con la riga che dice cosa fa. Si apre sotto il pulsante, nello stile
+        comune dei mini-menu (menu_board)."""
         self.nome_chiudi()
-        p = self._nome_pop = tk.Toplevel(self.fin); p.overrideredirect(True); p.configure(bg=C["accento"])
-        dentro = tk.Frame(p, bg=C["cap"]); dentro.pack(padx=1, pady=1)
-        tk.Label(dentro, text="Arrange the board", bg=C["cap"], fg=C["titolo"], font=F(9, True)).pack(anchor="w", padx=10, pady=(8, 4))
-        for modo, nome, riga in self.ARRANGE:
-            r = tk.Frame(dentro, bg=C["cap"], cursor="hand2"); r.pack(fill="x", padx=10, pady=3)
-            a = tk.Label(r, text=nome, bg=C["cap"], fg=C["accento"], font=F(9, True), anchor="w", cursor="hand2"); a.pack(fill="x")
-            b = tk.Label(r, text=riga, bg=C["cap"], fg=C["grigio"], font=F(7), anchor="w", cursor="hand2"); b.pack(fill="x")
-            for w_ in (r, a, b):
-                w_.bind("<Button-1>", lambda ev, m=modo: (self.nome_chiudi(), self.disponi_modo(m, inquadra=True)))
-        tk.Label(dentro, text="Groups stay whole in every mode · Undo brings the board back", bg=C["cap"], fg=C["muto"], font=F(7)).pack(anchor="w", padx=10, pady=(4, 8))
-        p.bind("<Escape>", lambda ev: self.nome_chiudi())
-        p.update_idletasks()
-        p.geometry(f"+{max(0, self.fin.winfo_pointerx() - p.winfo_reqwidth() + 40)}+{self.fin.winfo_pointery() + 14}")
-        p.focus_force()
-        return p
+        m = MB.Menu(self.tk, self.F, self.fin, "Arrange the board", chiudi=self.nome_chiudi)
+        self._nome_pop = m.p
+        for sezione, modi in self.SEZIONI_ARRANGE:
+            m.sezione(sezione)
+            for modo, nome, riga in modi:
+                m.voce(nome, riga, lambda modo=modo: self.disponi_modo(modo, inquadra=True))
+        m.piede("Groups stay whole in every mode · Undo brings the board back")
+        m.p.voci = m.voci
+        return m.posa(sotto=self.b_arrange)
+
+    def colonna(self, vid, crit):
+        """La colonna di una carta negli Arrange per carte: le classiche dei deck builder, le terre sempre in fondo (99). crit: cost, type, color, rarity.
+        Colore e rarita' da carte_db se li ha («colori», «rarita»: le prove), se no dal database di Arena (colore_rarita_arena)."""
+        if crit == "cost":
+            return self.gruppo(vid, "cost")
+        tipi = self.tipi_di(vid)
+        if "land" in tipi:
+            return 99
+        if crit == "type":
+            return next((i for i, t in enumerate(("creature", "planeswalker", "instant", "sorcery", "artifact", "enchantment", "battle")) if t in tipi), 7)
+        c, nome = self.info(vid), self.voci[vid]["nome"]
+        col_a, rar_a = colore_rarita_arena(nome) if ("colori" not in c or "rarita" not in c) else ("", None)
+        if crit == "color":
+            col = c.get("colori", col_a) or ""
+            return 6 if not col else 5 if len(col) > 1 else "WUBRG".index(col) if col in "WUBRG" else 6
+        r = c.get("rarita", rar_a)
+        r = {"M": 5, "R": 4, "U": 3, "C": 2}.get(r, r)
+        return {5: 0, 4: 1, 3: 2, 2: 3, 1: 3}.get(r, 4)
 
     def struttura(self):
         """Chi sta in quale gruppo, prima di riordinare: ogni pila del mazzo va alla label piu' piccola che contiene il suo centro (come quando la label si sposta),
@@ -1947,13 +2276,16 @@ class TavoloCarte:
         return self.disponi_modo("rete", salva=salva)
 
     def disponi_modo(self, modo="misto", salva=True, inquadra=False):
-        """Riordina il mazzo sul foglio in uno dei quattro modi (ARRANGE), sulla griglia, senza sovrapposizioni. I gruppi restano interi: una label e' un blocco con le
-        sue carte (e le label che ha dentro) e si ridimensiona sul contenuto; la copia di un gruppo va accanto al suo gruppo. Dentro un gruppo le carte stanno in
-        pile per costo (By mana cost, By connections) o una accanto all'altra, al massimo sei per riga (By groups, Mixed). La rete e' quella di sempre: i padri in
-        alto, ogni figlio nella riga sotto il suo padre piu' in basso, i giri chiusi rotti dove si chiudono, l'ordine nella riga per baricentro; in Mixed un gruppo
-        e' un nodo, e una connessione fra una sua carta e una carta fuori lo lega. Sideboard e comandante restano; i dot tornano a meta' fra ingressi e uscite.
-        -> By mana cost le carte libere; By groups i gruppi; By connections e Mixed i nodi della rete. By connections senza connessioni e By groups senza gruppi
-        non toccano niente e lo dicono (0)."""
+        """Riordina il mazzo sul foglio in uno dei modi di ARRANGE, sulla griglia, senza sovrapposizioni. I gruppi restano interi: una label e' un blocco con le
+        sue carte (e le label che ha dentro) e si ridimensiona sul contenuto; la copia di un gruppo va accanto al suo gruppo.
+        CARDS (costo, tipo, colore, rarita): le carte libere in colonne (colonna), le terre in fondo; sotto i gruppi, con le carte nelle stesse colonne.
+        GROUPS (gruppi, gruppi_costo): ogni gruppo su una riga sua, uno sotto l'altro, con le carte una accanto all'altra o in colonne per costo, e i gruppi che
+        ha dentro ancora uno sotto l'altro; sotto le carte libere per costo.
+        CONNECTIONS (rete, misto): la rete da sinistra a destra, i padri a sinistra dei figli, una colonna vuota fra un livello e l'altro, ognuno all'altezza
+        dei suoi padri e dei suoi figli; i giri chiusi rotti dove si chiudono; in misto un gruppo e' un nodo, e una connessione fra una sua carta e una carta
+        fuori lo lega. Sideboard e comandante restano; i dot tornano a meta' fra ingressi e uscite.
+        -> CARDS le carte libere; GROUPS i gruppi; CONNECTIONS i nodi della rete. La rete senza connessioni e GROUPS senza gruppi non toccano niente e lo
+        dicono (0)."""
         self.sfiltra()      # col filtro acceso le carte nascoste stavano nelle pile vecchie: finirebbero in due pile (il disegno rifiltra)
         w, h, off, _p = misure(1.0)
         su = lambda y: -(-y // PASSO_Y) * PASSO_Y               # il passo verticale della griglia, per eccesso
@@ -1974,7 +2306,7 @@ class TavoloCarte:
             self.filtra()
             self.dici("No connections between the deck's cards to arrange")
             return 0
-        if modo == "gruppi" and not E:
+        if modo in ("gruppi", "gruppi_costo") and not E:
             self.filtra()
             self.dici("No groups to arrange: select some cards and make one from ≡ on the frame")
             return 0
@@ -1984,11 +2316,13 @@ class TavoloCarte:
             vids = list(vids)
             return dict(c=1, h=h + (len(vids) - 1) * off, metti=lambda bx, by: nuove.append(dict(zona="main", x=bx, y=by, carte=vids, aperta=None)))
 
-        def pile_costo(vids):
+        def pile_per(vids, crit="cost"):
+            """Le carte in colonne secondo crit (colonna), ognuna in ordine di costo; oltre MAX_PILA la colonna si divide."""
             gr = collections.OrderedDict()
             for i in sorted(vids, key=self.ordine):
-                gr.setdefault(self.gruppo(i, "cost"), []).append(i)
+                gr.setdefault(self.colonna(i, crit), []).append(i)
             return [blocco_pila(cc[a:a + MAX_PILA]) for _g, cc in sorted(gr.items()) for a in range(0, len(cc), MAX_PILA)]
+        pile_costo = pile_per
 
         def impacca(blocchi, max_c):
             """In righe, da sinistra, a capo oltre max_c colonne. -> le posizioni (colonna, y), le colonne usate, l'altezza."""
@@ -2002,7 +2336,9 @@ class TavoloCarte:
                 alta, usate = max(alta, b["h"]), max(usate, col)
             return pos, usate, (y + alta if blocchi else 0)
 
-        def blocco_label(k, stile):
+        def blocco_label(k, stile, impila=False):
+            """Il blocco di un gruppo. stile: «fila» (le carte una accanto all'altra, al massimo sei per riga) o un criterio di colonna (cost, type, color,
+            rarity: le carte in colonne). impila: le carte su una riga che va a capo nella finestra, e ogni gruppo che ha dentro su una riga sua, sotto."""
             lb = E[k]
             if lb.get("copia"):         # la copia di un gruppo: le sue righe di carte, la misura la decide lei
                 self.misura_copia(k)
@@ -2013,8 +2349,17 @@ class TavoloCarte:
                 return dict(c=T, h=lb["h"], metti=metti_c)
             vids = sorted(carte_l.get(k, []), key=self.ordine)
             figlie = sorted((j for j in padre if padre[j] == k), key=lambda j: (E[j]["y"], E[j]["x"]))
-            dentro = (pile_costo(vids) if stile == "pila" else [blocco_pila([v]) for v in vids]) + [blocco_label(j, stile) for j in figlie]
-            pos, cols, alta = impacca(dentro, 10 ** 6 if stile == "pila" else 6)
+            carte_b = [blocco_pila([v]) for v in vids] if stile == "fila" else pile_per(vids, stile)
+            sotto = [blocco_label(j, stile, impila) for j in figlie]
+            dentro = carte_b + sotto
+            if impila:      # uno sotto l'altro: le carte su righe larghe quanto la finestra, poi un gruppo per riga
+                pos, cols, alta = impacca(carte_b, max(3, larga - 2))
+                for b in sotto:
+                    y_ = su(alta + SPAZIO * 2) if alta else 0
+                    pos.append((0, y_))
+                    cols, alta = max(cols, b["c"]), y_ + b["h"]
+            else:
+                pos, cols, alta = impacca(dentro, 6 if stile == "fila" else 10 ** 6)
             cols, alta = max(cols, 1), max(alta, h)         # una label vuota tiene il posto di una carta: ci si lascia una carta dentro
             T, H = max(cols + 1, 3), TOP + max(alta, h) + PAD_L     # almeno tre colonne: il nome si legge accanto alle icone del titolo
 
@@ -2081,47 +2426,83 @@ class TavoloCarte:
                 return livello[n]
             for n in nodi:
                 liv(n)
-            righe = collections.defaultdict(list)
+            # chi non ha padri va subito prima del suo primo figlio: una freccia che salta una colonna passerebbe sopra le carte di quella in mezzo
+            for n in sorted(nodi, key=lambda n: -livello[n]):
+                if not padri[n] and figli[n]:
+                    livello[n] = min(livello[c] for c in figli[n]) - 1
+            usati = {v: i for i, v in enumerate(sorted(set(livello.values())))}
+            colonne = collections.defaultdict(list)
             for n in nodi:
-                righe[livello[n]].append(n)
-            k_max = max(righe)
+                livello[n] = usati[livello[n]]
+                colonne[livello[n]].append(n)
+            k_max = max(colonne)
             media = lambda n, vicini, pos, dopo: (sum(pos[m] for m in vicini[n] if m in pos) / sum(1 for m in vicini[n] if m in pos)
                                                    if any(m in pos for m in vicini[n]) else dopo)
-            for _passata in range(4):       # l'ordine nella riga per baricentro dei vicini: meno incroci
+            for _passata in range(4):       # l'ordine nella colonna per baricentro dei vicini: meno incroci
                 for k in range(1, k_max + 1):
-                    pos = {n: i for i, n in enumerate(righe[k - 1])}
-                    righe[k].sort(key=lambda n: media(n, padri, pos, len(pos)))
+                    pos = {n: i for i, n in enumerate(colonne[k - 1])}
+                    colonne[k].sort(key=lambda n: media(n, padri, pos, len(pos)))
                 for k in range(k_max - 1, -1, -1):
-                    pos = {n: i for i, n in enumerate(righe[k + 1])}
-                    righe[k].sort(key=lambda n: media(n, figli, pos, len(pos)))
+                    pos = {n: i for i, n in enumerate(colonne[k + 1])}
+                    colonne[k].sort(key=lambda n: media(n, figli, pos, len(pos)))
             blocchi = {n: blocco_di(n) for n in nodi}
-            largo = max(sum(blocchi[n]["c"] for n in righe[k]) for k in righe)
+            # La rete scorre da sinistra a destra (13 nov 2026 sera, Autore: «per connessioni fai in modo che le connessioni siano belle visibili»). Le
+            # frecce vanno dal pallino alla base del padre a quello alla base del figlio: coi padri sopra i figli ogni freccia arrivava al figlio passando
+            # dietro tutta la sua carta. Coi padri a sinistra la freccia corre sotto le carte, orizzontale quando padre e figlio stanno alla stessa altezza
+            # (ognuno si mette all'altezza media dei padri, poi i padri a quella dei figli), e fra una colonna e l'altra resta una colonna vuota, la corsia.
+            # Ogni livello scende di una riga della griglia (SCALINO) rispetto ai suoi padri: alla stessa altezza le frecce fra due gruppi correvano tutte
+            # sulla stessa riga sotto le carte, una sopra l'altra, e ne sembrava una sola (la foto sul mazzo vero, 13 nov 2026). Con lo scalino e la corsia la
+            # pendenza e' 1/13: all'altezza del bordo della carta del figlio la freccia passa ancora sotto la carta.
+            CORSIA, VG, SCALINO = 1, 3 * PASSO_Y, PASSO_Y
+            x_col, c = {}, 0
             for k in range(k_max + 1):
-                c = (largo - sum(blocchi[n]["c"] for n in righe[k])) // 2
-                for n in righe[k]:
-                    blocchi[n]["metti"](MARGINE + c * PASSO_X, y0)
-                    c += blocchi[n]["c"]
-                y0 = su(y0 + max(blocchi[n]["h"] for n in righe[k]) + 110)     # con l'aria per le frecce
+                x_col[k] = c
+                c += max(blocchi[n]["c"] for n in colonne[k]) + CORSIA
+            ypos = {}
+
+            def impila_colonna(k, voluto):
+                fondo = 0
+                for n in colonne[k]:
+                    y_ = su(max(voluto(n, fondo), fondo))
+                    ypos[n] = y_
+                    fondo = y_ + blocchi[n]["h"] + VG
+            altezza_di = lambda vicini, n, fondo, d: (sum(ypos[m] for m in vicini[n] if m in ypos) / sum(1 for m in vicini[n] if m in ypos) + d
+                                                      if any(m in ypos for m in vicini[n]) else fondo)
+            for k in range(k_max + 1):
+                impila_colonna(k, lambda n, f: altezza_di(padri, n, f, SCALINO))
+            for k in range(k_max - 1, -1, -1):
+                impila_colonna(k, lambda n, f: altezza_di(figli, n, f, -SCALINO) if figli[n] else ypos.get(n, f))
+            alto = min(ypos.values())       # il backward pass puo' portare un padre sopra lo zero: la rete riparte da y0
+            ypos = {n: y_ - alto for n, y_ in ypos.items()}
+            for n in nodi:
+                blocchi[n]["metti"](MARGINE + x_col[livello[n]] * PASSO_X, y0 + ypos[n])
+            y0 = su(y0 + max(ypos[n] + blocchi[n]["h"] for n in nodi) + 110)     # con l'aria per le frecce sotto l'ultima riga
             return nodi
 
         cima = [k for k in range(len(E)) if padre[k] is None]
         sciolte = set(libere)
-        if modo == "costo":
-            sezione(pile_costo(libere))
-            sezione([blocco_label(k, "pila") for k in ordina_gruppi(cima)])
-            n_fatti, cosa = len(libere), f"Arranged by mana cost: the loose cards in cost columns, {len(cima)} group{'s' * (len(cima) != 1)} below, whole"
-        elif modo == "gruppi":
-            sezione([blocco_label(k, "fila") for k in ordina_gruppi(cima)])
-            sezione(pile_costo(libere))
-            n_fatti, cosa = len(cima), f"Arranged by groups: {len(cima)} group{'s' * (len(cima) != 1)} on top, the loose cards below by cost"
+        gr_s = lambda n: f"{n} group{'s' * (n != 1)}"
+        if modo in self.CRITERI:
+            crit = self.CRITERI[modo]
+            sezione(pile_per(libere, crit))
+            sezione([blocco_label(k, crit) for k in ordina_gruppi(cima)])
+            per = {"cost": "mana cost", "type": "type", "color": "color", "rarity": "rarity"}[crit]
+            n_fatti, cosa = len(libere), f"Arranged by {per}: the loose cards in columns, lands last · {gr_s(len(cima))} below, whole"
+        elif modo in ("gruppi", "gruppi_costo"):
+            for k in ordina_gruppi(cima):       # uno sotto l'altro: ogni gruppo su una riga sua, a sinistra
+                b = blocco_label(k, "fila" if modo == "gruppi" else "cost", impila=True)
+                b["metti"](MARGINE, y0)
+                y0 = su(y0 + b["h"] + 3 * PASSO_Y)
+            sezione(pile_per(libere, "cost"))
+            n_fatti, cosa = len(cima), f"Arranged by groups: {gr_s(len(cima))} one under the other · the loose cards below by cost"
         elif modo == "rete":
             nodi = rete(lambda n: n if main[n] in sciolte else None, lambda n: blocco_pila([main[n]]), lambda n: self.ordine(main[n]))
             messe = {main[n] for n in nodi}
-            sezione([blocco_label(k, "pila") for k in ordina_gruppi(cima)])
+            sezione([blocco_label(k, "cost") for k in ordina_gruppi(cima)])
             sezione(pile_costo([v for v in libere if v not in messe]))
             n_fatti = len(nodi)
-            cosa = (f"Arranged by connections: {len(nodi)} linked cards, parents above children · groups and the other cards below" if nodi
-                    else "The connections all touch cards in groups: groups and loose cards arranged, try Mixed for the network")
+            cosa = (f"Arranged as a network: {len(nodi)} linked cards, parents left, children right · groups and the other cards below" if nodi
+                    else "The connections all touch cards in groups: groups and loose cards arranged, try Network with groups")
         else:
             top = {}
             for k, vv in carte_l.items():
@@ -2139,8 +2520,8 @@ class TavoloCarte:
             sezione([blocco_label(k, "fila") for k in altri])
             sezione(pile_costo([v for v in libere if v not in messe]))
             n_fatti = len(nodi)
-            cosa = (f"Mixed: the network of {len(messe)} cards and {len(in_rete)} groups on top · {len(altri)} other groups, then the loose cards by cost"
-                    if nodi else f"Mixed: no connections · {len(altri)} groups, then the loose cards by cost")
+            cosa = (f"Network with groups: {len(messe)} cards and {gr_s(len(in_rete))} in the flow · {gr_s(len(altri))} more, then the loose cards by cost"
+                    if nodi else f"Network with groups: no connections · {gr_s(len(altri))}, then the loose cards by cost")
         self.pile = [pl for pl in self.pile if pl["zona"] != "main"] + nuove
         self.vuota_sel()
         self.rimetti_punti(main)
@@ -2366,8 +2747,11 @@ class TavoloCarte:
         bs = max(s, 0.75)       # il numero resta leggibile anche sulle carte piccole (la fascia bassa, lo zoom indietro)
         bl, bh = round(26 * bs), round(17 * bs)
         cy = y + h * 0.072
-        cv.create_image(x - round(14 * bs), cy - bh / 2, image=pillola(bl, bh, (16, 16, 20, 235), C["accento"]), anchor="nw", tags=tag)
-        cv.create_text(x - round(14 * bs) + bl / 2, cy, text=f"{v['q']}x", fill="#ffffff", font=F(max(7, round(8 * bs)), True), tags=tag)
+        # sulle carte piccole la pillola sta dentro la carta, in alto a sinistra (13 nov 2026, Autore: «sistema i contatori che coprono le carte»): sporgendo a
+        # sinistra copriva la carta accanto, perche' fra due pile restano 20 pixel per lo zoom
+        px_ = x - round(14 * bs) if s >= 0.75 else x + 2
+        cv.create_image(px_, cy - bh / 2, image=pillola(bl, bh, (16, 16, 20, 235), C["accento"]), anchor="nw", tags=tag)
+        cv.create_text(px_ + bl / 2, cy, text=f"{v['q']}x", fill="#ffffff", font=F(max(7, round(8 * bs)), True), tags=tag)
         if intera and self.modifica:
             self.contatore_disegna(vid, x, y, w, h, s)
 
@@ -2377,6 +2761,19 @@ class TavoloCarte:
         la carta."""
         cv, F = self.cv, self.F
         v = self.voci[vid]
+        # Mai sopra le carte accanto (13 nov 2026, Autore: «sistema i contatori che coprono le carte»): a misura fissa il contatore e' largo 98 pixel, e a zoom
+        # basso la carta ne ha 44. Pieno quando ci sta (CONT_PIENO); piu' stretta, solo − e + piccoli dentro gli angoli in basso della carta (il numero lo dice
+        # la pillola «Nx»); sotto CONT_MINIMO niente: per cambiare le copie ci si avvicina.
+        if w < CONT_MINIMO:
+            return
+        if w < CONT_PIENO:
+            lato = 18 if w >= 64 else 15
+            pieno = self.totale(v["nome"]) >= self.limite(v["nome"])
+            yb = y + h - lato - 4
+            cv.create_image(x + 3, yb, image=tondo_segno(lato, C["cap"], "-", "#ffffff"), anchor="nw", tags=("ctrl", f"meno{vid}", f"c{vid}"))
+            cv.create_image(x + w - 3 - lato, yb, image=tondo_segno(lato, C["cap"] if pieno else C["accento"], "+", C["muto"] if pieno else "#ffffff"),
+                            anchor="nw", tags=("ctrl", f"piu{vid}", f"c{vid}"))
+            return
         s = 1.0
         lato = round(24 * s)
         pl_l, pl_h = round(98 * s), round(32 * s)
@@ -2569,7 +2966,9 @@ class TavoloCarte:
             x, y, rr = pt
             self.cv.create_image(x - rr, y - rr, image=pallino_nodo(2 * rr), anchor="nw", tags=("nodo", f"n{vid}"))
             v = self.voci[vid]
-            if rr == 8 and self.modifica and v["zona"] != "cmd":       # alla base delle carte intere, nei mazzi che si cambiano: il ⇄ accanto al pallino
+            pl_ = self.pila_di(vid)
+            larga = misure(self.pos_px(pl_)[2])[0] if pl_ is not None else BASE_W      # le carte piccole: solo il pallino, la fila intera usciva dalla carta
+            if rr == 8 and self.modifica and v["zona"] != "cmd" and larga >= STRUMENTI_MIN:       # alla base delle carte intere, nei mazzi che si cambiano: il ⇄ accanto al pallino
                 self.cv.create_image(x + 22 - 8, y - 8, image=segno_scambia(16), anchor="nw", tags=("scambia", f"s{vid}"))
                 if v["nome"] not in self.note:      # e a sinistra il + nota (Autore, 12 nov 2026: «aggiungere note va accanto al pallino giallo di collegamento
                     # sulle carte»; prima era in alto a destra della carta sotto il mouse)
@@ -2581,17 +2980,15 @@ class TavoloCarte:
         tk, F = self.tk, self.F
         self.scambia_chiudi()
         v = self.voci[vid]
-        p = self._scambio = tk.Toplevel(self.fin); p.overrideredirect(True); p.configure(bg=C["accento"])
-        dentro = tk.Frame(p, bg=C["cap"]); dentro.pack(padx=1, pady=1)
-        tk.Label(dentro, text=f"Replace {v['nome']} ({v['q']}x) with…", bg=C["cap"], fg=C["titolo"], font=F(9, True)).pack(anchor="w", padx=10, pady=(8, 4))
+        m = MB.Menu(tk, F, self.fin, "Replace card", chiudi=self.scambia_chiudi)       # lo stile comune dei mini-menu (menu_board, 13 nov 2026)
+        p = self._scambio = m.p
+        tk.Label(m.corpo, text=f"{v['nome']}  ·  {v['q']}x", bg=MB.FONDO, fg="#ffffff", font=F(9, True), anchor="w").pack(fill="x", padx=12, pady=(6, 0))
+        m.sezione("With")
+        r_ = m.riga()
         var = tk.StringVar()
-        e = tk.Entry(dentro, textvariable=var, width=36, bg=C["scheda"], fg=C["titolo"], insertbackground=C["titolo"], relief="flat", font=F(10))
-        e.pack(padx=10, ipady=4)
-        lista = tk.Listbox(dentro, bg=C["cap"], fg=C["testo"], selectbackground=C["accento"], selectforeground="#ffffff", relief="flat", bd=0, highlightthickness=0,
-                           font=F(10), activestyle="none", height=8, width=40)
-        lista.pack(padx=10, pady=(6, 4))
-        tk.Label(dentro, text="type a name · Enter replaces · Esc closes · cards you own first", bg=C["cap"], fg=C["grigio"], font=F(7)).pack(anchor="w", padx=10,
-                                                                                                                                          pady=(0, 8))
+        e = m.campo(r_, var, larga=36)
+        lista = m.lista(r_)
+        m.piede("Type a name · Enter replaces · Esc closes · cards you own first")
         voci = []
 
         def aggiorna(*_a):
@@ -2621,8 +3018,7 @@ class TavoloCarte:
         bb = self.cv.bbox(f"s{vid}") or self.cv.bbox(f"c{vid}")
         x = self.cv.winfo_rootx() + int(bb[0] - self.cv.canvasx(0)) if bb else self.fin.winfo_pointerx()
         y = self.cv.winfo_rooty() + int(bb[3] - self.cv.canvasy(0)) + 4 if bb else self.fin.winfo_pointery()
-        p.geometry(f"+{x}+{y}")
-        e.focus_force()
+        m.posa(xy=(x, y), fuoco=e)
         return p
 
     # ------------------------------------------------ le note personali (12 nov 2026)
@@ -2711,29 +3107,23 @@ class TavoloCarte:
         tk, F = self.tk, self.F
         self.nota_chiudi()
         titolo = chiave if tipo == "c" else (self.etichette[chiave]["nome"] if 0 <= chiave < len(self.etichette) else "Label")
-        p = self._nota_pop = tk.Toplevel(self.fin); p.overrideredirect(True); p.configure(bg="#f0ad4e")
-        dentro = tk.Frame(p, bg=C["cap"]); dentro.pack(padx=1, pady=1)
-        tk.Label(dentro, text=f"Note · {titolo}", bg=C["cap"], fg=C["titolo"], font=F(9, True)).pack(anchor="w", padx=10, pady=(8, 4))
-        testo = tk.Text(dentro, width=40, height=6, bg=C["scheda"], fg=C["titolo"], insertbackground=C["titolo"], relief="flat", font=F(9), wrap="word")
-        testo.pack(padx=10)
+        m = MB.Menu(tk, F, self.fin, f"Note · {titolo}", chiudi=self.nota_chiudi, colore="#f0ad4e")      # lo stile comune dei mini-menu, col filo ambra delle note
+        p = self._nota_pop = m.p
+        testo = m.campo(m.riga(pady=(8, 2)), None, larga=40, righe=6)
         testo.insert("1.0", self.nota_di(tipo, chiave))
-        giu = tk.Frame(dentro, bg=C["cap"]); giu.pack(fill="x", padx=10, pady=(6, 8))
 
         def salva(*_a):
             self.metti_nota(tipo, chiave, testo.get("1.0", "end"))
             self.nota_chiudi()
             return "break"
-        ok = tk.Label(giu, text="Save", bg=C["accento"], fg="#ffffff", font=F(8, True), padx=10, pady=2, cursor="hand2"); ok.pack(side="right")
-        ok.bind("<Button-1>", salva)
+        voci_ = [("Save", salva, "salva")]
         if self.nota_di(tipo, chiave):
-            via = tk.Label(giu, text="Delete", bg=C["cap"], fg=C["rosso"], font=F(8, True), cursor="hand2"); via.pack(side="left")
-            via.bind("<Button-1>", lambda ev: (self.metti_nota(tipo, chiave, ""), self.nota_chiudi()))
-        tk.Label(giu, text="Ctrl+Enter saves · Esc closes", bg=C["cap"], fg=C["grigio"], font=F(7)).pack(side="left", padx=(10, 0))
+            voci_.append(("Delete", lambda: (self.metti_nota(tipo, chiave, ""), self.nota_chiudi()), "pericolo"))
+        m.pulsanti(voci_ + [("Cancel", self.nota_chiudi, "secondario")])
+        m.piede("Ctrl+Enter saves · Esc closes")
         testo.bind("<Control-Return>", salva)
         testo.bind("<Escape>", lambda ev: self.nota_chiudi())
-        x, y = self.fin.winfo_pointerxy()
-        p.geometry(f"+{x + 12}+{y + 12}")
-        testo.focus_set()
+        m.posa(fuoco=testo)
         self.pronta_nota = salva        # le prove salvano da qui
         self.testo_nota = testo
         return p
@@ -2751,13 +3141,16 @@ class TavoloCarte:
         """La casella col nome per cambiare (vecchia) o aggiungere (None) una carta della copia k: le carte che combaciano, prima quelle che hai."""
         tk, F = self.tk, self.F
         self.scambia_chiudi()
-        p = self._scambio = tk.Toplevel(self.fin); p.overrideredirect(True); p.configure(bg=C["accento"])
-        dentro = tk.Frame(p, bg=C["cap"]); dentro.pack(padx=1, pady=1)
-        tk.Label(dentro, text=f"Replace {vecchia} with…" if vecchia else "Add a card to the copy", bg=C["cap"], fg=C["titolo"], font=F(9, True)).pack(anchor="w", padx=10, pady=(8, 4))
+        m = MB.Menu(tk, F, self.fin, "Replace card" if vecchia else "Add a card", chiudi=self.scambia_chiudi)      # lo stile comune dei mini-menu
+        p = self._scambio = m.p
+        if vecchia:
+            tk.Label(m.corpo, text=vecchia, bg=MB.FONDO, fg="#ffffff", font=F(9, True), anchor="w").pack(fill="x", padx=12, pady=(6, 0))
+        m.sezione("With" if vecchia else "Card")
+        r_ = m.riga()
         var = tk.StringVar()
-        e = tk.Entry(dentro, textvariable=var, width=36, bg=C["scheda"], fg=C["titolo"], insertbackground=C["titolo"], relief="flat", font=F(10)); e.pack(padx=10, ipady=4)
-        lista = tk.Listbox(dentro, bg=C["cap"], fg=C["testo"], selectbackground=C["accento"], selectforeground="#ffffff", relief="flat", bd=0, highlightthickness=0,
-                           font=F(10), activestyle="none", height=8, width=40); lista.pack(padx=10, pady=(6, 8))
+        e = m.campo(r_, var, larga=36)
+        lista = m.lista(r_)
+        m.piede("Type a name · Enter or double-click picks · Esc closes · cards you own first")
         voci = []
 
         def aggiorna(*_a):
@@ -2776,8 +3169,7 @@ class TavoloCarte:
         var.trace_add("write", aggiorna)
         e.bind("<Return>", scegli); lista.bind("<Double-Button-1>", scegli)
         e.bind("<Escape>", lambda ev: self.scambia_chiudi())
-        p.geometry(f"+{self.fin.winfo_pointerx() + 10}+{self.fin.winfo_pointery() + 10}")
-        e.focus_force()
+        m.posa(fuoco=e)
         p.scelta = dict(var=var, scegli=scegli)         # per le prove
         return p
 
@@ -3634,6 +4026,7 @@ class TavoloCarte:
             return
         try:
             salva_tavolo(self.chiave, dict(v=2, zoom=self.zoom, fascia=self.hs, etichette=[dict(lb) for lb in self.etichette], note=dict(self.note),
+                                                    nascoste=[[n, z] for n, z in sorted(self.occhi)],
                                                     punti=[dict(id=q, **p_) for q, p_ in self.punti.items()], vie=[[a, b, q] for (a, b), q in self.vie.items()], pile=[dict(zona=pl["zona"], x=pl["x"], y=pl["y"], carte=[[self.voci[c]["nome"], self.voci[c]["q"]] for c in carte_])
                                                                     for pl, carte_ in self.pile_tutte()]), self.file_tavoli)
         except OSError as e:
@@ -3652,12 +4045,13 @@ class TavoloCarte:
             return False
         self.etichette = [dict(nome=str(x.get("nome") or "Label"), x=x["x"], y=x["y"], w=x["w"], h=x["h"], colore=x.get("colore") or GRIGIO_L,
                                lucchetto=x.get("lucchetto", True), **({"nota": str(x["nota"]), "nota_aperta": bool(x.get("nota_aperta"))} if x.get("nota") else {}),
-                               **({"id": str(x["id"])} if x.get("id") else {}),
+                               **({"id": str(x["id"])} if x.get("id") else {}), **({"nascosta": True} if x.get("nascosta") else {}),
                                **({"copia": True, "carte": {str(n): int(q) for n, q in (x.get("carte") or {}).items()}, "origine": x.get("origine")}
                                   if x.get("copia") else {}))
                           for x in t.get("etichette") or [] if all(k in x for k in ("x", "y", "w", "h"))]
         self.note = {str(n): dict(testo=str(v.get("testo")), aperta=bool(v.get("aperta"))) for n, v in (t.get("note") or {}).items()
                      if isinstance(v, dict) and v.get("testo")}
+        self.occhi = {(str(n), str(z)) for n, z in (t.get("nascoste") or []) if z in ("main", "side", "cmd")}
         self.punti = {}
         for x in t.get("punti") or []:
             if not all(k in x for k in ("id", "x", "y")):
@@ -3717,7 +4111,8 @@ class TavoloCarte:
         """Tutto quello che un gesto puo' cambiare: le carte e le pile (anche quelle tenute da parte dal filtro), le label, le note, i dot, la rete."""
         import copy
         return copy.deepcopy(dict(voci=self.voci, pile=[dict(zona=pl["zona"], x=pl["x"], y=pl["y"], carte=list(c_)) for pl, c_ in self.pile_tutte()],
-                                  etichette=self.etichette, note=self.note, punti=self.punti, vie=self.vie, figli=self.rete.figli, stili=self.rete.stili))
+                                  etichette=self.etichette, note=self.note, punti=self.punti, vie=self.vie, figli=self.rete.figli, stili=self.rete.stili,
+                                  occhi=sorted(self.occhi)))
 
     def registra(self):
         if not self.storia:
@@ -3747,6 +4142,7 @@ class TavoloCarte:
         self.pile = [dict(p_, aperta=None) for p_ in f["pile"]]
         self.etichette, self.note, self.punti, self.vie = f["etichette"], f["note"], f["punti"], f["vie"]
         self.rete.figli, self.rete.stili = f["figli"], f["stili"]
+        self.occhi = {tuple(x) for x in f.get("occhi") or []}
         self.sel, self.sel_punti, self.sel_label, self.sel_carta = [], set(), set(), None
         if self.modifica:
             lista, side = self.liste()
@@ -4131,7 +4527,8 @@ class TavoloCarte:
 
     def menu_label(self, k):
         """Il menu della label (Autore, 10 nov 2026: «al centro della cornice un'icona a 3 linee: e' li' che voglio il menu della label: nome e colore»): dalla
-        cornice della selezione fa una label nuova intorno alla selezione; dal titolo di una label la cambia (nome, colore, lucchetto, Delete). Invio salva, Esc chiude."""
+        cornice della selezione fa una label nuova intorno alla selezione; dal titolo di una label la cambia (nome, colore, lucchetto, nota, Duplicate, Swap, Delete).
+        Nello stile comune dei mini-menu (menu_board, 13 nov 2026). Invio salva, Esc chiude."""
         tk, F = self.tk, self.F
         self.stile_chiudi()
         self.nome_chiudi()
@@ -4141,22 +4538,22 @@ class TavoloCarte:
             return None
         lb = None if nuova else self.etichette[k]
         scelto = dict(colore=(lb.get("colore") if lb else None) or GRIGIO_L)
-        p = self._nome_pop = tk.Toplevel(self.fin); p.overrideredirect(True); p.configure(bg=C["accento"])
-        dentro = tk.Frame(p, bg=C["cap"]); dentro.pack(padx=1, pady=1)
-        tk.Label(dentro, text="New label" if nuova else "Label", bg=C["cap"], fg=C["titolo"], font=F(9, True)).pack(anchor="w", padx=10, pady=(8, 4))
-        tk.Label(dentro, text="NAME", bg=C["cap"], fg=C["muto"], font=F(7, True)).pack(anchor="w", padx=10)
+        m = MB.Menu(tk, F, self.fin, "New group" if nuova else "Group", chiudi=self.nome_chiudi)
+        p = self._nome_pop = m.p
+        m.sezione("Name")
         var = tk.StringVar(value=lb["nome"] if lb else "")
-        e = tk.Entry(dentro, textvariable=var, width=26, bg=C["scheda"], fg=C["titolo"], insertbackground=C["titolo"], relief="flat", font=F(10))
-        e.pack(padx=10, ipady=4, anchor="w")
-        tk.Label(dentro, text="COLOR", bg=C["cap"], fg=C["muto"], font=F(7, True)).pack(anchor="w", padx=10, pady=(6, 0))
+        e = m.campo(m.riga(), var, larga=30)
+        m.sezione("Color")
         colori = [("Gray", GRIGIO_L)] + list(RS.COLORI)
-        cvc = tk.Canvas(dentro, width=len(colori) * 26 + 4, height=28, bg=C["cap"], highlightthickness=0, cursor="hand2"); cvc.pack(anchor="w", padx=8, pady=(2, 4))
+        cvc = tk.Canvas(m.riga(), width=len(colori) * 28, height=28, bg=MB.FONDO, highlightthickness=0, cursor="hand2"); cvc.pack(anchor="w")
 
         def tinte():
             cvc.delete("all")
             for i, (_n, hx) in enumerate(colori):
-                x = 4 + i * 26 + 11
-                cvc.create_oval(x - 9, 5, x + 9, 23, fill=hx, outline="#ffffff" if hx == scelto["colore"] else C["filo"], width=2 if hx == scelto["colore"] else 1)
+                x = i * 28 + 3
+                if hx == scelto["colore"]:
+                    cvc.create_rectangle(x - 2, 2, x + 22, 26, outline=MB.NEON, width=2)
+                cvc.create_rectangle(x + 2, 6, x + 18, 22, fill=hx, outline="#ffffff" if hx == scelto["colore"] else C["filo"], width=1)
 
         def colore(c):
             scelto["colore"] = c
@@ -4166,11 +4563,10 @@ class TavoloCarte:
             tinte()
 
         def clic(ev):
-            i = int((ev.x - 4) // 26)
+            i = int(ev.x // 28)
             if 0 <= i < len(colori):
                 colore(colori[i][1])
         cvc.bind("<Button-1>", clic)
-        giu = tk.Frame(dentro, bg=C["cap"]); giu.pack(fill="x", padx=10, pady=(4, 8))
 
         def applica(*_a):
             n = var.get().strip()
@@ -4182,38 +4578,41 @@ class TavoloCarte:
                 lb["colore"] = scelto["colore"]
                 self.disegna(); self.salva()
             return "break"
-        ok = tk.Label(giu, text="Create" if nuova else "Save", bg=C["accento"], fg="#ffffff", font=F(8, True), padx=10, pady=2, cursor="hand2"); ok.pack(side="right")
-        ok.bind("<Button-1>", applica)
         if not nuova:
-            chiusa = tk.Label(giu, text="", bg=C["cap"], fg=C["testo"], font=F(8), cursor="hand2"); chiusa.pack(side="left")
+            m.sezione("Group")
+            chiusa = lb.get("lucchetto", True)
+            r_l = m.voce("Locked: moves with its cards" if chiusa else "Unlocked: moves alone",
+                         "Click to unlock it" if chiusa else "Click to lock it", lambda: None, chiudi=False)
 
-            def scritta():
-                chiusa.configure(text="🔒 locked" if lb.get("lucchetto", True) else "🔓 unlocked")
-            chiusa.bind("<Button-1>", lambda ev: (self.lucchetto_label(k), scritta()))
-            scritta()
-            via = tk.Label(giu, text="Delete", bg=C["cap"], fg=C["rosso"], font=F(8, True), cursor="hand2"); via.pack(side="left", padx=(12, 0))
-            via.bind("<Button-1>", lambda ev: (self.nome_chiudi(), self.togli_etichetta(k)))
-            nota = tk.Label(giu, text="Note…", bg=C["cap"], fg="#f0ad4e", font=F(8, True), cursor="hand2"); nota.pack(side="left", padx=(12, 0))
-            nota.bind("<Button-1>", lambda ev: (self.nome_chiudi(), self.editor_nota("l", k)))
+            def lucchetto(_e=None):
+                self.lucchetto_label(k)
+                on = self.etichette[k].get("lucchetto", True)
+                lab = [w_ for w_ in r_l.winfo_children()[1].winfo_children()]
+                lab[0].configure(text="Locked: moves with its cards" if on else "Unlocked: moves alone")
+                lab[1].configure(text="Click to unlock it" if on else "Click to lock it")
+            for w_ in [r_l] + list(r_l.winfo_children()) + list(r_l.winfo_children()[1].winfo_children()):
+                w_.bind("<Button-1>", lucchetto)
+            m.voci["lock"] = lucchetto
+            m.voce("Note…", "A note on this group, on its title", lambda: self.editor_nota("l", k), colore="#f0ad4e")
             if self.modifica:       # i gruppi (12 nov 2026): duplicare, scambiare una copia con l'originale, togliere il gruppo con le sue carte
-                altro = tk.Frame(dentro, bg=C["cap"]); altro.pack(fill="x", padx=10, pady=(0, 8))
                 if lb.get("copia"):
-                    sw = tk.Label(altro, text=f"⇄ Swap with «{self.nome_origine(lb)}»", bg=C["cap"], fg=C["accento"], font=F(8, True), cursor="hand2"); sw.pack(side="left")
-                    sw.bind("<Button-1>", lambda ev: (self.nome_chiudi(), self.scambia_gruppo(k)))
+                    m.voce(f"⇄ Swap with «{self.nome_origine(lb)}»", "The copy's cards go in the deck, the original's come here", lambda: self.scambia_gruppo(k))
                 else:
-                    du = tk.Label(altro, text="Duplicate", bg=C["cap"], fg=C["accento"], font=F(8, True), cursor="hand2"); du.pack(side="left")
-                    du.bind("<Button-1>", lambda ev: (self.nome_chiudi(), self.duplica_gruppo(k)))
-                    vc = tk.Label(altro, text="Delete with its cards", bg=C["cap"], fg=C["rosso"], font=F(8, True), cursor="hand2"); vc.pack(side="left", padx=(12, 0))
-                    vc.bind("<Button-1>", lambda ev: (self.nome_chiudi(), self.togli_gruppo(k)))
+                    m.voce("Duplicate", "A copy beside it: change its cards, then Swap", lambda: self.duplica_gruppo(k))
+            m.voce("Delete the frame", "The cards stay where they are", lambda: self.togli_etichetta(k), colore=C["rosso"])
+            if self.modifica and not lb.get("copia"):
+                m.voce("Delete with its cards", "The group and its cards leave the deck", lambda: self.togli_gruppo(k), colore=C["rosso"])
+        m.pulsanti([("Create" if nuova else "Save", applica, "salva"), ("Cancel", self.nome_chiudi, "secondario")])
+        m.piede("Enter saves · Esc closes · the color changes at once")
         e.bind("<Return>", applica)
         e.bind("<Escape>", lambda ev: self.nome_chiudi())
-        p.bind("<Escape>", lambda ev: self.nome_chiudi())
         tinte()
-        p.geometry(f"+{self.fin.winfo_pointerx() + 10}+{self.fin.winfo_pointery() + 10}")
-        e.focus_force()
+        m.posa(fuoco=e)
         e.select_range(0, "end")
         p.menu = dict(applica=applica, colore=colore, nome=var)        # per le prove
+        p.voci = m.voci
         return p
+
 
     def ridim_muovi(self, e):
         """L'angolo in basso a destra della label: la misura, a passi di un disegno per fotogramma."""
@@ -4458,13 +4857,10 @@ class TavoloCarte:
         """Una casella accanto al puntatore: Invio salva, Esc chiude."""
         tk, F = self.tk, self.F
         self.nome_chiudi()
-        p = self._nome_pop = tk.Toplevel(self.fin); p.overrideredirect(True); p.configure(bg=C["accento"])
-        dentro = tk.Frame(p, bg=C["cap"]); dentro.pack(padx=1, pady=1)
-        tk.Label(dentro, text=titolo, bg=C["cap"], fg=C["titolo"], font=F(9, True)).pack(anchor="w", padx=10, pady=(8, 4))
+        m = MB.Menu(tk, F, self.fin, titolo, chiudi=self.nome_chiudi)       # lo stile comune dei mini-menu (menu_board, 13 nov 2026)
+        p = self._nome_pop = m.p
         var = tk.StringVar(value=iniziale)
-        e = tk.Entry(dentro, textvariable=var, width=28, bg=C["scheda"], fg=C["titolo"], insertbackground=C["titolo"], relief="flat", font=F(10))
-        e.pack(padx=10, ipady=4)
-        tk.Label(dentro, text="Enter saves · Esc closes", bg=C["cap"], fg=C["grigio"], font=F(7)).pack(anchor="w", padx=10, pady=(4, 8))
+        e = m.campo(m.riga(pady=(8, 2)), var, larga=28)
 
         def ok(*_a):
             n = var.get().strip()
@@ -4474,8 +4870,9 @@ class TavoloCarte:
             return "break"
         e.bind("<Return>", ok)
         e.bind("<Escape>", lambda ev: self.nome_chiudi())
-        p.geometry(f"+{self.fin.winfo_pointerx() + 10}+{self.fin.winfo_pointery() + 10}")
-        e.focus_force()
+        m.pulsanti([("Save", ok, "salva"), ("Cancel", self.nome_chiudi, "secondario")])
+        m.piede("Enter saves · Esc closes")
+        m.posa(fuoco=e)
         e.select_range(0, "end")
         return p
 
@@ -4494,27 +4891,28 @@ class TavoloCarte:
         tk, F = self.tk, self.F
         self.stile_chiudi()
         pa, pb = self.voci[sg[0]]["nome"], self.voci[sg[1]]["nome"]
-        p = self._stile_pop = tk.Toplevel(self.fin); p.overrideredirect(True); p.configure(bg=C["accento"])
-        dentro = tk.Frame(p, bg=C["cap"]); dentro.pack(padx=1, pady=1)
-        tk.Label(dentro, text=f"{pa}  →  {pb}", bg=C["cap"], fg=C["titolo"], font=F(9, True)).pack(anchor="w", padx=10, pady=(8, 6))
-        tk.Label(dentro, text="COLOR", bg=C["cap"], fg=C["muto"], font=F(7, True)).pack(anchor="w", padx=10)
-        cv1 = tk.Canvas(dentro, width=len(RS.COLORI) * 28 + 4, height=30, bg=C["cap"], highlightthickness=0, cursor="hand2"); cv1.pack(anchor="w", padx=8, pady=(2, 6))
-        tk.Label(dentro, text="WIDTH", bg=C["cap"], fg=C["muto"], font=F(7, True)).pack(anchor="w", padx=10)
+        m = MB.Menu(tk, F, self.fin, "Link", chiudi=self.stile_chiudi)      # lo stile comune dei mini-menu (menu_board, 13 nov 2026)
+        p = self._stile_pop = m.p
+        tk.Label(m.corpo, text=f"{pa}  →  {pb}", bg=MB.FONDO, fg="#ffffff", font=F(9, True), anchor="w").pack(fill="x", padx=12, pady=(6, 0))
+        m.sezione("Color")
+        cv1 = tk.Canvas(m.riga(), width=len(RS.COLORI) * 28 + 4, height=30, bg=MB.FONDO, highlightthickness=0, cursor="hand2"); cv1.pack(anchor="w")
+        m.sezione("Width")
         # lo spessore della linea a slider (Autore, 10 nov 2026: «nel pallino di selezione colore metti lo slider di spessore linea»); prima tre riquadri 1-3
         v_sp = tk.DoubleVar(value=self.rete.colore_spessore(pa, pb)[1])
         L_S = len(RS.COLORI) * 28 + 4      # disegnato in antialias come le altre icone (lo Scale di Tk prendeva il colore del fondo e la manopola spariva)
-        cv2 = tk.Canvas(dentro, width=L_S, height=26, bg=C["cap"], highlightthickness=0, cursor="hand2"); cv2.pack(anchor="w", padx=8, pady=(2, 6))
+        cv2 = tk.Canvas(m.riga(), width=L_S, height=26, bg=MB.FONDO, highlightthickness=0, cursor="hand2"); cv2.pack(anchor="w")
         x0s, x1s = 10, L_S - 56
-        giu = tk.Frame(dentro, bg=C["cap"]); giu.pack(fill="x", padx=10, pady=(0, 8))
-        via = tk.Label(giu, text="Unlink", bg=C["cap"], fg=C["rosso"], font=F(8, True), cursor="hand2"); via.pack(side="left")
-        tk.Label(giu, text="Esc closes", bg=C["cap"], fg=C["grigio"], font=F(7)).pack(side="right")
+        m.pulsanti([("Unlink", lambda: (self.stile_chiudi(), self.togli_arco(sg)), "pericolo")])
+        m.piede("The line changes at once · Esc closes")
 
         def ridisegna():
             col, _w = self.rete.colore_spessore(pa, pb)
             cv1.delete("all")
             for i, (_n, hx) in enumerate(RS.COLORI):
                 x = 4 + i * 28 + 12
-                cv1.create_oval(x - 10, 5, x + 10, 25, fill=hx, outline="#ffffff" if hx == col else C["filo"], width=2 if hx == col else 1)
+                if hx == col:
+                    cv1.create_rectangle(x - 12, 3, x + 12, 27, outline=MB.NEON, width=2)
+                cv1.create_rectangle(x - 8, 7, x + 8, 23, fill=hx, outline="#ffffff" if hx == col else C["filo"], width=1)
             if "slider" in p.stile:
                 p.stile["slider"](avvisa=False)
 
@@ -4557,11 +4955,9 @@ class TavoloCarte:
         cv1.bind("<Button-1>", colore)
         cv2.bind("<Button-1>", da_x)
         cv2.bind("<B1-Motion>", da_x)
-        via.bind("<Button-1>", lambda e: (self.stile_chiudi(), self.togli_arco(sg)))
-        p.bind("<Escape>", lambda e: self.stile_chiudi())
         p.stile = dict(imposta=imposta, coppia=(pa, pb), slider=slider)      # per le prove
         ridisegna()
-        p.geometry(f"+{self.fin.winfo_pointerx() + 12}+{self.fin.winfo_pointery() + 12}")
+        m.posa()
         return p
 
     def stile_chiudi(self):
@@ -4814,7 +5210,7 @@ class TavoloCarte:
                     self.ripristina(self.storia[self.salvato_a])
                 self.chiudi(chiedi=False, poi=poi)
             self.domanda = conferma(self.tk, self.F, self.fin, "Save the changes?", f"You changed «{self.nome}» on the board and did not save.", "Save",
-                                    lambda: (self.salva_tutto(), self.chiudi(chiedi=False, poi=poi)), colori=ARANCIO_P,
+                                    lambda: (self.salva_tutto(), self.chiudi(chiedi=False, poi=poi)), colori=VERDE_P,
                                     altro=("Don't save", non_salvare))
             return False
         self.scambia_chiudi()
@@ -4999,10 +5395,26 @@ def prova():
     casi.append(("lo zoom ha un tetto", t.zoom == ZOOM_MAX))
     misura_ctrl = lambda: sorted({(lambda b_: (round(b_[2] - b_[0]), round(b_[3] - b_[1])))(t.cv.bbox(i_)) for i_ in t.cv.find_withtag("ctrl")})
     t.zoom = ZOOM_MAX; t.disegna(); grandi_ = misura_ctrl()
-    t.zoom = ZOOM_MIN; t.disegna(); piccoli_ = misura_ctrl()
     t.zoom = 1.0; t.disegna()
     uguali_ = lambda a_, b_: bool(a_) and all(abs(p_[0] - q_[0]) <= 1 and abs(p_[1] - q_[1]) <= 1 for p_ in a_ for q_ in b_)      # un pixel: l'arrotondamento
-    casi.append(("i pulsanti − + hanno la stessa misura a ogni zoom", uguali_(grandi_, piccoli_) and uguali_(grandi_, misura_ctrl())))
+    casi.append(("i pulsanti − + interi hanno la stessa misura quando la carta e' grande", uguali_(grandi_, misura_ctrl())))
+
+    def ctrl_dentro():
+        """Ogni − e + dentro la carta di cui e' (13 nov 2026: «sistema i contatori che coprono le carte»)."""
+        ok_ = []
+        for i_ in t.cv.find_withtag("ctrl"):
+            vid_ = next((int(g_[1:]) for g_ in t.cv.gettags(i_) if g_[0] == "c" and g_[1:].isdigit()), None)
+            r_, b_ = t.rett(vid_), t.cv.bbox(i_)
+            ok_.append(r_ is not None and b_[0] >= r_[0] - 1 and b_[2] <= r_[2] + 1 and b_[1] >= r_[1] - 1 and b_[3] <= r_[3] + 1)
+        return bool(ok_) and all(ok_)
+    t.zoom = 0.5; t.disegna()
+    dentro_05 = ctrl_dentro()
+    t.zoom = ZOOM_MIN; t.disegna()
+    dentro_03 = ctrl_dentro()
+    casi.append(("a zoom basso (50%, 30%) − e + stanno dentro la loro carta: non coprono le carte accanto", dentro_05 and dentro_03))
+    t.zoom = 0.2; t.disegna()
+    casi.append(("negativa: sotto i 40 pixel di carta niente contatore (ci si avvicina per cambiare le copie)", not t.cv.find_withtag("ctrl")))
+    t.zoom = 1.0; t.disegna()
     t.zoom_a(1.25); aspetta()
     # la fascia: la barra si trascina, le carte della sideboard si rimpiccioliscono fino a sparire
     trascina(ab, xy=(500, 60))      # Abrade torna in sideboard
@@ -5401,7 +5813,134 @@ def prova():
                  [lb["nome"] for lb in nate2] == ["Best performers", "Hard to cast"]))
     tF.fonte_analisi = lambda: None
     casi.append(("negativa: senza partite niente gruppi dall'analisi, e lo dice", tF.auto_analisi() == [] and "No games" in tF.aiuto.cget("text")))
+    # il menu Groups accanto ad Arrange (13 nov 2026 sera): Auto groups non c'e' piu' nella riga dei filtri, le sue funzioni sono qui
+    import tkinter as tk_
+    pG = tF.menu_gruppi(); root.update()
+    testi_G = [w_.cget("text") for w_ in tutti_widget(pG) if isinstance(w_, tk_.Label)]
+    casi.append(("il pulsante Groups sta in testata subito dopo Arrange", tF.b_gruppi is not None and tF.b_gruppi.pack_info().get("side") == "left"
+                 and tF.b_gruppi.master is tF.b_arrange.master))
+    fill_s = [tF.b_salva.itemcget(i_, "fill") for i_ in tF.b_salva.find_all() if tF.b_salva.type(i_) == "rectangle"]
+    casi.append(("Save in fondo a destra della testata (dopo lo zoom), verde (13 nov 2026)", tF.b_salva.master.pack_slaves()[0] is tF.b_salva
+                 and bool(fill_s) and fill_s[0] in VERDE_P))
+    casi.append(("il menu Groups: NEW, FROM YOUR GAMES, YOUR GROUPS coi gruppi, TIDY; e l'ex Auto groups (selezione, carte a vista, analisi)",
+                 all(s_ in " ".join(testi_G) for s_ in ("NEW", "FROM YOUR GAMES", f"YOUR GROUPS · {len(tF.etichette)}", "TIDY", "Group the selection",
+                                                        "Group the visible cards", "Best performers", "Remove empty groups", "Remove all groups"))
+                 and all(lb["nome"].upper() in " ".join(testi_G) for lb in tF.etichette)))
+    casi.append(("negativa: niente piu' AUTO GROUPS nella riga dei filtri", not any(ch_ == "auto" for _a, _b, ch_ in tF._box_filtri)
+                 and not any(tF.c_filtri.type(i_) == "text" and "AUTO" in tF.c_filtri.itemcget(i_, "text") for i_ in tF.c_filtri.find_all())))
+    tF.nome_chiudi()
+    kB_ = len(tF.etichette) - 1
+    tF.menu_gruppi().voci[f"group:{kB_}"](); root.update()
+    casi.append(("dal menu, il clic su un gruppo lo sceglie", tF.sel_label == {kB_}))
+    tF.nome_chiudi()
+    tF.lucchetti_tutti(False); root.update()
+    aperti_ = all(not lb.get("lucchetto", True) for lb in tF.etichette)
+    tF.lucchetti_tutti(True); root.update()
+    casi.append(("Unlock all e Lock all: tutti i lucchetti insieme", aperti_ and all(lb.get("lucchetto", True) for lb in tF.etichette)))
+    gV_ = dict(nome="Vuoto", x=40000, y=40000, w=400, h=300, colore=GRIGIO_L, lucchetto=True, id=tF.nuovo_id())
+    tF.etichette.append(gV_); tF.disegna()
+    vuoti_ = [lb_ for k_, lb_ in enumerate(tF.etichette) if not lb_.get("copia") and not tF.carte_gruppo(k_)]
+    pieni_ = [lb_ for lb_ in tF.etichette if lb_ not in vuoti_]
+    n_prima = len(tF.etichette)
+    n_v = tF.togli_vuoti(); root.update()
+    casi.append(("Remove empty groups: via solo quelli senza carte, quelli con le carte restano", gV_ in vuoti_ and bool(pieni_) and n_v == len(vuoti_)
+                 and gV_ not in tF.etichette and all(lb_ in tF.etichette for lb_ in pieni_)))
+    n_dopo = len(tF.etichette)
+    casi.append(("negativa: rifatto, nessun gruppo vuoto da togliere", tF.togli_vuoti() == 0))
+    lista_prima = dict(tF.liste()[0])
+    dG = tF.togli_tutti_gruppi(); root.update()
+    resta_ = len(tF.etichette) > 0
+    dG.no(); root.update()
+    casi.append(("Remove all groups chiede prima; Cancel non toglie niente", resta_ and len(tF.etichette) == n_dopo))
+    tF.togli_tutti_gruppi().si(); root.update()
+    casi.append(("Remove all groups: via le cornici, le carte restano nel mazzo", not tF.etichette and tF.liste()[0] == lista_prima))
+    tF.annulla(); root.update()
+    casi.append(("Undo riporta i gruppi tolti", len(tF.etichette) == n_dopo))
+    # l'occhio dell'outliner, come i livelli di Photoshop (13 nov 2026)
+    tF.apri_outliner(True); tF.disegna(); tF.disegna_outliner(); root.update()
+
+    class Ev_:
+        def __init__(s_, x, y, state=0):
+            s_.x, s_.y, s_.state = x, y, state
+
+    def riga_y(voce):
+        return next((y0 + 5 for y0, _y1, v_ in tF._out_righe if v_ == voce), None)
+    k_g = next(k_ for k_, lb in enumerate(tF.etichette) if not lb.get("copia") and tF.carte_gruppo(k_))
+    dentro_g = [c_ for pl in tF.membri(k_g)[0] for c_ in pl["carte"]]
+    libera = next(v_ for v_, x in tF.voci.items() if x["zona"] == "main" and v_ not in dentro_g and tF.pila_di(v_) is not None)
+    if len(tF.pila_di(libera)["carte"]) > 1:      # una carta libera, fuori da ogni gruppo: la sua pila sola, lontano
+        tF.pila_di(libera)["carte"].remove(libera)
+        tF.pile.append(dict(zona="main", x=60000, y=60000, carte=[libera], aperta=None))
+    else:
+        tF.pila_di(libera).update(x=60000, y=60000)
+    tF.disegna(); tF.disegna_outliner(); root.update()
+    casi.append(("ogni riga dell'outliner ha l'occhio a sinistra", all(riga_y(v_) is not None for v_ in (libera, ("l", k_g)))))
+    lista_0 = dict(tF.liste()[0])
+    tF.scegli_outliner(Ev_(OCCHIO_OUT + 40, riga_y(libera))); root.update()
+    casi.append(("negativa: il clic sul nome sceglie la carta e non la spegne", tF.acceso(libera) and tF.pila_di(libera) is not None))
+    pos_l = (tF.pila_di(libera)["x"], tF.pila_di(libera)["y"])
+    tF.scegli_outliner(Ev_(6, riga_y(libera))); setattr(tF, "_occhi_drag", None); root.update()
+    casi.append(("l'occhio spegne la carta: fuori dal foglio, nel mazzo come prima, la riga resta", tF.pila_di(libera) is None and tF.liste()[0] == lista_0
+                 and riga_y(libera) is not None and not tF.acceso(libera)))
+    tF.scegli_outliner(Ev_(6, riga_y(libera))); setattr(tF, "_occhi_drag", None); root.update()
+    casi.append(("riacceso, torna al suo posto", tF.pila_di(libera) is not None and (tF.pila_di(libera)["x"], tF.pila_di(libera)["y"]) == pos_l))
+    uno = dentro_g[0]
+    tF.occhio(uno, on=False); root.update()
+    tF.occhio(("l", k_g), on=False); root.update()
+    casi.append(("il gruppo spento: sparisce la cornice con tutte le sue carte", not tF.cv.find_withtag(f"lt{k_g}") and all(tF.pila_di(c_) is None for c_ in dentro_g)))
+    altro_ = next((c_ for c_ in dentro_g if c_ != uno), None)
+    casi.append(("come nei livelli: la carta del gruppo spento tiene il suo occhio aperto, ma non si vede", altro_ is None
+                 or (tF.acceso(altro_) and altro_ in tF._spente)))
+    tF.occhio(("l", k_g), on=True); root.update()
+    casi.append(("riacceso il gruppo, tornano le sue carte; quella spenta da sola resta spenta", tF.cv.find_withtag(f"lt{k_g}") and tF.pila_di(uno) is None
+                 and (altro_ is None or tF.pila_di(altro_) is not None)))
+    tF.occhio(uno, on=True); root.update()
+    tF.scegli_outliner(Ev_(6, riga_y(("l", k_g)), state=0x20000 if piattaforma.WINDOWS else 0x10)); root.update()
+    solo_ok = (all(tF.pila_di(c_) is not None for c_ in dentro_g) and tF.pila_di(libera) is None
+               and all(tF.etichette[j].get("nascosta") for j in range(len(tF.etichette)) if j != k_g and not tF.contiene(tF.etichette[j], tF.etichette[k_g])))
+    tF.scegli_outliner(Ev_(6, riga_y(("l", k_g)), state=0x20000 if piattaforma.WINDOWS else 0x10)); root.update()
+    casi.append(("Alt+clic: solo il gruppo a vista; di nuovo Alt+clic, tutto come prima", solo_ok and not tF.occhi
+                 and not any(lb.get("nascosta") for lb in tF.etichette) and tF.pila_di(libera) is not None))
+    righe_c = [v_ for _a, _b, v_ in tF._out_righe if not isinstance(v_, tuple)][:3]
+    tF.scegli_outliner(Ev_(6, riga_y(righe_c[0])))
+    for v_ in righe_c[1:]:
+        tF.occhi_trascina(Ev_(6, riga_y(v_)))
+    tF._occhi_drag = None; root.update()
+    casi.append(("trascinando sugli occhi si spengono in fila", all(not tF.acceso(v_) for v_ in righe_c)))
+    tF.annulla(); root.update()
+    casi.append(("Undo riaccende l'ultimo occhio spento", tF.acceso(righe_c[-1]) and not tF.acceso(righe_c[0])))
+    root.update()
+    casi.append(("con qualcosa di spento, SHOW ALL in testa all'outliner", tF.b_tutti.winfo_manager() == "pack"))
+    n_sa = tF.mostra_tutto(); root.update()
+    casi.append(("SHOW ALL riaccende tutto e poi si toglie", n_sa >= 1 and not tF.occhi and not any(lb.get("nascosta") for lb in tF.etichette)
+                 and tF.b_tutti.winfo_manager() == ""))
+    casi.append(("negativa: con tutto acceso SHOW ALL non fa niente", tF.mostra_tutto() == 0))
+    vista_ = (tF.cv.canvasx(0), tF.cv.canvasy(0), tF.zoom)
+    tF.scegli_outliner(Ev_(6, riga_y(libera))); tF.doppio_outliner(Ev_(6, riga_y(libera))); tF._occhi_drag = None; root.update()
+    casi.append(("il doppio clic su un occhio: due clic, la carta torna come prima e la vista non si sposta", tF.acceso(libera)
+                 and (tF.cv.canvasx(0), tF.cv.canvasy(0), tF.zoom) == vista_))
+    tF.passa_outliner(Ev_(OCCHIO_OUT + 40, riga_y(libera))); root.update()
+    casi.append(("la riga sotto il mouse si accende", bool(tF.out_cv.find_withtag("su"))))
+    tF.scegli_filtro("land"); root.update()
+    non_terra = next(v_ for _a, _b, v_ in tF._out_righe if not isinstance(v_, tuple) and "land" not in tF.tipi_di(v_))
+    y_nt = riga_y(non_terra)
+    testi_nt = [i_ for i_ in tF.out_cv.find_overlapping(OCCHIO_OUT + 12, y_nt, OCCHIO_OUT + 120, y_nt + 8) if tF.out_cv.type(i_) == "text"]
+    casi.append(("col filtro per tipo le carte fuori dal filtro sono grigie anche nell'outliner (il loro occhio resta aperto)", bool(testi_nt)
+                 and tF.out_cv.itemcget(testi_nt[0], "fill") == C["muto"] and tF.acceso(non_terra)))
+    tF.scegli_filtro("all"); root.update()
+    tF.occhio(("l", k_g), on=False); tF.occhio(libera, on=False); root.update()
+    tF.salva_tutto()
+    salv_o = carica_tavoli(ft).get("build:filtri") or {}
+    casi.append(("la visibilita' si salva con la disposizione: le carte spente e il gruppo spento", bool(salv_o.get("nascoste"))
+                 and any(x.get("nascosta") for x in salv_o.get("etichette") or [])))
     tF.salva_tutto(); tF.chiudi()
+    tO_ = nuovo_t("build:filtri")
+    casi.append(("riaperto, le carte spente e il gruppo spento restano spenti", bool(tO_.occhi) and any(lb.get("nascosta") for lb in tO_.etichette)
+                 and any(tO_.pila_di(c_) is None for c_ in tO_.voci if tO_.voci[c_]["zona"] == "main")))
+    tO_.occhi = set()
+    for lb in tO_.etichette:
+        lb.pop("nascosta", None)
+    tO_.disegna(); tO_.salva_tutto(); tO_.chiudi()
     t9 = nuovo_t("build:altro")
     t9.apri_pila(vid_di(t9, "Token Maker")); root.update()
     va = vid_di(t9, "Token Maker")
@@ -5834,7 +6373,16 @@ def prova():
     tO2.apri_comandi(True); tO2.apri_outliner(True); root.update()
     casi.append(("e si riaprono", tO2.f_comandi.winfo_manager() == "grid" and tO2.out_corpo.winfo_manager() == "pack" and tO2.b_out.cget("text") == "◀"))
     tO2.salva_tutto(); tO2.chiudi()
-    # Arrange network: la rete a livelli, i padri sopra i figli, i giri chiusi rotti, le carte senza connessioni sotto per costo
+    def frecce_sotto(t_):
+        """Quante frecce padre -> figlio passano sopra una carta che si vede (un punto della freccia dentro una carta, a 2 pixel dai bordi)."""
+        rr = [r_ for r_ in (t_.rett(v) for pl in t_.pile if pl["zona"] == "main" for v in pl["carte"]) if r_]
+        n_ = 0
+        for _a, _b, p0, p1 in t_._segmenti:
+            pts = [(p0[0] + (p1[0] - p0[0]) * i / 60, p0[1] + (p1[1] - p0[1]) * i / 60) for i in range(61)]
+            n_ += any(r_[0] + 2 < x < r_[2] - 2 and r_[1] + 2 < y < r_[3] - 2 for x, y in pts for r_ in rr)
+        return n_
+
+    # Arrange network (13 nov 2026 sera: Network, da sinistra a destra): i padri a sinistra dei figli, i giri chiusi rotti, le carte senza connessioni sotto per costo
     tR = nuovo_t("build:rete_ord")
     pile_prima = [(q["x"], q["y"], list(q["carte"])) for q in tR.pile]
     casi.append(("negativa: senza connessioni Arrange network non tocca niente, e lo dice", tR.disponi_rete() == 0
@@ -5845,8 +6393,18 @@ def prova():
     side_prima = [(q["x"], q["y"], list(q["carte"])) for q in tR.pile if q["zona"] != "main"]
     n_r = tR.disponi_rete(); root.update()
     yR = {n_: tR.pila_di(vid_di(tR, n_))["y"] for n_ in ("Token Maker", "Anthem", "Plains", "Vanilla")}
-    casi.append(("Arrange network: padri sopra i figli, una riga per livello, il giro chiuso rotto", n_r == 3 and yR["Token Maker"] < yR["Anthem"] < yR["Plains"]
+    xR = {n_: tR.pila_di(vid_di(tR, n_))["x"] for n_ in ("Token Maker", "Anthem", "Plains")}
+    casi.append(("Network: i padri a sinistra dei figli con una colonna vuota in mezzo, ogni livello una riga piu' giu' (frecce distinte), il giro chiuso rotto",
+                 n_r == 3 and xR["Anthem"] - xR["Token Maker"] == 2 * PASSO_X and xR["Plains"] - xR["Anthem"] == 2 * PASSO_X
+                 and yR["Anthem"] - yR["Token Maker"] == PASSO_Y and yR["Plains"] - yR["Anthem"] == PASSO_Y
                  and all(len(tR.pila_di(vid_di(tR, n_))["carte"]) == 1 for n_ in ("Token Maker", "Anthem", "Plains"))))
+    casi.append(("Network: nessuna freccia passa sopra una carta (la catena corre sotto le carte)", bool(tR._segmenti) and frecce_sotto(tR) == 0))
+    # la negativa: la rete di prima, coi padri sopra i figli, fa passare ogni freccia dietro la carta del figlio, e il controllo lo vede
+    for i_, n_ in enumerate(("Token Maker", "Anthem", "Plains")):
+        tR.pila_di(vid_di(tR, n_)).update(x=MARGINE, y=i_ * 9 * PASSO_Y)
+    tR.disegna(); root.update()
+    casi.append(("negativa: coi padri sopra i figli le frecce passano dietro le carte, e il controllo le conta", frecce_sotto(tR) >= 2))
+    tR.disponi_rete(); root.update()
     casi.append(("le carte senza connessioni sotto la rete, sideboard ferma, connessioni intatte", yR["Vanilla"] > yR["Plains"]
                  and [(q["x"], q["y"], list(q["carte"])) for q in tR.pile if q["zona"] != "main"] == side_prima
                  and set(tR.rete.figli) == {("Token Maker", "Anthem"), ("Anthem", "Plains"), ("Plains", "Token Maker")}))
@@ -5859,9 +6417,10 @@ def prova():
     tR2.salva_tutto(); tR2.chiudi()
     # Arrange: i quattro modi (13 nov 2026). Un mazzo con due gruppi, una copia di gruppo e connessioni dentro, fuori e fra i gruppi: dopo ogni modo ogni carta in
     # una pila sola, i gruppi con le stesse carte di prima, niente sovrapposizioni, tutto sulla griglia, e cosa sta in cima lo decide il modo
-    dbA = dict(dbr, **{"One Drop": dict(cmc=1, tipo="Creature — Elf", testo=""), "Two Drop": dict(cmc=2, tipo="Creature — Elf", testo=""),
-                       "Three Drop": dict(cmc=3, tipo="Creature — Elf", testo=""), "Bolt": dict(cmc=1, tipo="Instant", testo="Bolt deals 3 damage to any target."),
-                       "Engine": dict(cmc=2, tipo="Enchantment", testo=""), "Payoff": dict(cmc=4, tipo="Creature — Elf", testo=""),
+    dbA = dict(dbr, **{"One Drop": dict(cmc=1, tipo="Creature — Elf", testo="", colori="G", rarita="C"), "Two Drop": dict(cmc=2, tipo="Creature — Elf", testo=""),
+                       "Three Drop": dict(cmc=3, tipo="Creature — Elf", testo="", colori="BG", rarita="M"),
+                       "Bolt": dict(cmc=1, tipo="Instant", testo="Bolt deals 3 damage to any target."),
+                       "Engine": dict(cmc=2, tipo="Enchantment", testo="", colori="W", rarita="U"), "Payoff": dict(cmc=4, tipo="Creature — Elf", testo=""),
                        "Finisher": dict(cmc=5, tipo="Creature — Dragon", testo=""), "Forest": dict(cmc=0, tipo="Basic Land — Forest", testo="")})
     mainA = {"One Drop": 4, "Two Drop": 4, "Three Drop": 3, "Bolt": 4, "Engine": 2, "Payoff": 2, "Finisher": 1, "Forest": 9, "Plains": 8}
 
@@ -5944,14 +6503,40 @@ def prova():
                  and all(len(tA.pila_di(v)["carte"]) == 1 for vv in cl_A.values() for v in vv)
                  and min(pl["y"] for pl in tA.pile if pl["zona"] == "main" and set(pl["carte"]) <= set(tA.struttura()[2]))
                  > max(lb["y"] + lb["h"] for lb in tA.etichette)))
-    # By connections
+    pila_lb = lambda t_: sorted(t_.etichette, key=lambda lb: lb["y"])
+    casi.append(("One under the other: ogni gruppo (anche la copia) su una riga sua, tutti allineati a sinistra, nessuno accanto a un altro",
+                 len({lb["x"] for lb in tA.etichette}) == 1
+                 and all(a_["y"] + a_["h"] <= b_["y"] for a_, b_ in zip(pila_lb(tA), pila_lb(tA)[1:]))))
+    tA.disponi_modo("gruppi_costo"); root.update()
+    casi.append(("One under the other · by cost: tutto in ordine, gruppi uno sotto l'altro, dentro le carte in colonne per costo", not ordinato(tA)
+                 and len({lb["x"] for lb in tA.etichette}) == 1
+                 and all(a_["y"] + a_["h"] <= b_["y"] for a_, b_ in zip(pila_lb(tA), pila_lb(tA)[1:]))
+                 and all(len({tA.gruppo(c, "cost") for c in pl["carte"]}) == 1 for pl in tA.pile if pl["zona"] == "main")))
+    # CARDS: per tipo, colore, rarita'. Colore e rarita' delle carte finte stanno in carte_db (colori, rarita)
+    xa_ = lambda t_, n_: t_.pila_di(vid_di(t_, n_))["x"]
+    tA.disponi_modo("tipo"); root.update()
+    lib_ = set(tA.struttura()[2])
+    col_lib = lambda t_: [pl for pl in t_.pile if pl["zona"] == "main" and set(pl["carte"]) <= lib_]
+    casi.append(("By type: tutto in ordine, una colonna per tipo (le creature prima dell'incantesimo), le terre in fondo", not ordinato(tA)
+                 and all(len({tA.colonna(c, "type") for c in pl["carte"]}) == 1 for pl in col_lib(tA))
+                 and xa_(tA, "One Drop") == xa_(tA, "Three Drop") < xa_(tA, "Engine") < xa_(tA, "Forest")))
+    tA.disponi_modo("colore"); root.update()
+    casi.append(("By color: tutto in ordine, il bianco prima del verde, l'incolore dopo, le terre in fondo", not ordinato(tA)
+                 and all(len({tA.colonna(c, "color") for c in pl["carte"]}) == 1 for pl in col_lib(tA))
+                 and xa_(tA, "Engine") < xa_(tA, "One Drop") < xa_(tA, "Three Drop") < xa_(tA, "Forest")))
+    tA.disponi_modo("rarita"); root.update()
+    casi.append(("By rarity: tutto in ordine, la mitica prima della comune, le terre in fondo", not ordinato(tA)
+                 and all(len({tA.colonna(c, "rarity") for c in pl["carte"]}) == 1 for pl in col_lib(tA))
+                 and xa_(tA, "Three Drop") < xa_(tA, "One Drop") < xa_(tA, "Forest")))
+    # CONNECTIONS: Network
     nR = tA.disponi_modo("rete"); root.update()
-    casi.append(("By connections: tutto in ordine, One Drop sopra Engine (le carte libere legate), gruppi e altre carte sotto", not ordinato(tA) and nR == 2
-                 and ya_(tA, "One Drop") < ya_(tA, "Engine") < min(lb["y"] for lb in tA.etichette)))
-    # Mixed
+    casi.append(("Network: tutto in ordine, One Drop a sinistra di Engine (una riga sopra), la rete sopra i gruppi e le altre carte", not ordinato(tA) and nR == 2
+                 and xa_(tA, "One Drop") < xa_(tA, "Engine") and ya_(tA, "One Drop") < ya_(tA, "Engine") < min(lb["y"] for lb in tA.etichette)))
+    # Network with groups
     nM = tA.disponi_modo("misto"); root.update()
-    casi.append(("Mixed: tutto in ordine, i gruppi nodi della rete (One Drop sopra Engine sopra Top; Burn sopra Three Drop)", not ordinato(tA) and nM == 5
-                 and ya_(tA, "One Drop") < ya_(tA, "Engine") < gl_(tA, "Top")["y"] and gl_(tA, "Burn")["y"] < ya_(tA, "Three Drop")))
+    casi.append(("Network with groups: tutto in ordine, i gruppi nodi della rete (One Drop, Engine, poi Top a destra; Burn a sinistra di Three Drop)",
+                 not ordinato(tA) and nM == 5
+                 and xa_(tA, "One Drop") < xa_(tA, "Engine") < gl_(tA, "Top")["x"] and gl_(tA, "Burn")["x"] + gl_(tA, "Burn")["w"] < xa_(tA, "Three Drop")))
     casi.append(("Mixed: le terre (senza connessioni) sotto la rete, e la copia del gruppo fuori dalla rete sotto", ya_(tA, "Forest") > gl_(tA, "Top")["y"] + gl_(tA, "Top")["h"]
                  and next(lb for lb in lbB(tA) if lb.get("copia"))["y"] > gl_(tA, "Top")["y"]))
     disp_m = sorted((q["x"], q["y"], tuple(q["carte"])) for q in tA.pile)
@@ -5986,8 +6571,10 @@ def prova():
     casi.append(("negativa: filtro Lands, nessun gruppo ha terre: tutti spenti; tornato All si riaccendono", v_ter == (False, False, False) and v_all == (True, True, True)))
     # il pulsante e il menu
     pA = tA.menu_disponi(); root.update()
-    testi_A = [w_.cget("text") for w_ in pA.winfo_children()[0].winfo_children() for w_ in ([w_] + list(w_.winfo_children())) if isinstance(w_, tk.Label)]
-    casi.append(("il pulsante Arrange ▾ apre i quattro modi", tA.b_arrange is not None and all(n_ in testi_A for _m, n_, _r in tA.ARRANGE)))
+    testi_A = [w_.cget("text") for w_ in tutti_widget(pA) if isinstance(w_, tk.Label)]
+    casi.append(("il pulsante Arrange ▾ sta in testata accanto ad Add card e apre le tre sezioni coi loro modi", tA.b_arrange is not None
+                 and tA.b_arrange.pack_info().get("side") == "left" and all(s_ in testi_A for s_, _vv in tA.SEZIONI_ARRANGE)
+                 and all(n_ in testi_A for _m, n_, _r in tA.ARRANGE)))
     tA.nome_chiudi()
     tA.salva_tutto(); tA.chiudi()
     # le negative: By groups senza gruppi e By connections senza connessioni non toccano niente
@@ -6207,7 +6794,27 @@ def prova():
     esito_ = tU.chiudi(); root.update()
     dom_ = getattr(tU, "domanda", None)
     casi.append(("chiudendo con modifiche: la domanda, e il Board resta aperto", esito_ is False and dom_ is not None and dom_.winfo_exists() and tU.fin.winfo_exists()))
+    import piattaforma as P_
+    pr_ = P_.proprietaria(dom_)
+    casi.append(("la domanda ha il Board come proprietaria: Windows la tiene sopra di lui (13 nov 2026: senza, un clic dietro la copriva e col grab l'app "
+                 "non si chiudeva piu')", pr_ is None or (pr_[1] == pr_[2] == P_.proprietaria(tU.fin)[0])))
+    # la X vera di Windows (WM_CLOSE) passa dal protocollo: la domanda, una sola
     dom_.no(); root.update()
+    if P_.WINDOWS:
+        import ctypes as ct_
+        ct_.WinDLL("user32").PostMessageW(P_.proprietaria(tU.fin)[0], 0x0010, 0, 0)
+        for _ in range(20):
+            root.update()
+        casi.append(("la X vera (WM_CLOSE) con modifiche chiede, e il Board resta aperto", tU.fin.winfo_exists() and tU.domanda.winfo_exists()))
+        tU.domanda.no(); root.update()
+    # la negativa: senza la proprietaria (come fino al 13 nov 2026) la domanda nasce senza, e il controllo lo vede
+    vero_sd = P_.sopra_di
+    P_.sopra_di = lambda f_, p_: False
+    tU.chiudi(); root.update()
+    pr_n = P_.proprietaria(tU.domanda)
+    P_.sopra_di = vero_sd
+    casi.append(("negativa: senza sopra_di la domanda non ha proprietaria", pr_n is None or pr_n[1] != pr_n[2]))
+    tU.domanda.no(); root.update()
     casi.append(("Cancel: il Board resta aperto con la modifica", tU.fin.winfo_exists() and tU.liste()[0]["Lightning Bolt"] == 3))
     tU.chiudi(); root.update()
     tU.domanda.altro(); root.update()
