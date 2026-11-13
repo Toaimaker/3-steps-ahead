@@ -3896,8 +3896,20 @@ class PaginaPerformance:
                ("uccidi", "THEY LOST A CREATURE", 600), ("scambio", "TRADE", 755), ("danno", "DAMAGE TO " + ("THEM" if att else "YOU"), 820),
                ("trucco", "THEIR SPELL BEFORE DMG", 945), ("guadagno", "AVG GAIN", 1105), ("wr", "GAME WIN RATE", 1195)]
         y = 34
-        for _k, t, x in col:
-            c.create_text(x, y, text=t, anchor="w", fill=C["titolo"], font=F(7, True))
+        # i titoli ordinano le righe (13 nov 2026, Autore: «anche all'elenco decisions diamo i titoli cliccabili per riordinare le colonne»): il primo clic
+        # crescente, il secondo al contrario; la riga di tutte resta in cima, come riferimento; un valore che manca va in fondo
+        ok_, giu_ = getattr(self, "ord_dec", (None, False))
+        for k, t, x in col:
+            freccia = (" ↓" if giu_ else " ↑") if k == ok_ else ""
+            i_ = c.create_text(x, y, text=t + freccia, anchor="w", fill=C["accento"] if k == ok_ else C["titolo"], font=F(7, True))
+            bb = c.bbox(i_)
+            c._box.append((bb[0] - 2, bb[1] - 3, bb[2] + 4, bb[3] + 3, ("testa", k)))
+        if ok_:
+            resto = tab[1:]
+            con = [rg for rg in resto if rg.get(ok_) is not None]
+            senza = [rg for rg in resto if rg.get(ok_) is None]
+            con.sort(key=lambda rg: (str(rg[ok_]).lower() if ok_ == "nome" else rg[ok_]), reverse=giu_)
+            tab = tab[:1] + con + senza
         y += 16
         for i, rg in enumerate(tab):
             on = self.linea_dec == (self.dec_modo, rg["nome"])
@@ -3994,6 +4006,11 @@ class PaginaPerformance:
         if b is None:
             return None
         cosa = b[4]
+        if cosa[0] == "testa":      # un titolo: ordina per quella colonna, di nuovo al contrario
+            ok_, giu_ = getattr(self, "ord_dec", (None, False))
+            self.ord_dec = (cosa[1], not giu_) if ok_ == cosa[1] else (cosa[1], False)
+            self.disegna_decisioni()
+            return self.ord_dec
         if cosa[0] == "riga":
             nuova = (self.dec_modo, cosa[1])
             self.linea_dec = None if self.linea_dec == nuova or cosa[1].startswith("All ") else nuova

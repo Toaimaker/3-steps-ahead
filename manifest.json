@@ -1,6 +1,6 @@
 {
- "version": "0.1.83",
+ "version": "0.1.84",
  "date": "2026-11-13",
- "notes": "Performance: vs filter and Gained by decisions under the chart, buildable decision filters, turn-by-turn plays as lines in Advanced filters, a Reset per tab.",
+ "notes": "Performance: the Decisions table sorts by any column title.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

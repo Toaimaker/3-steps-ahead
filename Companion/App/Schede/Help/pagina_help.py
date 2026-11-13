@@ -111,7 +111,7 @@ SEZIONI = (
                            "line is a filter and its values (one is enough), Add line adds a filter (all are needed); Reset clears that tab"),
       ("Decisions", "every combat as a decision with its outcome, by situation: your attacks (into untapped lands, with everything or holding back, "
                     "blocked or not, by turn) and your defense; for each, how often you lost a creature, how often they did, the trade, the damage, "
-                    "their spell before damage and the game win rate; click a row to see its games as a line on the Chart against All. Mulligans: the "
+                    "their spell before damage and the game win rate; click a row to see its games as a line on the Chart against All, click a column title to sort by it. Mulligans: the "
                     "hands you kept by lands on the play and on the draw (click a cell to filter), the hands you sent back, risky keeps, week by week"),
       ("The folders", "the mark on the right of each folder opens it in its own window, even on another screen; close it, or Bring it back, to dock it again"),
       ("Save as my filter", "keep a set of filters: it goes to the My filters folder, one under the other with its numbers; click to apply it, ✕ to "
