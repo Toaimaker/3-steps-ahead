@@ -100,8 +100,9 @@ SEZIONI = (
                 "each card the win rate and record of its games, and in how many; click a card to keep only its games, again to go back; hover to see it big; "
                 "Pairs › on each row opens a window with the pairs of cards that come together in the same game (from your turn 1: the pairs of your "
                 "opening hand), by win rate, 5 games together at least; Pairs or Trios; click one to keep only the games with them. Rows opens the "
-                "little window to pick which rows you see. Also: cast by your turn 4 (its Pairs: what you played together early) and Finishers (on your "
-                "battlefield at the end or cast in your last turn, by wins)"),
+                "little window to pick which rows you see. Also: cast by your turn 4 (its Pairs: what you played together early) and Finishers (the decisive play of your "
+                "wins: in the turn with the biggest swing after which you stayed ahead, the spells you cast and the creatures you attacked with, 2+ cards; "
+                "the pairs that decided the most wins, with the average swing)"),
       ("Decisions", "every combat as a decision with its outcome, by situation: your attacks (into untapped lands, with everything or holding back, "
                     "blocked or not, by turn) and your defense; for each, how often you lost a creature, how often they did, the trade, the damage, "
                     "their spell before damage and the game win rate; click a row to see its games as a line on the Chart against All. Mulligans: the "

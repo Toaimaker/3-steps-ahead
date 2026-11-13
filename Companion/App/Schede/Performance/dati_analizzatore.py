@@ -151,7 +151,8 @@ def nome_intero(n):
     if not _INTERI:
         for k in _tabella():
             if " // " in k:
-                _INTERI.setdefault(k.split(" // ")[0].strip(), k)
+                for faccia in k.split(" // "):       # anche la faccia dietro («Ritual Chamber»): il replay scrive la faccia che si vede
+                    _INTERI.setdefault(faccia.strip(), k)
         _INTERI.setdefault("", "")
     return _INTERI.get(n, n)
 
@@ -893,6 +894,18 @@ def passa(x, filtri):
 
 
 TURNI_CARTE = 4         # le righe della cartella Cards turno per turno
+SALTO_MINIMO = 8        # il salto di vantaggio di un finisher (sui log del 13 nov: il salto piu' grande e' almeno 8 nell'85% delle vittorie, nel 64% delle perse)
+
+
+def vantaggio(f, seat):
+    """Il vantaggio dal tuo posto in una foto di fine turno: vite di differenza piu' due volte la forza in campo di differenza (grado C, come il punto di
+    svolta del replayer). 0 senza foto."""
+    if not f:
+        return 0
+    v = f.get("v") or [20, 20]
+    forza = [sum(int(c_[3] or 0) for c_ in lato or [] if c_[3] is not None) for lato in (f.get("c") or [[], []])]
+    o = 2 - seat
+    return ((v[seat - 1] or 0) - (v[o] or 0)) + 2 * (forza[seat - 1] - forza[o])
 
 
 def carte_partita(r, seat, tenuta):
@@ -932,18 +945,36 @@ def carte_partita(r, seat, tenuta):
     # alla fine del tuo turno 4, anche nei suoi turni; il turno 4 tuo e' il 7 di Arena se cominci, l'8 se no
     fine_t4 = 2 * TURNI_CARTE - (1 if r["inizia"] else 0)
     out["lanc_t4"] = sorted({nome_g(g_) for t, s_, cosa, g_, _tp in az if cosa == "magia" and s_ == seat and t <= fine_t4 and magia(nome_g(g_))})
-    # i finisher (stesso messaggio: «le carte che hanno generato le migliori finish»): le tue carte (non pedine, non terre) in campo all'ultimo stato della
-    # partita e le magie lanciate nel tuo ultimo turno
-    ult = (_MANA.get(r.get("partita")) or {}).get("ultima")
-    campo_fine = set()
-    if ult and isinstance(ult[-1], dict):
-        for c_ in ((ult[-1].get("c") or [[], []])[seat - 1] or []):
-            if not c_[2]:
-                campo_fine.add(nome_g(c_[0]))
-    miei_t = [t for t, s_, cosa, _g, _tp in az if s_ == seat and mio_turno(t)]
-    ultimo = max(miei_t) if miei_t else None
-    campo_fine |= {nome_g(g_) for t, s_, cosa, g_, _tp in az if cosa == "magia" and s_ == seat and t == ultimo}
-    out["finisher"] = sorted(n_ for n_ in campo_fine if magia(n_))
+    # il finisher (13 nov 2026, Autore: «finishers dovrebbe essere la raccolta di quella giocata sinergica tra almeno due carte che ha generato un roi
+    # pazzesco sulla partita e che ha decretato in modo insindacabile la sconfitta dell'avversario, del suo board o del suo piano, non semplicemente le ultime
+    # due carte arrivate alla fine»): nelle vittorie, il tuo turno col salto di vantaggio piu' grande (vantaggio = vite di differenza piu' due volte la forza
+    # in campo di differenza, come il punto di svolta del replayer; salto = vantaggio a fine turno meno quello a fine turno prima), almeno SALTO_MINIMO, dopo il
+    # quale il vantaggio resta tuo fino alla fine; la giocata sono le magie che hai lanciato in quel turno e le creature con cui hai attaccato, almeno due carte.
+    # Sui log del 13 nov: 122 vittorie su 234 hanno una giocata cosi'.
+    out["finisher"], out["salto"], out["turno_svolta"] = [], None, None
+    foto = {f[0]: f[2] for f in (_MANA.get(r.get("partita")) or {}).get("foto") or [] if isinstance(f[2], dict)}
+    if r.get("vinta") and foto:
+        ts = sorted(foto)
+        vant = {t: vantaggio(foto[t], seat) for t in ts}
+        best = None
+        for t in ts:
+            if not mio_turno(t):
+                continue
+            salto = vant[t] - vant.get(t - 1, 0)
+            if salto >= SALTO_MINIMO and all(vant[t2] > 0 for t2 in ts if t2 >= t) and (best is None or salto > best[1]):
+                best = (t, salto)
+        if best:
+            t = best[0]
+            gioc = {nome_g(g_) for t_, s_, cosa, g_, _tp in az if cosa == "magia" and s_ == seat and t_ == t}
+            for m in (_MANA.get(r.get("partita")) or {}).get("momenti") or []:
+                if m[0] == "comb" and m[1] == t and m[2] == seat and len(m) > 4 and m[4]:
+                    ids_a = {a_[0] for a_ in m[4].get("att") or []}
+                    for c_ in ((m[3] or {}).get("c") or [[], []])[seat - 1] or []:
+                        if c_[5] in ids_a and not c_[2]:
+                            gioc.add(nome_g(c_[0]))
+            gioc = sorted(n_ for n_ in gioc if magia(n_))
+            if len(gioc) >= 2:
+                out["finisher"], out["salto"], out["turno_svolta"] = gioc, best[1], (t + 1) // 2
     if mano_p is not None:
         out["in_mano"] = sorted(n_ for n_ in mano_p if magia(n_))
         out["bloccate"] = sorted(n_ for n_ in mano_p if magia(n_) and n_ not in mie)
@@ -954,7 +985,7 @@ RIGHE_CARTE = [("in_mano", "MOST FOUND IN YOUR HAND · opening hand and draws"),
                ("pesc1", "YOUR TURN 1 · the opening hand and the first draw"), ("pesc2", "YOUR TURN 2 · drawn on it"),
                ("pesc3", "YOUR TURN 3 · drawn on it"), ("pesc4", "YOUR TURN 4 · drawn on it"),
                ("lanciate", "YOUR MOST CAST SPELLS"), ("lanc_t4", "CAST BY YOUR TURN 4 · Pairs: what you played together early"),
-               ("finisher", "FINISHERS · on your battlefield at the end or cast in your last turn, by wins"), ("sue_lanciate", "THE MATCHUPS · the opponent's most played cards"),
+               ("finisher", "FINISHERS · the decisive play of your wins: the biggest swing after which you stayed ahead, 2+ cards"), ("sue_lanciate", "THE MATCHUPS · the opponent's most played cards"),
                ("bloccate", "HARDER TO CAST · in your hand and never cast")]
 CAMPO_CARTE = {"lanciate": "mie_lanciate"}       # la chiave del filtro -> il campo della riga (le altre si chiamano uguali)
 
@@ -963,6 +994,8 @@ def riga_carte(r, chiave, quante=40, minimo=5):
     """Una riga della cartella Cards: le carte della chiave nelle partite r, ognuna una volta per partita, dalla piu' comune; per «bloccate» dalla piu'
     bloccata (le partite in cui e' rimasta in mano sulle partite in cui l'avevi in mano, da `minimo` partite in mano), col win rate di quelle partite.
     -> [dict(nome, n, vinte, perse, wr, quota[, mano, bloccata])]."""
+    if chiave == "finisher":
+        return finisher_coppie(r, quante)
     campo = CAMPO_CARTE.get(chiave, chiave)
     conta, vinte = collections.Counter(), collections.Counter()
     for x in r:
@@ -978,8 +1011,6 @@ def riga_carte(r, chiave, quante=40, minimo=5):
             c["bloccata"] = round(100 * c["n"] / c["mano"]) if c["mano"] else 0
         out = [c for c in out if c["mano"] >= minimo]
         out.sort(key=lambda c: (-c["bloccata"], -c["n"], c["nome"]))
-    elif chiave == "finisher":      # dalle piu' presenti nelle vittorie
-        out.sort(key=lambda c: (-c["vinte"], -c["n"], c["nome"]))
     else:
         out.sort(key=lambda c: (-c["n"], c["nome"]))
     return out[:quante]
@@ -1002,6 +1033,21 @@ def coppie_carte(r, chiave, quante=60, minimo=5, k=2):
     out = [dict(nome=" + ".join(cp), nomi=cp, n=n, vinte=vinte[cp], perse=n - vinte[cp], wr=round(100 * vinte[cp] / n, 1),
                 quota=round(100 * n / tot, 1), filtro=(fk, list(cp))) for cp, n in conta.items() if n >= minimo]
     out.sort(key=lambda c: (-c["wr"], -c["n"], c["nome"]))
+    return out[:quante]
+
+
+def finisher_coppie(r, quante=40, minimo=2):
+    """La riga Finishers: le coppie di carte delle giocate decisive (carte_partita, «finisher») delle partite r, da quella che ha deciso piu' vittorie, col
+    salto medio. -> [dict(nome, nomi, n (vittorie decise), vinte, perse, wr, quota (% delle vittorie), salto, filtro)]."""
+    conta, salti = collections.Counter(), collections.defaultdict(list)
+    for x in r:
+        for cp in itertools.combinations(sorted(set(x.get("finisher") or [])), 2):
+            conta[cp] += 1
+            salti[cp].append(x.get("salto") or 0)
+    vinte_tot = sum(1 for x in r if x["vinta"]) or 1
+    out = [dict(nome=" + ".join(cp), nomi=cp, n=n, vinte=n, perse=0, wr=100.0, quota=round(100 * n / vinte_tot, 1),
+                salto=round(sum(salti[cp]) / len(salti[cp]), 1), filtro=("finisher", list(cp))) for cp, n in conta.items() if n >= minimo]
+    out.sort(key=lambda c: (-c["n"], -c["salto"], c["nome"]))
     return out[:quante]
 
 
@@ -1618,6 +1664,24 @@ def prova():
         cp9 = carte_partita(dict(partita="m9", inizia=False), 2, {"Shock": 1, "Goblin": 1})
         casi.append(("negativa: le terre non entrano, e senza le pescate nel log la mano e le bloccate non si sanno (vuote)", "Mountain" not in cp_["in_mano"]
                      and cp9["in_mano"] == [] and cp9["bloccate"] == [] and cp9["pesc1"] == []))
+        # il finisher: tu cominci (posto 1); al tuo turno 2 (Arena 3) lanci Shock e Goblin, il vantaggio salta da 0 a 10 e resta tuo
+        fv_ = lambda v, mie: dict(v=v, c=[mie, []])
+        gob = [906, 0, 0, 3, 3, 50]
+        _MANA["m10"] = dict(azioni=[[3, 1, "magia", 905, "I"], [3, 1, "magia", 906, "C"]],
+                            foto=[[1, 1, fv_([20, 20], [])], [2, 2, fv_([20, 20], [])], [3, 1, fv_([20, 16], [gob])], [4, 2, fv_([20, 16], [gob])],
+                                  [5, 1, fv_([20, 10], [gob])]])
+        f10 = carte_partita(dict(partita="m10", inizia=True, vinta=True), 1, {})
+        casi.append(("il finisher: la giocata del turno col salto piu' grande dopo il quale resti avanti (Goblin + Shock, +10, il tuo turno 2)",
+                     f10["finisher"] == ["Goblin", "Shock"] and f10["salto"] == 10 and f10["turno_svolta"] == 2))
+        _MANA["m11"] = dict(_MANA["m10"], foto=_MANA["m10"]["foto"][:3] + [[4, 2, fv_([5, 16], [gob])], [5, 1, fv_([20, 10], [gob])]])
+        f11 = carte_partita(dict(partita="m11", inizia=True, vinta=True), 1, {})
+        casi.append(("negativa: in una sconfitta niente finisher; se dopo il salto torni sotto non e' decisivo, e il turno decisivo senza 2 carte giocate non da' niente",
+                     carte_partita(dict(partita="m10", inizia=True, vinta=False), 1, {})["finisher"] == [] and f11["finisher"] == []))
+        rf = [dict(vinta=True, finisher=["Goblin", "Shock"], salto=10), dict(vinta=True, finisher=["Goblin", "Shock", "Owl"], salto=20), dict(vinta=False, finisher=[])]
+        fc = riga_carte(rf, "finisher")
+        casi.append(("la riga Finishers: Goblin + Shock ha deciso 2 vittorie con un salto medio di 15, e il suo filtro e' Card in your finish con tutte e due",
+                     (fc[0]["nomi"], fc[0]["n"], fc[0]["salto"], fc[0]["quota"]) == (("Goblin", "Shock"), 2, 15.0, 100.0)
+                     and filtro_carta("finisher", fc[0]) == ("finisher", ["Goblin", "Shock"]) and all(c_["n"] >= 2 for c_ in fc)))
         casi.append(("la scelta multipla: tutte e due le voci nello stesso turno passano; una che manca no", multipla("t_io2") and multipla("t_luix3")
                      and not multipla("t_aio2") and passa(dict(per_turno=p7), {"t_io2": ["Instant · 1", "Creature · 2"]})
                      and not passa(dict(per_turno=p7), {"t_io2": ["Instant · 1", "Creature · 1"]}) and etichetta("t_io2", ["Instant · 1", "Creature · 2"])

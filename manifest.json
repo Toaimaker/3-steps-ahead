@@ -1,6 +1,6 @@
 {
- "version": "0.1.81",
+ "version": "0.1.82",
  "date": "2026-11-13",
- "notes": "Beta: the app is free for everyone; you can support the project with a \u20ac2.99 monthly donation, which unlocks nothing.",
+ "notes": "Performance: Finishers are now the decisive play of your wins: the cards of the turn with the biggest swing after which you stayed ahead.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

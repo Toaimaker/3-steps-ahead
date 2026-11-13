@@ -3521,14 +3521,19 @@ class PaginaPerformance:
         wc = LARGA_CARTA
         hc = round(wc * 279 / 200)
         per_riga = max(1, int((W - 28) // (wc + 14)))
+        per_coppie = max(1, int((W - 28) // (wc + round(wc * 0.5) + 14)))
         y = 34
         scelte_r = set(DA.righe_carte_scelte())
+        for o in self.copie("cards"):        # il pulsante Rows dice quante righe sono accese, anche all'apertura
+            if "righe" in o["ctl"]:
+                o["ctl"]["righe"].metti("Rows · all" if len(scelte_r) == len(DA.RIGHE_CARTE) else f"Rows · {len(scelte_r)} of {len(DA.RIGHE_CARTE)}",
+                                        len(scelte_r) < len(DA.RIGHE_CARTE))
         if not scelte_r:
             c.create_text(14, 46, text="No rows picked: open «Rows» and tick the ones you want to see.", anchor="w", fill=C["grigio"], font=F(9))
         for chiave, titolo in DA.RIGHE_CARTE:
             if chiave not in scelte_r:      # solo le righe spuntate in Rows
                 continue
-            carte = DA.riga_carte(r, chiave, quante=per_riga)
+            carte = DA.riga_carte(r, chiave, quante=per_coppie if chiave == "finisher" else per_riga)
             c.create_line(14, y, W - 14, y, fill="#2c2c34")
             c.create_text(14, y + 14, text=titolo, anchor="w", fill=C["azzurro"], font=F(8, True))
             # le coppie della riga si aprono in una finestra a parte (13 nov 2026, Autore: «non aggiungere le coppie come righe ma come finestre extra che
@@ -3542,8 +3547,9 @@ class PaginaPerformance:
                               fill=C["muto"], font=F(8))
                 y += 36
                 continue
-            for i, cc in enumerate(carte):
-                self.metti_carta(c, 14 + i * (wc + 14), y, cc, chiave, base)
+            x_ = 14
+            for cc in carte:
+                x_ += self.metti_carta(c, x_, y, cc, chiave, base) + 14
             y += hc + 50
         c.configure(scrollregion=(0, 0, W, y + 6))
 
@@ -3572,7 +3578,10 @@ class PaginaPerformance:
         poche = cc["n"] < 5
         col = C["muto"] if poche or base is None else (C["azzurro"] if cc["wr"] > base else C["rosso"] if cc["wr"] < base else C["testo"])
         xc = x + larga_c / 2
-        if chiave == "bloccate" and "bloccata" in cc:
+        if "salto" in cc:           # un finisher: quante vittorie ha deciso, il salto di vantaggio medio
+            c.create_text(xc, y + hc + 12, text=f"decided {cc['n']} win{'s' * (cc['n'] != 1)}", fill=C["azzurro"], font=F(9, True))
+            c.create_text(xc, y + hc + 29, text=f"swing +{cc['salto']:.0f} · {cc['quota']:.0f}% of your wins", fill=C["grigio"], font=F(7))
+        elif chiave == "bloccate" and "bloccata" in cc:
             c.create_text(xc, y + hc + 12, text=f"{cc['bloccata']}% stuck", fill=C["rosso"], font=F(9, True))
             c.create_text(xc, y + hc + 29, text=f"{cc['n']} of {cc['mano']} games · {cc['wr']:.0f}%", fill=C["grigio"], font=F(7))
         else:
