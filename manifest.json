@@ -1,6 +1,6 @@
 {
- "version": "0.1.77",
+ "version": "0.1.78",
  "date": "2026-11-13",
- "notes": "Performance: the win rate box is computed before Result, so a win rate with Result Won keeps the wins of that group.",
+ "notes": "Performance: strong spots corrected for the number of conditions tried, the result itself out of Spots, and the dropdowns always show all their values.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

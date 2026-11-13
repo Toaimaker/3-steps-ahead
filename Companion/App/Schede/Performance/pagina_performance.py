@@ -861,14 +861,20 @@ class PaginaPerformance:
             self.l_info.configure(text=f"{len(tutte):,} {self.tipo.lower()} games · {tutte[0]['quando']:%d %b} – {tutte[-1]['quando']:%d %b}")
         else:
             self.l_info.configure(text=f"No {self.tipo.lower()} games in your logs yet")
-        for k, t in self.tendine.items():      # ogni tendina: i valori coi conti sotto gli altri filtri
-            altri = {k2: v for k2, v in self.filtri.items() if k2 != k}
-            vv = DA.valori(DA.filtra(self.righe, altri, self.tipo), k)
+        tutte_t = [x for x in self.righe if x["tipo"] == self.tipo]
+        for k, t in self.tendine.items():
+            # sempre le stesse voci, qualunque filtro ci sia (12 nov 2026, Autore: «la tendina mulligans vedo che e' variabile, no deve sempre in ogni caso
+            # avere any, 0, 1, 2+»; 13 nov 2026: «perche' oltre certe impostazioni non posso filtrare per lands? Le tendine devono avere valori fissi sempre»):
+            # le voci fisse, se no tutte quelle della variabile nell'ordine suo, se no quelle di tutte le partite del tipo. Fino a quel giorno le altre tendine
+            # avevano solo i valori rimasti sotto gli altri filtri, e con qualche filtro acceso Lands in hand perdeva le voci
+            if k in VALORI_FISSI:
+                vv = [(v, 0) for v in VALORI_FISSI[k]]
+            elif k in DA.ORDINE_VALORI:
+                vv = [(v, 0) for v in DA.ORDINE_VALORI[k]]
+            else:
+                vv = DA.valori(tutte_t, k)
             sc = self.filtri.get(k)
             voci = ["Any"] + [v for v, _n in vv]
-            if k in VALORI_FISSI:     # sempre le stesse voci, qualunque filtro ci sia (12 nov 2026, Autore: «la tendina mulligans vedo che e' variabile, no deve
-                voci = ["Any"] + list(VALORI_FISSI[k])      # sempre in ogni caso avere any, 0, 1, 2+»)
-                vv = [(v, 0) for v in VALORI_FISSI[k]]
             if sc is not None and sc not in voci:
                 voci.append(sc)
             # solo le voci, senza i conti (12 nov 2026, Autore: «nei menu a tendina non mettere anche i numeri solo le voci, i numeri li vogliamo come risultato
@@ -2642,7 +2648,7 @@ class PaginaPerformance:
 
     def disegna_spot(self):
         """Dove vinci e dove perdi di piu': due elenchi (affiancati a tutta larghezza), quanti ne stanno nell'altezza (niente si taglia), gli spot che reggono in
-        testa (l'intervallo sta tutto dalla loro parte: «strong»). Il clic mette le condizioni fra i filtri."""
+        testa («strong»: regge anche contando quante condizioni si sono provate, DA.spot). Il clic mette le condizioni fra i filtri."""
         c = self.tela("spots")
         c.delete("all")
         c._spot_box, c._dom_box = [], []

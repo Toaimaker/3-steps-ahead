@@ -90,7 +90,7 @@ SEZIONI = (
                                   "reverse); the opponent's colors are mana symbols"),
       ("Spots", "Preset searches: the basic questions already built (opening hand, attack, defense, instant speed; life, board and removal), each with "
                 "its win rate and games; one click turns on all its filters and opens the view that answers it, again to go back. Auto spots: where you "
-                "win and lose the most, one or two variables at a time; strong when the 95% interval clears your average; click one to filter it"),
+                "win and lose the most, one or two variables at a time, never the result itself (who conceded, life at 0); strong when it holds even counting how many spots were tried (5% false positives at most); click one to filter it"),
       ("Report", "group by a variable; click a row to filter it, a column to sort"),
       ("Matchups", "your decks against the archetypes you met, or only the meta decks; click a cell to filter it"),
       ("Compare", "A, the situation of your filters, against B: everything else, all your games or a saved situation; the difference, and whether it holds "

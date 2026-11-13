@@ -1195,6 +1195,12 @@ def report(r, per, ordina="n", minimo=15):
 COPPIE = ("mio", "suo", "colori", "vs", "partenza", "mull", "terre", "lunga", "rango", "fascia", "sessione") + tuple("sit:" + s for s, _n in SIT)
 
 
+FDR = 0.05          # gli spot «strong»: i falsi positivi attesi fra loro (Benjamini-Hochberg)
+# le variabili che sono il risultato, non una situazione: negli Spots spiegherebbero da sole il win rate (13 nov 2026, le simulazioni: in testa «Opponent
+# conceded» al 100% e «la tua vita piu' bassa: 0 o meno» allo 0%). Restano filtri; Result non c'era gia'
+FUORI_SPOT = {"fine", "s_vita_io", "s_vita_lui"}
+
+
 def spot(r, minimo=15, quanti=8, coppie=True, gia=None):
     """-> (meglio, peggio): [dict(condizioni=[(chiave, valore)], nome, n, vinte, perse, wr, ic, delta, forte)]. gia: i filtri gia' messi (non si ripropongono)."""
     gia = {k for k, v in (gia or {}).items() if v is not None}
@@ -1203,7 +1209,7 @@ def spot(r, minimo=15, quanti=8, coppie=True, gia=None):
         return [], []
     insiemi = {}
     for k in [k for k, _n, _f in VARIABILI] + ["vs"] + [k for k, _n, _f in EXTRA] + ["sit:" + s for s, _n in SIT]:
-        if k in gia or k == "data":
+        if k in gia or k == "data" or k in FUORI_SPOT:
             continue
         per = collections.defaultdict(set)
         for i, x in enumerate(r):
@@ -1233,12 +1239,21 @@ def spot(r, minimo=15, quanti=8, coppie=True, gia=None):
         out.append(dict(condizioni=list(cond), nome=" · ".join(etichetta(k, v_) if k.startswith("sit:") else f"{NOME[k]}: {etichetta(k, v_)}" for k, v_ in cond),
                         n=n, vinte=v, perse=n - v, wr=wr, ic=(lo, hi),
                         delta=round(wr - base["wr"], 1), su=lo - base["wr"], giu=base["wr"] - hi))
-    meglio = sorted((x for x in out if x["delta"] > 0), key=lambda x: -x["su"])[:quanti]
-    peggio = sorted((x for x in out if x["delta"] < 0), key=lambda x: -x["giu"])[:quanti]
-    for x in meglio:
-        x["forte"] = x["su"] > 0
-    for x in peggio:
-        x["forte"] = x["giu"] > 0
+    # «strong» corretto per le prove multiple (13 nov 2026, le simulazioni: con vittorie e sconfitte mescolate a caso, cioe' senza nessun segnale, l'intervallo
+    # al 95% preso da solo marcava «strong» da 79 a 156 spot, perche' le condizioni e le coppie provate sono migliaia). Ogni condizione si confronta con le
+    # partite fuori da lei (p_proporzioni) e passa la procedura di Benjamini-Hochberg sul numero di condizioni provate, con i falsi positivi al 5% (FDR).
+    tot_v, tot_n = sum(1 for x in r if x["vinta"]), len(r)
+    for x in out:
+        x["p"] = p_proporzioni(x["vinte"], x["n"], tot_v - x["vinte"], tot_n - x["n"])
+    ps = sorted(x["p"] for x in out if x["p"] is not None)
+    soglia = 0.0
+    for i, pv in enumerate(ps, 1):
+        if pv <= FDR * i / len(ps):
+            soglia = pv
+    for x in out:
+        x["forte"] = x["p"] is not None and x["p"] <= soglia and soglia > 0
+    meglio = sorted((x for x in out if x["delta"] > 0), key=lambda x: (not x["forte"], -x["su"]))[:quanti]
+    peggio = sorted((x for x in out if x["delta"] < 0), key=lambda x: (not x["forte"], -x["giu"]))[:quanti]
     return meglio, peggio
 
 
