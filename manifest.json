@@ -1,6 +1,6 @@
 {
- "version": "0.1.92",
+ "version": "0.1.93",
  "date": "2026-11-13",
- "notes": "Welcome window: sharing your games is marked as recommended for the most complete experience; Settings says the same",
+ "notes": "The welcome window shows once per PC: once finished it never comes back, even before Arena tells the app your account",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

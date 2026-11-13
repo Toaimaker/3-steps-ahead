@@ -56,15 +56,22 @@ def log_dettagliato(f=None):
 
 # ------------------------------------------------ la finestra di benvenuto: una volta per account
 def benvenuto_fatto(conto=None):
+    """Il benvenuto si fa una volta per questo PC (13 nov 2026, Autore: «al secondo avvio siamo sicuri che questi messaggi non riappaiono vero?»): il segno
+    sta in cima al file degli account («benvenuto») e, per i file di prima, anche sull'account. Fino a quel giorno era solo sull'account, scritto sotto
+    «?» e letto sotto None quando l'account di Arena non si sapeva ancora (Arena mai aperta dopo l'installazione): il benvenuto tornava a ogni avvio."""
     import account
     import condividi
-    return bool((account.leggi()["conti"].get(condividi._chi(conto)) or {}).get("benvenuto"))
+    d = account.leggi()
+    if d.get("benvenuto"):
+        return True
+    return bool((d["conti"].get(condividi._chi(conto) or "?") or {}).get("benvenuto"))
 
 
 def segna_benvenuto(conto=None):
     import account
     import condividi
     d = account.leggi()
+    d["benvenuto"] = True
     d["conti"].setdefault(condividi._chi(conto) or "?", {})["benvenuto"] = True
     account.salva(d)
 
@@ -271,8 +278,28 @@ def prova():
             open(os.path.join(d_, nome), "w").write(testo)
         casi.append(("il lettore del log: ENABLED on, DISABLED off, niente sconosciuto, file assente nessun_log",
                      [log_dettagliato(os.path.join(d_, n)) for n in ("a.log", "b.log", "c.log", "manca.log")] == ["on", "off", "sconosciuto", "nessun_log"]))
-        casi.append(("benvenuto: non fatto, poi fatto", not benvenuto_fatto("x1") and (segna_benvenuto("x1") or True) and benvenuto_fatto("x1")
-                     and not benvenuto_fatto("x2")))
+        vero_leggi, vero_salva, vero_file, vero_chi = account.leggi, account.salva, list(account.FILE), condividi._chi
+        try:
+            account.leggi, account.salva = vero[2], vero[3]
+            account.FILE[0] = os.path.join(d_, "utente.json")
+            account._C.clear()
+            condividi._chi = lambda conto=None: conto        # l'account di Arena non si sa ancora: None
+            primo = benvenuto_fatto()
+            segna_benvenuto()
+            account._C.clear()                                # il secondo avvio: il file si rilegge da capo
+            secondo = benvenuto_fatto()
+            condividi._chi = lambda conto=None: conto or "acc-123"     # poi Arena dice l'account
+            terzo = benvenuto_fatto()
+            os.remove(account.FILE[0]); account._C.clear()
+            casi.append(("il file vero: al primo avvio no, fatto il benvenuto al secondo avvio non riappare, nemmeno quando poi l'account di Arena si sa",
+                         primo is False and secondo is True and terzo is True))
+            casi.append(("negativa: un PC senza il file degli account il benvenuto lo mostra", benvenuto_fatto() is False))
+        finally:
+            account.leggi, account.salva, condividi._chi = vero_leggi, vero_salva, vero_chi
+            account.FILE[0] = vero_file[0]
+            account._C.clear()
+        casi.append(("benvenuto: non fatto, poi fatto, e vale per tutto il PC (anche un altro account di Arena non lo rivede)", not benvenuto_fatto("x1")
+                     and (segna_benvenuto("x1") or True) and benvenuto_fatto("x1") and benvenuto_fatto("x2")))
     finally:
         condividi.consenso, condividi.imposta_consenso, account.leggi, account.salva, account.collega_untapped = vero
         root.destroy()
