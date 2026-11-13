@@ -67,12 +67,16 @@ SEZIONI = (
                                              "the break before the game"),
       ("Smart filters", "by phase of the game: format, event and your deck (By deck); play or draw, mulligans, lands in hand, result; the opponent's archetype and colors; "
                         "length and rank; date, time of day and game in the session"),
+      ("Win rate", "type a number: the games where your win rate, counting the games before each one, was that (rounded); ≥ before it: that or more, "
+                   "≤ after it: that or less. From your 10th game; with a deck picked in By deck, the win rate of that deck"),
       ("By deck", "pick one of your decks (one box each, with its colors; sorted by most played, win rate or name), against everyone or against one exact color variant of the opponent's deck (vs colors: flag the colors, mono-color to "
                   "five colors or colorless); the table is your deck against every variant you met, click a row to pick it"),
       ("Advanced filters", "the button under the smart filters opens your question: every filter you turn on is a piece with its x, the answer (win rate, "
                            "games, record, interval, against all your games) right below, and the whole page follows it. Two tabs, You and Opponent, each with "
                            "its phases: opening hand (your deck's colors, creatures, instants, sorceries, artifacts, enchantments, planeswalkers, battles; the "
-                           "opponent's mulligans), what was cast on each player's turns 1-5 and on the other one's turns, attacks turn by turn (how many "
+                           "opponent's mulligans), what was cast on each player's turns 1-5 and on the other one's turns (by type and by type and mana value, "
+                           "\"Instant · 1\"; pick several in the same turn and the games must have them all), the draws on each turn (the draw step too) and "
+                           "the extra draws in one turn, attacks turn by turn (how many "
                            "creatures, the defender's untapped lands), defense (blocked or not), and the game: land drops on curve, lowest life, life and "
                            "creatures at the end of your turns, permanents removed, board wipes, counterspells, graveyard targets, spells cast, when the game "
                            "ended, no creature by a turn"),
@@ -91,6 +95,8 @@ SEZIONI = (
       ("Matchups", "your decks against the archetypes you met, or only the meta decks; click a cell to filter it"),
       ("Compare", "A, the situation of your filters, against B: everything else, all your games or a saved situation; the difference, and whether it holds "
                   "(p under 5%) or how many games would tell"),
+      ("Cards", "the most common cards of the games you picked, as cards: the spells you cast or the opponent's cards you saw; under each one the win "
+                "rate and record of the games it is in, and in how many; click a card to keep only its games, again to go back; hover to see it big"),
       ("The folders", "the mark on the right of each folder opens it in its own window, even on another screen; close it, or Bring it back, to dock it again"),
       ("Save as my filter", "keep a set of filters: it goes to the My filters folder, one under the other with its numbers; click to apply it, ✕ to "
                             "remove it; your filters are also a B of Compare"),

@@ -24,13 +24,14 @@ import re  # noqa: E402
 
 from ambiente import LOGDIR  # noqa: E402
 
-VERSIONE = 12       # 2: le foto della partita; 3: cimitero, esilio, forza e costituzione; 4: i momenti del combattimento e delle magie coi bersagli;
+VERSIONE = 13       # 2: le foto della partita; 3: cimitero, esilio, forza e costituzione; 4: i momenti del combattimento e delle magie coi bersagli;
 #                    5: ogni istantaneo e stregoneria in pila (anche senza bersagli) e i permanenti che ha tolto dal campo (i board wipe);
 #                    6: per le partite lette dagli archivi, dove stanno («dove»: archivio, byte di inizio e di fine), per il replay azione per azione;
 #                    7: debug del 12 nov 2026: le cancellazioni, chi e' in campo dalle zone, le vite a 0, l'annullamento, emblemi e inneschi, i riassunti;
 #                    8: i bersagli fuori dal campo («fuori»: cimitero, esilio, pila); 9: l'emblema risale alla carta;
 #                    10: forza e costituzione a zero; 11: «fatti», i permanenti che la magia ha spostato lei (affectorId), e le abilita' coi bersagli;
 #                    12: «azioni» (terre giocate e magie lanciate turno per turno, col tipo) e nel combattimento «pot» e «aperte»
+#                    13: nelle «azioni» anche le pescate («pesca», di chi riceve la carta)
 CARTELLA = os.path.join(LOGDIR, "partite")
 COPIA = os.path.join(LOGDIR, "mana_aperto.json")
 
@@ -246,6 +247,14 @@ def leggi(righe):
                 if "AnnotationType_ZoneTransfer" not in (a.get("type") or []):
                     continue
                 cat = next(((x.get("valueString") or [None])[0] for x in a.get("details") or [] if x.get("key") == "category"), None)
+                if cat == "Draw":       # le pescate (13 nov 2026): di chi e' la mano in cui arriva la carta; la sua carta e' nascosta, grpId 0
+                    dest = next(((x.get("valueInt32") or [None])[0] for x in a.get("details") or [] if x.get("key") == "zone_dest"), None)
+                    chi = zown.get(dest)
+                    if chi in (1, 2):
+                        for x in a.get("affectedIds") or []:
+                            o = obj.get(x)
+                            st["azioni"].append((sid, [t, chi, "pesca", (grp_vero(o, obj) if o else 0) or 0, ""]))
+                    continue
                 if cat not in ("PlayLand", "CastSpell"):
                     continue
                 for x in a.get("affectedIds") or []:
@@ -563,6 +572,15 @@ def prova():
     az = leggi(fa)["azioni"]
     casi.append(("le azioni del turno: la terra giocata e la creatura artefatto lanciata, col turno, il posto e i tipi",
                  az == [[3, 2, "terra", 1, "L"], [3, 2, "magia", 151, "AC"]]))
+    # le pescate (VERSIONE 13): chi riceve la carta lo dice la mano di destinazione; la sua carta e' nascosta (niente grpId)
+    zd = lambda i, dest: dict(type=["AnnotationType_ZoneTransfer"], affectedIds=[i], details=[dict(key="zone_dest", valueInt32=[dest]),
+                                                                                              dict(key="category", valueString=["Draw"])])
+    fd = [gs(type="GameStateType_Full", zones=[dict(zoneId=31, type="ZoneType_Hand", ownerSeatId=1), dict(zoneId=35, type="ZoneType_Hand", ownerSeatId=2)],
+             turnInfo=dict(turnNumber=2, activePlayer=2, phase="Phase_Beginning")),
+          gs(type="GameStateType_Diff", gameObjects=[dict(instanceId=60, grpId=300, type="GameObjectType_Card", zoneId=31, controllerSeatId=1, ownerSeatId=1)],
+             annotations=[zd(60, 31), zd(61, 35), zd(62, 99)])]
+    casi.append(("le pescate: la tua col grpId, la sua nascosta col suo posto; una verso una zona che non e' una mano no",
+                 leggi(fd)["azioni"] == [[2, 1, "pesca", 300, ""], [2, 2, "pesca", 0, ""]]))
     casi.append(("i momenti: il combattimento coi blocchi, la magia col bersaglio, la fine del turno, in ordine",
                  [m_[0] for m_ in dm] == ["comb", "spell", "fine"] and {k: dm[0][4][k] for k in ("att", "blocchi")} == dict(att=[[10, 2]], blocchi=[[20, [10]]])
                  and dm[1][4]["g"] == 555 and dm[1][4]["bers"] == [20]))

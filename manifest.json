@@ -1,6 +1,6 @@
 {
- "version": "0.1.74",
+ "version": "0.1.75",
  "date": "2026-11-13",
- "notes": "Board: with a card type filter on, a group frame shows only when at least one of its cards does.",
+ "notes": "Performance: a win rate box (exact, at least or at most) after Event, a Cards folder with the most common cards, draws per turn and multiple picks with mana value in Advanced filters.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

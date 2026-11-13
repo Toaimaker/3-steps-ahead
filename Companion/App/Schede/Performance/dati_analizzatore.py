@@ -141,6 +141,20 @@ def _carta(nome):
     return t.get(nome) or t.get(nome.split(" // ")[0].strip())
 
 
+_INTERI = {}
+
+
+def nome_intero(n):
+    """Il nome intero di una carta a due facce («Unholy Annex» -> «Unholy Annex // Ritual Chamber»), come lo scrivono le carte viste e le immagini cotte; le
+    altre restano come sono. Le azioni di mana_aperto danno il nome della faccia davanti (13 nov 2026: nella cartella Cards Unholy Annex senza immagine)."""
+    if not _INTERI:
+        for k in _tabella():
+            if " // " in k:
+                _INTERI.setdefault(k.split(" // ")[0].strip(), k)
+        _INTERI.setdefault("", "")
+    return _INTERI.get(n, n)
+
+
 def dalla_mano(tenuta):
     """La mano tenuta {nome: copie} -> (magie da 1-2 mana «0»/«1»/«2+», una creatura da 1-2 mana True/False); None se la mano non si conosce."""
     if not tenuta:
@@ -204,6 +218,9 @@ ORDINE_TIPI = ("Creature", "Instant", "Sorcery", "Enchantment", "Artifact", "Pla
 ORDINE_ATT = ("No attack", "1 creature", "2 creatures", "3+ creatures")
 ORDINE_DIF = ("Not attacked", "Blocked", "No block")
 ORDINE_APERTE = ("No attack", "0 untapped lands", "1 untapped land", "2+ untapped lands")
+ORDINE_PESCATE = ("0 draws", "1 draw", "2 draws", "3+ draws")
+ORDINE_PESCATE_X = ("0 draws", "1 draw", "2+ draws")
+ORDINE_EXTRA = ("No extra draw", "1+ extra in one turn", "2+ extra in one turn", "3+ extra in one turn")
 
 
 def per_turno(match_id, seat, inizia, turni):
@@ -215,7 +232,13 @@ def per_turno(match_id, seat, inizia, turni):
       «a{chi}{n}»  il suo attacco nel suo turno n: «No attack», «1 creature», «2 creatures», «3+ creatures»;
       «d{chi}{n}»  la sua difesa nel turno n dell'altro: «Not attacked», «Blocked», «No block»;
       «m{chi}{n}»  le terre stappate di chi difende quando lui attacca nel suo turno n (stesso giorno: «aggiungiamo anche in attacco se ci sono situazioni di
-                   mana stappato vs chi attacca»): «No attack», «0 untapped lands», «1 untapped land», «2+ untapped lands».
+                   mana stappato vs chi attacca»): «No attack», «0 untapped lands», «1 untapped land», «2+ untapped lands»;
+      «p{chi}{n}»  le carte che ha pescato nel suo turno n, la pescata del turno compresa: «0 draws» ... «3+ draws» (13 nov 2026, Autore: «nei filtri di
+                   you e opponent aggiungiamo anche le pescate nel proprio e nel turno avversario più alcuni filtri generali che indicano che sono avvenute 1, 2
+                   o più pescate in almeno uno dei turni»);
+      «p{chi}x{n}» le carte che ha pescato nel turno n dell'altro: «0 draws», «1 draw», «2+ draws»;
+      «pe{chi}»    le pescate extra (oltre quella del suo turno; nel turno dell'altro tutte) nel turno che ne ha di piu' fra quelli dei filtri: una lista, come le
+                   soglie («2+ extra in one turn» e' anche «1+ extra in one turn»), o «No extra draw». Le pescate ci sono da mana_aperto VERSIONE 13.
     Un turno che la partita non ha raggiunto non c'e'. Il turno n di chi comincia e' il turno 2n-1 di Arena, quello dell'altro il 2n: in tutti e due i casi
     n = (t + 1) // 2. Dalle azioni e dai combattimenti di mana_aperto (VERSIONE 12); {} se mancano o non si sa chi ha cominciato."""
     d = _MANA.get(match_id) or {}
@@ -234,13 +257,39 @@ def per_turno(match_id, seat, inizia, turni):
         out[f"a{chi}{n}"] = "No attack"
         out[f"d{altro[chi]}{n}"] = "Not attacked"
         out[f"m{chi}{n}"] = "No attack"
-    for t, s_, cosa, _g, tipi in d["azioni"]:
+    pescate = collections.Counter()
+    ci_sono = False
+    for t, s_, cosa, _g, _tipi in d["azioni"]:
+        if cosa == "pesca":
+            ci_sono = True
+            pescate[("io" if s_ == seat else "lui", t)] += 1
+    if ci_sono:
+        extra = {"io": 0, "lui": 0}
+        for t in range(1, 2 * TURNI_FILTRO + 1):
+            if not turni or t > turni:
+                break
+            chi, n = di_turno(t), (t + 1) // 2
+            mie, sue = pescate[(chi, t)], pescate[(altro[chi], t)]
+            out[f"p{chi}{n}"] = ORDINE_PESCATE[min(mie, 3)]
+            out[f"p{altro[chi]}x{n}"] = ORDINE_PESCATE_X[min(sue, 2)]
+            normale = 0 if (chi == primo and t == 1) else 1        # chi comincia non pesca al suo primo turno (103.8a)
+            extra[chi] = max(extra[chi], mie - normale)
+            extra[altro[chi]] = max(extra[altro[chi]], sue)
+        for chi, e in extra.items():
+            out[f"pe{chi}"] = tuple(ORDINE_EXTRA[i] for i in range(1, min(e, 3) + 1)) or (ORDINE_EXTRA[0],)
+    for t, s_, cosa, g_, tipi in d["azioni"]:
         if cosa != "magia":
             continue
         chi = "io" if s_ == seat else "lui"
         k = f"{chi}{(t + 1) // 2}" if di_turno(t) == chi else f"{chi}x{(t + 1) // 2}"
         if k in out:
-            out[k].update(NOMI_TIPO[c] for c in tipi or "" if c in NOMI_TIPO)
+            nomi_t = [NOMI_TIPO[c] for c in tipi or "" if c in NOMI_TIPO]
+            out[k].update(nomi_t)
+            # il tipo col costo (13 nov 2026, Autore: «sulle giocate per turno dobbiamo poter eseguire selezioni multiple: es t2 cast instant da 1 mana e cr
+            # da 1 mana»): «Instant · 1», «Creature · 1»; il costo e' il valore di mana della carta (del database), non quello pagato
+            cmc = (_carta(nome_grp(g_) or "") or {}).get("cmc") if g_ not in SENZA_FACCIA else None
+            if cmc is not None:
+                out[k].update(f"{tn} · {int(cmc)}" for tn in nomi_t)
     for kind, t, att, _f, info in d.get("momenti") or []:
         if kind != "comb" or not info or not info.get("att"):
             continue
@@ -254,7 +303,20 @@ def per_turno(match_id, seat, inizia, turni):
                 out.pop(f"m{chi}{n}", None)
             else:
                 out[f"m{chi}{n}"] = "0 untapped lands" if ap == 0 else "1 untapped land" if ap == 1 else "2+ untapped lands"
-    return {k: [v] if isinstance(v, str) else (sorted(v, key=ORDINE_TIPI.index) if v else ["Nothing"]) for k, v in out.items()}
+    return {k: [v] if isinstance(v, str) else list(v) if isinstance(v, tuple) else (sorted(v, key=ordine_lancio) if v else ["Nothing"])
+            for k, v in out.items()}
+
+
+def ordine_lancio(v):
+    """L'ordine delle voci di un turno: i tipi come ORDINE_TIPI, ognuno seguito dai suoi costi («Creature», «Creature · 1», «Creature · 2» ...)."""
+    tipo, _s, costo = v.partition(" · ")
+    return (ORDINE_TIPI.index(tipo) if tipo in ORDINE_TIPI else 99, int(costo) if costo.isdigit() else -1)
+
+
+def multipla(k):
+    """Le chiavi a scelta multipla: le giocate turno per turno («t_io2», «t_luix3»). Il filtro e' una lista di voci, e una partita passa se in quel turno ha
+    tutte le voci scelte (un istantaneo da 1 e una creatura da 1)."""
+    return bool(re.fullmatch(r"t_(io|lui)x?\d+", k))
 
 
 ENTRO = tuple(range(3, 13))         # «la partita finita entro il tuo turno N»
@@ -401,7 +463,9 @@ def riga(p, r):
     turni = r.get("turni")
     econ, crea = dalla_mano(tenuta)
     lista = condividi.nomi(p.get("carte") or []) or {}
-    return dict(r, seat=p.get("seat"), mazzo_id=p.get("mazzo"), economiche=econ, crea_mano=crea, crea_in_mano=creature_in_mano(tenuta),
+    mie_l = sorted({nm for t_, s_, cosa, g_, _tp in (_MANA.get(r.get("partita")) or {}).get("azioni") or []
+                    if cosa == "magia" and s_ == p.get("seat") and (nm := nome_intero(nome_grp(g_) or "")) and g_ not in SENZA_FACCIA})
+    return dict(r, seat=p.get("seat"), mazzo_id=p.get("mazzo"), mie_lanciate=mie_l, economiche=econ, crea_mano=crea, crea_in_mano=creature_in_mano(tenuta),
                 suo_mull=suo_mulligan(r.get("partita"), p.get("seat")), crea_prima=prima_creatura(r.get("partita"), p.get("seat"), r.get("inizia")),
                 ist_mano=magie_in_mano(tenuta, "Instant"), str_mano=magie_in_mano(tenuta, "Sorcery"),
                 art_mano=magie_in_mano(tenuta, "Artifact"), inc_mano=magie_in_mano(tenuta, "Enchantment"), pw_mano=magie_in_mano(tenuta, "Planeswalker"),
@@ -593,6 +657,7 @@ def righe(partite=None):
             out.append(riga(p, r))
     sessioni(out)
     out.sort(key=lambda x: x["quando"])
+    wr_in_corsa(out)
     _CACHE.update(firma=firma, righe=out)
     return out
 
@@ -684,8 +749,11 @@ EXTRA += [(f"t_{pre}{chi}{suf}{n}", nome.format(n=n), (lambda x, k=f"{pre}{chi}{
           for chi, tu, lui_ in (("io", "You", "the opponent's"), ("lui", "Opponent", "your"))
           for pre, suf, nome in (("", "", tu + " · turn {n} cast"), ("", "x", tu + " · " + lui_ + " turn {n} cast"),
                                  ("a", "", tu + " · turn {n} attack"), ("d", "", tu + " · " + lui_ + " turn {n} defense"),
-                                 ("m", "", tu + " · turn {n} attack · " + ("the opponent's" if chi == "io" else "your") + " untapped lands"))
+                                 ("m", "", tu + " · turn {n} attack · " + ("the opponent's" if chi == "io" else "your") + " untapped lands"),
+                                 ("p", "", tu + " · turn {n} draws"), ("p", "x", tu + " · " + lui_ + " turn {n} draws"))
           for n in range(1, TURNI_FILTRO + 1)]
+EXTRA += [(f"t_pe{chi}", f"{tu} · extra draws in one turn (turns 1-{TURNI_FILTRO})", (lambda x, k=f"pe{chi}": ((x.get("per_turno") or {}).get(k) or [None])[-1]))
+          for chi, tu in (("io", "You"), ("lui", "Opponent"))]
 # i filtri situazionali dai replay (13 nov 2026, situazioni_replay) e la prima creatura dell'avversario
 EXTRA += [("s_" + k_, nome_, (lambda x, k=k_: (x.get("situa") or {}).get(k))) for k_, (nome_, _o) in SITUA_NOMI.items()]
 EXTRA += [("senza_lui", "Opponent · no creature cast by", lambda x: (valori_di("senza_lui", x) or [None])[0])]
@@ -694,6 +762,8 @@ for _k, _n, _f in EXTRA:
 # vinta o persa come tendina della fase Opening and first turns (12 nov 2026, Autore: «aggiungiamo la tendina di partita vinta o persa nella sezione opening
 # hands and first turns»): non entra negli Spots (spiegherebbe tutto il win rate da sola)
 NOME["esito"], LEGGI["esito"] = "Result", (lambda x: "Won" if x["vinta"] else "Lost")
+NOME["wr_rif"] = "Win rate"
+NOME["lanciate"] = "Card you cast"      # il clic su una carta della cartella Cards: non e' una tendina, non entra negli Spots     # il filtro del win rate in corsa (wr_in_corsa): non e' una tendina, non entra negli Spots
 ORDINE_VALORI.update(esito=("Won", "Lost"), miei_colori=VARIANTI, economiche=("0", "1", "2+"), crea_mano=("Yes", "No"),
                      fine=("You conceded", "Opponent conceded", "Played to the end", "Timeout"), giorno=GIORNI,
                      pausa=("Under 15 minutes", "15-60 minutes", "Over 1 hour (new session)"), crea_in_mano=("0", "1", "2", "3+"),
@@ -702,7 +772,8 @@ ORDINE_VALORI.update(esito=("Won", "Lost"), miei_colori=VARIANTI, economiche=("0
                      art_mano=("0", "1", "2+"), inc_mano=("0", "1", "2+"), pw_mano=("0", "1", "2+"), bat_mano=("0", "1", "2+"),
                      **{f"t_{pre}{chi}{suf}{n}": o_ for chi in ("io", "lui") for n in range(1, TURNI_FILTRO + 1)
                         for pre, suf, o_ in (("", "", ORDINE_TIPI), ("", "x", ORDINE_TIPI), ("a", "", ORDINE_ATT), ("d", "", ORDINE_DIF),
-                                             ("m", "", ORDINE_APERTE))},
+                                             ("m", "", ORDINE_APERTE), ("p", "", ORDINE_PESCATE), ("p", "x", ORDINE_PESCATE_X))},
+                     t_peio=ORDINE_EXTRA, t_pelui=ORDINE_EXTRA,
                      **{"s_" + k_: ORDINE_SITUA[o_] for k_, (_n, o_) in SITUA_NOMI.items()},
                      senza_lui=tuple(f"Their turn {n}" for n in SENZA) + ("The whole game",))
 
@@ -737,6 +808,8 @@ def valori_di(k, x):
         return x.get("mano") or []
     if k == "sue":
         return x.get("sue_viste") or []
+    if k == "lanciate":         # le tue magie lanciate (la cartella Cards, 13 nov 2026)
+        return x.get("mie_lanciate") or []
     if k == "data":
         giorni = (datetime.datetime.now() - x["quando"]).days
         return [n for n, d in DATE if giorni < d]
@@ -759,8 +832,78 @@ def valori_di(k, x):
     return [] if v is None else [v]
 
 
+WR_MINIMO = 10      # il win rate in corsa conta dalla decima partita: prima e' rumore (una partita sola fa 0% o 100%)
+
+
+def wr_in_corsa(out):
+    """Il win rate che avevi a ogni partita, contando le partite prima di lei (13 nov 2026, Autore: «win rate deve poter settare una % di win rate sulla
+    quale si posiziona la ricerca ... tiene il wr generale di tutte le partite o per mazzo specifico, ci aiuta a migliorare la costruzione di ricerca degli spot
+    partendo da uno specifico wr»): «wr_corsa» su tutte le partite del suo tipo (Constructed, Limited), «wr_corsa_mazzo» su quelle dello stesso mazzo. None
+    prima della WR_MINIMO-esima partita. out e' in ordine di tempo."""
+    conti_ = collections.defaultdict(lambda: [0, 0])
+    for x in out:
+        for campo, chiave in (("wr_corsa", (x["tipo"],)), ("wr_corsa_mazzo", (x["tipo"], (x.get("mio") or "").strip()))):
+            v, n = conti_[chiave]
+            x[campo] = round(100 * v / n, 1) if n >= WR_MINIMO else None
+            conti_[chiave] = [v + (1 if x["vinta"] else 0), n + 1]
+
+
+def passa_wr(x, f, per_mazzo=False):
+    """Il filtro del win rate: f = (valore, ≥, ≤). Senza i due segni il win rate di quella partita arrotondato all'unita' e' il valore; col ≥ almeno il
+    valore, col ≤ al massimo; coi due segni insieme e' di nuovo il valore esatto. Col mazzo scelto (By deck) il win rate e' quello del mazzo."""
+    try:
+        val, ge, le = float(f[0]), bool(f[1]), bool(f[2])
+    except (TypeError, ValueError, IndexError):
+        return True
+    w = x.get("wr_corsa_mazzo" if per_mazzo else "wr_corsa")
+    if w is None:
+        return False
+    if ge and not le:
+        return w >= val
+    if le and not ge:
+        return w <= val
+    return round(w) == round(val)
+
+
+def etichetta_wr(f):
+    try:
+        val, ge, le = float(f[0]), bool(f[1]), bool(f[2])
+    except (TypeError, ValueError, IndexError):
+        return "-"
+    segno = "≥ " if ge and not le else "≤ " if le and not ge else ""
+    return f"{segno}{val:g}%"
+
+
 def passa(x, filtri):
-    return all(v in valori_di(k, x) for k, v in filtri.items() if v is not None)
+    for k, v in filtri.items():
+        if v is None:
+            continue
+        if k == "wr_rif":
+            if not passa_wr(x, v, bool(filtri.get("mio"))):
+                return False
+        elif isinstance(v, (list, tuple)):
+            if not v:
+                continue
+            ci_sono = valori_di(k, x)
+            if not all(i in ci_sono for i in v):
+                return False
+        elif v not in valori_di(k, x):
+            return False
+    return True
+
+
+def carte_comuni(r, lato="io", quante=60):
+    """Le carte piu' comuni delle partite r (13 nov 2026, Autore: «una chart cards che parlerà delle carte più comuni delle partite selezionate e le
+    mostrerà come immagini carta»): «io» le magie che hai lanciato (dalle azioni di mana_aperto), «lui» le sue carte viste (non terre). Una carta conta una volta
+    per partita. -> [dict(nome, n, vinte, perse, wr, quota)] dalla piu' comune; quota = % delle partite."""
+    conta, vinte = collections.Counter(), collections.Counter()
+    for x in r:
+        for nm in set(x.get("mie_lanciate" if lato == "io" else "sue_viste") or []):
+            conta[nm] += 1
+            vinte[nm] += 1 if x["vinta"] else 0
+    tot = len(r) or 1
+    return [dict(nome=nm, n=n, vinte=vinte[nm], perse=n - vinte[nm], wr=round(100 * vinte[nm] / n, 1), quota=round(100 * n / tot, 1))
+            for nm, n in sorted(conta.items(), key=lambda kv: (-kv[1], kv[0]))[:quante]]
 
 
 def filtra(righe_, filtri, tipo=None):
@@ -783,6 +926,10 @@ def nome_var(k):
 
 
 def etichetta(k, v):
+    if k == "wr_rif":
+        return etichetta_wr(v)
+    if isinstance(v, (list, tuple)):        # una scelta multipla: le voci insieme
+        return " + ".join(str(i) for i in v)
     if k.startswith("sit:"):
         return NOME_SIT.get(k[4:], k[4:]) if v == "Yes" else "Not: " + NOME_SIT.get(k[4:], k[4:])
     if k in ("vs", "miei_colori"):
@@ -1301,6 +1448,24 @@ def prova():
         casi.append(("i trofei: la settima vittoria dello stesso draft (con una sconfitta in mezzo) e' la nona partita", trofei(tr) == [8]))
         casi.append(("negativa: le partite costruite non danno trofei, e un Traditional basta a 3",
                      trofei([dict(x, evento="Ladder") for x in tr]) == [] and trofei([dict(x, evento="TradDraft_FRA_1") for x in tr]) == [3]))
+        # le pescate e le giocate col costo (13 nov 2026): tu non cominci (seat 2); al tuo turno 1 peschi 1, al 2 tre (due extra), nel suo turno 2 una
+        _NOMI_GRP.update({905: "Shock", 906: "Goblin"})
+        _MANA["m7"] = dict(azioni=[[2, 2, "pesca", 0, ""], [3, 1, "pesca", 0, ""], [3, 2, "pesca", 0, ""], [4, 2, "pesca", 0, ""],
+                                   [4, 2, "pesca", 0, ""], [4, 2, "pesca", 0, ""], [4, 2, "magia", 905, "I"], [4, 2, "magia", 906, "C"]])
+        p7 = per_turno("m7", 2, False, 6)
+        casi.append(("le pescate: lui (comincia) 0 al turno 1 e 1 al 2; tu 1 al turno 1 e 3 al 2; nel suo turno 2 una tua", p7.get("plui1") == ["0 draws"]
+                     and p7.get("plui2") == ["1 draw"] and p7.get("pio1") == ["1 draw"] and p7.get("pio2") == ["3+ draws"] and p7.get("piox2") == ["1 draw"]))
+        casi.append(("le extra in un turno: tu 2 (al turno 2) piu' quella nel suo turno; lui nessuna (il suo turno 1 senza pescata non e' una mancata)",
+                     p7.get("peio") == ["1+ extra in one turn", "2+ extra in one turn"] and p7.get("pelui") == ["No extra draw"]))
+        casi.append(("negativa: le extra «2+» non sono «3+», e senza le pescate nel log (VERSIONE 12) le chiavi delle pescate non ci sono",
+                     not passa(dict(per_turno=p7), {"t_peio": "3+ extra in one turn"}) and passa(dict(per_turno=p7), {"t_peio": "1+ extra in one turn"})
+                     and "pio1" not in per_turno("m4", 2, False, 6)))
+        casi.append(("le giocate col costo: al tuo turno 2 Instant · 1 e Creature · 2 accanto ai tipi, nell'ordine dei tipi",
+                     p7.get("io2") == ["Creature", "Creature · 2", "Instant", "Instant · 1"]))
+        casi.append(("la scelta multipla: tutte e due le voci nello stesso turno passano; una che manca no", multipla("t_io2") and multipla("t_luix3")
+                     and not multipla("t_aio2") and passa(dict(per_turno=p7), {"t_io2": ["Instant · 1", "Creature · 2"]})
+                     and not passa(dict(per_turno=p7), {"t_io2": ["Instant · 1", "Creature · 1"]}) and etichetta("t_io2", ["Instant · 1", "Creature · 2"])
+                     == "Instant · 1 + Creature · 2"))
         casi.append(("negativa: il filtro del turno sbagliato non passa (la creatura e' del tuo turno 2, non dell'1)",
                      passa(dict(per_turno=pt), {"t_io2": "Creature"}) and not passa(dict(per_turno=pt), {"t_io1": "Creature"})))
     finally:
@@ -1308,6 +1473,21 @@ def prova():
     casi.append(("i colori del tuo mazzo dalle magie (le terre no), come e' finita", colori_mazzo(["Goblin", "Owl", "Mountain"]) == "UR"
                  and colori_mazzo(["Mountain"]) == "C" and come_finita("ResultReason_Concede", True) == "Opponent conceded"
                  and come_finita("ResultReason_Concede", False) == "You conceded" and come_finita("ResultReason_Game", True) == "Played to the end"))
+    # il win rate in corsa e il suo filtro: dalla decima partita, tutte e per mazzo
+    wr_r = [dict(tipo="Constructed", mio="A" if i % 2 else "B", vinta=i % 3 != 0) for i in range(30)]
+    wr_in_corsa(wr_r)
+    casi.append(("il win rate in corsa: niente prima della decima partita, poi le partite prima di lei (la decima: 6 vinte su 9... su 10)",
+                 wr_r[9]["wr_corsa"] is None and wr_r[10]["wr_corsa"] == 60.0 and wr_r[19]["wr_corsa_mazzo"] is None and wr_r[21]["wr_corsa_mazzo"] is not None))
+    x_ = dict(wr_corsa=55.4, wr_corsa_mazzo=40.0)
+    casi.append(("il filtro: 55 esatto (arrotondato), ≥ 55, ≤ 56; col mazzo il win rate del mazzo", passa_wr(x_, [55, False, False])
+                 and passa_wr(x_, [55, True, False]) and passa_wr(x_, [56, False, True]) and passa_wr(x_, [45, False, True], per_mazzo=True)
+                 and passa(x_, {"wr_rif": [40, False, False], "mio": None}) is False and etichetta("wr_rif", [55, True, False]) == "≥ 55%"))
+    casi.append(("negativa: ≥ 56 e ≤ 55 non passano, e prima della decima partita niente passa", not passa_wr(x_, [56, True, False])
+                 and not passa_wr(x_, [55, False, True]) and not passa_wr(dict(wr_corsa=None), [10, True, False])))
+    cr = [dict(vinta=True, mie_lanciate=["Shock", "Goblin"], sue_viste=["Owl"]), dict(vinta=False, mie_lanciate=["Shock", "Shock"], sue_viste=[])]
+    cc_ = carte_comuni(cr, "io")
+    casi.append(("le carte comuni: Shock in 2 partite (una volta per partita) 50%, Goblin in 1 100%; le sue viste a parte",
+                 [(c["nome"], c["n"], c["wr"]) for c in cc_] == [("Shock", 2, 50.0), ("Goblin", 1, 100.0)] and carte_comuni(cr, "lui")[0]["nome"] == "Owl"))
     _TAB.clear()
     vere = righe()
     casi.append(("i log veri: righe con le variabili (se ci sono partite)", not vere or all(k in vere[0] for k in ("tipo", "partenza", "terre", "sessione", "fascia"))))
