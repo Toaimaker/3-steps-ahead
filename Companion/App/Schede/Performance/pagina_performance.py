@@ -62,8 +62,7 @@ SPOT_MODI = (("preset", "Preset searches"), ("auto", "Auto spots"))
 VISTE = (("chart", "Chart"), ("spots", "Spots"), ("report", "Report"), ("matchups", "Matchups"), ("compare", "Compare"), ("cards", "Cards"), ("mine", "My filters"))
 DISEGNI = {"chart": "disegna_grafico", "spots": "disegna_spot", "report": "disegna_report", "matchups": "disegna_matchup", "compare": "disegna_confronto",
            "mine": "disegna_miei", "cards": "disegna_carte"}
-CARTE_LATI = (("io", "Your cards (cast)"), ("lui", "Opponent's cards (seen)"))
-LARGA_CARTA = 128                               # le carte della cartella Cards
+LARGA_CARTA = 112                               # le carte della cartella Cards
 ALTO_MIO = 58                                   # una riga dei filtri personali
 GRIGI = ("#2a2a30", "#3a3a42", "#0f86cc")       # i pulsanti a pillola grigi, azzurri se scelti
 ALTO_TAB, LARGA_TAB = 34, 132                   # le cartelle
@@ -201,7 +200,6 @@ class PaginaPerformance:
         self.con, self.staccate, self.vs_modo, self.ord_deck = "rest", {}, "all", "n"
         self.partite_fuori = None       # la tabella delle partite nella sua finestra: dict(win, lista, l)        # B del confronto (rest, all, s<i>); le viste staccate: {vista: dict(win, o, l)}
         self.righe, self.sporca, self.deciso, self.modo = None, True, False, "Standard"
-        self.carte_lato = "io"          # Cards: le tue carte lanciate o le sue viste
         self.spot_modo = "preset"       # Spots: le ricerche preimpostate (di partenza) o gli spot automatici
         self._lavoro, self.l_carica = None, None
         self.scheda_av = "io"        # la scheda aperta della finestra Advanced filters
@@ -413,9 +411,9 @@ class PaginaPerformance:
     def riga_wr(self, griglia, i):
         """Il win rate (13 nov 2026, Autore: «win rate deve poter settare una % di win rate sulla quale si posiziona la ricerca, puoi metterla dopo event»,
         «non mettere tendina sarà una casella dove si scrive il wr coi numeri», «accanto prima e dopo ci metti due flag per due simboli maggiore e minore, se sono
-        deflaggati si cerca il wr esatto, se sono flaggati si cerca il wr uguale e maggiore o uguale e minore del valore inserito»): ≥ | casella | % | ≤. Il win
-        rate e' quello che avevi a ogni partita (DA.wr_in_corsa), sul mazzo scelto in By deck se ce n'e' uno. Invio, l'uscita dalla casella o un attimo di pausa
-        lo mettono; la casella vuota lo toglie."""
+        deflaggati si cerca il wr esatto, se sono flaggati si cerca il wr uguale e maggiore o uguale e minore del valore inserito»): ≥ | casella | % | ≤. Tiene
+        le partite che insieme fanno quel win rate: dopo gli altri filtri, dalle piu' recenti all'indietro finche' regge (DA.finestra_wr; «filtra le partite
+        che partecipano a costruire quel dato di wr»). Invio, l'uscita dalla casella o un attimo di pausa lo mettono; la casella vuota lo toglie."""
         tk, F = self.tk, self.F
         lab = tk.Label(griglia, text="WIN RATE", bg=C["scheda"], fg=C["grigio"], font=F(7, True), anchor="w"); lab.grid(row=i, column=0, sticky="w", pady=2)
         self.lab_filtri = getattr(self, "lab_filtri", {}); self.lab_filtri["wr_rif"] = lab
@@ -546,12 +544,6 @@ class PaginaPerformance:
             ctl["per"] = Tendina(tk, riga, "Group by", F, larga=220, bg=C["scheda"]); ctl["per"].fr.pack(side="right")
             ctl["per"].opzioni([k_ for k_, _n, _f in DA.VARIABILI if k_ != "data"] + ["vs"] + [k_ for k_, _n, _f in DA.EXTRA] + sit_k, lambda v: self.cambia("per", v), etichette=et_var)
             ctl["per"].set(self.per)
-        elif k == "cards":       # le carte piu' comuni delle partite scelte (13 nov 2026)
-            ctl["clato"] = {}
-            for m, n in CARTE_LATI:
-                b = pulsante_solido(tk, F, riga, n, m == self.carte_lato, lambda m=m: self.cambia_lato_carte(m), alto=26, bg=C["scheda"], colori=GRIGI)
-                b.configure(width=170); b.pack(side="left", padx=(0, 6), anchor="s", pady=(0, 2))
-                ctl["clato"][m] = b
         elif k == "matchups":
             ctl["meta"] = pulsante_solido(tk, F, riga, "Meta decks only", self.solo_meta, self.cambia_meta, alto=26, bg=C["scheda"], colori=GRIGI)
             ctl["meta"].configure(width=140); ctl["meta"].pack(side="right", anchor="s", pady=(0, 2))
@@ -636,8 +628,6 @@ class PaginaPerformance:
                 b.metti(dict(DA.METRICHE)[m], m == self.metrica)
             for m, b in ctl.get("smodo", {}).items():
                 b.metti(dict(SPOT_MODI)[m], m == self.spot_modo)
-            for m, b in ctl.get("clato", {}).items():
-                b.metti(dict(CARTE_LATI)[m], m == self.carte_lato)
             for k, v in (("asse", self.asse), ("fin", self.finestra), ("dividi", self.dividi or "None"), ("per", self.per), ("con", self.con)):
                 if k in ctl:
                     ctl[k].set(v)
@@ -805,7 +795,7 @@ class PaginaPerformance:
         self.filtri = {}
         self.disegna()
 
-    PARTENZA = dict(metrica="wr", asse="games", finestra="20", dividi=None, per="suo", ordina="n", basso="report", solo_meta=False, vista="chart", con="rest", vs_modo="all", carte_lato="io")
+    PARTENZA = dict(metrica="wr", asse="games", finestra="20", dividi=None, per="suo", ordina="n", basso="report", solo_meta=False, vista="chart", con="rest", vs_modo="all")
 
     def reset(self):
         """Tutte le partite, come all'apertura: niente filtri ne' situazioni, il grafico e la cartella di partenza (le finestre staccate restano)."""
@@ -3472,14 +3462,11 @@ class PaginaPerformance:
 
     # ------------------------------------------------------------ la cartella Cards
     # Autore, 13 nov 2026: «dopo compare ci serve una chart "cards" che parlerà delle carte più comuni delle partite selezionate e le mostrerà come immagini
-    # carta». Le tue magie lanciate (dalle azioni di mana_aperto) o le sue carte viste, ognuna una volta per partita, dalla piu' comune; sotto ogni carta il win
-    # rate e il record delle partite in cui c'e', azzurro sopra il win rate di tutte le partite scelte e rosso sotto, grigio sotto 5 partite, e in quante partite.
-    # Il clic su una carta tiene solo le partite in cui c'e' (un filtro, che si toglie col secondo clic); al passaggio la carta grande.
-    def cambia_lato_carte(self, m):
-        self.carte_lato = m
-        self.sincronizza()
-        self.disegna_carte()
-
+    # carta», poi «in cards creiamo delle vere e proprie righe di dato: riga 1 most in hand find card / most t1 /t2 /t3 / t4 found cards / match up most played
+    # cards / harder to cast cards - questi risultati arriveranno dall'impostazione dei filtri». Una riga per categoria (DA.RIGHE_CARTE), le carte come immagini
+    # una accanto all'altra (quante ne stanno nella larghezza), sulle partite dei filtri; sotto ogni carta il win rate e il record delle partite in cui c'e',
+    # azzurro sopra il win rate di tutte le partite scelte e rosso sotto, grigio sotto 5 partite, e in quante; nella riga Harder to cast quante volte e' rimasta
+    # in mano. Il clic su una carta tiene solo le sue partite, nel senso della sua riga (un filtro, che si toglie col secondo clic); al passaggio la carta grande.
     def disegna_carte(self):
         c = self.tela("cards")
         c.delete("all")
@@ -3491,60 +3478,66 @@ class PaginaPerformance:
         W = max(c.winfo_width(), 600)
         r = self.scelte()
         k_ = DA.conti(r)
-        lato = self.carte_lato
-        carte = DA.carte_comuni(r, lato)
-        chiave = "lanciate" if lato == "io" else "sue"
-        scelta = self.filtri.get(chiave)
         base = k_["wr"]
-        cosa = "THE SPELLS YOU CAST" if lato == "io" else "THE OPPONENT'S CARDS YOU SAW"
-        c.create_text(14, 14, text=f"{cosa} · MOST COMMON IN {k_['n']} GAMES", anchor="w", fill=C["muto"], font=F(7, True))
+        c.create_text(14, 14, text=f"THE CARDS OF THESE {k_['n']} GAMES · NO LANDS", anchor="w", fill=C["muto"], font=F(7, True))
         if base is not None:
             c.create_text(W - 14, 14, text=f"win rate of these games {base:.0f}% · click a card: only its games", anchor="e", fill=C["grigio"], font=F(7))
-        if not carte:
-            c.create_text(14, 46, text=("No cards: the games of this situation have no replay data yet." if r else "No games in this situation."),
-                          anchor="w", fill=C["grigio"], font=F(9))
-            c.configure(scrollregion=(0, 0, W, 80))
-            return
         wc = LARGA_CARTA
         hc = round(wc * 279 / 200)
-        cella_w, cella_h = wc + 18, hc + 52
-        per_riga = max(1, int((W - 14) // cella_w))
-        x0 = 14 + ((W - 14) - per_riga * cella_w) / 2
-        for i, cc in enumerate(carte):
-            x, y = x0 + (i % per_riga) * cella_w, 34 + (i // per_riga) * cella_h
-            img = self.immagine_carta(cc["nome"], wc, False)
-            if img is not None:
-                c.create_image(x, y, image=img, anchor="nw")
-            else:
-                c.create_rectangle(x, y, x + wc, y + hc, fill="#1b1b22", outline="#3a3a42")
-                c.create_text(x + wc / 2, y + hc / 2, text=cc["nome"], fill=C["titolo"], font=F(8, True), width=wc - 12, justify="center")
-            if scelta == cc["nome"]:
-                c.create_rectangle(x - 3, y - 3, x + wc + 3, y + hc + 3, outline=C["accento"], width=2)
-            poche = cc["n"] < 5
-            col = C["muto"] if poche or base is None else (C["azzurro"] if cc["wr"] > base else C["rosso"] if cc["wr"] < base else C["testo"])
-            c.create_text(x + wc / 2, y + hc + 13, text=f"{cc['wr']:.0f}%  ·  {cc['vinte']}-{cc['perse']}", fill=col, font=F(9, True))
-            c.create_text(x + wc / 2, y + hc + 31, text=f"in {cc['n']} games · {cc['quota']:.0f}%", fill=C["grigio"], font=F(7))
-            c._box_carte.append((x, y, x + wc, y + hc + 40, cc["nome"]))
-        righe_ = -(-len(carte) // per_riga)
-        c.configure(scrollregion=(0, 0, W, 34 + righe_ * cella_h + 10))
+        cella_w = wc + 14
+        per_riga = max(1, int((W - 28) // cella_w))
+        y = 34
+        for chiave, titolo in DA.RIGHE_CARTE:
+            carte = DA.riga_carte(r, chiave, quante=per_riga)
+            scelta = self.filtri.get(chiave)
+            c.create_line(14, y, W - 14, y, fill="#2c2c34")
+            c.create_text(14, y + 14, text=titolo, anchor="w", fill=C["azzurro"], font=F(8, True))
+            y += 28
+            if not carte:
+                c.create_text(14, y + 10, text=("no cards here: these games have no replay data" if r else "no games in this situation"), anchor="w",
+                              fill=C["muto"], font=F(8))
+                y += 36
+                continue
+            for i, cc in enumerate(carte):
+                x = 14 + i * cella_w
+                img = self.immagine_carta(cc["nome"], wc, False)
+                if img is not None:
+                    c.create_image(x, y, image=img, anchor="nw")
+                else:
+                    c.create_rectangle(x, y, x + wc, y + hc, fill="#1b1b22", outline="#3a3a42")
+                    c.create_text(x + wc / 2, y + hc / 2, text=cc["nome"], fill=C["titolo"], font=F(8, True), width=wc - 12, justify="center")
+                if scelta == cc["nome"]:
+                    c.create_rectangle(x - 3, y - 3, x + wc + 3, y + hc + 3, outline=C["accento"], width=2)
+                poche = cc["n"] < 5
+                col = C["muto"] if poche or base is None else (C["azzurro"] if cc["wr"] > base else C["rosso"] if cc["wr"] < base else C["testo"])
+                if chiave == "bloccate":
+                    c.create_text(x + wc / 2, y + hc + 12, text=f"{cc['bloccata']}% stuck", fill=C["rosso"], font=F(9, True))
+                    c.create_text(x + wc / 2, y + hc + 29, text=f"{cc['n']} of {cc['mano']} games · {cc['wr']:.0f}%", fill=C["grigio"], font=F(7))
+                else:
+                    c.create_text(x + wc / 2, y + hc + 12, text=f"{cc['wr']:.0f}%  ·  {cc['vinte']}-{cc['perse']}", fill=col, font=F(9, True))
+                    c.create_text(x + wc / 2, y + hc + 29, text=f"in {cc['n']} games · {cc['quota']:.0f}%", fill=C["grigio"], font=F(7))
+                c._box_carte.append((x, y, x + wc, y + hc + 38, cc["nome"], chiave))
+            y += hc + 50
+        c.configure(scrollregion=(0, 0, W, y + 6))
 
     def carta_sotto(self, e):
         c = e.widget
         x, y = c.canvasx(e.x), c.canvasy(e.y)
-        return next((b[4] for b in getattr(c, "_box_carte", []) if b[0] <= x <= b[2] and b[1] <= y <= b[3]), None)
+        return next((b[4:6] for b in getattr(c, "_box_carte", []) if b[0] <= x <= b[2] and b[1] <= y <= b[3]), None)
 
     def clic_carte(self, e):
-        """Il clic su una carta: solo le partite in cui c'e' (tua lanciata, o sua vista); di nuovo sulla stessa, tutte."""
-        n = self.carta_sotto(e)
-        if n is None:
+        """Il clic su una carta: solo le partite in cui c'e', nel senso della sua riga (in mano, pescata in quel turno, lanciata, rimasta in mano); di nuovo
+        sulla stessa, tutte."""
+        sotto = self.carta_sotto(e)
+        if sotto is None:
             return None
-        chiave = "lanciate" if self.carte_lato == "io" else "sue"
+        n, chiave = sotto
         self.filtri[chiave] = None if self.filtri.get(chiave) == n else n
         self.disegna()
         return n
 
     def sopra_carte(self, e):
-        n = self.carta_sotto(e)
+        n = (self.carta_sotto(e) or (None, None))[0]
         c = e.widget
         if n == getattr(self, "_hc_nome", None):
             if n is not None and getattr(self, "_hc", None) is not None:

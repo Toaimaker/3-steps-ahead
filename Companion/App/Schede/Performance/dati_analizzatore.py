@@ -465,7 +465,7 @@ def riga(p, r):
     lista = condividi.nomi(p.get("carte") or []) or {}
     mie_l = sorted({nm for t_, s_, cosa, g_, _tp in (_MANA.get(r.get("partita")) or {}).get("azioni") or []
                     if cosa == "magia" and s_ == p.get("seat") and (nm := nome_intero(nome_grp(g_) or "")) and g_ not in SENZA_FACCIA})
-    return dict(r, seat=p.get("seat"), mazzo_id=p.get("mazzo"), mie_lanciate=mie_l, economiche=econ, crea_mano=crea, crea_in_mano=creature_in_mano(tenuta),
+    return dict(r, seat=p.get("seat"), mazzo_id=p.get("mazzo"), mie_lanciate=mie_l, **carte_partita(r, p.get("seat"), tenuta), economiche=econ, crea_mano=crea, crea_in_mano=creature_in_mano(tenuta),
                 suo_mull=suo_mulligan(r.get("partita"), p.get("seat")), crea_prima=prima_creatura(r.get("partita"), p.get("seat"), r.get("inizia")),
                 ist_mano=magie_in_mano(tenuta, "Instant"), str_mano=magie_in_mano(tenuta, "Sorcery"),
                 art_mano=magie_in_mano(tenuta, "Artifact"), inc_mano=magie_in_mano(tenuta, "Enchantment"), pw_mano=magie_in_mano(tenuta, "Planeswalker"),
@@ -657,7 +657,6 @@ def righe(partite=None):
             out.append(riga(p, r))
     sessioni(out)
     out.sort(key=lambda x: x["quando"])
-    wr_in_corsa(out)
     _CACHE.update(firma=firma, righe=out)
     return out
 
@@ -763,7 +762,9 @@ for _k, _n, _f in EXTRA:
 # hands and first turns»): non entra negli Spots (spiegherebbe tutto il win rate da sola)
 NOME["esito"], LEGGI["esito"] = "Result", (lambda x: "Won" if x["vinta"] else "Lost")
 NOME["wr_rif"] = "Win rate"
-NOME["lanciate"] = "Card you cast"      # il clic su una carta della cartella Cards: non e' una tendina, non entra negli Spots     # il filtro del win rate in corsa (wr_in_corsa): non e' una tendina, non entra negli Spots
+NOME["lanciate"] = "Card you cast"
+NOME.update(in_mano="Card in your hand", sue_lanciate="Card the opponent cast", bloccate="Card stuck in your hand",
+            **{f"pesc{n}": f"Card found on your turn {n}" for n in range(1, 5)})       # 4 = TURNI_CARTE; i clic della cartella Cards, fuori dagli Spots
 ORDINE_VALORI.update(esito=("Won", "Lost"), miei_colori=VARIANTI, economiche=("0", "1", "2+"), crea_mano=("Yes", "No"),
                      fine=("You conceded", "Opponent conceded", "Played to the end", "Timeout"), giorno=GIORNI,
                      pausa=("Under 15 minutes", "15-60 minutes", "Over 1 hour (new session)"), crea_in_mano=("0", "1", "2", "3+"),
@@ -810,6 +811,8 @@ def valori_di(k, x):
         return x.get("sue_viste") or []
     if k == "lanciate":         # le tue magie lanciate (la cartella Cards, 13 nov 2026)
         return x.get("mie_lanciate") or []
+    if k in ("in_mano", "sue_lanciate", "bloccate") or re.fullmatch(r"pesc\d", k):      # le altre righe della cartella Cards
+        return x.get(k) or []
     if k == "data":
         giorni = (datetime.datetime.now() - x["quando"]).days
         return [n for n, d in DATE if giorni < d]
@@ -832,37 +835,32 @@ def valori_di(k, x):
     return [] if v is None else [v]
 
 
-WR_MINIMO = 10      # il win rate in corsa conta dalla decima partita: prima e' rumore (una partita sola fa 0% o 100%)
+WR_MINIMO = 10      # il gruppo del win rate ha almeno 10 partite: con meno un 100% si fa con una vittoria sola
 
 
-def wr_in_corsa(out):
-    """Il win rate che avevi a ogni partita, contando le partite prima di lei (13 nov 2026, Autore: «win rate deve poter settare una % di win rate sulla
-    quale si posiziona la ricerca ... tiene il wr generale di tutte le partite o per mazzo specifico, ci aiuta a migliorare la costruzione di ricerca degli spot
-    partendo da uno specifico wr»): «wr_corsa» su tutte le partite del suo tipo (Constructed, Limited), «wr_corsa_mazzo» su quelle dello stesso mazzo. None
-    prima della WR_MINIMO-esima partita. out e' in ordine di tempo."""
-    conti_ = collections.defaultdict(lambda: [0, 0])
-    for x in out:
-        for campo, chiave in (("wr_corsa", (x["tipo"],)), ("wr_corsa_mazzo", (x["tipo"], (x.get("mio") or "").strip()))):
-            v, n = conti_[chiave]
-            x[campo] = round(100 * v / n, 1) if n >= WR_MINIMO else None
-            conti_[chiave] = [v + (1 if x["vinta"] else 0), n + 1]
-
-
-def passa_wr(x, f, per_mazzo=False):
-    """Il filtro del win rate: f = (valore, ≥, ≤). Senza i due segni il win rate di quella partita arrotondato all'unita' e' il valore; col ≥ almeno il
-    valore, col ≤ al massimo; coi due segni insieme e' di nuovo il valore esatto. Col mazzo scelto (By deck) il win rate e' quello del mazzo."""
+def finestra_wr(r, f):
+    """Il filtro del win rate (13 nov 2026, Autore: «win rate deve poter settare una % di win rate sulla quale si posiziona la ricerca», poi, dopo la prima
+    versione che guardava il win rate che avevi a ogni partita: «in base al wr lui filtra le partite che partecipano a costruire quel dato di wr, se poi aggiungo
+    mulligan 1 lui filtra le partite vinte almeno al 51% con mulligan 1»): le partite r (gia' passate dagli altri filtri, in ordine di tempo) dalla piu' recente
+    all'indietro, finche' il loro win rate resta al valore; si tiene il gruppo piu' lungo, di almeno WR_MINIMO partite. f = (valore, ≥, ≤): col ≥ almeno il
+    valore, col ≤ al massimo, senza segni (o con tutti e due) il valore esatto, arrotondato all'unita'. Cosi' il win rate delle partite che restano e' quello
+    scritto. Nessun gruppo che regge: nessuna partita."""
     try:
         val, ge, le = float(f[0]), bool(f[1]), bool(f[2])
     except (TypeError, ValueError, IndexError):
-        return True
-    w = x.get("wr_corsa_mazzo" if per_mazzo else "wr_corsa")
-    if w is None:
-        return False
+        return list(r)
     if ge and not le:
-        return w >= val
-    if le and not ge:
-        return w <= val
-    return round(w) == round(val)
+        regge = lambda w: w >= val - 1e-9
+    elif le and not ge:
+        regge = lambda w: w <= val + 1e-9
+    else:
+        regge = lambda w: round(w) == round(val)
+    vinte, migliore = 0, 0
+    for n, x in enumerate(reversed(r), 1):
+        vinte += 1 if x["vinta"] else 0
+        if n >= WR_MINIMO and regge(100 * vinte / n):
+            migliore = n
+    return list(r[len(r) - migliore:]) if migliore else []
 
 
 def etichetta_wr(f):
@@ -878,9 +876,8 @@ def passa(x, filtri):
     for k, v in filtri.items():
         if v is None:
             continue
-        if k == "wr_rif":
-            if not passa_wr(x, v, bool(filtri.get("mio"))):
-                return False
+        if k == "wr_rif":       # non e' un filtro della singola partita: lo applica filtra, dopo gli altri (finestra_wr)
+            continue
         elif isinstance(v, (list, tuple)):
             if not v:
                 continue
@@ -892,22 +889,83 @@ def passa(x, filtri):
     return True
 
 
-def carte_comuni(r, lato="io", quante=60):
-    """Le carte piu' comuni delle partite r (13 nov 2026, Autore: «una chart cards che parlerà delle carte più comuni delle partite selezionate e le
-    mostrerà come immagini carta»): «io» le magie che hai lanciato (dalle azioni di mana_aperto), «lui» le sue carte viste (non terre). Una carta conta una volta
-    per partita. -> [dict(nome, n, vinte, perse, wr, quota)] dalla piu' comune; quota = % delle partite."""
+TURNI_CARTE = 4         # le righe della cartella Cards turno per turno
+
+
+def carte_partita(r, seat, tenuta):
+    """Le carte di una partita per le righe della cartella Cards (13 nov 2026, Autore: «in cards creiamo delle vere e proprie righe di dato: most in hand
+    find card / most t1 /t2 /t3 / t4 found cards / match up most played cards / harder to cast cards»), le terre escluse, coi nomi interi:
+      «in_mano»      le carte che hai avuto in mano: la mano tenuta e tutte le pescate;
+      «pesc{n}»      al tuo turno 1 la mano tenuta e la prima pescata, ai turni 2-4 le carte pescate in quel tuo turno (anche le extra);
+      «sue_lanciate» le magie che ha lanciato l'avversario;
+      «bloccate»     le carte che hai avuto in mano e non hai mai lanciato in quella partita.
+    Dalle azioni di mana_aperto (VERSIONE 13, le pescate); senza azioni, o senza sapere chi ha cominciato, le righe di quella partita restano vuote."""
+    az = (_MANA.get(r.get("partita")) or {}).get("azioni")
+    out = dict(in_mano=[], sue_lanciate=[], bloccate=[], **{f"pesc{n}": [] for n in range(1, TURNI_CARTE + 1)})
+    if not az or seat not in (1, 2) or r.get("inizia") is None:
+        return out
+    magia = lambda nm: bool(nm) and not e_terra(nm)
+    nome_g = lambda g: nome_intero(nome_grp(g) or "") if g not in SENZA_FACCIA else ""
+    mano = {nome_intero(n) for n in (tenuta or {})}
+    pescate = collections.defaultdict(set)
+    tutte_p, mie, sue = set(), set(), set()
+    mio_turno = (lambda t: t % 2 == 1) if r["inizia"] else (lambda t: t % 2 == 0)
+    for t, s_, cosa, g_, _tp in az:
+        nm = nome_g(g_)
+        if cosa == "pesca" and s_ == seat and nm:
+            tutte_p.add(nm)
+            if mio_turno(t):
+                pescate[(t + 1) // 2].add(nm)
+        elif cosa == "magia" and nm:
+            (mie if s_ == seat else sue).add(nm)
+    if not any(a[2] == "pesca" for a in az):        # una partita letta prima delle pescate: le righe della mano non si sanno
+        mano_p = None
+    else:
+        mano_p = mano | tutte_p
+    pesc = {f"pesc{n}": sorted(n_ for n_ in ((mano | pescate[1]) if n == 1 else pescate[n]) if magia(n_)) for n in range(1, TURNI_CARTE + 1)}
+    out.update(pesc if mano_p is not None else {})
+    out["sue_lanciate"] = sorted(n_ for n_ in sue if magia(n_))
+    if mano_p is not None:
+        out["in_mano"] = sorted(n_ for n_ in mano_p if magia(n_))
+        out["bloccate"] = sorted(n_ for n_ in mano_p if magia(n_) and n_ not in mie)
+    return out
+
+
+RIGHE_CARTE = [("in_mano", "MOST FOUND IN YOUR HAND · opening hand and draws"),
+               ("pesc1", "YOUR TURN 1 · the opening hand and the first draw"), ("pesc2", "YOUR TURN 2 · drawn on it"),
+               ("pesc3", "YOUR TURN 3 · drawn on it"), ("pesc4", "YOUR TURN 4 · drawn on it"),
+               ("lanciate", "YOUR MOST CAST SPELLS"), ("sue_lanciate", "THE MATCHUPS · the opponent's most played cards"),
+               ("bloccate", "HARDER TO CAST · in your hand and never cast")]
+CAMPO_CARTE = {"lanciate": "mie_lanciate"}       # la chiave del filtro -> il campo della riga (le altre si chiamano uguali)
+
+
+def riga_carte(r, chiave, quante=40, minimo=5):
+    """Una riga della cartella Cards: le carte della chiave nelle partite r, ognuna una volta per partita, dalla piu' comune; per «bloccate» dalla piu'
+    bloccata (le partite in cui e' rimasta in mano sulle partite in cui l'avevi in mano, da `minimo` partite in mano), col win rate di quelle partite.
+    -> [dict(nome, n, vinte, perse, wr, quota[, mano, bloccata])]."""
+    campo = CAMPO_CARTE.get(chiave, chiave)
     conta, vinte = collections.Counter(), collections.Counter()
     for x in r:
-        for nm in set(x.get("mie_lanciate" if lato == "io" else "sue_viste") or []):
+        for nm in set(x.get(campo) or []):
             conta[nm] += 1
             vinte[nm] += 1 if x["vinta"] else 0
     tot = len(r) or 1
-    return [dict(nome=nm, n=n, vinte=vinte[nm], perse=n - vinte[nm], wr=round(100 * vinte[nm] / n, 1), quota=round(100 * n / tot, 1))
-            for nm, n in sorted(conta.items(), key=lambda kv: (-kv[1], kv[0]))[:quante]]
+    out = [dict(nome=nm, n=n, vinte=vinte[nm], perse=n - vinte[nm], wr=round(100 * vinte[nm] / n, 1), quota=round(100 * n / tot, 1)) for nm, n in conta.items()]
+    if chiave == "bloccate":
+        in_mano = collections.Counter(nm for x in r for nm in set(x.get("in_mano") or []))
+        for c in out:
+            c["mano"] = in_mano[c["nome"]]
+            c["bloccata"] = round(100 * c["n"] / c["mano"]) if c["mano"] else 0
+        out = [c for c in out if c["mano"] >= minimo]
+        out.sort(key=lambda c: (-c["bloccata"], -c["n"], c["nome"]))
+    else:
+        out.sort(key=lambda c: (-c["n"], c["nome"]))
+    return out[:quante]
 
 
 def filtra(righe_, filtri, tipo=None):
-    return [x for x in righe_ if (tipo is None or x["tipo"] == tipo) and passa(x, filtri)]
+    out = [x for x in righe_ if (tipo is None or x["tipo"] == tipo) and passa(x, filtri)]
+    return finestra_wr(out, filtri["wr_rif"]) if filtri.get("wr_rif") else out
 
 
 def valori(righe_, k, massimo=80):
@@ -1462,6 +1520,16 @@ def prova():
                      and "pio1" not in per_turno("m4", 2, False, 6)))
         casi.append(("le giocate col costo: al tuo turno 2 Instant · 1 e Creature · 2 accanto ai tipi, nell'ordine dei tipi",
                      p7.get("io2") == ["Creature", "Creature · 2", "Instant", "Instant · 1"]))
+        _NOMI_GRP.update({907: "Dragon", 908: "Owl"})
+        _MANA["m8"] = dict(azioni=[[2, 2, "pesca", 907, ""], [3, 1, "pesca", 0, ""], [3, 1, "magia", 906, "C"], [4, 2, "pesca", 908, ""], [4, 2, "magia", 905, "I"]])
+        cp_ = carte_partita(dict(partita="m8", inizia=False), 2, {"Shock": 1, "Goblin": 1, "Mountain": 1})
+        casi.append(("le carte della partita: al tuo turno 1 la mano e la prima pescata, al 2 la pescata; in mano tutte; bloccate quelle mai lanciate; le sue",
+                     cp_["pesc1"] == ["Dragon", "Goblin", "Shock"] and cp_["pesc2"] == ["Owl"] and cp_["in_mano"] == ["Dragon", "Goblin", "Owl", "Shock"]
+                     and cp_["bloccate"] == ["Dragon", "Goblin", "Owl"] and cp_["sue_lanciate"] == ["Goblin"]))
+        _MANA["m9"] = dict(azioni=[[4, 2, "magia", 905, "I"]])
+        cp9 = carte_partita(dict(partita="m9", inizia=False), 2, {"Shock": 1, "Goblin": 1})
+        casi.append(("negativa: le terre non entrano, e senza le pescate nel log la mano e le bloccate non si sanno (vuote)", "Mountain" not in cp_["in_mano"]
+                     and cp9["in_mano"] == [] and cp9["bloccate"] == [] and cp9["pesc1"] == []))
         casi.append(("la scelta multipla: tutte e due le voci nello stesso turno passano; una che manca no", multipla("t_io2") and multipla("t_luix3")
                      and not multipla("t_aio2") and passa(dict(per_turno=p7), {"t_io2": ["Instant · 1", "Creature · 2"]})
                      and not passa(dict(per_turno=p7), {"t_io2": ["Instant · 1", "Creature · 1"]}) and etichetta("t_io2", ["Instant · 1", "Creature · 2"])
@@ -1473,21 +1541,30 @@ def prova():
     casi.append(("i colori del tuo mazzo dalle magie (le terre no), come e' finita", colori_mazzo(["Goblin", "Owl", "Mountain"]) == "UR"
                  and colori_mazzo(["Mountain"]) == "C" and come_finita("ResultReason_Concede", True) == "Opponent conceded"
                  and come_finita("ResultReason_Concede", False) == "You conceded" and come_finita("ResultReason_Game", True) == "Played to the end"))
-    # il win rate in corsa e il suo filtro: dalla decima partita, tutte e per mazzo
-    wr_r = [dict(tipo="Constructed", mio="A" if i % 2 else "B", vinta=i % 3 != 0) for i in range(30)]
-    wr_in_corsa(wr_r)
-    casi.append(("il win rate in corsa: niente prima della decima partita, poi le partite prima di lei (la decima: 6 vinte su 9... su 10)",
-                 wr_r[9]["wr_corsa"] is None and wr_r[10]["wr_corsa"] == 60.0 and wr_r[19]["wr_corsa_mazzo"] is None and wr_r[21]["wr_corsa_mazzo"] is not None))
-    x_ = dict(wr_corsa=55.4, wr_corsa_mazzo=40.0)
-    casi.append(("il filtro: 55 esatto (arrotondato), ≥ 55, ≤ 56; col mazzo il win rate del mazzo", passa_wr(x_, [55, False, False])
-                 and passa_wr(x_, [55, True, False]) and passa_wr(x_, [56, False, True]) and passa_wr(x_, [45, False, True], per_mazzo=True)
-                 and passa(x_, {"wr_rif": [40, False, False], "mio": None}) is False and etichetta("wr_rif", [55, True, False]) == "≥ 55%"))
-    casi.append(("negativa: ≥ 56 e ≤ 55 non passano, e prima della decima partita niente passa", not passa_wr(x_, [56, True, False])
-                 and not passa_wr(x_, [55, False, True]) and not passa_wr(dict(wr_corsa=None), [10, True, False])))
-    cr = [dict(vinta=True, mie_lanciate=["Shock", "Goblin"], sue_viste=["Owl"]), dict(vinta=False, mie_lanciate=["Shock", "Shock"], sue_viste=[])]
-    cc_ = carte_comuni(cr, "io")
-    casi.append(("le carte comuni: Shock in 2 partite (una volta per partita) 50%, Goblin in 1 100%; le sue viste a parte",
-                 [(c["nome"], c["n"], c["wr"]) for c in cc_] == [("Shock", 2, 50.0), ("Goblin", 1, 100.0)] and carte_comuni(cr, "lui")[0]["nome"] == "Owl"))
+    # il win rate: le partite piu' recenti che insieme fanno quel win rate, dopo gli altri filtri
+    w_r = [dict(vinta=v_, tipo="Constructed", mull=m_) for v_, m_ in zip([True, False] * 20 + [True] * 10, ["0", "1"] * 25)]      # 50%, poi 10 vinte
+    g_ = finestra_wr(w_r, [70, True, False])
+    casi.append(("≥ 70: dalle piu' recenti all'indietro finche' il win rate regge, il gruppo piu' lungo (le 10 vinte e 14 prima: 17 su 24)",
+                 len(g_) == 24 and g_ == w_r[-24:] and 100 * sum(x["vinta"] for x in g_) / 24 >= 70))
+    e_ = finestra_wr(w_r, [60, False, False])
+    l_ = finestra_wr(w_r, [65, False, True])
+    casi.append(("esatto 60: il win rate del gruppo arrotondato e' 60; ≤ 65: al massimo 65", len(e_) == 50 and round(100 * sum(x["vinta"] for x in e_) / 50) == 60
+                 and l_ and 100 * sum(x["vinta"] for x in l_) / len(l_) <= 65))
+    casi.append(("dopo gli altri filtri: con Mulligan 1 il gruppo e' fatto solo di partite con un mulligan", all(x["mull"] == "1" for x in filtra(w_r, {"mull": "1",
+                 "wr_rif": [40, True, False]}, "Constructed")) and filtra(w_r, {"mull": "1", "wr_rif": [40, True, False]}, "Constructed")
+                 and etichetta("wr_rif", [55, True, False]) == "≥ 55%"))
+    casi.append(("negativa: un win rate che nessun gruppo di 10 partite raggiunge da' zero partite, e meno di 10 partite non bastano",
+                 finestra_wr(w_r[:40], [99, True, False]) == [] and finestra_wr(w_r[-9:], [50, True, False]) == []))
+    cr = [dict(vinta=True, mie_lanciate=["Shock", "Goblin"], in_mano=["Shock", "Goblin", "Owl"], bloccate=["Owl"]),
+          dict(vinta=False, mie_lanciate=["Shock", "Shock"], in_mano=["Shock", "Owl", "Dragon"], bloccate=["Owl", "Dragon"]),
+          dict(vinta=False, mie_lanciate=["Dragon"], in_mano=["Dragon"], bloccate=[])]
+    cc_ = riga_carte(cr, "lanciate")
+    casi.append(("le righe di Cards: Shock lanciata in 2 partite (una volta per partita) 50%, poi Dragon e Goblin in una",
+                 [(c["nome"], c["n"], c["wr"]) for c in cc_] == [("Shock", 2, 50.0), ("Dragon", 1, 0.0), ("Goblin", 1, 100.0)]))
+    bl_ = riga_carte(cr, "bloccate", minimo=2)
+    casi.append(("Harder to cast: Owl rimasta in mano 2 volte su 2 (100%), Dragon 1 su 2 (50%), dalla piu' bloccata",
+                 [(c["nome"], c["bloccata"], c["mano"]) for c in bl_] == [("Owl", 100, 2), ("Dragon", 50, 2)]))
+    casi.append(("negativa: sotto il minimo di partite in mano una carta non entra fra le difficili", riga_carte(cr, "bloccate", minimo=3) == []))
     _TAB.clear()
     vere = righe()
     casi.append(("i log veri: righe con le variabili (se ci sono partite)", not vere or all(k in vere[0] for k in ("tipo", "partenza", "terre", "sessione", "fascia"))))

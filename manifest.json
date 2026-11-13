@@ -1,6 +1,6 @@
 {
- "version": "0.1.75",
+ "version": "0.1.76",
  "date": "2026-11-13",
- "notes": "Performance: a win rate box (exact, at least or at most) after Event, a Cards folder with the most common cards, draws per turn and multiple picks with mana value in Advanced filters.",
+ "notes": "Performance: the Cards folder in rows (hand, turns 1-4, cast, opponent, harder to cast); the win rate box keeps the recent games that together make that win rate.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }
