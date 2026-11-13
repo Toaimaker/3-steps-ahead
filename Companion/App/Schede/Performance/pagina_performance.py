@@ -45,6 +45,11 @@ PRESET = (
     ("INSTANT SPEED", "Opponent cast on your turn", "Their instants and flash", {"sit:lui_nel_mio": "Yes"}, "chart", None),
     ("INSTANT SPEED", "You passed with mana up", "2+ untapped lands at the end of your turn", {"sit:io_passa_aperto": "Yes"}, "chart", None),
 )
+# come si ordina la tabella delle partite per colonna (13 nov 2026); None va in fondo. La mano: per terre in mano
+ORDINI_PARTITE = {"data": lambda x: x["quando"], "mio": lambda x: (x.get("mio") or "").strip().lower() or None,
+                  "suo": lambda x: (len(v), "WUBRG".index(v[0]) if v[0] in "WUBRG" else 5, v) if (v := DA.vs_di(x)) else None,
+                  "via": lambda x: x.get("partenza"), "mull": lambda x: x.get("mulligan"), "esito": lambda x: 1 if x["vinta"] else 0,
+                  "turni": lambda x: x.get("turno"), "mano": lambda x: x.get("terre")}
 SPOT_MODI = (("preset", "Preset searches"), ("auto", "Auto spots"))
 VISTE = (("chart", "Chart"), ("spots", "Spots"), ("report", "Report"), ("matchups", "Matchups"), ("compare", "Compare"), ("mine", "My filters"))
 DISEGNI = {"chart": "disegna_grafico", "spots": "disegna_spot", "report": "disegna_report", "matchups": "disegna_matchup", "compare": "disegna_confronto",
@@ -60,7 +65,7 @@ LARGA_RACCONTO = 300                            # la colonna del racconto a dest
 # per fasi della partita (12 nov 2026, Autore: «il menu a tendine creiamolo per macro fasi partita: formato evento e deck - poi start e mulligan - lands in
 # hand / cards in hand possiamo toglierlo, their card anche»): prima della partita (con By deck), l'apertura, l'avversario, com'e' finita, quando.
 # «deck» e' il pulsante By deck; Card in hand e Their card non sono tendine (restano in Split by, Group by e negli Spots)
-FASI = (("BEFORE THE GAME", ("miei_colori",)),
+FASI = (("BEFORE THE GAME", ()),      # senza + more (13 nov 2026, Autore: «sezione before the game non serve il pulsante more»): i colori del tuo mazzo stanno in Advanced filters
         ("OPENING AND FIRST TURNS", ("economiche", "crea_mano", "sit:io_terra", "sit:lui_terra", "sit:io_curva", "sit:io_crea2", "sit:lui_crea2")),
         ("THE OPPONENT AND THE FIGHT", ("sit:io_primo", "sit:io_nel_suo", "sit:lui_nel_mio", "sit:lui_bersagli", "sit:io_att_aperto", "sit:io_att_chiuso",
                                         "sit:lui_att_aperto", "sit:io_passa_aperto", "sit:lui_passa_aperto", "sit:io_blocca", "sit:io_difende",
@@ -68,12 +73,27 @@ FASI = (("BEFORE THE GAME", ("miei_colori",)),
         ("THE END OF THE GAME", ("fine", "sit:io_morti", "sit:lui_morti")),
         ("WHEN", ("giorno", "pausa")))      # i filtri in piu' di ogni fase, nel suo +
 LARGA_FASE = 780
-# i filtri della finestra Advanced filters (13 nov 2026), in due schede: i tuoi e quelli dell'avversario
-AVANZATI = {"io": (("YOUR OPENING HAND", ("crea_in_mano", "ist_mano", "str_mano")),
-                   ("YOUR GAME", ("senza_crea", "fine_entro")),
-                   ("YOUR TURNS · WHAT YOU CAST", tuple(f"t_io{n}" for n in range(1, DA.TURNI_FILTRO + 1)))),
-            "lui": (("THE OPPONENT", ("suo_mull",)),
-                    ("OPPONENT'S TURNS · WHAT THEY CAST", tuple(f"t_lui{n}" for n in range(1, DA.TURNI_FILTRO + 1))))}
+# i filtri della finestra Advanced filters (13 nov 2026): due schede, You e Opponent, e dentro ognuna le fasi (stesso giorno, Autore: «nei filtri avanzati
+# ci mancano le giocate nel turno avversario, le sue nei nostri turni, le fasi di attacco di entrambi e di difesa di entrambi quindi ci devono essere in you e
+# opponent delle sotto schede di fasi e you e opponent diventano le macro schede»). {scheda: ((fase, ((titolo, chiavi), ...)), ...)}
+AVANZATI = {
+    "io": (("Opening hand", (("YOUR DECK", ("miei_colori",)),
+                              ("YOUR OPENING HAND", ("crea_in_mano", "ist_mano", "str_mano", "art_mano", "inc_mano", "pw_mano", "bat_mano")))),
+           ("Your turns", (("WHAT YOU CAST ON YOUR TURNS", tuple(f"t_io{n}" for n in range(1, DA.TURNI_FILTRO + 1))),)),
+           ("Opponent's turns", (("WHAT YOU CAST ON THE OPPONENT'S TURNS", tuple(f"t_iox{n}" for n in range(1, DA.TURNI_FILTRO + 1))),)),
+           ("Attack", (("YOUR ATTACKS, TURN BY TURN", tuple(f"t_aio{n}" for n in range(1, DA.TURNI_FILTRO + 1))),
+                       ("THE OPPONENT'S UNTAPPED LANDS WHEN YOU ATTACK", tuple(f"t_mio{n}" for n in range(1, DA.TURNI_FILTRO + 1))),
+                       ("IN THE WHOLE GAME", ("sit:io_primo", "sit:io_tutto", "sit:io_tutto_aperto", "sit:io_att_aperto", "sit:io_att_chiuso")))),
+           ("Defense", (("YOUR DEFENSE ON THE OPPONENT'S TURNS", tuple(f"t_dio{n}" for n in range(1, DA.TURNI_FILTRO + 1))),
+                        ("IN THE WHOLE GAME", ("sit:io_blocca", "sit:io_difende")))),
+           ("Game", (("YOUR GAME", ("senza_crea", "fine_entro")),))),
+    "lui": (("Opening hand", (("THE OPPONENT", ("suo_mull",)),)),
+            ("Their turns", (("WHAT THEY CAST ON THEIR TURNS", tuple(f"t_lui{n}" for n in range(1, DA.TURNI_FILTRO + 1))),)),
+            ("Your turns", (("WHAT THEY CAST ON YOUR TURNS", tuple(f"t_luix{n}" for n in range(1, DA.TURNI_FILTRO + 1))),)),
+            ("Attack", (("THEIR ATTACKS, TURN BY TURN", tuple(f"t_alui{n}" for n in range(1, DA.TURNI_FILTRO + 1))),
+                        ("YOUR UNTAPPED LANDS WHEN THEY ATTACK", tuple(f"t_mlui{n}" for n in range(1, DA.TURNI_FILTRO + 1))),
+                        ("IN THE WHOLE GAME", ("sit:lui_att_aperto",)))),
+            ("Defense", (("THEIR DEFENSE ON YOUR TURNS", tuple(f"t_dlui{n}" for n in range(1, DA.TURNI_FILTRO + 1))),)))}
 VALORI_FISSI = {"mull": ("0", "1", "2+"), "partenza": ("Play", "Draw"), "esito": ("Won", "Lost")}      # le tendine con le voci fisse
 SEZIONI_FILTRI = (("formato", "evento", "deck"), ("partenza", "mull", "terre", "esito"), ("suo", "colori"), ("lunga", "rango"), ("data", "fascia", "sessione"))
 
@@ -157,6 +177,8 @@ class PaginaPerformance:
         self.spot_modo = "preset"       # Spots: le ricerche preimpostate (di partenza) o gli spot automatici
         self._lavoro, self.l_carica = None, None
         self.scheda_av = "io"        # la scheda aperta della finestra Advanced filters
+        self.ord_partite = ("data", False)        # la tabella delle partite: la colonna e il verso (di partenza dalla piu' recente)
+        self.fase_av = {"io": 0, "lui": 0}      # e la fase aperta di ognuna
         self.costruisci()
         self.fr.bind("<<Davanti>>", lambda e: self.se_sporca(), add="+")
         self.fr.bind("<Map>", lambda e: self.se_sporca(), add="+")
@@ -298,9 +320,10 @@ class PaginaPerformance:
         for j_, sezione in enumerate(SEZIONI_FILTRI):
             # la testa della fase: la lineetta, il nome e il + dei suoi filtri in piu' (12 nov 2026, Autore: «aggiungere a ogni tendina un set di filtri
             # aggiuntivi per ogni step», «Sì, costruiscili»)
-            t_ = tk.Canvas(griglia, bg=C["scheda"], highlightthickness=0, bd=0, width=262, height=24 if j_ == 0 else 34, cursor="hand2")
+            t_ = tk.Canvas(griglia, bg=C["scheda"], highlightthickness=0, bd=0, width=262, height=24 if j_ == 0 else 34, cursor="hand2" if FASI[j_][1] else "")
             t_.grid(row=riga_g, column=0, columnspan=2, sticky="ew", pady=(0, 2))
-            t_.bind("<Button-1>", lambda e, j=j_: self.apri_fase(j))
+            if FASI[j_][1]:     # la fase senza filtri in piu' non apre niente
+                t_.bind("<Button-1>", lambda e, j=j_: self.apri_fase(j))
             t_.bind("<Configure>", lambda e, j=j_: self.disegna_testata(j))
             self.testate.append(t_)
             riga_g += 1
@@ -950,6 +973,30 @@ class PaginaPerformance:
                 self.riattacca_partite()
             else:
                 self.stacca_partite()
+            return None
+        # i titoli delle colonne riordinano (13 nov 2026, Autore: «i titoli dell'elenco rendiamoli premibili in modo che riordinino l'elenco in base alla loro
+        # voce, per i valori numerici ordine crescente dall'alto»): la prima volta crescente (la data dalla piu' recente), di nuovo al contrario
+        if e.y >= 22:
+            lista = next((l_ for l_ in self.tabelle_partite() if l_.testa is e.widget), None)
+            k = next((k for k, _t, x, w in getattr(lista, "_col", []) if x <= e.x < x + w), None) if lista is not None else None
+            if k in ORDINI_PARTITE:
+                vecchio, cresce = self.ord_partite
+                self.ord_partite = (k, not cresce if k == vecchio else k != "data")
+                for l_ in self.tabelle_partite():
+                    l_.yview_moveto(0)
+                    self.disegna_partite(l_)
+                return k
+        return None
+
+    def tabelle_partite(self):
+        """Le tele della tabella delle partite che esistono: sotto il grafico e nella sua finestra."""
+        out = []
+        l_ = (self.ospite("chart") or {}).get("lista")
+        if l_ is not None and l_.winfo_exists():
+            out.append(l_)
+        if self.partite_fuori and self.partite_fuori.get("lista") is not None and self.partite_fuori["lista"].winfo_exists():
+            out.append(self.partite_fuori["lista"])
+        return out
 
     def stacca_partite(self):
         """La tabella delle partite in una finestra sua (non sopra la grande: anche sull'altro schermo); sotto il grafico il posto va al grafico. Chiusa, torna."""
@@ -998,7 +1045,10 @@ class PaginaPerformance:
         if c is None or not c.winfo_exists() or self.righe is None:
             return
         F = self.F
-        c._partite = sorted(self.scelte(), key=lambda x: x["quando"], reverse=True)
+        k_o, cresce = self.ord_partite
+        chiave = ORDINI_PARTITE[k_o]
+        nulli = [x for x in self.scelte() if chiave(x) is None]
+        c._partite = sorted([x for x in self.scelte() if chiave(x) is not None], key=chiave, reverse=not cresce) + nulli       # chi non ha il dato in fondo
         c._col = self.colonne_partite(max(c.winfo_width(), 700))
         t = c.testa
         t.delete("all")
@@ -1010,8 +1060,10 @@ class PaginaPerformance:
         _segno_stacca(d, 14, 11, C["accento"] if self.partite_fuori else C["grigio"], bool(self.partite_fuori))
         c._img_segno = d.foto()
         t.create_image(Wt - 30, 0, image=c._img_segno, anchor="nw")
-        for _k, tit, x, _w in c._col:
-            t.create_text(x, 33, text=tit, anchor="w", fill=C["titolo"], font=F(7, True))
+        for k_, tit, x, _w in c._col:
+            on = k_ == k_o
+            t.create_text(x, 33, text=tit + (("  ↑" if cresce else "  ↓") if on else ""), anchor="w",
+                          fill=C["accento"] if on else C["titolo"] if k_ in ORDINI_PARTITE else C["muto"], font=F(7, True))
         t.create_line(0, 43, max(t.winfo_width(), 700), 43, fill=C["filo"])
         c.configure(scrollregion=(0, 0, max(c.winfo_width(), 700), max(1, len(c._partite)) * ALTO_PARTITA))
         self.righe_partite(c)
@@ -1049,7 +1101,7 @@ class PaginaPerformance:
                             if img is not None:
                                 c.create_image(x + 7 + j * 15, y + ALTO_PARTITA / 2, image=img, tags="riga")
                         x, w = x + 8 + len(v) * 15 + 4, w - 8 - len(v) * 15 - 4
-                        testo = DA.nome_vs(v)
+                        testo = ""        # i soli simboli, niente nome dei colori (13 nov 2026, Autore: «invece di descrivere i colori per testo usiamo i simboli di mana»)
                     else:
                         testo, col = "Unknown", C["muto"]
                 elif k == "esito":      # dopo il mulligan, e accanto i turni della partita (12 nov 2026, Autore: «result dopo mulligan e dopo result il numero
@@ -2742,6 +2794,8 @@ class PaginaPerformance:
         nome, chiavi = FASI[j]
         on = sum(1 for k in chiavi if self.filtri.get(k) is not None)
         c.create_text(0, H - 10, text=nome, anchor="w", fill=C["accento"] if on else C["muto"], font=F(7, True))
+        if not chiavi:      # una fase senza filtri in piu': niente + more
+            return
         t = f"+ {on} on" if on else "+ more"
         c.create_rectangle(W - 62, H - 19, W - 2, H - 1, fill="#0f86cc" if on else "#202024", outline="#0f86cc" if on else "#3a3a40")
         c.create_text(W - 32, H - 10, text=t, fill="#ffffff" if on else C["grigio"], font=F(7, True))
@@ -2751,7 +2805,7 @@ class PaginaPerformance:
     # una nuova sotto finestra / il pulsante per aprirla e' advanced filters», «filtri e domanda ma i filtri per me e per oppo stanno in due schede differenti»)
     def avanzati_on(self):
         """Quanti filtri della finestra Advanced filters sono accesi."""
-        chiavi = {k for _s, kk in AVANZATI["io"] + AVANZATI["lui"] for k in kk}
+        chiavi = {k for fasi in AVANZATI.values() for _f, sezioni in fasi for _t, kk in sezioni for k in kk}
         return sum(1 for k, v in self.filtri.items() if v is not None and k in chiavi)
 
     def aggiorna_bottone_avanzati(self):
@@ -2760,15 +2814,18 @@ class PaginaPerformance:
             n = self.avanzati_on()
             b.metti("Advanced filters" + (f"  ·  {n} on" if n else ""), bool(n))
 
-    def apri_avanzati(self, scheda=None):
+    def apri_avanzati(self, scheda=None, fase=None):
         """La finestra: in cima la domanda (ogni filtro acceso, anche quelli della pagina, con la sua x) e la risposta; sotto due schede, You e Opponent, coi
         filtri avanzati di ognuno. Tutto si applica subito: la pagina (grafico, report, partite) segue la stessa domanda. Una finestra sola."""
         tk, F = self.tk, self.F
         if scheda:
             self.scheda_av = scheda
+        if fase is not None:
+            self.fase_av[self.scheda_av] = fase
         f = getattr(self, "fin_av", None)
         if f is None or not f.winfo_exists():
             f = self.fin_av = tk.Toplevel(self.fr); f.configure(bg=C["scheda"])
+            self._fasi_di = None
             f.transient(self.fr.winfo_toplevel())
             f.title("Advanced filters")
             f.geometry(f"+{self.cv_sx.winfo_rootx() + self.cv_sx.winfo_width() + 16}+{max(0, self.cv_sx.winfo_rooty() - 40)}")
@@ -2786,12 +2843,37 @@ class PaginaPerformance:
                 b = pulsante_solido(tk, F, schede, n, k == self.scheda_av, lambda k=k: self.apri_avanzati(k), alto=28, bg=C["scheda"], colori=GRIGI)
                 b.configure(width=150); b.pack(side="left", padx=(0, 6))
                 self.b_schede_av[k] = b
-            self.cv_av = tk.Canvas(f, bg=C["scheda"], highlightthickness=0, bd=0, width=LARGA_FASE, height=200)
-            self.cv_av.pack(padx=8, pady=(4, 12))
+            self.fr_fasi_av = tk.Frame(f, bg=C["scheda"]); self.fr_fasi_av.pack(fill="x", padx=8, pady=(2, 4))
+            # i filtri scorrono (13 nov 2026, Autore: «caso mai mettiamo uno scroller per scendere alle voci in fondo»): la rotella su tutta la finestra e una
+            # barra sottile a destra, da cliccare o trascinare
+            corpo = tk.Frame(f, bg=C["scheda"]); corpo.pack(padx=8, pady=(4, 12))
+            self.cv_av = tk.Canvas(corpo, bg=C["scheda"], highlightthickness=0, bd=0, width=LARGA_FASE, height=200)
+            self.cv_av.pack(side="left")
             self.cv_av.bind("<Button-1>", self.clic_avanzati)
+            self.cv_barra_av = tk.Canvas(corpo, bg=C["scheda"], highlightthickness=0, bd=0, width=10, height=200, cursor="hand2")
+            self.cv_barra_av.pack(side="left", fill="y", padx=(4, 0))
+            self.cv_av.configure(yscrollcommand=self.barra_av)
+            self.cv_barra_av.bind("<Button-1>", self.trascina_av)
+            self.cv_barra_av.bind("<B1-Motion>", self.trascina_av)
+            f.bind("<MouseWheel>", lambda e: (self.cv_av.yview_scroll(-2 if e.delta > 0 else 2, "units"), "break")[1])
         for k, b in self.b_schede_av.items():
             b.metti({"io": "You", "lui": "Opponent"}[k], k == self.scheda_av)
+        # le fasi della scheda: rifatte quando cambia la scheda (You e Opponent ne hanno di diverse)
+        if getattr(self, "_fasi_di", None) != self.scheda_av:
+            for w in self.fr_fasi_av.winfo_children():
+                w.destroy()
+            self.b_fasi_av = []
+            for j, (nome, _sez) in enumerate(AVANZATI[self.scheda_av]):
+                b = pulsante_solido(tk, F, self.fr_fasi_av, nome, False, lambda j=j: self.apri_avanzati(fase=j), alto=24, bg=C["scheda"],
+                                    colori=("#202024", "#2c2c32", "#1f3446"))
+                b.configure(width=124); b.pack(side="left", padx=(0, 4))
+                self.b_fasi_av.append(b)
+            self._fasi_di = self.scheda_av
+        for j, b in enumerate(self.b_fasi_av):
+            b.metti(AVANZATI[self.scheda_av][j][0], j == self.fase_av[self.scheda_av])
         self.disegna_avanzati()
+        if scheda or fase is not None:          # un'altra scheda o fase riparte dall'alto
+            self.cv_av.yview_moveto(0)
         f.lift()
         return f
 
@@ -2843,16 +2925,18 @@ class PaginaPerformance:
         self._box_av = []
         tutte = [x_ for x_ in self.righe if x_["tipo"] == self.tipo]
         y = 4
-        for titolo, chiavi in AVANZATI[self.scheda_av]:
+        for titolo, chiavi in AVANZATI[self.scheda_av][self.fase_av[self.scheda_av]][1]:
             ca.create_text(8, y + 10, text=titolo, anchor="w", fill=C["azzurro"], font=F(7, True))
             y += 24
             for k in chiavi:
                 sc = self.filtri.get(k)
-                vv = [v for v, _n in DA.valori(tutte, k)]
+                # sempre tutte le voci, anche quelle che nelle tue partite non ci sono (13 nov 2026: «mancano anche i planeswalker»)
+                vv = ([v for v, _n in DA.valori(tutte, k)] if k == "miei_colori" else      # i colori: solo le varianti dei tuoi mazzi
+                      list(DA.ORDINE_VALORI.get(k) or [v for v, _n in DA.valori(tutte, k)]))
                 ca.create_text(8, y + 13, text=DA.nome_var(k), anchor="w", fill=C["titolo"] if sc else C["testo"], font=F(8, bool(sc)), width=290)
                 x = 310
                 for v in [None] + vv:
-                    t = "Any" if v is None else v
+                    t = "Any" if v is None else DA.etichetta(k, v) if k == "miei_colori" else v
                     w = max(50, misura.measure(t) + 22)
                     if x + w > LARGA_FASE - 6:
                         x, y = 310, y + 30
@@ -2863,11 +2947,30 @@ class PaginaPerformance:
                     x += w + 6
                 y += 34
             y += 6
-        ca.configure(height=y + 4)
+        alto = max(240, min(y + 4, self.fr.winfo_screenheight() - 420))      # la finestra resta dentro lo schermo: il resto scorre
+        ca.configure(height=alto, scrollregion=(0, 0, LARGA_FASE, y + 4), yscrollincrement=12)
+        self.cv_barra_av.configure(height=alto)
+
+    def barra_av(self, a, b):
+        """La barra sottile accanto ai filtri: dove sei e quanto si vede; niente se tutto ci sta."""
+        c = self.cv_barra_av
+        c.delete("all")
+        a, b = float(a), float(b)
+        if b - a >= 0.999:
+            return
+        H = max(c.winfo_height(), int(c.cget("height")))
+        c.create_rectangle(3, 0, 7, H, fill="#202024", outline="")
+        c.create_rectangle(2, a * H, 8, max(a * H + 24, b * H), fill="#4a4a52", outline="")
+
+    def trascina_av(self, e):
+        H = max(self.cv_barra_av.winfo_height(), 1)
+        a, b = self.cv_av.yview()
+        self.cv_av.yview_moveto(max(0.0, min(1.0 - (b - a), e.y / H - (b - a) / 2)))
 
     def clic_avanzati(self, e):
+        yy = self.cv_av.canvasy(e.y)
         for x0, y0, x1, y1, k, v in getattr(self, "_box_av", []):
-            if x0 <= e.x <= x1 and y0 <= e.y <= y1:
+            if x0 <= e.x <= x1 and y0 <= yy <= y1:
                 if v is None:
                     self.filtri.pop(k, None)
                 else:

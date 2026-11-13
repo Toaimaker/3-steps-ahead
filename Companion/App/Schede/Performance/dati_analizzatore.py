@@ -191,7 +191,7 @@ def magie_in_mano(tenuta, tipo):
     """Le magie di un tipo («Instant», «Sorcery») nella mano tenuta: «0», «1», «2+»; None se la mano non si conosce."""
     if not tenuta:
         return None
-    n = sum(q for nm, q in tenuta.items() if (c := _carta(nm)) and tipo in (c.get("tipo") or "").split(" // ")[0])
+    n = sum(q for nm, q in tenuta.items() if (c := _carta(nm)) and tipo in (t_ := (c.get("tipo") or "").split(" // ")[0]) and "Land" not in t_)
     return str(n) if n < 2 else "2+"
 
 
@@ -200,28 +200,60 @@ NOMI_TIPO = {"C": "Creature", "I": "Instant", "S": "Sorcery", "E": "Enchantment"
 ORDINE_TIPI = ("Creature", "Instant", "Sorcery", "Enchantment", "Artifact", "Planeswalker", "Battle", "Nothing")
 
 
+ORDINE_ATT = ("No attack", "1 creature", "2 creatures", "3+ creatures")
+ORDINE_DIF = ("Not attacked", "Blocked", "No block")
+ORDINE_APERTE = ("No attack", "0 untapped lands", "1 untapped land", "2+ untapped lands")
+
+
 def per_turno(match_id, seat, inizia, turni):
-    """Cosa ha lanciato ognuno nei suoi primi turni (13 nov 2026, Autore: «bisogna estrarre dai replay delle azioni che possono essere trasformate in filtri:
-    es ... vs oppo cast @ T1 crea T2 instant T3 ench»): {«io1»: [tipi], ..., «lui5»: [...]}, «Nothing» se nel suo turno non ha lanciato niente; un turno che la
-    partita non ha raggiunto non c'e'. Dalle azioni di mana_aperto (VERSIONE 12); {} se non ci sono o non si sa chi ha cominciato."""
+    """Turno per turno, per te («io») e per l'avversario («lui»), nei primi TURNI_FILTRO turni di ognuno (13 nov 2026, Autore: «bisogna estrarre dai
+    replay delle azioni che possono essere trasformate in filtri», poi «ci mancano le giocate nel turno avversario, le sue nei nostri turni, le fasi di attacco
+    di entrambi e di difesa di entrambi»):
+      «{chi}{n}»   cosa ha lanciato nel suo turno n (i tipi, o «Nothing»);
+      «{chi}x{n}»  cosa ha lanciato nel turno n dell'altro;
+      «a{chi}{n}»  il suo attacco nel suo turno n: «No attack», «1 creature», «2 creatures», «3+ creatures»;
+      «d{chi}{n}»  la sua difesa nel turno n dell'altro: «Not attacked», «Blocked», «No block»;
+      «m{chi}{n}»  le terre stappate di chi difende quando lui attacca nel suo turno n (stesso giorno: «aggiungiamo anche in attacco se ci sono situazioni di
+                   mana stappato vs chi attacca»): «No attack», «0 untapped lands», «1 untapped land», «2+ untapped lands».
+    Un turno che la partita non ha raggiunto non c'e'. Il turno n di chi comincia e' il turno 2n-1 di Arena, quello dell'altro il 2n: in tutti e due i casi
+    n = (t + 1) // 2. Dalle azioni e dai combattimenti di mana_aperto (VERSIONE 12); {} se mancano o non si sa chi ha cominciato."""
     d = _MANA.get(match_id) or {}
     if "azioni" not in d or seat not in (1, 2) or inizia is None:
         return {}
+    primo = "io" if inizia else "lui"
+    altro = {"io": "lui", "lui": "io"}
+    di_turno = lambda t: primo if t % 2 == 1 else altro[primo]
     out = {}
-    for chi, comincia in (("io", inizia), ("lui", not inizia)):
-        for n in range(1, TURNI_FILTRO + 1):
-            t_arena = 2 * n - 1 if comincia else 2 * n
-            if turni and t_arena <= turni:
-                out[f"{chi}{n}"] = set()
+    for t in range(1, 2 * TURNI_FILTRO + 1):
+        if not turni or t > turni:
+            break
+        chi, n = di_turno(t), (t + 1) // 2
+        out[f"{chi}{n}"] = set()
+        out[f"{altro[chi]}x{n}"] = set()
+        out[f"a{chi}{n}"] = "No attack"
+        out[f"d{altro[chi]}{n}"] = "Not attacked"
+        out[f"m{chi}{n}"] = "No attack"
     for t, s_, cosa, _g, tipi in d["azioni"]:
         if cosa != "magia":
             continue
         chi = "io" if s_ == seat else "lui"
-        comincia = inizia if chi == "io" else not inizia
-        n = (t + 1) // 2 if comincia else t // 2
-        if f"{chi}{n}" in out:
-            out[f"{chi}{n}"].update(NOMI_TIPO[c] for c in tipi or "" if c in NOMI_TIPO)
-    return {k: sorted(v, key=ORDINE_TIPI.index) if v else ["Nothing"] for k, v in out.items()}
+        k = f"{chi}{(t + 1) // 2}" if di_turno(t) == chi else f"{chi}x{(t + 1) // 2}"
+        if k in out:
+            out[k].update(NOMI_TIPO[c] for c in tipi or "" if c in NOMI_TIPO)
+    for kind, t, att, _f, info in d.get("momenti") or []:
+        if kind != "comb" or not info or not info.get("att"):
+            continue
+        chi, n = ("io" if att == seat else "lui"), (t + 1) // 2
+        if f"a{chi}{n}" in out:
+            na = len(info["att"])
+            out[f"a{chi}{n}"] = "1 creature" if na == 1 else "2 creatures" if na == 2 else "3+ creatures"
+            out[f"d{altro[chi]}{n}"] = "Blocked" if info.get("blocchi") else "No block"
+            ap = info.get("aperte")
+            if ap is None:          # un combattimento letto prima della VERSIONE 12: le terre di chi difende non si sanno
+                out.pop(f"m{chi}{n}", None)
+            else:
+                out[f"m{chi}{n}"] = "0 untapped lands" if ap == 0 else "1 untapped land" if ap == 1 else "2+ untapped lands"
+    return {k: [v] if isinstance(v, str) else (sorted(v, key=ORDINE_TIPI.index) if v else ["Nothing"]) for k, v in out.items()}
 
 
 ENTRO = tuple(range(3, 13))         # «la partita finita entro il tuo turno N»
@@ -263,6 +295,8 @@ def riga(p, r):
     return dict(r, seat=p.get("seat"), economiche=econ, crea_mano=crea, crea_in_mano=creature_in_mano(tenuta),
                 suo_mull=suo_mulligan(r.get("partita"), p.get("seat")), crea_prima=prima_creatura(r.get("partita"), p.get("seat"), r.get("inizia")),
                 ist_mano=magie_in_mano(tenuta, "Instant"), str_mano=magie_in_mano(tenuta, "Sorcery"),
+                art_mano=magie_in_mano(tenuta, "Artifact"), inc_mano=magie_in_mano(tenuta, "Enchantment"), pw_mano=magie_in_mano(tenuta, "Planeswalker"),
+                bat_mano=magie_in_mano(tenuta, "Battle"),
                 per_turno=per_turno(r.get("partita"), p.get("seat"), r.get("inizia"), turni), miei_colori=colori_mazzo(lista), fine=come_finita(p.get("motivo"), r["vinta"]),
                 giorno=GIORNI[quando.weekday()], tipo="Limited" if r["formato"] == "limited" else "Constructed", quando=quando, ora=quando.hour, fascia=_fascia(quando.hour),
                 terre=terre, mano=sorted(tenuta or {}), sue_viste=sorted(n for n in sue if not MS.e_terra(n)),
@@ -526,10 +560,19 @@ EXTRA = [("miei_colori", "Your deck's colors", lambda x: x.get("miei_colori")),
          ("suo_mull", "Opponent's mulligans", lambda x: x.get("suo_mull")),
          ("fine_entro", "Game ended by", lambda x: (valori_di("fine_entro", x) or [None])[0]),
          ("ist_mano", "Instants in your opening hand", lambda x: x.get("ist_mano")),
-         ("str_mano", "Sorceries in your opening hand", lambda x: x.get("str_mano"))]
+         ("str_mano", "Sorceries in your opening hand", lambda x: x.get("str_mano")),
+         # i permanenti che mancavano (13 nov 2026, Autore: «in your opening hand mettiamo anche i permanenti che mancano ... mancano anche i planeswalker»)
+         ("art_mano", "Artifacts in your opening hand", lambda x: x.get("art_mano")),
+         ("inc_mano", "Enchantments in your opening hand", lambda x: x.get("inc_mano")),
+         ("pw_mano", "Planeswalkers in your opening hand", lambda x: x.get("pw_mano")),
+         ("bat_mano", "Battles in your opening hand", lambda x: x.get("bat_mano"))]
 # turno per turno (13 nov 2026): «t_io3» = cosa hai lanciato nel tuo turno 3, «t_lui1» = cosa ha lanciato l'avversario nel suo turno 1
-EXTRA += [(f"t_{chi}{n}", f"{nome} · turn {n} cast", (lambda x, k=f"{chi}{n}": ((x.get("per_turno") or {}).get(k) or [None])[0]))
-          for chi, nome in (("io", "You"), ("lui", "Opponent")) for n in range(1, TURNI_FILTRO + 1)]
+EXTRA += [(f"t_{pre}{chi}{suf}{n}", nome.format(n=n), (lambda x, k=f"{pre}{chi}{suf}{n}": ((x.get("per_turno") or {}).get(k) or [None])[0]))
+          for chi, tu, lui_ in (("io", "You", "the opponent's"), ("lui", "Opponent", "your"))
+          for pre, suf, nome in (("", "", tu + " · turn {n} cast"), ("", "x", tu + " · " + lui_ + " turn {n} cast"),
+                                 ("a", "", tu + " · turn {n} attack"), ("d", "", tu + " · " + lui_ + " turn {n} defense"),
+                                 ("m", "", tu + " · turn {n} attack · " + ("the opponent's" if chi == "io" else "your") + " untapped lands"))
+          for n in range(1, TURNI_FILTRO + 1)]
 for _k, _n, _f in EXTRA:
     NOME[_k], LEGGI[_k] = _n, _f
 # vinta o persa come tendina della fase Opening and first turns (12 nov 2026, Autore: «aggiungiamo la tendina di partita vinta o persa nella sezione opening
@@ -540,7 +583,10 @@ ORDINE_VALORI.update(esito=("Won", "Lost"), miei_colori=VARIANTI, economiche=("0
                      pausa=("Under 15 minutes", "15-60 minutes", "Over 1 hour (new session)"), crea_in_mano=("0", "1", "2", "3+"),
                      senza_crea=tuple(f"Your turn {n}" for n in SENZA) + ("The whole game",), suo_mull=("0", "1", "2+"),
                      fine_entro=tuple(f"Your turn {n}" for n in ENTRO), ist_mano=("0", "1", "2+"), str_mano=("0", "1", "2+"),
-                     **{f"t_{chi}{n}": ORDINE_TIPI for chi in ("io", "lui") for n in range(1, TURNI_FILTRO + 1)})
+                     art_mano=("0", "1", "2+"), inc_mano=("0", "1", "2+"), pw_mano=("0", "1", "2+"), bat_mano=("0", "1", "2+"),
+                     **{f"t_{pre}{chi}{suf}{n}": o_ for chi in ("io", "lui") for n in range(1, TURNI_FILTRO + 1)
+                        for pre, suf, o_ in (("", "", ORDINE_TIPI), ("", "x", ORDINE_TIPI), ("a", "", ORDINE_ATT), ("d", "", ORDINE_DIF),
+                                             ("m", "", ORDINE_APERTE))})
 
 
 def per_varianti(r):
@@ -1085,6 +1131,19 @@ def prova():
         casi.append(("turno per turno: tu (non cominci) T1 istantaneo, T2 creatura, T3 e T4 niente; lui niente; i turni oltre la fine non ci sono",
                      pt.get("io1") == ["Instant"] and pt.get("io2") == ["Creature"] and pt.get("io4") == ["Nothing"] and "io5" not in pt
                      and pt.get("lui4") == ["Nothing"] and "lui5" not in pt))
+        _MANA["m4"] = dict(azioni=[[1, 1, "magia", 7, "I"], [2, 1, "magia", 8, "I"]],
+                          momenti=[["comb", 3, 1, None, dict(att=[[1, 2], [2, 2]], blocchi=[[9, [1]]])], ["comb", 4, 2, None, dict(att=[[5, 1]], blocchi=[])]])
+        p4 = per_turno("m4", 2, False, 6)
+        casi.append(("nel turno dell'altro: il suo istantaneo nel tuo turno 1; gli attacchi e le difese di tutti e due, turno per turno",
+                     p4.get("lui1") == ["Instant"] and p4.get("luix1") == ["Instant"] and p4.get("io1") == ["Nothing"]
+                     and p4.get("alui2") == ["2 creatures"] and p4.get("dio2") == ["Blocked"] and p4.get("aio2") == ["1 creature"]
+                     and p4.get("dlui2") == ["No block"] and p4.get("aio1") == ["No attack"] and p4.get("dlui1") == ["Not attacked"]))
+        casi.append(("negativa: il turno oltre la fine della partita non c'e' (ne' attacco ne' difesa)", "aio4" not in p4 and "dlui4" not in p4))
+        _MANA["m5"] = dict(azioni=[], momenti=[["comb", 3, 1, None, dict(att=[[1, 2]], blocchi=[], aperte=2)], ["comb", 4, 2, None, dict(att=[[5, 1]], blocchi=[], aperte=0)]])
+        p5 = per_turno("m5", 2, False, 6)
+        casi.append(("le terre stappate di chi difende: lui attacca al suo turno 2 contro 2 tue stappate, tu al tuo 2 contro lui tappato",
+                     p5.get("mlui2") == ["2+ untapped lands"] and p5.get("mio2") == ["0 untapped lands"] and p5.get("mio1") == ["No attack"]))
+        casi.append(("negativa: un combattimento senza le terre (prima della VERSIONE 12) non da' il valore", "alui2" in p4 and "mlui2" not in p4))
         casi.append(("negativa: il filtro del turno sbagliato non passa (la creatura e' del tuo turno 2, non dell'1)",
                      passa(dict(per_turno=pt), {"t_io2": "Creature"}) and not passa(dict(per_turno=pt), {"t_io1": "Creature"})))
     finally:

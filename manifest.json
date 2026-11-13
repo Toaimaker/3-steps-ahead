@@ -1,6 +1,6 @@
 {
- "version": "0.1.69",
+ "version": "0.1.70",
  "date": "2026-11-13",
- "notes": "Performance: the question builder moves into its own window, Advanced filters: your question and its answer on top, your filters and the opponent's in two tabs (opening hand, game end, turn by turn 1-5, the opponent mulligans); the page is back as it was.",
+ "notes": "Advanced filters: You and Opponent with their phases (opening hand, own turns, the other one's turns, attack, defense, game end), turn by turn attacks, blocks and the defender's untapped lands for both, permanents and planeswalkers in the opening hand, scrolling; the games table sorts by any column title and shows the opponent's colors as mana symbols.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }
