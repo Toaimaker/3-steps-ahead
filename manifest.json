@@ -1,6 +1,6 @@
 {
- "version": "0.1.86",
+ "version": "0.1.87",
  "date": "2026-11-13",
- "notes": "Performance: a drawn gear, and all sixteen numbers can stay on top, eight a row.",
+ "notes": "Performance: per-turn casts are plain types (Instant + Instant = two instants that turn); every number and column now says what it measures (win rate, % of games, average)",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

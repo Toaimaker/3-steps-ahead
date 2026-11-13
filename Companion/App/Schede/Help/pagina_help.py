@@ -74,8 +74,8 @@ SEZIONI = (
       ("Advanced filters", "the button under the smart filters opens your question: every filter you turn on is a piece with its x, the answer (win rate, "
                            "games, record, interval, against all your games) right below, and the whole page follows it. Two tabs, You and Opponent, each with "
                            "its phases: opening hand (your deck's colors, creatures, instants, sorceries, artifacts, enchantments, planeswalkers, battles; the "
-                           "opponent's mulligans), what was cast on each player's turns 1-5 and on the other one's turns (by type and by type and mana value, "
-                           "\"Instant · 1\"; pick several in the same turn and the games must have them all), the draws on each turn (the draw step too) and "
+                           "opponent's mulligans), what was cast on each player's turns 1-5 and on the other one's turns (by type; add the same type twice with + "
+                           "for two of them, e.g. Instant + Instant = two instants that turn; several in one turn and the games must have them all), the draws on each turn (the draw step too) and "
                            "the extra draws in one turn, attacks turn by turn (how many "
                            "creatures, the defender's untapped lands), defense (blocked or not), and the game: land drops on curve, lowest life, life and "
                            "creatures at the end of your turns, permanents removed, board wipes, counterspells, graveyard targets, spells cast, when the game "
@@ -103,7 +103,7 @@ SEZIONI = (
                 "little window to pick which rows you see. Also: cast by your turn 4 (its Pairs: what you played together early) and Finishers (the decisive play of your "
                 "wins: in the turn with the biggest swing after which you stayed ahead, the spells you cast and the creatures you attacked with, 2+ cards; "
                 "the pairs that decided the most wins, with the average swing)"),
-      ("⚙ on the numbers", "top right: pick the numbers you want on top (all of them if you like: 8 a row, then two rows), among win rate, record, games, turns, mulligan, play, draw, win rate after "
+      ("⚙ on the numbers", "top right: pick the numbers you want on top (all of them if you like: 8 a row, then two rows), every name says what it measures (win rate, % of games, average); among win rate, record, games, turns, mulligan, play, draw, win rate after "
                            "a mulligan or keeping seven, fast wins, long games, concessions, lands kept, attack and defense gain, decided wins"),
       ("Chart, under it", "vs filter: all your games against the filtered ones (the blue line); Gained by decisions: a panel with your decisions "
                           "(the ones picked in Decisions) against the average one, as gain of advantage (life + 2 × power), cumulative: green above zero, "

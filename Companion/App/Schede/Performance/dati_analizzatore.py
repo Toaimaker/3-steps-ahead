@@ -255,8 +255,8 @@ def per_turno(match_id, seat, inizia, turni):
         if not turni or t > turni:
             break
         chi, n = di_turno(t), (t + 1) // 2
-        out[f"{chi}{n}"] = set()
-        out[f"{altro[chi]}x{n}"] = set()
+        out[f"{chi}{n}"] = []
+        out[f"{altro[chi]}x{n}"] = []
         out[f"a{chi}{n}"] = "No attack"
         out[f"d{altro[chi]}{n}"] = "Not attacked"
         out[f"m{chi}{n}"] = "No attack"
@@ -286,13 +286,10 @@ def per_turno(match_id, seat, inizia, turni):
         chi = "io" if s_ == seat else "lui"
         k = f"{chi}{(t + 1) // 2}" if di_turno(t) == chi else f"{chi}x{(t + 1) // 2}"
         if k in out:
-            nomi_t = [NOMI_TIPO[c] for c in tipi or "" if c in NOMI_TIPO]
-            out[k].update(nomi_t)
-            # il tipo col costo (13 nov 2026, Autore: «sulle giocate per turno dobbiamo poter eseguire selezioni multiple: es t2 cast instant da 1 mana e cr
-            # da 1 mana»): «Instant · 1», «Creature · 1»; il costo e' il valore di mana della carta (del database), non quello pagato
-            cmc = (_carta(nome_grp(g_) or "") or {}).get("cmc") if g_ not in SENZA_FACCIA else None
-            if cmc is not None:
-                out[k].update(f"{tn} · {int(cmc)}" for tn in nomi_t)
+            # i tipi di ogni magia lanciata, ripetuti: due istantanei nel turno sono «Instant», «Instant» (13 nov 2026, Autore: «da advanced filters togli
+            # per tipo carta 1-2-3, se faccio t1 creature e t2 creature è ovvio che sono state castate 2 creature - se faccio t3 istant - istant ovviamente ho
+            # lanciato 2 istant / complichiamo le cose ma rendiamole semplici»; prima c'erano anche le voci col costo, «Instant · 1»)
+            out[k].extend(NOMI_TIPO[c] for c in dict.fromkeys(tipi or "") if c in NOMI_TIPO)
     for kind, t, att, _f, info in d.get("momenti") or []:
         if kind != "comb" or not info or not info.get("att"):
             continue
@@ -307,18 +304,19 @@ def per_turno(match_id, seat, inizia, turni):
             else:
                 out[f"m{chi}{n}"] = "0 untapped lands" if ap == 0 else "1 untapped land" if ap == 1 else "2+ untapped lands"
     return {k: [v] if isinstance(v, str) else list(v) if isinstance(v, tuple) else (sorted(v, key=ordine_lancio) if v else ["Nothing"])
-            for k, v in out.items()}
+            for k, v in out.items()}       # le magie del turno: una lista coi tipi ripetuti, in ordine; «Nothing» se niente
 
 
 def ordine_lancio(v):
-    """L'ordine delle voci di un turno: i tipi come ORDINE_TIPI, ognuno seguito dai suoi costi («Creature», «Creature · 1», «Creature · 2» ...)."""
+    """L'ordine delle voci di un turno: i tipi come ORDINE_TIPI (ripetuti una volta per magia: «Instant», «Instant»). Una voce di prima col costo
+    («Creature · 2», fino al 13 nov 2026) va dopo il suo tipo."""
     tipo, _s, costo = v.partition(" · ")
     return (ORDINE_TIPI.index(tipo) if tipo in ORDINE_TIPI else 99, int(costo) if costo.isdigit() else -1)
 
 
 def multipla(k):
     """Le chiavi a scelta multipla: le giocate turno per turno («t_io2», «t_luix3»). Il filtro e' una lista di voci, e una partita passa se in quel turno ha
-    tutte le voci scelte (un istantaneo da 1 e una creatura da 1)."""
+    tutte le voci scelte, ripetizioni comprese (una creatura e due istantanei)."""
     return bool(re.fullmatch(r"t_(io|lui)x?\d+", k))
 
 
@@ -886,8 +884,8 @@ def passa(x, filtri):
         elif isinstance(v, (list, tuple)):
             if not v:
                 continue
-            ci_sono = valori_di(k, x)
-            if not all(i in ci_sono for i in v):
+            ci_sono = collections.Counter(valori_di(k, x))
+            if any(ci_sono[i] < n for i, n in collections.Counter(v).items()):      # «Instant», «Instant»: almeno due istantanei
                 return False
         elif v not in valori_di(k, x):
             return False
@@ -1659,7 +1657,7 @@ def prova():
         casi.append(("i trofei: la settima vittoria dello stesso draft (con una sconfitta in mezzo) e' la nona partita", trofei(tr) == [8]))
         casi.append(("negativa: le partite costruite non danno trofei, e un Traditional basta a 3",
                      trofei([dict(x, evento="Ladder") for x in tr]) == [] and trofei([dict(x, evento="TradDraft_FRA_1") for x in tr]) == [3]))
-        # le pescate e le giocate col costo (13 nov 2026): tu non cominci (seat 2); al tuo turno 1 peschi 1, al 2 tre (due extra), nel suo turno 2 una
+        # le pescate e le giocate del turno (13 nov 2026): tu non cominci (seat 2); al tuo turno 1 peschi 1, al 2 tre (due extra), nel suo turno 2 una
         _NOMI_GRP.update({905: "Shock", 906: "Goblin"})
         _MANA["m7"] = dict(azioni=[[2, 2, "pesca", 0, ""], [3, 1, "pesca", 0, ""], [3, 2, "pesca", 0, ""], [4, 2, "pesca", 0, ""],
                                    [4, 2, "pesca", 0, ""], [4, 2, "pesca", 0, ""], [4, 2, "magia", 905, "I"], [4, 2, "magia", 906, "C"]])
@@ -1671,8 +1669,12 @@ def prova():
         casi.append(("negativa: le extra «2+» non sono «3+», e senza le pescate nel log (VERSIONE 12) le chiavi delle pescate non ci sono",
                      not passa(dict(per_turno=p7), {"t_peio": "3+ extra in one turn"}) and passa(dict(per_turno=p7), {"t_peio": "1+ extra in one turn"})
                      and "pio1" not in per_turno("m4", 2, False, 6)))
-        casi.append(("le giocate col costo: al tuo turno 2 Instant · 1 e Creature · 2 accanto ai tipi, nell'ordine dei tipi",
-                     p7.get("io2") == ["Creature", "Creature · 2", "Instant", "Instant · 1"]))
+        casi.append(("le giocate del turno: i tipi, uno per magia, nell'ordine dei tipi (niente piu' voci col costo)", p7.get("io2") == ["Creature", "Instant"]))
+        _MANA["m12"] = dict(azioni=[[4, 2, "magia", 905, "I"], [4, 2, "magia", 905, "I"], [4, 2, "magia", 906, "C"]])
+        p12 = per_turno("m12", 2, False, 6)
+        casi.append(("due istantanei nello stesso turno sono «Instant», «Instant»: il filtro con due Instant passa, con tre no",
+                     p12.get("io2") == ["Creature", "Instant", "Instant"] and passa(dict(per_turno=p12), {"t_io2": ["Instant", "Instant"]})
+                     and not passa(dict(per_turno=p12), {"t_io2": ["Instant", "Instant", "Instant"]})))
         _NOMI_GRP.update({907: "Dragon", 908: "Owl"})
         _MANA["m8"] = dict(azioni=[[2, 2, "pesca", 907, ""], [3, 1, "pesca", 0, ""], [3, 1, "magia", 906, "C"], [4, 2, "pesca", 908, ""], [4, 2, "magia", 905, "I"]])
         cp_ = carte_partita(dict(partita="m8", inizia=False), 2, {"Shock": 1, "Goblin": 1, "Mountain": 1})
@@ -1702,9 +1704,9 @@ def prova():
                      (fc[0]["nomi"], fc[0]["n"], fc[0]["salto"], fc[0]["quota"]) == (("Goblin", "Shock"), 2, 15.0, 100.0)
                      and filtro_carta("finisher", fc[0]) == ("finisher", ["Goblin", "Shock"]) and all(c_["n"] >= 2 for c_ in fc)))
         casi.append(("la scelta multipla: tutte e due le voci nello stesso turno passano; una che manca no", multipla("t_io2") and multipla("t_luix3")
-                     and not multipla("t_aio2") and passa(dict(per_turno=p7), {"t_io2": ["Instant · 1", "Creature · 2"]})
-                     and not passa(dict(per_turno=p7), {"t_io2": ["Instant · 1", "Creature · 1"]}) and etichetta("t_io2", ["Instant · 1", "Creature · 2"])
-                     == "Instant · 1 + Creature · 2"))
+                     and not multipla("t_aio2") and passa(dict(per_turno=p7), {"t_io2": ["Instant", "Creature"]})
+                     and not passa(dict(per_turno=p7), {"t_io2": ["Instant", "Instant"]}) and etichetta("t_io2", ["Instant", "Creature"])
+                     == "Instant + Creature"))
         casi.append(("negativa: il filtro del turno sbagliato non passa (la creatura e' del tuo turno 2, non dell'1)",
                      passa(dict(per_turno=pt), {"t_io2": "Creature"}) and not passa(dict(per_turno=pt), {"t_io1": "Creature"})))
     finally:

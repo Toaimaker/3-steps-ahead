@@ -16,21 +16,21 @@ import dati_analizzatore as DA  # noqa: E402
 
 PARTENZA = ("wr", "record", "turni", "mull", "play", "draw")
 CATALOGO = (("wr", "Win rate", "with its 95% interval"),
-            ("record", "Record", "wins and losses, and the gap from all your games"),
+            ("record", "Record · W-L", "wins and losses, and the gap from all your games"),
             ("partite", "Games", "how many, from the first to the last day"),
-            ("turni", "Avg turns", "the length of your wins and your losses"),
-            ("mull", "Mulligan", "games where you sent at least one hand back"),
-            ("play", "On the play", "win rate when you start"),
-            ("draw", "On the draw", "win rate when the opponent starts"),
-            ("wr_mull", "After a mulligan", "win rate of the games with a mulligan"),
-            ("wr_sette", "Kept 7", "win rate of the games where you kept seven"),
-            ("veloci", "Fast wins", "wins by your turn 6, out of all your wins"),
-            ("lunghe", "Long games", "win rate of the games past your turn 8"),
-            ("concedi", "You conceded", "losses that ended with your concession"),
-            ("terre", "Lands kept", "lands in the hand you kept, on average"),
-            ("att", "Attack gain", "how much an attack of yours moves the advantage (life + 2 × power)"),
-            ("dif", "Defense gain", "the same for your defense, when they attack"),
-            ("finisher", "Decided wins", "wins with a decisive play of 2+ cards (Finishers)"))
+            ("turni", "Game length · avg turns", "the length of your wins and your losses"),
+            ("mull", "Mulligan rate · % of games", "games where you sent at least one hand back"),
+            ("play", "Win rate on the play", "win rate when you start"),
+            ("draw", "Win rate on the draw", "win rate when the opponent starts"),
+            ("wr_mull", "Win rate after a mulligan", "win rate of the games with a mulligan"),
+            ("wr_sette", "Win rate keeping 7", "win rate of the games where you kept seven"),
+            ("veloci", "Fast wins · % of wins", "wins by your turn 6, out of all your wins"),
+            ("lunghe", "Win rate in long games", "win rate of the games past your turn 8"),
+            ("concedi", "Conceded · % of losses", "losses that ended with your concession"),
+            ("terre", "Lands kept · avg", "lands in the hand you kept, on average"),
+            ("att", "Attack gain · avg", "how much an attack of yours moves the advantage (life + 2 × power)"),
+            ("dif", "Defense gain · avg", "the same for your defense, when they attack"),
+            ("finisher", "Decided wins · % of wins", "wins with a decisive play of 2+ cards (Finishers)"))
 NOMI = {k: n for k, n, _d in CATALOGO}
 MASSIMO = len(CATALOGO)     # tutti (13 nov 2026, Autore: «permetti fino a tutti i valori sulla barra ma ben organizzati»; prima sei)
 
@@ -52,18 +52,18 @@ def valori(r, tutte):
     giorni = sorted(x["quando"] for x in r)
     out["partite"] = (f"{len(r)}", "neutro", f"{giorni[0]:%d %b} – {giorni[-1]:%d %b}" if giorni else "")
     out["turni"] = (f"T{k['turni']}" if k["turni"] else "-", "neutro", f"wins T{k['turni_v'] or '-'} · losses T{k['turni_p'] or '-'}")
-    out["mull"] = (pc(k["mull"]), "neutro", "games with a mulligan")
-    out["play"] = (pc(k["play"]), tono_wr(k["play"]), f"{k['n_play']} games")
-    out["draw"] = (pc(k["draw"]), tono_wr(k["draw"]), f"{k['n_draw']} games")
+    out["mull"] = (pc(k["mull"]), "neutro", f"{sum(1 for x in r if (x.get('mulligan') or 0) > 0)} games with a mulligan")
+    out["play"] = (pc(k["play"]), tono_wr(k["play"]), f"in {k['n_play']} games on the play")
+    out["draw"] = (pc(k["draw"]), tono_wr(k["draw"]), f"in {k['n_draw']} games on the draw")
     mm = [x for x in r if (x.get("mulligan") or 0) > 0]
-    out["wr_mull"] = (pc(_wr(mm)), tono_wr(_wr(mm)), f"{len(mm)} games")
+    out["wr_mull"] = (pc(_wr(mm)), tono_wr(_wr(mm)), f"in {len(mm)} games")
     sette = [x for x in r if not (x.get("mulligan") or 0)]
-    out["wr_sette"] = (pc(_wr(sette)), tono_wr(_wr(sette)), f"{len(sette)} games")
+    out["wr_sette"] = (pc(_wr(sette)), tono_wr(_wr(sette)), f"in {len(sette)} games")
     vinte = [x for x in r if x["vinta"]]
     veloci = [x for x in vinte if x.get("turno") and x["turno"] <= 6]
     out["veloci"] = (pc(100 * len(veloci) / len(vinte)) if vinte else "-", "neutro", f"{len(veloci)} of {len(vinte)} wins")
     lunghe = [x for x in r if (x.get("turno") or 0) >= 9]
-    out["lunghe"] = (pc(_wr(lunghe)), tono_wr(_wr(lunghe)), f"{len(lunghe)} games")
+    out["lunghe"] = (pc(_wr(lunghe)), tono_wr(_wr(lunghe)), f"in {len(lunghe)} games past your turn 8")
     perse = [x for x in r if not x["vinta"]]
     conc = [x for x in perse if x.get("fine") == "You conceded"]
     out["concedi"] = (pc(100 * len(conc) / len(perse)) if perse else "-", "neutro", f"{len(conc)} of {len(perse)} losses")

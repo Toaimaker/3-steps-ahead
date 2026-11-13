@@ -993,7 +993,13 @@ class PaginaPerformance:
             dy = (i // per_riga) * 76
             # piu' aria fra nome, numero e riga sotto (12 nov 2026, Autore: «i testi qui sono tutti incollati, gestisci meglio le spaziature»)
             c.create_line(x, 32 + dy, x, 96 + dy, fill=col, width=2)
-            c.create_text(x + 12, 36 + dy, text=a, anchor="nw", fill=C["muto"], font=F(7, True))
+            # il nome dice cosa misura (win rate, % delle partite, media: 13 nov 2026), quindi e' lungo: se non sta nella sua tessera si stringe
+            i_n = c.create_text(x + 12, 36 + dy, text=a, anchor="nw", fill=C["muto"], font=F(7, True), tags="nome_num")
+            for fn in (F(6, True), F(6)):
+                bb_n = c.bbox(i_n)
+                if bb_n and bb_n[2] - bb_n[0] <= cw - 16:
+                    break
+                c.itemconfigure(i_n, font=fn)
             c.create_text(x + 12, 65 + dy, text=v, anchor="w", fill=col, font=F(17, True))
             c.create_text(x + 12, 89 + dy, text=s_, anchor="w", fill=C["grigio"], font=F(7), width=cw - 20)
 
@@ -3360,7 +3366,7 @@ class PaginaPerformance:
     # le giocate turno per turno a righe (13 nov 2026, Autore: «in advanced filters sulle azioni per turno c'è troppa roba a vista, ricostruiamo la UX:
     # Your T1 Cast appare di default: tendina di default per scegliere cosa castiamo e accanto un + per aggiungere un'altra tendina / sotto mettiamo un add
     # line: tendina Turno e tendina di cast con + ... possiamo aggiungere infinite righe ... così anche in opponent turns»). Una riga: il turno, e una tendina
-    # per ogni cosa lanciata (tipo, o tipo · costo); piu' tendine nella stessa riga = tutte in quel turno (la scelta multipla di prima). I filtri sono gli
+    # per ogni cosa lanciata (il tipo; lo stesso tipo due volte = due magie di quel tipo); piu' tendine nella stessa riga = tutte in quel turno (la scelta multipla di prima). I filtri sono gli
     # stessi («t_io3» = [voci]); le righe ancora senza voci restano solo a video.
     NOMI_RIGHE = {"t_io": ("Your T{}", "cast"), "t_iox": ("Opponent's T{}", "you cast"), "t_lui": ("Their T{}", "cast"), "t_luix": ("Your T{}", "they cast")}
 
@@ -3369,9 +3375,9 @@ class PaginaPerformance:
         nuovi = {}
         for campo, voci in righe:
             vv = [v for v in voci or [] if v]
-            if campo and vv:
+            if campo and vv:        # le voci ripetute contano (due Instant = due istantanei); le righe dello stesso turno si sommano
                 k = f"{pre}{campo}"
-                nuovi[k] = sorted(set(nuovi.get(k, [])) | set(vv), key=DA.ordine_lancio)
+                nuovi[k] = sorted(nuovi.get(k, []) + vv, key=DA.ordine_lancio)
         return nuovi
 
     def righe_av(self, pre):
@@ -3392,7 +3398,7 @@ class PaginaPerformance:
         """Il costruttore delle righe di un gruppo dentro la tela di Advanced filters, a y. -> la y sotto."""
         tk, F = self.tk, self.F
         nome, dopo = self.NOMI_RIGHE[pre]
-        voci = lambda n: sorted(set(DA.ORDINE_TIPI) | {v for x_ in tutte for v in DA.valori_di(f"{pre}{n}", x_) if " · " in v}, key=DA.ordine_lancio)
+        voci = lambda n: list(DA.ORDINE_TIPI)      # i tipi soli: le ripetizioni dicono quante (13 nov 2026)
         b = R_F.Righe(tk, F, ca, self.righe_av(pre), [str(n) for n in range(1, DA.TURNI_FILTRO + 1)], lambda n: nome.format(n), voci,
                       lambda rr, pre=pre: self.metti_righe_av(pre, rr), dopo=dopo, larga_campo=150, larga_voce=170)
         self._costruttori_av[pre] = b
@@ -3834,10 +3840,10 @@ class PaginaPerformance:
             c.create_text(xc, y + hc + 29, text=f"swing +{cc['salto']:.0f} · {cc['quota']:.0f}% of your wins", fill=C["grigio"], font=F(7))
         elif chiave == "bloccate" and "bloccata" in cc:
             c.create_text(xc, y + hc + 12, text=f"{cc['bloccata']}% stuck", fill=C["rosso"], font=F(9, True))
-            c.create_text(xc, y + hc + 29, text=f"{cc['n']} of {cc['mano']} games · {cc['wr']:.0f}%", fill=C["grigio"], font=F(7))
+            c.create_text(xc, y + hc + 29, text=f"{cc['n']} of {cc['mano']} games · {cc['wr']:.0f}% WR", fill=C["grigio"], font=F(7))
         else:
-            c.create_text(xc, y + hc + 12, text=f"{cc['wr']:.0f}%  ·  {cc['vinte']}-{cc['perse']}", fill=col, font=F(9, True))
-            c.create_text(xc, y + hc + 29, text=f"in {cc['n']} games · {cc['quota']:.0f}%", fill=C["grigio"], font=F(7))
+            c.create_text(xc, y + hc + 12, text=f"{cc['wr']:.0f}% WR  ·  {cc['vinte']}-{cc['perse']}", fill=col, font=F(9, True))
+            c.create_text(xc, y + hc + 29, text=f"in {cc['n']} games · {cc['quota']:.0f}% of games", fill=C["grigio"], font=F(7))
         return larga_c
 
     # ------------------------------------------------------------ la cartella Decisions
@@ -3973,9 +3979,9 @@ class PaginaPerformance:
                       + f" · {tutte_['n']} combats in {tutte_['partite']} games · the outcome of the combat, at the end of that turn", anchor="w",
                       fill=C["muto"], font=F(7, True))
         c.create_text(W - 14, 14, text="click a row: its games as a line on the Chart, against All", anchor="e", fill=C["grigio"], font=F(7))
-        col = [("nome", "SITUATION", 14), ("n", "COMBATS", 310), ("partite", "GAMES", 385), ("perdi", "YOU LOST A CREATURE", 450),
-               ("uccidi", "THEY LOST A CREATURE", 600), ("scambio", "TRADE", 755), ("danno", "DAMAGE TO " + ("THEM" if att else "YOU"), 820),
-               ("trucco", "THEIR SPELL BEFORE DMG", 945), ("guadagno", "AVG GAIN", 1105), ("wr", "GAME WIN RATE", 1195)]
+        col = [("nome", "SITUATION", 14), ("n", "COMBATS", 300), ("partite", "GAMES", 372), ("perdi", "YOU LOST ONE · % combats", 432),
+               ("uccidi", "THEY LOST ONE · % combats", 590), ("scambio", "TRADE · per combat", 752), ("danno", "DAMAGE TO " + ("THEM" if att else "YOU") + " · avg", 832),
+               ("trucco", "THEIR SPELL · % combats", 975), ("guadagno", "GAIN · avg", 1128), ("wr", "WIN RATE · their games", 1205)]
         y = 34
         # i titoli ordinano le righe (13 nov 2026, Autore: «anche all'elenco decisions diamo i titoli cliccabili per riordinare le colonne»): il primo clic
         # crescente, il secondo al contrario; la riga di tutte resta in cima, come riferimento; un valore che manca va in fondo
@@ -4047,7 +4053,7 @@ class PaginaPerformance:
         y += 76
         c.create_text(14, y, text="THE HANDS YOU KEPT · click a cell: Lands in hand and Start as filters", anchor="w", fill=C["azzurro"], font=F(8, True))
         y += 20
-        for x, t in ((14, "LANDS"), (120, "ON THE PLAY"), (300, "ON THE DRAW"), (480, "ALL"), (620, "HANDS YOU SENT BACK")):
+        for x, t in ((14, "LANDS"), (120, "WIN RATE ON THE PLAY"), (300, "WIN RATE ON THE DRAW"), (480, "WIN RATE · ALL"), (620, "HANDS YOU SENT BACK")):
             c.create_text(x, y, text=t, anchor="w", fill=C["titolo"], font=F(7, True))
         y += 16
         for i, terre in enumerate(range(0, 8)):
@@ -4066,16 +4072,16 @@ class PaginaPerformance:
         y += 14
         c.create_text(14, y, text="WEEK BY WEEK", anchor="w", fill=C["azzurro"], font=F(8, True))
         y += 20
-        cols = ((14, "WEEK OF"), (130, "GAMES"), (210, "MULLIGAN RATE"), (340, "RISKY KEEPS"), (460, "WIN RATE AFTER A MULLIGAN"), (660, "WIN RATE OF 7-CARD KEEPS"),
-                (860, "ALL"))
+        cols = ((14, "WEEK OF"), (130, "GAMES"), (210, "MULLIGAN RATE · % games"), (360, "RISKY KEEPS · % of 7s"), (500, "WIN RATE AFTER A MULLIGAN"),
+                (700, "WIN RATE OF 7-CARD KEEPS"), (900, "WIN RATE · ALL"))
         for x, t in cols:
             c.create_text(x, y, text=t, anchor="w", fill=C["titolo"], font=F(7, True))
         y += 16
         fmt = lambda v: "-" if v is None else f"{v:.0f}%"
         for i, w in enumerate(DEC.settimane(r)):
-            c.create_rectangle(8, y, 960, y + 22, fill="#202024" if i % 2 == 0 else "#1c1c20", outline="")
-            for x, v in ((14, w["da"].strftime("%d %b")), (130, str(w["partite"])), (210, fmt(w["mull"])), (340, fmt(w["rischiose"])),
-                         (460, fmt(w["wr_mull"]) + (f"  · {w['n_mull']} games" if w["n_mull"] else "")), (660, fmt(w["wr_sette"])), (860, fmt(w["wr"]))):
+            c.create_rectangle(8, y, 1000, y + 22, fill="#202024" if i % 2 == 0 else "#1c1c20", outline="")
+            for x, v in ((14, w["da"].strftime("%d %b")), (130, str(w["partite"])), (210, fmt(w["mull"])), (360, fmt(w["rischiose"])),
+                         (500, fmt(w["wr_mull"]) + (f"  · {w['n_mull']} games" if w["n_mull"] else "")), (700, fmt(w["wr_sette"])), (900, fmt(w["wr"]))):
                 c.create_text(x, y + 11, text=v, anchor="w", fill=C["testo"], font=F(8))
             y += 24
         c.configure(scrollregion=(0, 0, W, y + 20))
