@@ -1,6 +1,6 @@
 {
- "version": "0.1.97",
+ "version": "0.1.98",
  "date": "2026-11-13",
- "notes": "Performance: the Luck folder tests the shuffle on your draws (lands drawn by your turn 3, 5, 7 against chance, screw and flood filters) and your first 7 cards against Bo1 smoothing",
+ "notes": "Deck HUD: darker backdrop, darker strips under each list header, section titles and copy counts; the record against the archetype is gone",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

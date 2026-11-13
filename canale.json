@@ -1,0 +1,7 @@
+{
+ "manifest": "https://raw.githubusercontent.com/Toaimaker/3-steps-ahead/main/manifest.json",
+ "endpoint_log": "https://3-steps-ahead-dati.3-steps-ahead.workers.dev/games",
+ "sostegno": "",
+ "sito": "https://toaimaker.github.io/3-steps-ahead/",
+ "privacy": "https://github.com/Toaimaker/3-steps-ahead/blob/main/PRIVACY.md"
+}

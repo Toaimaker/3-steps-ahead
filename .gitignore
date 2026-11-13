@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+Log_Arena/
+Dati/
+Collezione/
+Partite/
+release/
+*.pyc
