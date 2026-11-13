@@ -1230,8 +1230,8 @@ def linee(r, metrica, asse, finestra, dividi=None, quante=5, extra=None):
     sul grafico vs quella totale ... tipo holdem manager»)."""
     posto = {x.get("partita") or id(x): i + 1 for i, x in enumerate(sorted(r, key=lambda x: x["quando"]))}
     out = [("All", serie(r, metrica, asse, finestra))]
-    if extra:
-        out.append((extra[0], serie([x for x in r if x.get("partita") in extra[1]], metrica, asse, finestra, posto=posto)))
+    for nome_, ids_ in ([extra] if extra and isinstance(extra[0], str) else extra or []):
+        out.append((nome_, serie([x for x in r if x.get("partita") in ids_], metrica, asse, finestra, posto=posto)))
     if dividi:
         for v, _n in sorted(valori(r, dividi), key=lambda t: -t[1])[:quante]:
             out.append((etichetta(dividi, v), serie([x for x in r if v in valori_di(dividi, x)], metrica, asse, finestra, posto=posto)))

@@ -18,9 +18,10 @@ import threading
 
 import dati_analizzatore as DA
 import decisioni as DEC
+import righe_filtri as R_F
 import disegni as DG
 from tema import CI as C
-from widget import Tendina, pulsante_solido
+from widget import ARANCIO, Tendina, pulsante_solido
 
 LINEE = ("#d8d8dc", "#24baff", "#f0ad4e", "#a58cff", "#5cb85c", "#ee8a87")      # All, poi i valori: lontani fra loro anche per i daltonici (come il resto dell'app)
 COLONNE = (("nome", "", 250), ("n", "GAMES", 70), ("wl", "W-L", 80), ("wr", "WIN RATE", 180), ("play", "PLAY", 70), ("draw", "DRAW", 70), ("mull", "MULL.", 70),
@@ -93,10 +94,10 @@ AVANZATI = {
                               ("YOUR OPENING HAND", ("crea_in_mano", "ist_mano", "str_mano", "art_mano", "inc_mano", "pw_mano", "bat_mano")))),
            # le pescate (13 nov 2026, Autore: «nei filtri di you e opponent aggiungiamo anche le pescate nel proprio e nel turno avversario più alcuni filtri
            # generali che indicano che sono avvenute 1, 2 o più pescate in almeno uno dei turni»)
-           ("Your turns", (("WHAT YOU CAST ON YOUR TURNS", tuple(f"t_io{n}" for n in range(1, DA.TURNI_FILTRO + 1))),
+           ("Your turns", (("WHAT YOU CAST ON YOUR TURNS", ("@t_io",)),
                            ("YOUR DRAWS ON YOUR TURNS (THE DRAW STEP TOO)", tuple(f"t_pio{n}" for n in range(1, DA.TURNI_FILTRO + 1))),
                            ("EXTRA DRAWS", ("t_peio",)))),
-           ("Opponent's turns", (("WHAT YOU CAST ON THE OPPONENT'S TURNS", tuple(f"t_iox{n}" for n in range(1, DA.TURNI_FILTRO + 1))),
+           ("Opponent's turns", (("WHAT YOU CAST ON THE OPPONENT'S TURNS", ("@t_iox",)),
                                  ("YOUR DRAWS ON THE OPPONENT'S TURNS", tuple(f"t_piox{n}" for n in range(1, DA.TURNI_FILTRO + 1))),
                                  ("EXTRA DRAWS", ("t_peio",)))),
            ("Attack", (("YOUR ATTACKS, TURN BY TURN", tuple(f"t_aio{n}" for n in range(1, DA.TURNI_FILTRO + 1))),
@@ -110,10 +111,10 @@ AVANZATI = {
                      ("REMOVAL AND INTERACTION", ("s_rim_io", "s_wipe_io", "s_counter_io", "s_cim_io", "s_magie_io")),
                      ("THE END", ("senza_crea", "fine_entro"))))),
     "lui": (("Opening hand", (("THE OPPONENT", ("suo_mull",)),)),
-            ("Their turns", (("WHAT THEY CAST ON THEIR TURNS", tuple(f"t_lui{n}" for n in range(1, DA.TURNI_FILTRO + 1))),
+            ("Their turns", (("WHAT THEY CAST ON THEIR TURNS", ("@t_lui",)),
                              ("THEIR DRAWS ON THEIR TURNS (THE DRAW STEP TOO)", tuple(f"t_plui{n}" for n in range(1, DA.TURNI_FILTRO + 1))),
                              ("EXTRA DRAWS", ("t_pelui",)))),
-            ("Your turns", (("WHAT THEY CAST ON YOUR TURNS", tuple(f"t_luix{n}" for n in range(1, DA.TURNI_FILTRO + 1))),
+            ("Your turns", (("WHAT THEY CAST ON YOUR TURNS", ("@t_luix",)),
                             ("THEIR DRAWS ON YOUR TURNS", tuple(f"t_pluix{n}" for n in range(1, DA.TURNI_FILTRO + 1))),
                             ("EXTRA DRAWS", ("t_pelui",)))),
             ("Attack", (("THEIR ATTACKS, TURN BY TURN", tuple(f"t_alui{n}" for n in range(1, DA.TURNI_FILTRO + 1))),
@@ -204,6 +205,10 @@ class PaginaPerformance:
         self.partite_fuori = None       # la tabella delle partite nella sua finestra: dict(win, lista, l)        # B del confronto (rest, all, s<i>); le viste staccate: {vista: dict(win, o, l)}
         self.righe, self.sporca, self.deciso, self.modo = None, True, False, "Standard"
         self.dec_modo = "attacco"       # Decisions: gli attacchi, i blocchi o i mulligan
+        self.dec_f = {"attacco": {}, "blocco": {}}      # i filtri delle decisioni, per tipo: {chiave: [voci]} (solo le tue scelte)
+        self.righe_dec = {"attacco": [], "blocco": []}  # le righe del costruttore dei filtri delle decisioni
+        self.mostra_vs_filtro = False   # sotto il grafico: la linea di tutte le partite contro quella filtrata
+        self.mostra_guadagno = False    # sotto il grafico: il guadagno delle decisioni contro la media
         self.linea_dec = None           # una riga di Decisions sul grafico: (tipo, nome della riga)
         self.spot_modo = "preset"       # Spots: le ricerche preimpostate (di partenza) o gli spot automatici
         self._lavoro, self.l_carica = None, None
@@ -302,7 +307,7 @@ class PaginaPerformance:
             self.b_tipi[t] = b
         # il reset globale (12 nov 2026, Autore: «aggiungiamo anche un reset global che ci porta a tutte le partite di default»): filtri, situazioni, grafico e
         # vista in basso come all'apertura; Constructed o Limited resta
-        self.b_reset = pulsante_solido(tk, F, testa, "Reset all", False, self.reset, alto=26, bg=C["cap"], colori=("#2a2a30", "#3a3a42", "#0f86cc"))
+        self.b_reset = pulsante_solido(tk, F, testa, "Reset all", False, self.reset, alto=26, bg=C["cap"], colori=ARANCIO)      # arancio come gli altri Reset (13 nov 2026)
         self.b_reset.configure(width=100); self.b_reset.pack(side="right", padx=(8, 16), pady=8)
         self.l_info = tk.Label(testa, text="Reading your logs…", bg=C["cap"], fg=C["grigio"], font=F(8))
         self.l_info.pack(side="right", padx=(16, 4))
@@ -378,7 +383,7 @@ class PaginaPerformance:
         self.b_salva_sit = pulsante_solido(tk, F, self.col_sx, "Save as my filter", False, self.salva_situazione, alto=28, bg=C["scheda"])
         self.b_salva_sit.configure(width=262); self.b_salva_sit.pack(anchor="w", padx=12, pady=(4, 6))
         self.b_pulisci = pulsante_solido(tk, F, self.col_sx, "Clear all filters", False, self.pulisci, alto=28, bg=C["scheda"],
-                                         colori=("#3a2a2a", "#5a3434", "#2a1c1c"))
+                                         colori=ARANCIO)      # arancio (13 nov 2026, Autore: «e clear all filter lo fai arancio»)
         self.b_pulisci.configure(width=262); self.b_pulisci.pack(anchor="w", padx=12, pady=(0, 12))
         # a destra: i numeri in alto, sotto le cartelle (12 nov 2026, Autore: «questi falli a modo di cartelle e poi tira via il sotto testo»): Chart, Spots,
         # Report, Matchups e Compare, una alla volta; il segno a destra di ogni linguetta la stacca in una finestra sua («ogni sezione di ogni cartella si puo'
@@ -433,10 +438,12 @@ class PaginaPerformance:
         self.wr_var = tk.StringVar(value="")
         self.e_wr = tk.Entry(fr, textvariable=self.wr_var, width=6, justify="center", bg="#101014", fg=C["titolo"], insertbackground=C["titolo"],
                              relief="flat", font=F(10, True), highlightthickness=1, highlightbackground="#3a3a40", highlightcolor=C["accento"])
-        self.wr_segni["ge"].pack(side="left", ipady=1)
+        # ≤ prima della casella e ≥ dopo (13 nov 2026, Autore: «affianco alla win rate inverti l'ordine dei bracket»): il significato resta, ≤ al massimo,
+        # ≥ almeno
+        self.wr_segni["le"].pack(side="left", ipady=1)
         self.e_wr.pack(side="left", padx=(6, 2), ipady=3)
         tk.Label(fr, text="%", bg=C["scheda"], fg=C["grigio"], font=F(9, True)).pack(side="left", padx=(0, 6))
-        self.wr_segni["le"].pack(side="left", ipady=1)
+        self.wr_segni["ge"].pack(side="left", ipady=1)
         self.e_wr.bind("<Return>", lambda e: self.metti_wr())
         self.e_wr.bind("<FocusOut>", lambda e: self.metti_wr())
         self.e_wr.bind("<KeyRelease>", lambda e: self.wr_poi())
@@ -549,12 +556,14 @@ class PaginaPerformance:
             ctl["per"] = Tendina(tk, riga, "Group by", F, larga=220, bg=C["scheda"]); ctl["per"].fr.pack(side="right")
             ctl["per"].opzioni([k_ for k_, _n, _f in DA.VARIABILI if k_ != "data"] + ["vs"] + [k_ for k_, _n, _f in DA.EXTRA] + sit_k, lambda v: self.cambia("per", v), etichette=et_var)
             ctl["per"].set(self.per)
-        elif k == "decisions":       # attacchi, blocchi, mulligan (13 nov 2026)
+        elif k == "decisions":       # attacchi, blocchi, mulligan (13 nov 2026), e i filtri delle decisioni
             ctl["dmodo"] = {}
             for m, n in DEC_MODI:
                 b = pulsante_solido(tk, F, riga, n, m == self.dec_modo, lambda m=m: self.cambia_dec(m), alto=26, bg=C["scheda"], colori=GRIGI)
-                b.configure(width=120); b.pack(side="left", padx=(0, 6), anchor="s", pady=(0, 2))
+                b.configure(width=110); b.pack(side="left", padx=(0, 6), anchor="s", pady=(0, 2))
                 ctl["dmodo"][m] = b
+            ctl["dfin"] = pulsante_solido(tk, F, riga, "Decision filters", False, self.apri_filtri_dec, alto=26, bg=C["scheda"], colori=GRIGI)
+            ctl["dfin"].configure(width=200); ctl["dfin"].pack(side="right", anchor="s", pady=(0, 2))
         elif k == "cards":       # quali righe vedere: la finestrella dei filtri di Cards (13 nov 2026)
             ctl["righe"] = pulsante_solido(tk, F, riga, "Rows", False, self.apri_righe_carte, alto=26, bg=C["scheda"], colori=GRIGI)
             ctl["righe"].configure(width=170); ctl["righe"].pack(side="left", anchor="s", pady=(0, 2))
@@ -647,6 +656,9 @@ class PaginaPerformance:
                 b.metti(dict(SPOT_MODI)[m], m == self.spot_modo)
             for m, b in ctl.get("dmodo", {}).items():
                 b.metti(dict(DEC_MODI)[m], m == self.dec_modo)
+            if "dfin" in ctl:
+                n_ = sum(1 for t_ in ("attacco", "blocco") for v in self.dec_f.get(t_, {}).values() if v)
+                ctl["dfin"].metti(f"Decision filters · {n_} on" if n_ else "Decision filters", bool(n_))
             for k, v in (("asse", self.asse), ("fin", self.finestra), ("dividi", self.dividi or "None"), ("per", self.per), ("con", self.con)):
                 if k in ctl:
                     ctl[k].set(v)
@@ -815,6 +827,7 @@ class PaginaPerformance:
 
     def pulisci(self):
         self.filtri = {}
+        self._righe_ui = {}
         self.disegna()
 
     PARTENZA = dict(metrica="wr", asse="games", finestra="20", dividi=None, per="suo", ordina="n", basso="report", solo_meta=False, vista="chart", con="rest", vs_modo="all", dec_modo="attacco",
@@ -825,6 +838,7 @@ class PaginaPerformance:
         self.filtri = {}
         for k, v in self.PARTENZA.items():
             setattr(self, k, v)
+        self.dec_f, self.righe_dec, self._righe_ui = {"attacco": {}, "blocco": {}}, {"attacco": [], "blocco": []}, {}
         self.sincronizza()
         self.mostra_vista()
         self.cv_sx.yview_moveto(0)
@@ -1050,37 +1064,61 @@ class PaginaPerformance:
             return
         W, H = max(c.winfo_width(), 400), max(c.winfo_height(), 160)
         r = self.scelte()
-        extra = None
+        extra = []
+        # vs filter (13 nov 2026, Autore: «sotto mettici il flag per "vs filter" che confronta il filtrato vs la main line con una nuova linea colorata di
+        # azzurro»): la linea principale diventa tutte le partite del tipo, e le partite filtrate sono la linea azzurra, sullo stesso asse
+        n_f = sum(1 for v in self.filtri.values() if v is not None)
+        vs = self.mostra_vs_filtro and n_f
+        base_g = [x for x in self.righe if x["tipo"] == self.tipo] if vs else r
+        if vs:
+            extra.append(("This filter", {x.get("partita") for x in r}))
         if self.linea_dec:          # la riga di Decisions scelta: le sue partite come linea in piu' (ricalcolata coi filtri di adesso)
-            riga_ = next((c_ for c_ in DEC.tabella(r, self.linea_dec[0]) if c_["nome"] == self.linea_dec[1]), None)
+            riga_ = next((c_ for c_ in DEC.tabella(r, self.linea_dec[0], self.dec_f.get(self.linea_dec[0])) if c_["nome"] == self.linea_dec[1]), None)
             if riga_ and riga_["ids"]:
-                extra = (("Attack: " if self.linea_dec[0] == "attacco" else "Block: ") + self.linea_dec[1], riga_["ids"])
-        lin = [(n, p) for n, p in DA.linee(r, self.metrica, self.asse, self.finestra, self.dividi, extra=extra) if p]
+                extra.append((("Attack: " if self.linea_dec[0] == "attacco" else "Block: ") + self.linea_dec[1], riga_["ids"]))
+        lin = [(n, p) for n, p in DA.linee(base_g, self.metrica, self.asse, self.finestra, None if vs else self.dividi, extra=extra) if p]
+        if vs and lin:
+            lin[0] = ("All games", lin[0][1])
         tit = {"wr": "win rate", "n": "games", "turni": "average length in your turns", "mull": "mulligan rate"}[self.metrica]
         fin = "" if self.metrica == "n" else (", cumulative" if self.finestra == "cum" else f", last {self.finestra} games")
         tit = f"{tit}{fin}" + (f" · split by {DA.nome_var(self.dividi).lower()}" if self.dividi else "")
         vuoto = "No games in this situation" if not r else f"{len(r)} games: too few for this chart (a moving window starts at 5)"
-        sc = self.traccia(c, lin, (52, 16, W - (210 if self.dividi or extra else 120), H - 44), self.metrica, self.asse, LINEE, tit, vuoto)
+        # Gained by decisions: un pannello sotto il grafico, col suo asse (13 nov 2026)
+        banda = max(90, int((H - 60) * 0.32)) if self.mostra_guadagno else 0
+        destra = W - (210 if self.dividi or extra else 120)
+        sc = self.traccia(c, lin, (52, 16, destra, H - 44 - banda), self.metrica, self.asse, LINEE, tit, vuoto)
+        if banda:
+            self.disegna_guadagno(c, r, base_g, (52, H - 44 - banda + 44, destra, H - 44))
         # i loghi delle leghe e le coppe dei trofei, con le loro spunte sotto il grafico (13 nov 2026, Autore: «nei grafici non si vedono piu' i loghi dei
         # trofei per il limited e dei rank superati, metti una spunta per i rank e una per i trofei da accendere o spegnere sotto il grafico»)
         c._spunte_g = []
         F = self.F
+        # le spunte sotto il grafico (13 nov 2026, Autore: «rank e trophy li metti a dx della chart / sotto mettici il flag per vs filter»): a sinistra
+        # vs filter e Gained by decisions, a destra Ranks e Trophies
         x_ = 52
-        for k_, nome in (("ranghi", "Ranks"), ("trofei", "Trophies")):
-            on = getattr(self, "mostra_" + k_, True)
+        for k_, nome in (("vs_filtro", "vs filter"), ("guadagno", "Gained by decisions")):
+            on = getattr(self, "mostra_" + k_, False)
             c.create_image(x_, H - 14, image=DG.spunta(13, on, C["azzurro"], C["fondo"], C["grigio"], C["fondo"]), anchor="w")
             t_ = c.create_text(x_ + 18, H - 14, text=nome, anchor="w", fill=C["titolo"] if on else C["grigio"], font=F(7, True))
             x1_ = (c.bbox(t_) or (0, 0, x_ + 80, 0))[2]
             c._spunte_g.append((x_ - 2, H - 24, x1_ + 4, H - 4, k_))
             x_ = x1_ + 22
-        if sc and self.asse == "games" and len(lin) == 1:
+        x_ = W - 12
+        for k_, nome in (("trofei", "Trophies"), ("ranghi", "Ranks")):
+            on = getattr(self, "mostra_" + k_, True)
+            t_ = c.create_text(x_, H - 14, text=nome, anchor="e", fill=C["titolo"] if on else C["grigio"], font=F(7, True))
+            x0_ = (c.bbox(t_) or (x_ - 80, 0, 0, 0))[0]
+            c.create_image(x0_ - 18, H - 14, image=DG.spunta(13, on, C["azzurro"], C["fondo"], C["grigio"], C["fondo"]), anchor="w")
+            c._spunte_g.append((x0_ - 20, H - 24, x_ + 4, H - 4, k_))
+            x_ = x0_ - 40
+        if sc and self.asse == "games" and (len(lin) == 1 or vs):
             sx, sy = sc
             punti = dict(lin[0][1])
             if getattr(self, "mostra_ranghi", True):        # dove cambia la lega: la linea e il suo logo
                 tipo_l = "limited" if self.tipo == "Limited" else "constructed"
                 for i_, rango in DA.cambi_rango(r):
                     xx = sx(i_)
-                    c.create_line(xx, 16, xx, H - 44, fill="#3a3a42", dash=(3, 3))
+                    c.create_line(xx, 16, xx, H - 44 - banda, fill="#3a3a42", dash=(3, 3))
                     img = self.logo_grafico(tipo_l, rango)
                     if img is not None:
                         c.create_image(xx, 18, image=img, anchor="n")
@@ -1095,6 +1133,56 @@ class PaginaPerformance:
         if not self.partite_fuori:
             self.disegna_partite(self.ospite("chart").get("lista"))
 
+    def disegna_guadagno(self, c, r, base_g, box):
+        """Il pannello Gained by decisions (13 nov 2026, Autore: «voglio vedere il gained by decisions vs la media delle partite: positivo linea verde
+        negativo linea rossa ( lo esprimiamo come guadagno per spots e non per win rate perché qui analizziamo le azioni non l'esito del game, ma se tanti spot
+        positivi spostano il wr più in alto allora è un bel tell )»): le decisioni scelte in Decisions (il tipo e i suoi filtri), nelle partite di questa
+        situazione, contro la media delle stesse decisioni in tutte le partite del tipo (DEC.guadagni); cumulato partita per partita, sullo stesso asse del
+        grafico sopra; verde sopra lo zero, rosso sotto."""
+        F = self.F
+        x0, y0, x1, y1 = box
+        tipi = (self.dec_modo,) if self.dec_modo in ("attacco", "blocco") else ("attacco", "blocco")
+        tutte_t = [x for x in self.righe if x["tipo"] == self.tipo]
+        per, medie = DEC.guadagni(r, tipi, self.dec_f, tutte_t)
+        cosa = "your attacks" if tipi == ("attacco",) else "your defense" if tipi == ("blocco",) else "your attacks and blocks"
+        f_ = " · ".join(DEC.descrivi(self.dec_f.get(t_), t_) for t_ in tipi if self.dec_f.get(t_))
+        f_ = " · " + f_ if f_ else ""
+        c.create_text(x0, y0 - 14, text=f"GAINED BY DECISIONS · {cosa}{f_} vs the average one (life + 2 × power), cumulative", anchor="w",
+                      fill=C["muto"], font=F(7, True))
+        sc_ = getattr(c, "_scala", None)
+        if not per or not sc_:
+            c.create_text((x0 + x1) / 2, (y0 + y1) / 2, text="No decisions of this kind in these games", fill=C["grigio"], font=F(8))
+            return None
+        _a, _b, _c, _d, xa, xb, _ya, _yb = sc_
+        posto = {x.get("partita"): i + 1 for i, x in enumerate(sorted(base_g, key=lambda x: x["quando"]))}
+        pts, cum = [], 0.0
+        for x in sorted(r, key=lambda x: x["quando"]):
+            if x.get("partita") not in per:
+                continue
+            cum += per[x["partita"]]
+            xx = posto.get(x.get("partita")) if self.asse == "games" else x["quando"].date().toordinal()
+            if xx is not None:
+                pts.append((xx, cum))
+        if not pts:
+            return None
+        m = max(1.0, max(abs(v) for _x, v in pts))
+        sx = lambda v: x0 + (v - xa) / ((xb - xa) or 1) * (x1 - x0)
+        sy = lambda v: (y0 + y1) / 2 - v / m * (y1 - y0) / 2
+        c.create_rectangle(x0, y0, x1, y1, fill="#18181c", outline="#26262c")
+        c.create_line(x0, sy(0), x1, sy(0), fill="#3a3a42")
+        c.create_text(x0 - 8, sy(m), text=f"+{m:.0f}", anchor="e", fill=C["muto"], font=F(7))
+        c.create_text(x0 - 8, sy(-m), text=f"-{m:.0f}", anchor="e", fill=C["muto"], font=F(7))
+        c.create_text(x0 - 8, sy(0), text="0", anchor="e", fill=C["muto"], font=F(7))
+        prima = (sx(pts[0][0]), sy(0))
+        for xx, v in pts:
+            p_ = (sx(xx), sy(v))
+            c.create_line(*prima, *p_, fill="#5cb85c" if v >= 0 else "#d9534f", width=1.6)
+            prima = p_
+        fine = pts[-1][1]
+        c.create_text(x1 + 8, sy(fine), text=f"{fine:+.0f} vs avg · {len(per)} games", anchor="w", fill="#5cb85c" if fine >= 0 else "#d9534f",
+                      font=F(7, True))
+        return fine
+
     def logo_grafico(self, tipo, nome):
         """Il logo di una lega (tipo «constructed» o «limited») o la coppa (nome «coppa»), fatto una volta."""
         cache = self.__dict__.setdefault("_loghi_g", {})
@@ -1108,10 +1196,10 @@ class PaginaPerformance:
         return cache[(tipo, nome)]
 
     def clic_grafico(self, e):
-        """Le spunte sotto il grafico: Ranks e Trophies."""
+        """Le spunte sotto il grafico: vs filter, Gained by decisions, Ranks e Trophies."""
         for x0, y0, x1, y1, k in getattr(e.widget, "_spunte_g", []):
             if x0 <= e.x <= x1 and y0 <= e.y <= y1:
-                setattr(self, "mostra_" + k, not getattr(self, "mostra_" + k, True))
+                setattr(self, "mostra_" + k, not getattr(self, "mostra_" + k, k in ("ranghi", "trofei")))
                 self.disegna_vista("chart")
                 return k
         return None
@@ -3006,9 +3094,26 @@ class PaginaPerformance:
     # ------------------------------------------------------------ Advanced filters (13 nov 2026, Autore: «io voglio una sezione dove posso ottenere una
     # risposta in base a dei filtri ... mio wr quando ho 3 terre in mano on the draw e chiudo entro T5 senza creature e oppo mulliga», poi «tutta sta roba sta in
     # una nuova sotto finestra / il pulsante per aprirla e' advanced filters», «filtri e domanda ma i filtri per me e per oppo stanno in due schede differenti»)
+    def chiavi_scheda_av(self, scheda):
+        """I filtri di una scheda di Advanced filters (You o Opponent), le righe delle giocate per turno comprese."""
+        return {k2 for _f, sezioni in AVANZATI[scheda] for _t, kk in sezioni for k in kk
+                for k2 in ([f"{k[1:]}{n}" for n in range(1, DA.TURNI_FILTRO + 1)] if k.startswith("@") else [k])}
+
+    def reset_scheda_av(self):
+        """Il Reset della scheda aperta di Advanced filters: i suoi filtri via, gli altri (le altre schede, gli smart filters) restano."""
+        for k in self.chiavi_scheda_av(self.scheda_av):
+            self.filtri.pop(k, None)
+        for _f, sezioni in AVANZATI[self.scheda_av]:
+            for _t, kk in sezioni:
+                for k in kk:
+                    if k.startswith("@"):
+                        self.__dict__.setdefault("_righe_ui", {}).pop(k[1:], None)
+        self.disegna()
+
     def avanzati_on(self):
         """Quanti filtri della finestra Advanced filters sono accesi."""
-        chiavi = {k for fasi in AVANZATI.values() for _f, sezioni in fasi for _t, kk in sezioni for k in kk}
+        chiavi = {k2 for fasi in AVANZATI.values() for _f, sezioni in fasi for _t, kk in sezioni for k in kk
+                  for k2 in ([f"{k[1:]}{n}" for n in range(1, DA.TURNI_FILTRO + 1)] if k.startswith("@") else [k])}
         return sum(1 for k, v in self.filtri.items() if v is not None and k in chiavi)
 
     def aggiorna_bottone_avanzati(self):
@@ -3046,6 +3151,10 @@ class PaginaPerformance:
                 b = pulsante_solido(tk, F, schede, n, k == self.scheda_av, lambda k=k: self.apri_avanzati(k), alto=28, bg=C["scheda"], colori=GRIGI)
                 b.configure(width=150); b.pack(side="left", padx=(0, 6))
                 self.b_schede_av[k] = b
+            # il Reset della scheda aperta (13 nov 2026, Autore: «per ogni scheda in cui inseriamo valori crea un pulsante reset localizzato, mentre il main
+            # reset le resetta tutte contemporaneamente»)
+            self.b_reset_av = pulsante_solido(tk, F, schede, "Reset", False, self.reset_scheda_av, alto=28, bg=C["scheda"], colori=ARANCIO)
+            self.b_reset_av.configure(width=150); self.b_reset_av.pack(side="right")
             self.fr_fasi_av = tk.Frame(f, bg=C["scheda"]); self.fr_fasi_av.pack(fill="x", padx=8, pady=(2, 4))
             # i filtri scorrono (13 nov 2026, Autore: «caso mai mettiamo uno scroller per scendere alle voci in fondo»): la rotella su tutta la finestra e una
             # barra sottile a destra, da cliccare o trascinare
@@ -3061,6 +3170,7 @@ class PaginaPerformance:
             f.bind("<MouseWheel>", lambda e: (self.cv_av.yview_scroll(-2 if e.delta > 0 else 2, "units"), "break")[1])
         for k, b in self.b_schede_av.items():
             b.metti({"io": "You", "lui": "Opponent"}[k], k == self.scheda_av)
+        self.b_reset_av.metti("Reset · " + {"io": "You", "lui": "Opponent"}[self.scheda_av], False)
         # le fasi della scheda: rifatte quando cambia la scheda (You e Opponent ne hanno di diverse)
         if getattr(self, "_fasi_di", None) != self.scheda_av:
             for w in self.fr_fasi_av.winfo_children():
@@ -3122,8 +3232,14 @@ class PaginaPerformance:
         elif not k_["n"]:
             c.create_text(100, y + 14, text="no games answer this question: remove a piece", anchor="w", fill=C["arancio"], font=F(7, True))
         c.configure(height=y + 26)
-        # i filtri della scheda: per ognuno Any o un valore, a sezioni
+        # i filtri della scheda: per ognuno Any o un valore, a sezioni; le giocate turno per turno a righe (R_F.Righe)
         ca = self.cv_av
+        for w in getattr(self, "_costruttori_av", {}).values():
+            try:
+                w.fr.destroy()
+            except Exception:      # noqa: BLE001
+                pass
+        self._costruttori_av = {}
         ca.delete("all")
         self._box_av = []
         tutte = [x_ for x_ in self.righe if x_["tipo"] == self.tipo]
@@ -3131,6 +3247,9 @@ class PaginaPerformance:
         for titolo, chiavi in AVANZATI[self.scheda_av][self.fase_av[self.scheda_av]][1]:
             ca.create_text(8, y + 10, text=titolo, anchor="w", fill=C["azzurro"], font=F(7, True))
             y += 24
+            if len(chiavi) == 1 and chiavi[0].startswith("@"):
+                y = self.righe_avanzate(ca, chiavi[0][1:], y, tutte)
+                continue
             for k in chiavi:
                 sc = self.filtri.get(k)
                 # sempre tutte le voci, anche quelle che nelle tue partite non ci sono (13 nov 2026: «mancano anche i planeswalker»)
@@ -3156,6 +3275,57 @@ class PaginaPerformance:
         alto = max(240, min(y + 4, self.fr.winfo_screenheight() - 420))      # la finestra resta dentro lo schermo: il resto scorre
         ca.configure(height=alto, scrollregion=(0, 0, LARGA_FASE, y + 4), yscrollincrement=12)
         self.cv_barra_av.configure(height=alto)
+
+    # le giocate turno per turno a righe (13 nov 2026, Autore: «in advanced filters sulle azioni per turno c'è troppa roba a vista, ricostruiamo la UX:
+    # Your T1 Cast appare di default: tendina di default per scegliere cosa castiamo e accanto un + per aggiungere un'altra tendina / sotto mettiamo un add
+    # line: tendina Turno e tendina di cast con + ... possiamo aggiungere infinite righe ... così anche in opponent turns»). Una riga: il turno, e una tendina
+    # per ogni cosa lanciata (tipo, o tipo · costo); piu' tendine nella stessa riga = tutte in quel turno (la scelta multipla di prima). I filtri sono gli
+    # stessi («t_io3» = [voci]); le righe ancora senza voci restano solo a video.
+    NOMI_RIGHE = {"t_io": ("Your T{}", "cast"), "t_iox": ("Opponent's T{}", "you cast"), "t_lui": ("Their T{}", "cast"), "t_luix": ("Your T{}", "they cast")}
+
+    def _da_righe(self, pre, righe):
+        """I filtri di un gruppo dalle sue righe: {«t_io3»: [voci]} (le righe dello stesso turno si uniscono)."""
+        nuovi = {}
+        for campo, voci in righe:
+            vv = [v for v in voci or [] if v]
+            if campo and vv:
+                k = f"{pre}{campo}"
+                nuovi[k] = sorted(set(nuovi.get(k, [])) | set(vv), key=DA.ordine_lancio)
+        return nuovi
+
+    def righe_av(self, pre):
+        """Le righe del costruttore di un gruppo: quelle a video (con le tendine ancora vuote) se dicono ancora i filtri accesi, se no rifatte dai filtri (Clear
+        all, la x di un pezzo della domanda, un tuo filtro salvato); di partenza il turno 1 vuoto."""
+        ora = {}
+        for n in range(1, DA.TURNI_FILTRO + 1):
+            v = self.filtri.get(f"{pre}{n}")
+            if v:
+                ora[f"{pre}{n}"] = sorted(v if isinstance(v, list) else [v], key=DA.ordine_lancio)
+        ui = self.__dict__.setdefault("_righe_ui", {}).get(pre)
+        if ui and self._da_righe(pre, ui) == ora:
+            return [[c_, list(v_)] for c_, v_ in ui]
+        righe = [[k[len(pre):], list(v)] for k, v in sorted(ora.items(), key=lambda kv: int(kv[0][len(pre):]))]
+        return righe or [["1", [None]]]
+
+    def righe_avanzate(self, ca, pre, y, tutte):
+        """Il costruttore delle righe di un gruppo dentro la tela di Advanced filters, a y. -> la y sotto."""
+        tk, F = self.tk, self.F
+        nome, dopo = self.NOMI_RIGHE[pre]
+        voci = lambda n: sorted(set(DA.ORDINE_TIPI) | {v for x_ in tutte for v in DA.valori_di(f"{pre}{n}", x_) if " · " in v}, key=DA.ordine_lancio)
+        b = R_F.Righe(tk, F, ca, self.righe_av(pre), [str(n) for n in range(1, DA.TURNI_FILTRO + 1)], lambda n: nome.format(n), voci,
+                      lambda rr, pre=pre: self.metti_righe_av(pre, rr), dopo=dopo, larga_campo=150, larga_voce=170)
+        self._costruttori_av[pre] = b
+        ca.create_window(8, y, window=b.fr, anchor="nw")
+        b.fr.update_idletasks()
+        return y + b.fr.winfo_reqheight() + 12
+
+    def metti_righe_av(self, pre, righe):
+        """Dalle righe ai filtri del gruppo; le righe restano come sono a video (anche le tendine ancora vuote)."""
+        for n in range(1, DA.TURNI_FILTRO + 1):
+            self.filtri.pop(f"{pre}{n}", None)
+        self.filtri.update(self._da_righe(pre, righe))
+        self.__dict__.setdefault("_righe_ui", {})[pre] = [[c_, list(v_ or [None])] for c_, v_ in righe]
+        self.fr.after_idle(self.disegna)
 
     def barra_av(self, a, b):
         """La barra sottile accanto ai filtri: dove sei e quanto si vede; niente se tutto ci sta."""
@@ -3594,6 +3764,111 @@ class PaginaPerformance:
         self.dec_modo = m
         self.sincronizza()
         self.disegna_decisioni()
+        self.disegna_filtri_dec()
+        if self.mostra_guadagno and "chart" in self.visibili():
+            self.disegna_grafico()
+
+    def apri_filtri_dec(self):
+        """La finestra dei filtri delle decisioni, impaginata come Advanced filters (13 nov 2026, Autore: «i filtri per decision li imposti costruibili e
+        l'impaginazione la fai come in advanced filters», «tieni solo i filtri per noi Player»): in cima Your attacks e Your blocks, sotto la risposta (le
+        decisioni scelte coi loro conti) e le righe del costruttore (filtro e voci; fra le voci di un filtro basta una, fra filtri servono tutti)."""
+        tk, F = self.tk, self.F
+        f = getattr(self, "fin_dec", None)
+        if f is None or not f.winfo_exists():
+            f = self.fin_dec = tk.Toplevel(self.fr)
+            f.title("Performance · Decision filters")
+            f.configure(bg=C["scheda"])
+            f.bind("<Escape>", lambda e: f.destroy())
+            tk.Label(f, text="DECISION FILTERS", bg=C["scheda"], fg=C["titolo"], font=F(12, True)).pack(anchor="w", padx=16, pady=(14, 2))
+            tk.Label(f, text="Only your decisions: what you did and the situation you did it in. Between the values of a filter one is enough, between filters "
+                             "all are needed. The Decisions folder and «Gained by decisions» under the Chart follow them.", bg=C["scheda"], fg=C["grigio"],
+                     font=F(8), wraplength=780, justify="left").pack(anchor="w", padx=16)
+            self.f_dec_tipi = tk.Frame(f, bg=C["scheda"]); self.f_dec_tipi.pack(anchor="w", padx=16, pady=(10, 4))
+            self.cv_dec_dom = tk.Canvas(f, bg=C["scheda"], highlightthickness=1, highlightbackground="#2c2c34", bd=0, width=820, height=66)
+            self.cv_dec_dom.pack(anchor="w", padx=16, pady=(4, 8))
+            self.f_dec_righe = tk.Frame(f, bg=C["scheda"]); self.f_dec_righe.pack(anchor="w", padx=16, pady=(4, 16), fill="x")
+            try:
+                f.geometry(f"+{self.fr.winfo_rootx() + 120}+{self.fr.winfo_rooty() + 80}")
+            except Exception:      # noqa: BLE001
+                pass
+        self.disegna_filtri_dec()
+        f.lift()
+        return f
+
+    def disegna_filtri_dec(self):
+        f = getattr(self, "fin_dec", None)
+        if f is None or not f.winfo_exists():
+            return
+        tk, F = self.tk, self.F
+        tipo = self.dec_modo if self.dec_modo in ("attacco", "blocco") else "attacco"
+        for w in self.f_dec_tipi.winfo_children():
+            w.destroy()
+        for t_, nome in (("attacco", "Your attacks"), ("blocco", "Your blocks")):
+            b = pulsante_solido(tk, F, self.f_dec_tipi, nome, t_ == tipo, lambda t_=t_: self.cambia_dec(t_), alto=28, bg=C["scheda"], colori=GRIGI)
+            b.configure(width=150); b.pack(side="left", padx=(0, 6))
+        # il Reset della scheda aperta (Your attacks o Your blocks); Reset all in alto azzera tutto
+        b = pulsante_solido(tk, F, self.f_dec_tipi, "Reset · " + ("Your attacks" if tipo == "attacco" else "Your blocks"), False,
+                            lambda tipo=tipo: self.reset_filtri_dec(tipo), alto=28, bg=C["scheda"], colori=ARANCIO)
+        b.configure(width=190); b.pack(side="left", padx=(30, 0))
+        self.b_reset_dec = b
+        self.disegna_risposta_dec()
+        for w in self.f_dec_righe.winfo_children():
+            w.destroy()
+        filtri_t = DEC.FILTRI[tipo]
+        nomi = {k2: n2 for k2, n2, _v in filtri_t}
+        voci = {k2: list(v2) for k2, _n, v2 in filtri_t}
+        righe = self.righe_dec.setdefault(tipo, [])
+        if not righe:
+            righe.append([None, [None]])
+        self.costruttore_dec = R_F.Righe(tk, F, self.f_dec_righe, righe, [k2 for k2, _n, _v in filtri_t], lambda k2: nomi.get(k2, k2),
+                                        lambda k2: voci.get(k2, []), lambda rr, tipo=tipo: self.metti_righe_dec(tipo, rr), larga_campo=230, larga_voce=150)
+        self.costruttore_dec.fr.pack(anchor="w", fill="x")
+
+    def reset_filtri_dec(self, tipo):
+        """Il Reset di una scheda dei filtri delle decisioni: i suoi filtri e le sue righe via, quelli dell'altro tipo restano."""
+        self.dec_f = dict(self.dec_f, **{tipo: {}})
+        self.righe_dec[tipo] = []
+        self.sincronizza()
+        self.disegna_decisioni()
+        self.disegna_filtri_dec()
+        if "chart" in self.visibili():
+            self.disegna_grafico()
+
+    def metti_righe_dec(self, tipo, righe):
+        """Dalle righe del costruttore ai filtri delle decisioni di quel tipo: {chiave: [voci scelte]} (le righe con la stessa chiave si uniscono)."""
+        f = {}
+        for campo, voci in righe:
+            vv = [v for v in voci or [] if v]
+            if campo and vv:
+                f[campo] = list(dict.fromkeys(f.get(campo, []) + vv))
+        self.dec_f = dict(self.dec_f, **{tipo: f})
+        self.sincronizza()
+        self.disegna_decisioni()
+        if "chart" in self.visibili():
+            self.disegna_grafico()
+        self.disegna_risposta_dec()
+
+    def disegna_risposta_dec(self):
+        """In cima alla finestra dei filtri delle decisioni: le decisioni scelte coi loro conti, nelle partite dei filtri della pagina."""
+        f = getattr(self, "fin_dec", None)
+        if f is None or not f.winfo_exists() or self.righe is None:
+            return
+        tipo = self.dec_modo if self.dec_modo in ("attacco", "blocco") else "attacco"
+        c, F = self.cv_dec_dom, self.F
+        c.delete("all")
+        r = self.scelte()
+        k_ = DEC.tabella(r, tipo, self.dec_f.get(tipo))[0] if r else None
+        desc = DEC.descrivi(self.dec_f.get(tipo), tipo) or "no filter yet: all of them"
+        c.create_text(10, 16, text=("YOUR ATTACKS" if tipo == "attacco" else "YOUR BLOCKS") + " · " + desc, anchor="w", fill=C["azzurro"], font=F(8, True))
+        if k_ and k_["n"]:
+            c.create_text(10, 44, text=f"{k_['n']} combats in {k_['partite']} games", anchor="w", fill=C["titolo"], font=F(12, True))
+            c.create_text(250, 44, text=f"you lost a creature {k_['perdi']:.0f}% · they lost one {k_['uccidi']:.0f}% · trade {k_['scambio']:+.2f} · "
+                                        f"avg gain {(k_['guadagno'] or 0):+.1f} · game win rate {k_['wr']:.0f}%", anchor="w", fill=C["grigio"], font=F(8))
+        else:
+            c.create_text(10, 44, text="No decisions answer these filters: remove a line.", anchor="w", fill=C["arancio"], font=F(9, True))
+        self.cv_dec_dom.k_ = k_
+
+
 
     def disegna_decisioni(self):
         """Gli attacchi e i blocchi per situazione col loro esito immediato (decisioni.tabella), o i mulligan. Il clic su una riga di attacchi o blocchi la mette
@@ -3609,15 +3884,17 @@ class PaginaPerformance:
         r = self.scelte()
         if self.dec_modo == "mull":
             return self.disegna_mulligan(c, r, W)
-        tab = DEC.tabella(r, self.dec_modo)
+        tab = DEC.tabella(r, self.dec_modo, self.dec_f.get(self.dec_modo))
         tutte_ = tab[0]
         att = self.dec_modo == "attacco"
-        c.create_text(14, 14, text=("YOUR ATTACKS" if att else "THEIR ATTACKS · YOUR DEFENSE") + f" · {tutte_['n']} combats in {tutte_['partite']} games · "
-                      "the outcome of the combat, at the end of that turn", anchor="w", fill=C["muto"], font=F(7, True))
+        f_ = DEC.descrivi(self.dec_f.get(self.dec_modo), self.dec_modo)
+        c.create_text(14, 14, text=("YOUR ATTACKS" if att else "THEIR ATTACKS · YOUR DEFENSE") + (f" · {f_}" if f_ else "")
+                      + f" · {tutte_['n']} combats in {tutte_['partite']} games · the outcome of the combat, at the end of that turn", anchor="w",
+                      fill=C["muto"], font=F(7, True))
         c.create_text(W - 14, 14, text="click a row: its games as a line on the Chart, against All", anchor="e", fill=C["grigio"], font=F(7))
-        col = [("nome", "SITUATION", 14), ("n", "COMBATS", 330), ("partite", "GAMES", 410), ("perdi", "YOU LOST A CREATURE", 480),
-               ("uccidi", "THEY LOST A CREATURE", 640), ("scambio", "TRADE", 800), ("danno", "DAMAGE TO " + ("THEM" if att else "YOU"), 870),
-               ("trucco", "THEIR SPELL BEFORE DAMAGE", 1000), ("wr", "GAME WIN RATE", 1180)]
+        col = [("nome", "SITUATION", 14), ("n", "COMBATS", 310), ("partite", "GAMES", 385), ("perdi", "YOU LOST A CREATURE", 450),
+               ("uccidi", "THEY LOST A CREATURE", 600), ("scambio", "TRADE", 755), ("danno", "DAMAGE TO " + ("THEM" if att else "YOU"), 820),
+               ("trucco", "THEIR SPELL BEFORE DMG", 945), ("guadagno", "AVG GAIN", 1105), ("wr", "GAME WIN RATE", 1195)]
         y = 34
         for _k, t, x in col:
             c.create_text(x, y, text=t, anchor="w", fill=C["titolo"], font=F(7, True))
@@ -3641,6 +3918,10 @@ class PaginaPerformance:
                     testo, colr = f"{v:+.2f}", (C["muto"] if rg["poche"] else C["azzurro"] if v > 0 else C["rosso"] if v < 0 else C["testo"])
                 elif k == "danno":
                     testo, colr = f"{v:.1f}", C["testo"] if not rg["poche"] else C["muto"]
+                elif k == "guadagno":       # il guadagno medio della decisione (vite + 2 x forza), contro quello di tutte
+                    base_ = tutte_[k]
+                    testo = f"{v:+.1f}"
+                    colr = C["muto"] if rg["poche"] or i == 0 or base_ is None or abs(v - base_) < 0.5 else (C["azzurro"] if v > base_ else C["rosso"])
                 else:
                     testo, colr = f"{v}", C["testo"] if not rg["poche"] else C["muto"]
                 c.create_text(x, y + 12, text=testo, anchor="w", fill=colr, font=F(8, k == "nome"))
@@ -3649,7 +3930,9 @@ class PaginaPerformance:
         y += 10
         c.create_text(14, y, text=("Blue: better than all your attacks, red: worse (3 points at least); grey: under 10 combats, a hint. Trade: their creatures lost "
                                    "minus yours, per combat." if att else "Blue: better than all their attacks, red: worse; grey: under 10 combats. Trade: their "
-                                   "creatures lost minus yours, per combat."), anchor="w", fill=C["muto"], font=F(7))
+                                   "creatures lost minus yours, per combat.") + " Avg gain: how your advantage (life + 2 × power) changed from before damage to "
+                                   "the end of the turn; on the Chart, «Gained by decisions» shows these decisions against the average one.", anchor="w",
+                      fill=C["muto"], font=F(7))
         c.configure(scrollregion=(0, 0, W, y + 20))
 
     def disegna_mulligan(self, c, r, W):

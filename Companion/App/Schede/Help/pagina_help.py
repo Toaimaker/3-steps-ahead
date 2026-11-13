@@ -68,7 +68,7 @@ SEZIONI = (
       ("Smart filters", "by phase of the game: format, event and your deck (By deck); play or draw, mulligans, lands in hand, result; the opponent's archetype and colors; "
                         "length and rank; date, time of day and game in the session"),
       ("Win rate", "type a number: after the other filters, your most recent games going back as long as together they make that win rate (rounded); "
-                   "≥ before it: at least that, ≤ after it: at most that; 10 games at least. So the number on top is the one you typed"),
+                   "≤ before it: at most that, ≥ after it: at least that; 10 games at least. So the number on top is the one you typed"),
       ("By deck", "pick one of your decks (one box each, with its colors; sorted by most played, win rate or name), against everyone or against one exact color variant of the opponent's deck (vs colors: flag the colors, mono-color to "
                   "five colors or colorless); the table is your deck against every variant you met, click a row to pick it"),
       ("Advanced filters", "the button under the smart filters opens your question: every filter you turn on is a piece with its x, the answer (win rate, "
@@ -103,6 +103,12 @@ SEZIONI = (
                 "little window to pick which rows you see. Also: cast by your turn 4 (its Pairs: what you played together early) and Finishers (the decisive play of your "
                 "wins: in the turn with the biggest swing after which you stayed ahead, the spells you cast and the creatures you attacked with, 2+ cards; "
                 "the pairs that decided the most wins, with the average swing)"),
+      ("Chart, under it", "vs filter: all your games against the filtered ones (the blue line); Gained by decisions: a panel with your decisions "
+                          "(the ones picked in Decisions) against the average one, as gain of advantage (life + 2 × power), cumulative: green above zero, "
+                          "red below; Ranks and Trophies on the right"),
+      ("Decision filters", "in Decisions: a window like Advanced filters, only your decisions (your attacks: turn, their untapped lands, with everything, "
+                           "your spell before damage; your blocks: turn, your untapped lands, you blocked, with how many, your spell before damage); a "
+                           "line is a filter and its values (one is enough), Add line adds a filter (all are needed); Reset clears that tab"),
       ("Decisions", "every combat as a decision with its outcome, by situation: your attacks (into untapped lands, with everything or holding back, "
                     "blocked or not, by turn) and your defense; for each, how often you lost a creature, how often they did, the trade, the damage, "
                     "their spell before damage and the game win rate; click a row to see its games as a line on the Chart against All. Mulligans: the "

@@ -80,7 +80,11 @@ def per_partita(x):
             attaccanti=len(att_ids), potevano=pot, tutto=bool(pot) and len(att_ids) >= pot, aperte=info.get("aperte"),
             blocchi=len(blk_ids), bloccato=bool(blk_ids),
             persi_miei=persi_att if mio else persi_blk, persi_suoi=persi_blk if mio else persi_att,
-            danno=danno, trucco_suo=(dif if mio else att) in magie, trucco_mio=(att if mio else dif) in magie))
+            danno=danno, trucco_suo=(dif if mio else att) in magie, trucco_mio=(att if mio else dif) in magie,
+            # il guadagno della decisione (13 nov 2026, Autore: «lo esprimiamo come guadagno per spots e non per win rate perché qui analizziamo le azioni
+            # non l'esito del game»): quanto cambia il tuo vantaggio (vite di differenza piu' due volte la forza in campo di differenza, DA.vantaggio) dallo
+            # stato prima del danno a fine turno
+            guadagno=DA.vantaggio(dopo, seat) - DA.vantaggio(prima, seat) if prima and dopo else None))
     return out
 
 
@@ -118,16 +122,34 @@ RIGHE_BLOCCO = [("All their attacks", lambda d: True),
                 ("Turns 1-3", lambda d: d["turno"] <= 3), ("Turns 4-6", lambda d: 4 <= d["turno"] <= 6), ("Turns 7+", lambda d: d["turno"] >= 7)]
 
 
+def guadagni(r, tipi, ff, base):
+    """Il guadagno delle decisioni contro la media (13 nov 2026, Autore: «voglio vedere il gained by decisions vs la media delle partite: positivo linea
+    verde negativo linea rossa»): per ogni partita di r (in ordine di tempo) la somma, sulle sue decisioni dei tipi `tipi` che passano f, di guadagno meno il
+    guadagno medio delle stesse decisioni in tutte le partite `base`. ff: {tipo: filtri delle decisioni}. -> ({partita: scarto della partita}, {tipo: media}).
+    Le partite senza decisioni scelte non ci sono."""
+    medie = {}
+    for t_ in tipi:
+        g_ = [d["guadagno"] for d in scegli([d for d in tutte(base) if d["tipo"] == t_], (ff or {}).get(t_)) if d["guadagno"] is not None]
+        medie[t_] = sum(g_) / len(g_) if g_ else 0.0
+    per = {}
+    for x in r:
+        dd = [d for t_ in tipi for d in scegli([d for d in per_partita(x) if d["tipo"] == t_], (ff or {}).get(t_)) if d["guadagno"] is not None]
+        if dd:
+            per[x.get("partita")] = sum(d["guadagno"] - medie[d["tipo"]] for d in dd)
+    return per, medie
+
+
 def conti(dd):
     """I conti di un gruppo di decisioni: quante, in quante partite, % in cui hai perso almeno una creatura, % in cui lui ha perso, lo scambio medio (sue perse
     meno tue), il danno medio a chi difende, % col suo trucco, il win rate delle partite (ognuna una volta)."""
     n = len(dd)
     if not n:
-        return dict(n=0, partite=0, perdi=None, uccidi=None, scambio=None, danno=None, trucco=None, wr=None, ids=set())
+        return dict(n=0, partite=0, perdi=None, uccidi=None, scambio=None, danno=None, trucco=None, wr=None, guadagno=None, ids=set())
     ids = {d["partita"] for d in dd}
     vinte = {d["partita"] for d in dd if d["vinta"]}
     danni = [d["danno"] for d in dd if d["danno"] is not None]
-    return dict(n=n, partite=len(ids), perdi=round(100 * sum(1 for d in dd if d["persi_miei"]) / n, 1),
+    gg = [d["guadagno"] for d in dd if d.get("guadagno") is not None]
+    return dict(n=n, partite=len(ids), guadagno=round(sum(gg) / len(gg), 1) if gg else None, perdi=round(100 * sum(1 for d in dd if d["persi_miei"]) / n, 1),
                 uccidi=round(100 * sum(1 for d in dd if d["persi_suoi"]) / n, 1),
                 scambio=round(sum(d["persi_suoi"] - d["persi_miei"] for d in dd) / n, 2),
                 danno=round(sum(danni) / len(danni), 1) if danni else None,
@@ -135,9 +157,48 @@ def conti(dd):
                 wr=round(100 * len(vinte) / len(ids), 1), ids=ids)
 
 
-def tabella(r, tipo):
-    """Le righe della tabella degli attacchi («attacco») o dei blocchi («blocco») sulle partite r: [dict(nome, **conti, poche)]."""
-    dd = [d for d in tutte(r) if d["tipo"] == tipo]
+# i filtri delle decisioni (13 nov 2026, Autore: «Credo che decisions dovrebbe settarsi in base ai filtri che esprimo ... se io volessi sapere quanto
+# perdo in difesa a T3 non ho possibilita' di settarlo», poi «i filtri per decision li imposti costruibili», «ovviamente tieni solo i filtri per noi "Player"
+# perche' non possiamo valutare le decisioni di opponent»): solo le tue scelte e la situazione in cui le hai fatte. (chiave, nome, voci), per tipo.
+TURNI_DEC = ("1", "2", "3", "4", "5", "6", "7", "8", "9+")
+FILTRI = {"attacco": (("turno", "Turn", TURNI_DEC), ("aperte", "Their untapped lands", ("0", "1", "2+")),
+                      ("tutto", "You attacked with everything", ("Yes", "No")), ("trucco_mio", "Your spell before damage", ("Yes", "No"))),
+          "blocco": (("turno", "Turn", TURNI_DEC), ("aperte", "Your untapped lands", ("0", "1", "2+")), ("bloccato", "You blocked", ("Yes", "No")),
+                     ("blocchi", "You blocked with", ("1 creature", "2+ creatures")), ("trucco_mio", "Your spell before damage", ("Yes", "No")))}
+
+
+def valore(d, k):
+    """La voce di un filtro delle decisioni per la decisione d (None: non si sa, o non vale per quel tipo di decisione)."""
+    if k == "turno":
+        return str(d["turno"]) if d["turno"] < 9 else "9+"
+    if k == "aperte":
+        return None if d["aperte"] is None else str(d["aperte"]) if d["aperte"] < 2 else "2+"
+    if k == "blocchi":
+        return None if not d["blocchi"] else "1 creature" if d["blocchi"] == 1 else "2+ creatures"
+    return "Yes" if d[k] else "No"
+
+
+def scegli(dd, f):
+    """Le decisioni che passano i filtri f ({chiave: [voci]}; una voce sola vale come lista): fra le voci di un filtro basta una (turno 3 o 4), fra filtri
+    diversi servono tutti."""
+    f = {k: ([v] if isinstance(v, str) else list(v)) for k, v in (f or {}).items() if v}
+    return [d for d in dd if all(valore(d, k) in v for k, v in f.items())]
+
+
+def descrivi(f, tipo):
+    """I filtri delle decisioni in parole: «turn 3 or 4 · you blocked yes»."""
+    nomi = {k: n for k, n, _v in FILTRI.get(tipo, ())}
+    out = []
+    for k, v in (f or {}).items():
+        if v:
+            vv = [v] if isinstance(v, str) else v
+            out.append(f"{nomi.get(k, k).lower()} {' or '.join(vv)}")
+    return " · ".join(out)
+
+
+def tabella(r, tipo, f=None):
+    """Le righe della tabella degli attacchi («attacco») o dei blocchi («blocco») sulle partite r e coi filtri delle decisioni f: [dict(nome, **conti, poche)]."""
+    dd = scegli([d for d in tutte(r) if d["tipo"] == tipo], f)
     out = []
     for nome, cond in (RIGHE_ATTACCO if tipo == "attacco" else RIGHE_BLOCCO):
         c = conti([d for d in dd if cond(d)])
@@ -219,6 +280,16 @@ def prova():
                      and a["persi_suoi"] == 0 and a["danno"] == 2 and not a["trucco_mio"]))
         casi.append(("il blocco: lui attacca, tu non blocchi, 3 danni a te, nessuno perde creature", b["tipo"] == "blocco" and not b["bloccato"] and b["danno"] == 3
                      and b["persi_miei"] == 0 and b["persi_suoi"] == 0 and b["turno"] == 2))
+        casi.append(("il guadagno della decisione: il vantaggio a fine turno meno quello prima del danno (tu perdi un 2/2 e lui 2 vite: -4 + 2 = -2)",
+                     a["guadagno"] == -2 and b["guadagno"] == -3))
+        casi.append(("i filtri delle decisioni: turno 2 tiene tutte e due, terre stappate 2+ l'attacco, «hai bloccato: No» il blocco; turno 5 o 2 (una delle due)",
+                     scegli(dd, {"turno": "2"}) == [a, b] and scegli(dd, {"aperte": ["2+"]}) == [a] and scegli(dd, {"bloccato": ["No"]}) == [b]
+                     and scegli(dd, {"turno": ["5", "2"]}) == [a, b] and scegli(dd, {}) == dd))
+        casi.append(("negativa: turno 5 niente; due filtri insieme li vogliono tutti e due (terre 2+ e hai bloccato No: nessuna)",
+                     scegli(dd, {"turno": ["5"]}) == [] and scegli(dd, {"aperte": ["2+"], "bloccato": ["No"]}) == []
+                     and descrivi({"turno": ["3", "4"]}, "blocco") == "turn 3 or 4"))
+        pg, md = guadagni([x], ("attacco",), None, [x])
+        casi.append(("il guadagno contro la media: una partita sola fa la media, lo scarto e' 0", md == {"attacco": -2.0} and pg == {"g1": 0.0}))
         ta = tabella([x], "attacco")
         casi.append(("la tabella degli attacchi: tutte, contro 2+ terre, con tutto; poche partite = indizio", ta[0]["n"] == 1 and ta[0]["perdi"] == 100.0
                      and next(t_ for t_ in ta if t_["nome"] == "Into 0 untapped lands")["n"] == 0 and ta[0]["poche"] and ta[0]["ids"] == {"g1"}))

@@ -1,6 +1,6 @@
 {
- "version": "0.1.82",
+ "version": "0.1.83",
  "date": "2026-11-13",
- "notes": "Performance: Finishers are now the decisive play of your wins: the cards of the turn with the biggest swing after which you stayed ahead.",
+ "notes": "Performance: vs filter and Gained by decisions under the chart, buildable decision filters, turn-by-turn plays as lines in Advanced filters, a Reset per tab.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }
