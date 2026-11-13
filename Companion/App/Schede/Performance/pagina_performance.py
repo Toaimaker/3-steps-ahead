@@ -887,6 +887,7 @@ class PaginaPerformance:
             self.disegna_testata(j_)
         self.disegna_finestra_fase()
         self.disegna_avanzati()
+        self.disegna_coppie()           # la finestra delle coppie di Cards, se e' aperta, segue i filtri
         self.aggiorna_bottone_avanzati()
         self.aggiorna_bottone_deck()
         self.disegna_finestra_deck()
@@ -3477,7 +3478,7 @@ class PaginaPerformance:
         c = self.tela("cards")
         c.delete("all")
         self.via_hover_carte()
-        c._box_carte = []
+        c._box_carte, c._box_coppie = [], []
         if self.righe is None:
             return
         F = self.F
@@ -3487,17 +3488,21 @@ class PaginaPerformance:
         base = k_["wr"]
         c.create_text(14, 14, text=f"THE CARDS OF THESE {k_['n']} GAMES · NO LANDS", anchor="w", fill=C["muto"], font=F(7, True))
         if base is not None:
-            c.create_text(W - 14, 14, text=f"win rate of these games {base:.0f}% · click a card: only its games", anchor="e", fill=C["grigio"], font=F(7))
+            c.create_text(W - 14, 14, text=f"win rate of these games {base:.0f}% · click a card: only its games · Pairs: the cards that come together",
+                          anchor="e", fill=C["grigio"], font=F(7))
         wc = LARGA_CARTA
         hc = round(wc * 279 / 200)
-        cella_w = wc + 14
-        per_riga = max(1, int((W - 28) // cella_w))
+        per_riga = max(1, int((W - 28) // (wc + 14)))
         y = 34
         for chiave, titolo in DA.RIGHE_CARTE:
             carte = DA.riga_carte(r, chiave, quante=per_riga)
-            scelta = self.filtri.get(chiave)
             c.create_line(14, y, W - 14, y, fill="#2c2c34")
             c.create_text(14, y + 14, text=titolo, anchor="w", fill=C["azzurro"], font=F(8, True))
+            # le coppie della riga si aprono in una finestra a parte (13 nov 2026, Autore: «non aggiungere le coppie come righe ma come finestre extra che
+            # si aprono dalla riga e mostrano le coppie»)
+            i_ = c.create_text(W - 14, y + 14, text="Pairs ›", anchor="e", fill=C["accento"], font=F(8, True))
+            bb = c.bbox(i_)
+            c._box_coppie.append((bb[0] - 6, bb[1] - 4, bb[2] + 6, bb[3] + 4, chiave, titolo))
             y += 28
             if not carte:
                 c.create_text(14, y + 10, text=("no cards here: these games have no replay data" if r else "no games in this situation"), anchor="w",
@@ -3505,45 +3510,123 @@ class PaginaPerformance:
                 y += 36
                 continue
             for i, cc in enumerate(carte):
-                x = 14 + i * cella_w
-                img = self.immagine_carta(cc["nome"], wc, False)
-                if img is not None:
-                    c.create_image(x, y, image=img, anchor="nw")
-                else:
-                    c.create_rectangle(x, y, x + wc, y + hc, fill="#1b1b22", outline="#3a3a42")
-                    c.create_text(x + wc / 2, y + hc / 2, text=cc["nome"], fill=C["titolo"], font=F(8, True), width=wc - 12, justify="center")
-                if scelta == cc["nome"]:
-                    c.create_rectangle(x - 3, y - 3, x + wc + 3, y + hc + 3, outline=C["accento"], width=2)
-                poche = cc["n"] < 5
-                col = C["muto"] if poche or base is None else (C["azzurro"] if cc["wr"] > base else C["rosso"] if cc["wr"] < base else C["testo"])
-                if chiave == "bloccate":
-                    c.create_text(x + wc / 2, y + hc + 12, text=f"{cc['bloccata']}% stuck", fill=C["rosso"], font=F(9, True))
-                    c.create_text(x + wc / 2, y + hc + 29, text=f"{cc['n']} of {cc['mano']} games · {cc['wr']:.0f}%", fill=C["grigio"], font=F(7))
-                else:
-                    c.create_text(x + wc / 2, y + hc + 12, text=f"{cc['wr']:.0f}%  ·  {cc['vinte']}-{cc['perse']}", fill=col, font=F(9, True))
-                    c.create_text(x + wc / 2, y + hc + 29, text=f"in {cc['n']} games · {cc['quota']:.0f}%", fill=C["grigio"], font=F(7))
-                c._box_carte.append((x, y, x + wc, y + hc + 38, cc["nome"], chiave))
+                self.metti_carta(c, 14 + i * (wc + 14), y, cc, chiave, base)
             y += hc + 50
         c.configure(scrollregion=(0, 0, W, y + 6))
+
+    def metti_carta(self, c, x, y, cc, chiave, base):
+        """Una carta (o una coppia: due carte sovrapposte a meta') di Cards o della finestra delle coppie: l'immagine, il bordo se e' il filtro acceso, sotto il
+        win rate col record e in quante partite (nella riga Harder to cast quante volte e' rimasta in mano). -> la larghezza."""
+        F = self.F
+        wc = LARGA_CARTA
+        hc = round(wc * 279 / 200)
+        nomi = cc.get("nomi") or (cc["nome"],)
+        sopra = round(wc * 0.5)
+        larga_c = wc + sopra * (len(nomi) - 1)
+        fk, fv = DA.filtro_carta(chiave, cc)
+        for j, nm in enumerate(nomi):
+            xx = x + j * sopra
+            img = self.immagine_carta(DA.nome_intero(nm), wc, False)
+            if img is not None:
+                c.create_image(xx, y, image=img, anchor="nw")
+            else:
+                c.create_rectangle(xx, y, xx + wc, y + hc, fill="#1b1b22", outline="#3a3a42")
+                c.create_text(xx + wc / 2, y + hc / 2, text=nm, fill=C["titolo"], font=F(8, True), width=wc - 12, justify="center")
+            # il riquadro di ogni carta: la carta grande al passaggio; il filtro della carta o della coppia al clic
+            c._box_carte.append((xx, y, (xx + sopra) if j < len(nomi) - 1 else xx + wc, y + hc + 38, nm, chiave, fk, fv))
+        if self.filtri.get(fk) == fv:
+            c.create_rectangle(x - 3, y - 3, x + larga_c + 3, y + hc + 3, outline=C["accento"], width=2)
+        poche = cc["n"] < 5
+        col = C["muto"] if poche or base is None else (C["azzurro"] if cc["wr"] > base else C["rosso"] if cc["wr"] < base else C["testo"])
+        xc = x + larga_c / 2
+        if chiave == "bloccate" and "bloccata" in cc:
+            c.create_text(xc, y + hc + 12, text=f"{cc['bloccata']}% stuck", fill=C["rosso"], font=F(9, True))
+            c.create_text(xc, y + hc + 29, text=f"{cc['n']} of {cc['mano']} games · {cc['wr']:.0f}%", fill=C["grigio"], font=F(7))
+        else:
+            c.create_text(xc, y + hc + 12, text=f"{cc['wr']:.0f}%  ·  {cc['vinte']}-{cc['perse']}", fill=col, font=F(9, True))
+            c.create_text(xc, y + hc + 29, text=f"in {cc['n']} games · {cc['quota']:.0f}%", fill=C["grigio"], font=F(7))
+        return larga_c
+
+    def apri_coppie(self, chiave, titolo=None):
+        """La finestra delle coppie di una riga di Cards: le coppie di carte che stanno insieme nelle partite scelte, dalla piu' vincente (DA.coppie_carte); si
+        rifa' coi filtri; il clic su una coppia tiene solo le sue partite, il passaggio mostra la carta grande. Una finestra sola: un'altra riga la riempie."""
+        tk = self.tk
+        f = getattr(self, "fin_coppie", None)
+        if f is None or not f.winfo_exists():
+            f = self.fin_coppie = tk.Toplevel(self.fr)
+            f.configure(bg=C["scheda"])
+            f.geometry("1180x760")
+            f.bind("<Escape>", lambda e: f.destroy())
+            cv = self.cv_coppie = tk.Canvas(f, bg=C["scheda"], highlightthickness=0, bd=0)
+            cv.pack(fill="both", expand=True, padx=8, pady=8)
+            cv.bind("<Button-1>", self.clic_carte)
+            cv.bind("<MouseWheel>", lambda e: (self.via_hover_carte(), e.widget.yview_scroll(-2 if e.delta > 0 else 2, "units")))
+            cv.bind("<Motion>", self.sopra_carte)
+            cv.bind("<Leave>", lambda e: self.via_hover_carte())
+            cv.bind("<Configure>", lambda e: self.disegna_coppie())
+        self.coppie_di = (chiave, titolo or dict(DA.RIGHE_CARTE).get(chiave, chiave))
+        f.title("Performance · Pairs · " + self.coppie_di[1].split(" · ")[0].title())
+        self.disegna_coppie()
+        f.lift()
+        return f
+
+    def disegna_coppie(self):
+        f = getattr(self, "fin_coppie", None)
+        if f is None or not f.winfo_exists() or self.righe is None:
+            return
+        c = self.cv_coppie
+        c.delete("all")
+        self.via_hover_carte()
+        c._box_carte, c._box_coppie = [], []
+        F = self.F
+        chiave, titolo = self.coppie_di
+        W = max(c.winfo_width(), 600)
+        r = self.scelte()
+        k_ = DA.conti(r)
+        base = k_["wr"]
+        cp = DA.coppie_carte(r, chiave)
+        quale = "IN YOUR OPENING HAND" if chiave == "pesc1" else "· " + titolo.split(" · ")[0]
+        c.create_text(14, 14, text=f"PAIRS {quale} · {k_['n']} GAMES · by win rate, 5 games together at least", anchor="w", fill=C["azzurro"], font=F(8, True))
+        if base is not None:
+            c.create_text(W - 14, 14, text=f"win rate of these games {base:.0f}% · click a pair: only its games", anchor="e", fill=C["grigio"], font=F(7))
+        if not cp:
+            c.create_text(14, 46, text="No pair comes together in 5 games or more here.", anchor="w", fill=C["grigio"], font=F(9))
+            c.configure(scrollregion=(0, 0, W, 80))
+            return
+        wc = LARGA_CARTA
+        hc = round(wc * 279 / 200)
+        larga = wc + round(wc * 0.5) + 18
+        per_riga = max(1, int((W - 28) // larga))
+        y = 34
+        for i, cc in enumerate(cp):
+            if i and i % per_riga == 0:
+                y += hc + 50
+            self.metti_carta(c, 14 + (i % per_riga) * larga, y, cc, chiave, base)
+        c.configure(scrollregion=(0, 0, W, y + hc + 56))
 
     def carta_sotto(self, e):
         c = e.widget
         x, y = c.canvasx(e.x), c.canvasy(e.y)
-        return next((b[4:6] for b in getattr(c, "_box_carte", []) if b[0] <= x <= b[2] and b[1] <= y <= b[3]), None)
+        return next((b for b in getattr(c, "_box_carte", []) if b[0] <= x <= b[2] and b[1] <= y <= b[3]), None)
 
     def clic_carte(self, e):
         """Il clic su una carta: solo le partite in cui c'e', nel senso della sua riga (in mano, pescata in quel turno, lanciata, rimasta in mano); di nuovo
-        sulla stessa, tutte."""
+        sulla stessa, tutte. Su «Pairs ›» di una riga: la finestra delle sue coppie."""
+        cv = e.widget
+        x, y = cv.canvasx(e.x), cv.canvasy(e.y)
+        bc = next((b for b in getattr(cv, "_box_coppie", []) if b[0] <= x <= b[2] and b[1] <= y <= b[3]), None)
+        if bc is not None:
+            return self.apri_coppie(bc[4], bc[5])
         sotto = self.carta_sotto(e)
         if sotto is None:
             return None
-        n, chiave = sotto
-        self.filtri[chiave] = None if self.filtri.get(chiave) == n else n
+        fk, fv = sotto[6], sotto[7]
+        self.filtri[fk] = None if self.filtri.get(fk) == fv else fv
         self.disegna()
-        return n
+        return fv
 
     def sopra_carte(self, e):
-        n = (self.carta_sotto(e) or (None, None))[0]
+        n = (self.carta_sotto(e) or (None,) * 8)[4]
         c = e.widget
         if n == getattr(self, "_hc_nome", None):
             if n is not None and getattr(self, "_hc", None) is not None:
@@ -3552,7 +3635,7 @@ class PaginaPerformance:
         self.via_hover_carte()
         self._hc_nome = n
         c.configure(cursor="hand2" if n else "")
-        img = self.immagine_grande(n) if n else None
+        img = self.immagine_grande(DA.nome_intero(n)) if n else None
         if img is None:
             return
         h = self._hc = self.tk.Toplevel(c.winfo_toplevel())

@@ -97,7 +97,9 @@ SEZIONI = (
                   "(p under 5%) or how many games would tell"),
       ("Cards", "the cards of the games you picked, as cards, in rows: most found in your hand, your turn 1 (opening hand and first draw), drawn on "
                 "your turns 2, 3 and 4, your most cast spells, the opponent's most played cards, harder to cast (in your hand and never cast); no lands; under "
-                "each card the win rate and record of its games, and in how many; click a card to keep only its games, again to go back; hover to see it big"),
+                "each card the win rate and record of its games, and in how many; click a card to keep only its games, again to go back; hover to see it big; "
+                "Pairs › on each row opens a window with the pairs of cards that come together in the same game (from your turn 1: the pairs of your "
+                "opening hand), by win rate, 5 games together at least; click a pair to keep only the games with both"),
       ("The folders", "the mark on the right of each folder opens it in its own window, even on another screen; close it, or Bring it back, to dock it again"),
       ("Save as my filter", "keep a set of filters: it goes to the My filters folder, one under the other with its numbers; click to apply it, ✕ to "
                             "remove it; your filters are also a B of Compare"),

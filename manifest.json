@@ -1,6 +1,6 @@
 {
- "version": "0.1.78",
+ "version": "0.1.79",
  "date": "2026-11-13",
- "notes": "Performance: strong spots corrected for the number of conditions tried, the result itself out of Spots, and the dropdowns always show all their values.",
+ "notes": "Performance: Pairs on each Cards row opens a window with the pairs of cards that come together, by win rate.",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

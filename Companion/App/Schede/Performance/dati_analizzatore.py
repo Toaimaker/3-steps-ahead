@@ -963,6 +963,31 @@ def riga_carte(r, chiave, quante=40, minimo=5):
     return out[:quante]
 
 
+def coppie_carte(r, chiave, quante=60, minimo=5):
+    """Le coppie di carte di una riga di Cards, dalla piu' vincente (13 nov 2026, Autore: «come imposteresti i filtri per determinare al di sopra del 51% di
+    win rate quale combinazione di carte vince almeno il 60% delle volte in starting hand?», poi «non aggiungere le coppie come righe ma come finestre extra che
+    si aprono dalla riga e mostrano le coppie»): due carte della riga nella stessa partita, una volta per partita, da `minimo` partite; a parita' di win rate
+    prima quella con piu' partite. Dalla riga del turno 1 le coppie sono della mano tenuta (la «starting hand»: Card in opening hand), dalle altre del campo
+    della riga (in mano, lanciate insieme, rimaste in mano insieme...). -> [dict(nome «A + B», nomi=(A, B), n, vinte, perse, wr, quota, filtro=(chiave, [A, B]))]."""
+    campo, fk = ("mano", "mano") if chiave == "pesc1" else (CAMPO_CARTE.get(chiave, chiave), chiave)
+    conta, vinte = collections.Counter(), collections.Counter()
+    for x in r:
+        m = sorted({n for n in x.get(campo) or [] if not e_terra(n)})
+        for cp in itertools.combinations(m, 2):
+            conta[cp] += 1
+            vinte[cp] += 1 if x["vinta"] else 0
+    tot = len(r) or 1
+    out = [dict(nome=f"{a} + {b}", nomi=(a, b), n=n, vinte=vinte[(a, b)], perse=n - vinte[(a, b)], wr=round(100 * vinte[(a, b)] / n, 1),
+                quota=round(100 * n / tot, 1), filtro=(fk, [a, b])) for (a, b), n in conta.items() if n >= minimo]
+    out.sort(key=lambda c: (-c["wr"], -c["n"], c["nome"]))
+    return out[:quante]
+
+
+def filtro_carta(chiave, c):
+    """Il filtro di una carta o di una coppia di Cards: -> (chiave, valore). Una coppia tiene le partite con tutte e due (una lista: passa le vuole tutte)."""
+    return tuple(c["filtro"]) if "filtro" in c else (chiave, c["nome"])
+
+
 def filtra(righe_, filtri, tipo=None):
     """Le righe del tipo che passano i filtri. Il win rate (finestra_wr) si calcola dopo gli altri filtri ma prima di Result: con Result acceso il gruppo
     sarebbe tutto vinto (100%) o tutto perso; cosi' «52% e le vittorie» sono le vittorie del gruppo di partite che fa il 52% (13 nov 2026)."""
@@ -1589,6 +1614,15 @@ def prova():
     casi.append(("Harder to cast: Owl rimasta in mano 2 volte su 2 (100%), Dragon 1 su 2 (50%), dalla piu' bloccata",
                  [(c["nome"], c["bloccata"], c["mano"]) for c in bl_] == [("Owl", 100, 2), ("Dragon", 50, 2)]))
     casi.append(("negativa: sotto il minimo di partite in mano una carta non entra fra le difficili", riga_carte(cr, "bloccate", minimo=3) == []))
+    cm = [dict(vinta=v_, mano=m_, mie_lanciate=m_) for v_, m_ in [(True, ["Shock", "Goblin", "Mountain"])] * 3 + [(False, ["Shock", "Goblin"])]
+          + [(True, ["Shock", "Owl"])] * 2 + [(False, ["Shock", "Owl"])] * 2]
+    cp = coppie_carte(cm, "pesc1", minimo=4)
+    casi.append(("le coppie della mano tenuta (dalla riga del turno 1): Goblin + Shock 3-1 prima di Owl + Shock 2-2, le terre fuori; il filtro e' Card in opening hand",
+                 [(c["nomi"], c["n"], c["wr"]) for c in cp] == [(("Goblin", "Shock"), 4, 75.0), (("Owl", "Shock"), 4, 50.0)]
+                 and filtro_carta("pesc1", cp[0]) == ("mano", ["Goblin", "Shock"]) and filtro_carta("lanciate", coppie_carte(cm, "lanciate", minimo=4)[0])
+                 == ("lanciate", ["Goblin", "Shock"])))
+    casi.append(("negativa: sotto il minimo di partite una coppia non c'e', e il filtro di una carta sola resta la sua chiave",
+                 coppie_carte(cm, "pesc1", minimo=5) == [] and filtro_carta("in_mano", dict(nome="Shock")) == ("in_mano", "Shock")))
     _TAB.clear()
     vere = righe()
     casi.append(("i log veri: righe con le variabili (se ci sono partite)", not vere or all(k in vere[0] for k in ("tipo", "partenza", "terre", "sessione", "fascia"))))
