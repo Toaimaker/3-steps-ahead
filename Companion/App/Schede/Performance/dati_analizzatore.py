@@ -308,6 +308,44 @@ def per_turno(match_id, seat, inizia, turni):
             for k, v in out.items()}       # le magie del turno: una lista coi tipi ripetuti, in ordine; «Nothing» se niente
 
 
+# le abilita' attivate, carta per carta e quando (13 nov 2026, Autore: «saccare reliquia dopo draw step di Oppo migliora le mie possibilita' di vittoria
+# perche' gli impedisco di usare al meglio brainstorm in upkeep, pero' non credo proprio sia una cosa che un programma riesce a stimare», poi «Sì, aggiungilo»):
+# da mana_aperto VERSIONE 15 («attivate»). Il quando e' sempre dal tuo posto: «their turn» e' il turno dell'avversario, anche per le sue abilita'.
+PASSI_ARENA = {"Step_Upkeep": "Upkeep", "Step_Draw": "Draw step", "Phase_Main1": "Main 1", "Step_BeginCombat": "Beginning of combat",
+               "Step_DeclareAttack": "Declare attackers", "Step_DeclareBlock": "Declare blockers", "Step_FirstStrikeDamage": "Combat damage",
+               "Step_CombatDamage": "Combat damage", "Step_EndCombat": "End of combat", "Phase_Main2": "Main 2", "Step_End": "End step", "Step_Cleanup": "Cleanup"}
+PASSI = tuple(dict.fromkeys(PASSI_ARENA.values()))
+QUANDO_ATTIVATE = ("Any time", "Your turn", "Their turn") + tuple(f"{q} · {w}" for w in ("your turn", "their turn") for q in PASSI)
+
+
+def passo_di(fase, step):
+    """Il nome del passo di Arena: lo step se c'e' (nelle fasi principali Arena non lo scrive), se no la fase; None se non e' fra i PASSI."""
+    return PASSI_ARENA.get(step or "") or PASSI_ARENA.get(fase or "")
+
+
+def attivate_partita(match_id, seat):
+    """Le abilita' attivate (non di mana) di una partita: {«io»: [voci], «lui»: [voci]}, ogni voce «Carta · quando» con quando in QUANDO_ATTIVATE: «Any time»,
+    il turno («Your turn», «Their turn») e il passo col turno («Draw step · their turn»). Una voce per partita anche se l'abilita' e' stata attivata piu' volte.
+    {} senza i dati (mana_aperto prima della VERSIONE 15) o senza il posto."""
+    d = _MANA.get(match_id) or {}
+    if "attivate" not in d or seat not in (1, 2):
+        return {}
+    out = {"io": set(), "lui": set()}
+    for _t, s_, g_, fase, step, *att in d["attivate"]:
+        n = nome_intero(nome_grp(g_) or "") if g_ not in SENZA_FACCIA else ""
+        if not n:
+            continue
+        chi = "io" if s_ == seat else "lui"
+        out[chi].add(f"{n} · Any time")
+        if att:     # il posto di chi era di turno
+            w = "your turn" if att[0] == seat else "their turn"
+            out[chi].add(f"{n} · {w.capitalize()}")
+            p_ = passo_di(fase, step)
+            if p_:
+                out[chi].add(f"{n} · {p_} · {w}")
+    return {k: sorted(v) for k, v in out.items()}
+
+
 def ordine_lancio(v):
     """L'ordine delle voci di un turno: i tipi come ORDINE_TIPI (ripetuti una volta per magia: «Instant», «Instant»). Una voce di prima col costo
     («Creature · 2», fino al 13 nov 2026) va dopo il suo tipo."""
@@ -667,6 +705,9 @@ def riga(p, r):
     scartate = [sum(q for n, q in (condividi.nomi(m) or {}).items() if e_terra(n)) for m in mani[:-1]]
     import variabili_c as VC
     c_ = VC.campi(p, r, lista, tenuta)
+    c_["rim_bersagli"] = VC.bersagli_rimozioni(dict(r, seat=p.get("seat")))       # C13
+    import cimitero as CM
+    c_["cimitero"] = CM.per_partita(dict(r, seat=p.get("seat")))      # cimitero ed esilio (14 nov 2026: «ok fai i filtri per la decisione»)
     import leak as LK
     leak_ = LK.per_partita(dict(r, seat=p.get("seat"), fine=come_finita(p.get("motivo"), r["vinta"]), quando=quando))
     return dict(r, **c_, seat=p.get("seat"), mazzo_id=p.get("mazzo"), mie_lanciate=mie_l, scartate=scartate, fortuna=fortuna(p, r, lista), deck=lista, leak=leak_, **carte_partita(r, p.get("seat"), tenuta), economiche=econ, crea_mano=crea, crea_in_mano=creature_in_mano(tenuta),
@@ -674,7 +715,7 @@ def riga(p, r):
                 ist_mano=magie_in_mano(tenuta, "Instant"), str_mano=magie_in_mano(tenuta, "Sorcery"),
                 art_mano=magie_in_mano(tenuta, "Artifact"), inc_mano=magie_in_mano(tenuta, "Enchantment"), pw_mano=magie_in_mano(tenuta, "Planeswalker"),
                 bat_mano=magie_in_mano(tenuta, "Battle"),
-                per_turno=per_turno(r.get("partita"), p.get("seat"), r.get("inizia"), turni),
+                per_turno=per_turno(r.get("partita"), p.get("seat"), r.get("inizia"), turni), abil=attivate_partita(r.get("partita"), p.get("seat")),
                 situa=situazioni_replay(r.get("partita"), p.get("seat"), r.get("inizia"), turni),
                 crea_prima_lui=prima_creatura(r.get("partita"), 2 if p.get("seat") == 1 else 1 if p.get("seat") == 2 else None,
                                               None if r.get("inizia") is None else not r.get("inizia")), miei_colori=colori_mazzo(lista), fine=come_finita(p.get("motivo"), r["vinta"]),
@@ -862,6 +903,7 @@ def righe(partite=None):
     sessioni(out)
     import variabili_c as VC
     VC.serie(out)       # C6: la partita prima e le sconfitte di fila
+    VC.versioni(out)    # C8: le versioni della lista
     out.sort(key=lambda x: x["quando"])
     _CACHE.update(firma=firma, righe=out)
     return out
@@ -968,6 +1010,9 @@ EXTRA += [(f"leak_{k_}", f"Leak · {n_}", (lambda x, k_=k_: (None if x.get("leak
                          ("l3", "creature cast before your attack"), ("l4", "chump block at high life"), ("l5", "unfavourable trade"),
                          ("l6", "instant on their turn while they were tapped out on yours"), ("l7", "conceded with outs"),
                          ("l8", "lands tapped the wrong way"))]
+# cimitero ed esilio (14 nov 2026, cimitero.py): grado C, nessun peso nel costo (misurati: non predicono le vittorie oltre al vantaggio)
+import cimitero as _CM  # noqa: E402
+EXTRA += [(k_, n_, (lambda x, k_=k_: (x.get("cimitero") or {}).get(k_))) for k_, n_ in _CM.NOMI.items()]
 # C2, C3, C6, C7, C9 (13 nov 2026, variabili_c.py)
 import variabili_c as _VC  # noqa: E402
 EXTRA += [(k_, n_, (lambda x, k_=k_: x.get(k_))) for k_, n_ in _VC.NOMI.items()]
@@ -981,6 +1026,7 @@ for _k, _n, _f in EXTRA:
 NOME["esito"], LEGGI["esito"] = "Result", (lambda x: "Won" if x["vinta"] else "Lost")
 NOME["wr_rif"] = "Win rate"
 NOME["lanciate"] = "Card you cast"
+NOME.update(ab_io="Your activated abilities", ab_lui="Opponent's activated abilities")
 NOME.update(lanc_t4="Card you cast by your turn 4", finisher="Card in your finish", in_mano="Card in your hand", sue_lanciate="Card the opponent cast", bloccate="Card stuck in your hand",
             **{f"pesc{n}": f"Card found on your turn {n}" for n in range(1, 5)})       # 4 = TURNI_CARTE; i clic della cartella Cards, fuori dagli Spots
 ORDINE_VALORI.update(esito=("Won", "Lost"), miei_colori=VARIANTI, economiche=("0", "1", "2+"), crea_mano=("Yes", "No"),
@@ -995,7 +1041,7 @@ ORDINE_VALORI.update(esito=("Won", "Lost"), miei_colori=VARIANTI, economiche=("0
                      t_peio=ORDINE_EXTRA, t_pelui=ORDINE_EXTRA,
                      **{"s_" + k_: ORDINE_SITUA[o_] for k_, (_n, o_) in SITUA_NOMI.items()},
                      senza_lui=tuple(f"Their turn {n}" for n in SENZA) + ("The whole game",), **{f"luck{N}": FORTUNA for N in TURNI_FORTUNA},
-                     **{f"leak_l{i}": ("Yes", "No") for i in range(1, 9)}, **_VC.ORDINE)
+                     **{f"leak_l{i}": ("Yes", "No") for i in range(1, 9)}, **_VC.ORDINE, **_CM.ORDINE)
 
 
 def per_varianti(r):
@@ -1028,10 +1074,16 @@ def valori_di(k, x):
         return x.get("mano") or []
     if k == "sue":
         return x.get("sue_viste") or []
+    if k in ("ab_io", "ab_lui"):        # le abilita' attivate, «Carta · quando» (attivate_partita)
+        return list((x.get("abil") or {}).get(k[3:]) or [])
     if k == "lanciate":         # le tue magie lanciate (la cartella Cards, 13 nov 2026)
         return x.get("mie_lanciate") or []
     if k == "iwd":              # la riga IWD di Cards (C4): una carta pescata o tenuta, come «in_mano»
         return x.get("in_mano") or []
+    if k == "rim_valore":       # C13: le Pairs della riga delle rimozioni, sulle magie lanciate
+        return x.get("mie_lanciate") or []
+    if k == "minacce":          # C15: la riga delle minacce, sulle sue magie lanciate
+        return x.get("sue_lanciate") or []
     if k in ("in_mano", "sue_lanciate", "bloccate", "lanc_t4", "finisher") or re.fullmatch(r"pesc\d", k):      # le altre righe della cartella Cards
         return x.get(k) or []
     if k == "data":
@@ -1125,6 +1177,57 @@ def vantaggio(f, seat):
     return ((v[seat - 1] or 0) - (v[o] or 0)) + 2 * (forza[seat - 1] - forza[o])
 
 
+_KW = {}
+
+
+def _parole(g):
+    """Le parole chiave che contano per il modello della P (volare, minaccia, raggiungere, difensore) dal testo della carta; ricordate per grpId."""
+    if g not in _KW:
+        nome = nome_grp(g) if g not in SENZA_FACCIA else None
+        t = ((_carta(nome or "") or {}).get("testo") or "").lower()
+        # «flying» da solo o in testa a una frase, non «creatures with flying» (grado C)
+        _KW[g] = {k for k in ("flying", "menace", "reach", "defender") if re.search(rf"(?:^|[.,;] ?|\b(?:and|has|gains) ){k}\b", t) and
+                  not re.search(rf"with {k}", t.split(".")[0])}
+    return _KW[g]
+
+
+def p_foto(f, seat, tocca_me, giro, inizia=None, mull=0):
+    """R8 (13 nov 2026, Autore: «Sì, con la citazione»): la probabilita' di vincere, in punti percentuali, dal tavolo di una foto, col modello del suggeritore
+    (Companion/Suggeritore/prob_vittoria.py, Regole/prob_vittoria.json: gradient boosting tarato sui replay pubblici di 17Lands, CC BY 4.0, sei set del
+    limited). Vite, creature (forza, costituzione, volare/minaccia/raggiungere, tappate), terre, carte in mano, chi tocca, il giro, chi ha cominciato, i
+    mulligan. Il valore delle carte (GIH) no: e' la media del set per tutte, cosi' le due app dicono la stessa cosa. Nel costruito e' un'estrapolazione
+    (il modello e' del limited): confronta due tavoli, non e' una promessa. None senza foto o senza il modello."""
+    if not f or seat not in (1, 2):
+        return None
+    try:
+        import prob_vittoria as PV
+    except Exception:       # noqa: BLE001 - senza il modello niente P
+        return None
+    a, b = seat - 1, 2 - seat
+    lati = f.get("c") or [[], []]
+
+    def cre(lato):
+        out = []
+        for c_ in lato or []:
+            if len(c_) < 5 or c_[3] is None:        # non e' una creatura (forza assente)
+                continue
+            out.append(dict(p=c_[3] or 0, t=c_[4] or 0, kw=_parole(c_[0]), girato=bool(c_[1])))
+        return out
+
+    def terre(lato):
+        return sum(1 for c_ in lato or [] if not c_[2] and e_terra(nome_grp(c_[0]) or "") )
+    miei, suoi = cre(lati[a]), cre(lati[b])
+    v = f.get("v") or [20, 20]
+    n = f.get("n") or [0, 0]
+    stato = dict(tocca_me=1 if tocca_me else 0, N=giro, on_play=1 if inizia else 0, LU=v[a] if v[a] is not None else 20, LO=v[b] if v[b] is not None else 20,
+                 miei=miei, suoi=suoi, TERU=terre(lati[a]), TERO=terre(lati[b]), MANU=n[a] or 0, MANO=n[b] or 0, mull=mull or 0,
+                 tappati_suoi=sum(c["girato"] for c in suoi) if tocca_me else 0, tappati_miei=0 if tocca_me else sum(c["girato"] for c in miei))
+    try:
+        return 100.0 * PV.p_vittoria(stato)
+    except Exception:       # noqa: BLE001
+        return None
+
+
 def carte_partita(r, seat, tenuta):
     """Le carte di una partita per le righe della cartella Cards (13 nov 2026, Autore: «in cards creiamo delle vere e proprie righe di dato: most in hand
     find card / most t1 /t2 /t3 / t4 found cards / match up most played cards / harder to cast cards»), le terre escluse, coi nomi interi:
@@ -1195,18 +1298,43 @@ def carte_partita(r, seat, tenuta):
     if mano_p is not None:
         out["in_mano"] = sorted(n_ for n_ in mano_p if magia(n_))
         out["bloccate"] = sorted(n_ for n_ in mano_p if magia(n_) and n_ not in mie)
+    out["tempi"] = tempi_lancio(az, seat, mano, magia, nome_g)
+    return out
+
+
+def tempi_lancio(az, seat, mano, magia, nome_g):
+    """R12 (13 nov 2026): per ogni tua magia lanciata, il primo lancio della partita: il giro in cui l'hai lanciata ((turno di Arena + 1) // 2, come i filtri
+    turno per turno) e quanti giri l'hai tenuta in mano prima (dalla mano tenuta: giro 1; da una pescata: il suo giro). Una carta lanciata senza che si sappia
+    quando ti e' arrivata (da sotto al grimorio, dall'esilio, senza le pescate nel log) ha solo il giro del lancio. -> {nome: [giro_lancio, giri_in_mano|None]}."""
+    arrivo = {n_: 1 for n_ in mano}
+    out = {}
+    for t, s_, cosa, g_, _tp in az:
+        if s_ != seat:
+            continue
+        nm = nome_g(g_)
+        if not magia(nm):
+            continue
+        giro = (t + 1) // 2
+        if cosa == "pesca":
+            arrivo.setdefault(nm, giro)
+        elif cosa == "magia" and nm not in out:
+            out[nm] = [giro, (giro - arrivo[nm]) if nm in arrivo else None]
     return out
 
 
 RIGHE_CARTE = [("in_mano", "MOST FOUND IN YOUR HAND · opening hand and draws"),
                ("pesc1", "YOUR TURN 1 · the opening hand and the first draw"), ("pesc2", "YOUR TURN 2 · drawn on it"),
                ("pesc3", "YOUR TURN 3 · drawn on it"), ("pesc4", "YOUR TURN 4 · drawn on it"),
-               ("lanciate", "YOUR MOST CAST SPELLS"), ("lanc_t4", "CAST BY YOUR TURN 4 · Pairs: what you played together early"),
+               ("lanciate", "YOUR MOST CAST SPELLS · cast T: the average turn of the first cast; held: the turns it waited in your hand"), ("lanc_t4", "CAST BY YOUR TURN 4 · Pairs: what you played together early"),
                ("finisher", "FINISHERS · the decisive play of your wins: the biggest swing after which you stayed ahead, 2+ cards"), ("sue_lanciate", "THE MATCHUPS · the opponent's most played cards"),
                ("bloccate", "HARDER TO CAST · in your hand and never cast"),
+               ("minacce", "THE THREATS THAT BEAT YOU · their cards in more of your losses than your wins; Answers ›: what in your collection removes them"),
+               ("rim_valore", "YOUR REMOVAL · ON WHAT: the average mana value of what it removed (a token 0), and how often a token or a card cheaper than it"),
                ("iwd", "DRAWN VS NOT DRAWN · IWD: your win rate when the card came to your hand minus when it stayed in the deck (grey under 15 games)")]
-CAMPO_CARTE = {"lanciate": "mie_lanciate", "iwd": "in_mano"}
-NOME["iwd"] = "Card drawn (IWD)"       # la chiave del filtro -> il campo della riga (le altre si chiamano uguali)
+CAMPO_CARTE = {"lanciate": "mie_lanciate", "iwd": "in_mano", "rim_valore": "mie_lanciate", "minacce": "sue_lanciate"}
+NOME["iwd"] = "Card drawn (IWD)"
+NOME["rim_valore"] = "Your removal cast"
+NOME["minacce"] = "Their threat cast"       # la chiave del filtro -> il campo della riga (le altre si chiamano uguali)
 
 
 def riga_carte(r, chiave, quante=40, minimo=5):
@@ -1218,6 +1346,12 @@ def riga_carte(r, chiave, quante=40, minimo=5):
     if chiave == "iwd":     # C4 (variabili_c.iwd)
         import variabili_c as VC
         return VC.iwd(r, quante)
+    if chiave == "minacce":         # C15 (variabili_c.minacce)
+        import variabili_c as VC
+        return VC.minacce(r, quante)
+    if chiave == "rim_valore":      # C13 (variabili_c.valore_rimozioni)
+        import variabili_c as VC
+        return VC.valore_rimozioni(r, quante)
     campo = CAMPO_CARTE.get(chiave, chiave)
     conta, vinte = collections.Counter(), collections.Counter()
     for x in r:
@@ -1226,6 +1360,16 @@ def riga_carte(r, chiave, quante=40, minimo=5):
             vinte[nm] += 1 if x["vinta"] else 0
     tot = len(r) or 1
     out = [dict(nome=nm, n=n, vinte=vinte[nm], perse=n - vinte[nm], wr=round(100 * vinte[nm] / n, 1), quota=round(100 * n / tot, 1)) for nm, n in conta.items()]
+    if chiave == "lanciate":      # R12: il giro medio del primo lancio e i giri in mano prima
+        lanc, tenuti = collections.defaultdict(list), collections.defaultdict(list)
+        for x in r:
+            for nm, (g_l, g_m) in (x.get("tempi") or {}).items():
+                lanc[nm].append(g_l)
+                if g_m is not None:
+                    tenuti[nm].append(g_m)
+        for c in out:
+            c["turno_lancio"] = round(sum(lanc[c["nome"]]) / len(lanc[c["nome"]]), 1) if lanc[c["nome"]] else None
+            c["in_mano_giri"] = round(sum(tenuti[c["nome"]]) / len(tenuti[c["nome"]]), 1) if tenuti[c["nome"]] else None
     if chiave == "bloccate":
         in_mano = collections.Counter(nm for x in r for nm in set(x.get("in_mano") or []))
         for c in out:
@@ -1409,6 +1553,90 @@ def confronta(a, b):
     return dict(a=ca, b=cb, righe=righe_)
 
 
+_STORIE = {}
+
+
+def storia_17lands(set_):
+    """La storia del Premier di un set dai dati pubblici di 17Lands (Motore/limited_17lands.py, Espansioni/<SET>/Premier/storia_17lands.json), o None."""
+    if set_ not in _STORIE:
+        try:
+            with open(os.path.join(percorsi.ROOT, "Espansioni", set_, "Premier", "storia_17lands.json"), encoding="utf-8") as f:
+                _STORIE[set_] = json.load(f)
+        except (OSError, ValueError):
+            _STORIE[set_] = None
+    return _STORIE[set_]
+
+
+def set_di(x):
+    m = re.search(r"_([A-Z0-9]{3})_", x.get("evento") or "")
+    return m.group(1) if m else None
+
+
+def coppia_wubrg(colori):
+    return "".join(c for c in "WUBRG" if c in (colori or ""))
+
+
+def p_contro(va, na, p0):
+    """Il test z di una proporzione contro un valore noto (la popolazione di 17Lands, centinaia di migliaia di partite): la p a due code. None sotto 5."""
+    if na < 5 or p0 is None or p0 <= 0 or p0 >= 1:
+        return None
+    return math.erfc(abs(va / na - p0) / math.sqrt(p0 * (1 - p0) / na) / math.sqrt(2))
+
+
+def confronta_17lands(a):
+    """C12 (13 nov 2026, Autore: «Tutti e due»: 17Lands per il limited adesso, il costruito coi log condivisi): le tue partite di limited A contro chi usa
+    17Lands, nel Premier Draft degli stessi set e degli stessi colori (dati pubblici, CC BY 4.0). Ogni misura di 17Lands e' la media delle loro coppie di
+    colori pesata con le tue partite in ognuna (stesso set, stessi colori): cosi' la differenza non viene dai colori che giochi. Le partite senza i dati di
+    17Lands del loro set o dei loro colori restano fuori. -> dict(a=conti, b=dict(n, vinte, perse), righe come confronta, fuori, set)."""
+    celle, dentro = collections.Counter(), []
+    for x in a:
+        s_, cp = set_di(x), coppia_wubrg(x.get("miei_colori"))
+        st = storia_17lands(s_) if s_ else None
+        if st and cp in (st.get("coppie") or {}):
+            celle[(s_, cp)] += 1
+            dentro.append(x)
+    righe_ = []
+
+    def media_pesata(f):
+        num = den = 0.0
+        for (s_, cp), w in celle.items():
+            v = f(storia_17lands(s_)["coppie"][cp])
+            if v is not None:
+                num += w * v
+                den += w
+        return num / den if den else None
+
+    def frac(nw):
+        return nw[1] / nw[0] if nw and nw[0] else None
+    pop_n = sum(storia_17lands(s_)["coppie"][cp]["n"] for s_, cp in celle)
+
+    def prop(k, nome, sa, bene, p0):
+        va, na = sum(1 for x in sa if bene(x)), len(sa)
+        pa = va / na if na else None
+        d = round(100 * (pa - p0), 1) if pa is not None and p0 is not None else None
+        righe_.append(dict(k=k, nome=nome, a=None if pa is None else round(100 * pa, 1), b=None if p0 is None else round(100 * p0, 1), na=na, nb=pop_n,
+                           ic_a=wilson(va, na), ic_b=None, delta=d, p=p_contro(va, na, p0), servono=servono(pa, p0) if d is not None else None, unita="%"))
+
+    def media(k, nome, sa, m0):
+        xa = [x.get("turno") for x in sa]
+        ma = _media(xa)
+        righe_.append(dict(k=k, nome=nome, a=ma, b=None if m0 is None else round(m0, 1), na=sum(1 for v in xa if v is not None), nb=pop_n, ic_a=None, ic_b=None,
+                           delta=round(ma - m0, 1) if ma is not None and m0 is not None else None, p=None, servono=None, unita="T"))
+    vinta = lambda x: x["vinta"]
+    prop("wr", "Win rate", dentro, vinta, media_pesata(lambda c: c["w"] / c["n"] if c["n"] else None))
+    prop("play", "Win rate on the play", [x for x in dentro if x.get("partenza") == "Play"], vinta, media_pesata(lambda c: frac(c.get("play"))))
+    prop("draw", "Win rate on the draw", [x for x in dentro if x.get("partenza") == "Draw"], vinta, media_pesata(lambda c: frac(c.get("draw"))))
+    prop("mull", "Mulligan rate", dentro, lambda x: x["mulligan"],
+         media_pesata(lambda c: 1 - c["mull"]["0"][0] / c["n"] if c.get("mull") and c["n"] else None))
+    prop("bravi", "Win rate · 17Lands top players (60%+)", dentro, vinta, media_pesata(lambda c: frac(c.get("bravi"))))
+    media("turni_v", "Length of the wins", [x for x in dentro if x["vinta"]], media_pesata(lambda c: c.get("turni_vinte")))
+    media("turni_p", "Length of the losses", [x for x in dentro if not x["vinta"]], media_pesata(lambda c: c.get("turni_perse")))
+    wr0 = righe_[0]["b"]
+    b_n = pop_n
+    return dict(a=conti(dentro), b=dict(n=b_n, vinte=round(b_n * (wr0 or 0) / 100), perse=b_n - round(b_n * (wr0 or 0) / 100)), righe=righe_,
+                fuori=len(a) - len(dentro), set=sorted({s_ for s_, _c in celle}))
+
+
 METRICHE = (("wr", "Win rate"), ("n", "Games"), ("turni", "Avg turns"), ("mull", "Mulligan rate"))
 FINESTRE = (("cum", "Cumulative"), ("10", "Last 10 games"), ("20", "Last 20 games"), ("50", "Last 50 games"))
 
@@ -1517,7 +1745,7 @@ COPPIE = ("mio", "suo", "colori", "vs", "partenza", "mull", "terre", "lunga", "r
 FDR = 0.05          # gli spot «strong»: i falsi positivi attesi fra loro (Benjamini-Hochberg)
 # le variabili che sono il risultato, non una situazione: negli Spots spiegherebbero da sole il win rate (13 nov 2026, le simulazioni: in testa «Opponent
 # conceded» al 100% e «la tua vita piu' bassa: 0 o meno» allo 0%). Restano filtri; Result non c'era gia'
-FUORI_SPOT = {"fine", "s_vita_io", "s_vita_lui", "leak_l7"}      # leak_l7 e' sempre una sconfitta (una concessione): spiegherebbe il risultato
+FUORI_SPOT = {"fine", "s_vita_io", "s_vita_lui", "leak_l7", "versione"}      # versione: una per mazzo, gli Spots sarebbero rumore; leak_l7 e' sempre una sconfitta (una concessione): spiegherebbe il risultato
 
 
 def spot(r, minimo=15, quanti=8, coppie=True, gia=None):
@@ -1695,6 +1923,20 @@ def segna(x, modo, i, passo, t_):
                          suo=x.get("suo"), vinta=bool(x.get("vinta")), modo=modo, i=i, passo=passo, t=t_))
     _scrivi_in(SEGNALIBRI, d[:200])
     return not gia
+
+
+def segna_vivo(partita, turno, quando=None):
+    """R13 (13 nov 2026, come PokerTracker): segna lo spot mentre giochi, dal pulsante «★ MARK» accanto a DECK HUD: la partita (matchId) e il turno di Arena
+    di adesso. Il passo del replayer si trova quando lo apri (il primo momento di quel turno); la partita prende nome ed esito quando e' nei log.
+    Lo stesso turno della stessa partita si segna una volta. -> True se segnato ora."""
+    import datetime as _dt
+    d = segnalibri()
+    if any(s.get("partita") == partita and s.get("vivo") and s.get("t") == turno for s in d):
+        return False
+    d.insert(0, dict(partita=partita, quando=(quando or _dt.datetime.now()).isoformat(timespec="minutes"), tipo=None, mio="", suo=None, vinta=None,
+                     modo="momenti", i=None, passo=f"turn {(turno + 1) // 2} · marked live", t=turno, vivo=True))
+    _scrivi_in(SEGNALIBRI, d[:200])
+    return True
 
 
 def note():
@@ -1958,6 +2200,21 @@ def prova():
         f10 = carte_partita(dict(partita="m10", inizia=True, vinta=True), 1, {})
         casi.append(("il finisher: la giocata del turno col salto piu' grande dopo il quale resti avanti (Goblin + Shock, +10, il tuo turno 2)",
                      f10["finisher"] == ["Goblin", "Shock"] and f10["salto"] == 10 and f10["turno_svolta"] == 2))
+        # le abilita' attivate (mana_aperto VERSIONE 15): tu (posto 1) rompi la Reliquia nel draw step del suo turno 4 e due volte la Fetch nel tuo turno;
+        # lui attiva la Fetch nel suo Main 1
+        _NOMI_GRP.update({909: "Relic", 910: "Fetch"})
+        _MANA["m13"] = dict(azioni=[], attivate=[[4, 1, 909, "Phase_Beginning", "Step_Draw", 2], [3, 1, 910, "Phase_Main1", "", 1],
+                                                 [5, 1, 910, "Phase_Main1", "", 1], [4, 2, 910, "Phase_Main1", "", 2]])
+        a13 = attivate_partita("m13", 1)
+        x13 = dict(abil=a13)
+        casi.append(("le abilita' attivate: la Reliquia nel draw step del suo turno, la Fetch nel tuo Main 1 una voce sola; le sue a parte, dal tuo posto",
+                     "Relic · Draw step · their turn" in a13["io"] and "Relic · Their turn" in a13["io"] and a13["io"].count("Fetch · Main 1 · your turn") == 1
+                     and a13["lui"] == ["Fetch · Any time", "Fetch · Main 1 · their turn", "Fetch · Their turn"]
+                     and passa(x13, {"ab_io": ["Relic · Draw step · their turn", "Fetch · Any time"]})))
+        casi.append(("negativa: la Reliquia nel suo upkeep o nel tuo turno non passa, la sua Fetch non e' tua, una partita senza i dati non passa",
+                     not passa(x13, {"ab_io": ["Relic · Upkeep · their turn"]}) and not passa(x13, {"ab_io": ["Relic · Your turn"]})
+                     and not passa(x13, {"ab_lui": ["Relic · Any time"]}) and not passa({}, {"ab_io": ["Relic · Any time"]})
+                     and attivate_partita("m4", 1) == {} and set(q.partition(" · ")[2] for q in a13["io"] + a13["lui"]) <= set(QUANDO_ATTIVATE)))
         _MANA["m11"] = dict(_MANA["m10"], foto=_MANA["m10"]["foto"][:3] + [[4, 2, fv_([5, 16], [gob])], [5, 1, fv_([20, 10], [gob])]])
         f11 = carte_partita(dict(partita="m11", inizia=True, vinta=True), 1, {})
         casi.append(("negativa: in una sconfitta niente finisher; se dopo il salto torni sotto non e' decisivo, e il turno decisivo senza 2 carte giocate non da' niente",
@@ -2003,6 +2260,19 @@ def prova():
     casi.append(("le righe di Cards: Shock lanciata in 2 partite (una volta per partita) 50%, poi Dragon e Goblin in una",
                  [(c["nome"], c["n"], c["wr"]) for c in cc_] == [("Shock", 2, 50.0), ("Dragon", 1, 0.0), ("Goblin", 1, 100.0)]))
     bl_ = riga_carte(cr, "bloccate", minimo=2)
+    # R12: il giro del primo lancio e i giri in mano prima
+    az_t = [[1, 1, "pesca", 11, ""], [3, 1, "pesca", 12, ""], [3, 1, "magia", 10, "C"], [5, 1, "magia", 12, "C"], [5, 1, "magia", 10, "C"],
+            [6, 2, "magia", 13, "C"], [7, 1, "magia", 14, "C"]]
+    nomi_t = {10: "Shock", 11: "Owl", 12: "Goblin", 13: "Bolt", 14: "Dragon"}
+    tl = tempi_lancio(az_t, 1, {"Shock"}, bool, nomi_t.get)
+    casi.append(("R12: Shock dalla mano tenuta lanciato al giro 2 (1 giro in mano), Goblin pescato al giro 2 e lanciato al 3 (1); il secondo Shock non conta",
+                 tl.get("Shock") == [2, 1] and tl.get("Goblin") == [3, 1]))
+    casi.append(("negativa: le magie dell'avversario non entrano, e una carta arrivata senza che si sappia come ha solo il giro (Dragon)",
+                 "Bolt" not in tl and tl.get("Dragon") == [4, None]))
+    rl_ = riga_carte([dict(vinta=True, mie_lanciate=["Shock"], tempi={"Shock": [2, 1]}), dict(vinta=False, mie_lanciate=["Shock"], tempi={"Shock": [4, None]})],
+                     "lanciate")
+    casi.append(("R12 nella riga: Shock al giro 3,0 di media, 1,0 in mano (la partita senza arrivo non conta nei giri in mano)",
+                 rl_[0]["turno_lancio"] == 3.0 and rl_[0]["in_mano_giri"] == 1.0))
     casi.append(("Harder to cast: Owl rimasta in mano 2 volte su 2 (100%), Dragon 1 su 2 (50%), dalla piu' bloccata",
                  [(c["nome"], c["bloccata"], c["mano"]) for c in bl_] == [("Owl", 100, 2), ("Dragon", 50, 2)]))
     casi.append(("negativa: sotto il minimo di partite in mano una carta non entra fra le difficili", riga_carte(cr, "bloccate", minimo=3) == []))
@@ -2089,6 +2359,26 @@ def prova():
     casi.append(("negativa R1: al primo momento vede solo quello che c'era allora; Copy as list una per riga",
                  {n: q for n, q, _t in lista_sua(passi_, 0)} == {"Goblin": 1} and testo_lista([("Goblin", 2, False), ("Mountain", 1, True)]) == "2 Goblin\n1 Mountain"))
     casi.append(("i log veri: righe con le variabili (se ci sono partite)", not vere or all(k in vere[0] for k in ("tipo", "partenza", "terre", "sessione", "fascia"))))
+    # C12: contro 17Lands, pesato sui tuoi colori
+    vecchie = dict(_STORIE)
+    _STORIE.clear()
+    _STORIE["XXX"] = dict(coppie=dict(WU=dict(n=1000, w=600, play=[500, 320], draw=[500, 280], mull={"0": [900, 0]}, bravi=[100, 70], turni_vinte=9.0,
+                                              turni_perse=10.0),
+                                      BR=dict(n=1000, w=400, play=[500, 220], draw=[500, 180], mull={"0": [800, 0]}, bravi=[100, 50], turni_vinte=8.0,
+                                              turni_perse=9.0)))
+    try:
+        ra = [dict(evento="QuickDraft_XXX_1", miei_colori="UW", vinta=i < 6, partenza="Play", mulligan=0, turno=9, quando=datetime.datetime(2026, 11, 1))
+              for i in range(10)] + [dict(evento="QuickDraft_YYY_1", miei_colori="UW", vinta=True, partenza="Play", mulligan=0, turno=9,
+                                          quando=datetime.datetime(2026, 11, 1))]
+        c12 = confronta_17lands(ra)
+        w12 = c12["righe"][0]
+        casi.append(("C12: 10 partite WU contro 17Lands WU (60%): A 60%, B 60%, differenza 0; i colori si leggono in ordine WUBRG (UW = WU)",
+                     w12["a"] == 60.0 and w12["b"] == 60.0 and w12["delta"] == 0.0 and c12["a"]["n"] == 10))
+        casi.append(("negativa C12: la partita di un set senza i dati di 17Lands resta fuori; BR non entra nella media", c12["fuori"] == 1
+                     and next(x for x in c12["righe"] if x["k"] == "mull")["b"] == 10.0))
+    finally:
+        _STORIE.clear()
+        _STORIE.update(vecchie)
     for n, ok in casi:
         print(("ok    " if ok else "ROSSO ") + n)
     print(f"{sum(1 for _n, ok in casi if ok)}/{len(casi)}")

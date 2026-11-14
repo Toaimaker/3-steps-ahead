@@ -11,7 +11,7 @@ from dati_drafter import calendario as calendario_draft, campo
 from icone import nome_set
 from pagina_base import Pagina
 from tema import CI as C, PERSA, VINTA
-from widget import Tendina
+from widget import Tendina, pulsante_solido
 
 
 class PaginaLimited(Pagina):
@@ -35,10 +35,10 @@ class PaginaLimited(Pagina):
         self.vista = sys.argv[sys.argv.index("--vista") + 1] if "--vista" in sys.argv else "meta"   # --vista: collaudo
         self.pulsanti = {}
         for testo, k in (("Meta", "meta"), ("Your drafts", "tuoi"), ("Field", "campo")):
-            p = tk.Label(bott, text=testo, bg=C["cap"], fg=C["testo"], font=F(9, True), padx=12, pady=3, cursor="hand2",
-                         highlightthickness=0)
-            p.pack(side="left", padx=(0, 8))
-            p.bind("<Button-1>", lambda e, k=k: (setattr(self, "vista", k), self.disegna_lista()))
+            # stile S3 dei pulsanti, grigio e azzurro se scelto (14 nov 2026); fino a quel giorno etichette
+            p = pulsante_solido(tk, F, bott, testo, k == self.vista, lambda k=k: (setattr(self, "vista", k), self.disegna_lista()), alto=26, bg=C["scheda"],
+                                colori=("#2a2a30", "#3a3a42", "#0f86cc"))
+            p.configure(width=110); p.pack(side="left", padx=(0, 8))
             self.pulsanti[k] = p
         self.stato = dict(draft=[], set="FRA", coppie={}, campo=None, colori="", premi=None)
 
@@ -142,7 +142,7 @@ class PaginaLimited(Pagina):
         tk, F, st = self.tk, self.F, self.stato
         for k, b in self.pulsanti.items():
             on = k == self.vista
-            b.configure(fg=C["fondo"] if on else C["testo"], bg=C["titolo"] if on else C["cap"])
+            b.metti(b.testo(), on)
         self.svuota(self.lista)
         if self.vista == "meta":
             ms = self.set_dati()

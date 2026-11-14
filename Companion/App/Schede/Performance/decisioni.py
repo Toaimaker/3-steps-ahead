@@ -84,8 +84,21 @@ def per_partita(x):
             # il guadagno della decisione (13 nov 2026, Autore: «lo esprimiamo come guadagno per spots e non per win rate perché qui analizziamo le azioni
             # non l'esito del game»): quanto cambia il tuo vantaggio (vite di differenza piu' due volte la forza in campo di differenza, DA.vantaggio) dallo
             # stato prima del danno a fine turno
-            guadagno=DA.vantaggio(dopo, seat) - DA.vantaggio(prima, seat) if prima and dopo else None))
+            guadagno=DA.vantaggio(dopo, seat) - DA.vantaggio(prima, seat) if prima and dopo else None,
+            guadagno_p=_delta_p(prima, dopo, seat, t, att, x)))
     return out
+
+
+def _delta_p(prima, dopo, seat, t, att, x):
+    """R8: quanto cambia la probabilita' di vincere (punti percentuali, DA.p_foto) dalla foto prima alla foto dopo. Tutte e due lette come all'inizio del
+    turno dopo (tocca a chi non e' di turno ora, il giro del turno dopo): cosi' cambia solo il tavolo, non chi tocca. None se manca una delle due."""
+    if not prima or not dopo:
+        return None
+    tocca = att != seat
+    giro = (t + 2) // 2
+    p0 = DA.p_foto(prima, seat, tocca, giro, x.get("inizia"), x.get("mulligan"))
+    p1 = DA.p_foto(dopo, seat, tocca, giro, x.get("inizia"), x.get("mulligan"))
+    return None if p0 is None or p1 is None else round(p1 - p0, 2)
 
 
 def per_partita_magie(x):
@@ -104,21 +117,28 @@ def per_partita_magie(x):
         prima = m[3] if isinstance(m[3], dict) else None
         nome = DA.nome_grp(m[4].get("g")) if m[4].get("g") not in DA.SENZA_FACCIA else None
         out.append(dict(tipo="magia", t=m[1], turno=(m[1] + 1) // 2, partita=x.get("partita"), vinta=x.get("vinta"), quando=x.get("quando"), nome=nome or "a spell",
-                        guadagno=DA.vantaggio(dopo, seat) - DA.vantaggio(prima, seat) if prima and dopo else None))
+                        guadagno=DA.vantaggio(dopo, seat) - DA.vantaggio(prima, seat) if prima and dopo else None,
+                        guadagno_p=_delta_p(prima, dopo, seat, m[1], m[2], x)))
     return out
 
 
 # R8, il costo delle decisioni (13 nov 2026, come GTO Wizard): il guadagno di ogni tua decisione contro la media delle tue decisioni dello stesso tipo nella
-# stessa fase della partita; rosso sotto COSTO_ROSSO punti di vantaggio, giallo sotto COSTO_GIALLO, verde il resto; senza il dato «not estimable».
-# Il vantaggio e' quello del punto di svolta (vite + 2 × forza): grado C, un indizio, mai una sentenza; il numero vero sta sempre accanto al colore.
-COSTO_ROSSO, COSTO_GIALLO = -5.0, -2.0
+# stessa fase della partita; rosso sotto COSTO_ROSSO, giallo sotto COSTO_GIALLO, verde il resto; senza il dato «not estimable». Dal 13 nov 2026 sera
+# (Autore: «Sì, con la citazione») il guadagno di R8 e' in punti di probabilita' di vincere (guadagno_p, DA.p_foto: il modello del suggeritore tarato sui
+# replay pubblici di 17Lands); le altre viste di Decisions restano sul vantaggio (vite + 2 × forza), come chiesto il 13 nov («guadagno per spots e non per win
+# rate»). Un indizio, mai una sentenza; il numero vero sta sempre accanto al colore.
+COSTO_ROSSO, COSTO_GIALLO = -5.0, -2.0               # col vantaggio
+# con la P (punti percentuali): tarate sui log del 13 nov perche' i colori tengano le quote di prima (rosso il 15% piu' costoso, giallo fino al 40%; col
+# vantaggio erano -5 e -2): con -5 e -2 sulla P i rossi erano il 31%
+COSTO_ROSSO_P, COSTO_GIALLO_P = -7.0, -3.5
 
 
-def colore_costo(v):
-    return "nd" if v is None else "rosso" if v <= COSTO_ROSSO else "giallo" if v <= COSTO_GIALLO else "verde"
+def colore_costo(v, campo="guadagno"):
+    rosso, giallo = (COSTO_ROSSO_P, COSTO_GIALLO_P) if campo == "guadagno_p" else (COSTO_ROSSO, COSTO_GIALLO)
+    return "nd" if v is None else "rosso" if v <= rosso else "giallo" if v <= giallo else "verde"
 
 
-def costi(r, base_r):
+def costi(r, base_r, campo="guadagno_p"):
     """Le decisioni delle partite r (i tuoi attacchi e blocchi, le tue magie coi bersagli) col costo contro la media di base_r (di solito tutte le partite
     del tipo). -> [dict(..., media, costo, colore)], dalla piu' costosa."""
     def tutte_d(rr):
@@ -128,16 +148,16 @@ def costi(r, base_r):
         return out
     somme = {}
     for dd in tutte_d(base_r):
-        if dd["guadagno"] is not None:
+        if dd.get(campo) is not None:
             k = (dd["tipo"], _fascia_turno(dd["turno"]))
             s_, n_ = somme.get(k, (0.0, 0))
-            somme[k] = (s_ + dd["guadagno"], n_ + 1)
+            somme[k] = (s_ + dd[campo], n_ + 1)
     out = []
     for dd in tutte_d(r):
         s_, n_ = somme.get((dd["tipo"], _fascia_turno(dd["turno"])), (0.0, 0))
         media = s_ / n_ if n_ else None
-        costo = dd["guadagno"] - media if dd["guadagno"] is not None and media is not None else None
-        out.append(dict(dd, media=media, costo=costo, colore=colore_costo(costo)))
+        costo = dd[campo] - media if dd.get(campo) is not None and media is not None else None
+        out.append(dict(dd, media=media, costo=costo, colore=colore_costo(costo, campo), guadagno_r8=dd.get(campo)))
     out.sort(key=lambda z: (z["costo"] is None, z["costo"] if z["costo"] is not None else 0))
     return out
 
@@ -355,6 +375,7 @@ def prova_costi():
     """R8: il costo contro la media dello stesso tipo e fase; i colori; senza il dato «nd»."""
     casi = []
     casi.append(("i colori: -6 rosso, -3 giallo, 0 verde, None non stimabile", [colore_costo(v) for v in (-6, -3, 0, None)] == ["rosso", "giallo", "verde", "nd"]))
+    casi.append(("con la P: -6 punti e' giallo, -8 rosso, -3 verde", [colore_costo(v, "guadagno_p") for v in (-6, -8, -3)] == ["giallo", "rosso", "verde"]))
     vero = (per_partita, per_partita_magie)
     try:
         dd = {"a": [dict(tipo="attacco", turno=2, guadagno=4.0)], "b": [dict(tipo="attacco", turno=3, guadagno=-4.0)],
@@ -362,13 +383,28 @@ def prova_costi():
         globals()["per_partita"] = lambda x: [dict(z, partita=x["partita"], t=2 * z["turno"]) for z in dd[x["partita"]]]
         globals()["per_partita_magie"] = lambda x: []
         tutte_ = [dict(partita=k) for k in dd]
-        cc = costi(tutte_, tutte_)
+        cc = costi(tutte_, tutte_, campo="guadagno")
         b_ = next(z for z in cc if z["partita"] == "b")
         casi.append(("il costo: -4 contro la media dei primi turni (0) = -4, giallo; il turno 8 ha la sua media (nessun confronto coi primi turni)",
                      abs(b_["costo"] + 4) < 1e-9 and b_["colore"] == "giallo" and next(z for z in cc if z["partita"] == "c")["costo"] == 0))
         casi.append(("in ordine dalla piu' costosa", cc[0]["partita"] == "b"))
+        casi.append(("negativa: senza il campo (guadagno_p assente) il costo non si stima", all(z["colore"] == "nd" for z in costi(tutte_, tutte_))))
     finally:
         globals()["per_partita"], globals()["per_partita_magie"] = vero
+    return casi
+
+
+def prova_p():
+    """R8 col modello della P: piu' creature tue, piu' P; il delta dalla foto prima alla foto dopo."""
+    casi = []
+    cr = lambda i, pw=3: [100 + i, 0, 0, pw, pw, i]
+    t1 = dict(c=[[cr(1)], [cr(2)]], v=[20, 20], n=[4, 4])
+    t2 = dict(c=[[cr(1), cr(3)], []], v=[20, 20], n=[4, 4])
+    p1, p2 = DA.p_foto(t1, 1, True, 4, True), DA.p_foto(t2, 1, True, 4, True)
+    casi.append(("R8: la P sale se tu hai due creature e lui nessuna", p1 is not None and p2 is not None and p2 > p1))
+    casi.append(("negativa: la P di lui dallo stesso tavolo e' l'opposto (sopra il 50% tu, sotto lui)", p2 > 50 and DA.p_foto(t2, 2, False, 4, False) < 50))
+    d_ = _delta_p(t1, t2, 1, 7, 1, dict(inizia=True, mulligan=0))
+    casi.append(("il delta e' P dopo meno P prima, coi due tavoli letti nello stesso turno", d_ is not None and d_ > 0 and _delta_p(None, t2, 1, 7, 1, {}) is None))
     return casi
 
 
@@ -429,6 +465,7 @@ def prova():
                  and st[1]["rischiose"] == 100.0 and st[0]["rischiose"] == 50.0 and st[1]["wr_mull"] == 100.0))
     casi.append(("negativa: una mano a 2-4 terre non e' rischiosa", not _rischiosa(2) and not _rischiosa(4) and _rischiosa(1) and _rischiosa(5)))
     casi += prova_costi()
+    casi += prova_p()
     casi += prova_opzioni()
     for n, ok in casi:
         print(("ok    " if ok else "ROSSO ") + n)

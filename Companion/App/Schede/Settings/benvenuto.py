@@ -51,13 +51,15 @@ class Bottone:
         self.disegna()
 
     def disegna(self):
+        """Stile S3 dei pulsanti (14 nov 2026, widget.disegna_s3): satinato, filo chiaro in cima, il blocco icona dove il testo ne ha una (Link)."""
+        from widget import disegna_s3, _mischia
         c = self.c
-        c.delete("all")
+        c.delete("all"); c._s3 = []
         nor, su, scritta = self.colori
-        col = su if self.sopra and self.colori is not SPENTO else nor
-        c.create_image(0, 0, anchor="nw", image=_riquadro(self.larga, self.alta, col, col, 1.0, 8))
-        c.create_text(self.larga / 2, self.alta / 2, text=self.testo, fill=scritta, font=self.F(10, True), tags="testo")
-        c.configure(cursor="arrow" if self.colori is SPENTO else "hand2")
+        spento = self.colori is SPENTO
+        disegna_s3(c, 0, 0, self.larga, self.alta, self.testo, self.F(10, True), (nor, su, _mischia(nor, "#000000", 0.25)), self.sopra and not spento,
+                   icona=False if spento else None, scritta=scritta)
+        c.configure(cursor="arrow" if spento else "hand2")
 
     def place(self, **k):
         self.c.place(**k)

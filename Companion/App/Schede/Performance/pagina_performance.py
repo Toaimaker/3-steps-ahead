@@ -11,6 +11,7 @@ Le viste stanno in cartelle (Chart, Spots, Report, Matchups, Compare), e ognuna 
 cartelle e poi tira via il sotto testo / poi procedi con i confronti situazionali / ogni sezione di ogni cartella si puo' staccare dal quadro e renderla una
 finestra a se stante»). Compare mette la situazione (A) contro il resto, tutte le partite o una situazione salvata (B), con la significativita'.
 I dati: dati_analizzatore (i nostri log, dal 22 set 2026)."""
+import collections
 import datetime
 import math
 import os
@@ -22,7 +23,7 @@ import numeri_partite as NP
 import righe_filtri as R_F
 import disegni as DG
 from tema import CI as C
-from widget import ARANCIO, VERDE_P, Tendina, pulsante_solido
+from widget import ARANCIO, VERDE_P, Tendina, disegna_s3, pulsante_solido
 
 LINEE = ("#d8d8dc", "#24baff", "#f0ad4e", "#a58cff", "#5cb85c", "#ee8a87")      # All, poi i valori: lontani fra loro anche per i daltonici (come il resto dell'app)
 COLONNE = (("nome", "", 250), ("n", "GAMES", 70), ("wl", "W-L", 80), ("wr", "WIN RATE", 180), ("play", "PLAY", 70), ("draw", "DRAW", 70), ("mull", "MULL.", 70),
@@ -66,11 +67,17 @@ VISTE = (("chart", "Chart"), ("spots", "Spots"), ("report", "Report"), ("matchup
          ("luck", "Luck"), ("mine", "My filters"))
 DISEGNI = {"chart": "disegna_grafico", "spots": "disegna_spot", "report": "disegna_report", "matchups": "disegna_matchup", "compare": "disegna_confronto",
            "mine": "disegna_miei", "cards": "disegna_carte", "decisions": "disegna_decisioni", "luck": "disegna_fortuna"}
-DEC_MODI = (("attacco", "Attacks"), ("blocco", "Blocks"), ("mull", "Mulligans"), ("costo", "Costliest"))
+DEC_MODI = (("attacco", "Attacks"), ("blocco", "Blocks"), ("mull", "Mulligans"), ("costo", "Costliest"), ("leak", "Leaks"), ("cimitero", "Graveyard"))
 COLORI_COSTO = {"rosso": "#ff5d5d", "giallo": "#f0ad4e", "verde": "#5cb85c", "nd": "#7a7a80"}
 LARGA_CARTA = 112                               # le carte della cartella Cards
 ALTO_MIO = 58                                   # una riga dei filtri personali
 GRIGI = ("#2a2a30", "#3a3a42", "#0f86cc")       # i pulsanti a pillola grigi, azzurri se scelti
+
+
+def chip(c, x0, y0, x1, y1, testo, on, font, scritta=None):
+    """Una voce da scegliere disegnata su una tela (i valori dei filtri, vs all, Pairs e Trios, i momenti del replayer): un pulsante S3 grigio, azzurro se
+    scelto (14 nov 2026, Autore: «ogni pulsante esistente deve avere il redesign in linea con lo stile»; fino a quel giorno rettangoli col bordo)."""
+    disegna_s3(c, x0, y0, x1, y1, testo, font, GRIGI, premuto=on, icona=False, scritta=scritta or ("#ffffff" if on else C["testo"]))
 ALTO_TAB, LARGA_TAB = 34, 132                   # le cartelle
 LARGA_DECK = 1000                               # la finestra By deck
 ALTO_PARTITA = 24                               # una riga della tabella delle partite
@@ -112,13 +119,17 @@ AVANZATI = {
                        ("IN THE WHOLE GAME", ("sit:io_primo", "sit:io_tutto", "sit:io_tutto_aperto", "sit:io_att_aperto", "sit:io_att_chiuso")))),
            ("Defense", (("YOUR DEFENSE ON THE OPPONENT'S TURNS", tuple(f"t_dio{n}" for n in range(1, DA.TURNI_FILTRO + 1))),
                         ("IN THE WHOLE GAME", ("sit:io_blocca", "sit:io_difende")))),
+           # le abilita' attivate, la carta e quando (13 nov 2026, Autore: «saccare reliquia dopo draw step di Oppo», poi «Sì, aggiungilo»): «&» = il
+           # costruttore a righe per carta (righe_abilita), il filtro e' una lista di «Carta · quando»
+           ("Abilities", (("YOUR ACTIVATED ABILITIES · THE CARD AND WHEN YOU ACTIVATED IT", ("&ab_io",)),)),
            # i filtri situazionali dai replay (13 nov 2026, «sii minuzioso e dettagliato parti dai replay»): terre, vita e campo, rimozioni e interazione
            ("Game", (("LAND DROPS", ("s_terre_io3", "s_terre_io4", "s_terre_io5")),
                      ("LIFE AND BOARD AT THE END OF YOUR TURNS", ("s_vita_io", "s_vita_t3", "s_vita_t5", "s_vita_t7", "s_crea_t3", "s_crea_t5", "s_crea_t7")),
                      ("REMOVAL AND INTERACTION", ("s_rim_io", "s_wipe_io", "s_counter_io", "s_cim_io", "s_magie_io")),
                      ("THE END", ("senza_crea", "fine_entro")),
                      ("MANA, REMOVAL AND CARDS LEFT", ("c2_t3", "rim_prima", "mano_io3", "mano_io5", "mano_io7")),
-                     ("LEAKS · CLUES FROM THE REPLAY, NOT VERDICTS", tuple(f"leak_l{i}" for i in range(1, 9)))))),
+                     ("LEAKS · CLUES FROM THE REPLAY, NOT VERDICTS", tuple(f"leak_l{i}" for i in range(1, 9))),
+                     ("GRAVEYARD AND EXILE · FROM THE CARD TEXT", ("rian_io", "esil_io", "odio_io"))))),
     "lui": (("Opening hand", (("THE OPPONENT", ("suo_mull",)),)),
             ("Their turns", (("WHAT THEY CAST ON THEIR TURNS", ("@t_lui",)),
                              ("THEIR DRAWS ON THEIR TURNS (THE DRAW STEP TOO)", tuple(f"t_plui{n}" for n in range(1, DA.TURNI_FILTRO + 1))),
@@ -130,10 +141,12 @@ AVANZATI = {
                         ("YOUR UNTAPPED LANDS WHEN THEY ATTACK", tuple(f"t_mlui{n}" for n in range(1, DA.TURNI_FILTRO + 1))),
                         ("IN THE WHOLE GAME", ("sit:lui_att_aperto",)))),
             ("Defense", (("THEIR DEFENSE ON YOUR TURNS", tuple(f"t_dlui{n}" for n in range(1, DA.TURNI_FILTRO + 1))),)),
+            ("Abilities", (("THEIR ACTIVATED ABILITIES · THE CARD AND WHEN THEY ACTIVATED IT", ("&ab_lui",)),)),
             ("Game", (("LAND DROPS", ("s_terre_lui3", "s_terre_lui4", "s_terre_lui5")),
                       ("LIFE AND CREATURES", ("s_vita_lui", "senza_lui")),
                       ("CARDS IN THEIR HAND", ("mano_lui3", "mano_lui5", "mano_lui7")),
-                      ("REMOVAL AND INTERACTION", ("s_rim_lui", "s_wipe_lui", "s_counter_lui", "s_cim_lui", "s_magie_lui")))))}
+                      ("REMOVAL AND INTERACTION", ("s_rim_lui", "s_wipe_lui", "s_counter_lui", "s_cim_lui", "s_magie_lui")),
+                      ("GRAVEYARD AND EXILE · FROM THE CARD TEXT", ("rian_lui", "esil_lui", "odio_lui")))))}
 VALORI_FISSI = {"mull": ("0", "1", "2+"), "partenza": ("Play", "Draw"), "esito": ("Won", "Lost")}      # le tendine con le voci fisse
 SEZIONI_FILTRI = (("formato", "evento", "wr_rif", "deck"), ("partenza", "mull", "terre", "esito"), ("suo", "colori"), ("lunga", "rango"), ("data", "fascia", "sessione"))
 
@@ -227,6 +240,7 @@ class PaginaPerformance:
         self.spot_modo = "preset"       # Spots: le ricerche preimpostate (di partenza) o gli spot automatici
         self._lavoro, self.l_carica = None, None
         self.scheda_av = "io"        # la scheda aperta della finestra Advanced filters
+        self.playlist = None        # R15: le partite da guardare una dopo l'altra nel replayer (dict(partite, nome)), o None
         self.ord_partite = ("data", False)        # la tabella delle partite: la colonna e il verso (di partenza dalla piu' recente)
         self.fase_av = {"io": 0, "lui": 0}      # e la fase aperta di ognuna
         self.costruisci()
@@ -625,6 +639,7 @@ class PaginaPerformance:
             c.bind("<MouseWheel>", lambda e: self.spot_modo == "preset" and e.widget.yview_scroll(-2 if e.delta > 0 else 2, "units"))
         elif k == "report":
             c.bind("<Button-1>", self.clic_report)
+            c.bind("<Double-Button-1>", lambda e: self.partite_numero("report"))     # R14: dal numero alle sue partite
             c.configure(yscrollincrement=24)       # la rotella scorre di una riga intera
             c.bind("<MouseWheel>", lambda e: (e.widget.yview_scroll(-1 if e.delta > 0 else 1, "units"), self.maschera_rp(e.widget)))
         elif k == "decisions":
@@ -643,6 +658,7 @@ class PaginaPerformance:
             c.bind("<MouseWheel>", lambda e: e.widget.yview_scroll(-2 if e.delta > 0 else 2, "units"))
         elif k == "matchups":
             c.bind("<Button-1>", self.clic_matchup)
+            c.bind("<Double-Button-1>", lambda e: self.partite_numero("matchups"))
             c.bind("<MouseWheel>", lambda e: e.widget.yview_scroll(-2 if e.delta > 0 else 2, "units"))
         return dict(fr=fr, tela=c, ctl=ctl, lista=lista)
 
@@ -1569,7 +1585,9 @@ class PaginaPerformance:
         c = getattr(e, "widget", None) or self.tabella_partite()
         x_, k = self.partita_a(c, e)
         if x_ is not None:
-            # il replay parte sempre dall'inizio, la mano tenuta (12 nov 2026, Autore: «i replay partono tutti dalla fine e mai dall'inizio»)
+            # il replay parte sempre dall'inizio, la mano tenuta (12 nov 2026, Autore: «i replay partono tutti dalla fine e mai dall'inizio»); R15: le
+            # partite della tabella, nel suo ordine, sono la playlist
+            self.playlist = dict(partite=list(getattr(c, "_partite", []) or [x_]), nome="games in this situation")
             self.apri_board(x_, "inizio")
 
     def passi_board(self, fo):
@@ -1668,7 +1686,18 @@ class PaginaPerformance:
             self.b_segna.configure(width=120); self.b_segna.pack(side="left", padx=(6, 6), pady=8)
             # R3: una nota sulla partita (e sullo spot, se e' segnato)
             self.b_nota = pulsante_solido(tk, F, testa_b, "Note", False, self.apri_nota_board, alto=26, bg=C["cap"], colori=("#3a3220", "#4a4028", "#8a6d1c"))
-            self.b_nota.configure(width=84); self.b_nota.pack(side="left", padx=(0, 12), pady=8)
+            self.b_nota.configure(width=84); self.b_nota.pack(side="left", padx=(0, 6), pady=8)
+            # R2 e R17: la partita come testo o pagina web, lo spot come immagine; senza nomi ne' id dell'account
+            self.b_esporta = pulsante_solido(tk, F, testa_b, "Export ▾", False, self.menu_esporta, alto=26, bg=C["cap"], colori=GRIGI)
+            self.b_esporta.configure(width=96); self.b_esporta.pack(side="left", padx=(0, 6), pady=8)
+            # R15: la playlist, partita dopo partita (tasti P e N; i salti, a fine partita, continuano nella partita dopo)
+            self.b_gioco = {}
+            for d_, n_ in ((-1, "◀ Game"), (1, "Game ▶")):
+                b_ = pulsante_solido(tk, F, testa_b, n_, False, lambda d_=d_: self.gioco_playlist(d_), alto=26, bg=C["cap"], colori=GRIGI)
+                b_.configure(width=80); b_.pack(side="left", padx=(0, 6 if d_ < 0 else 12), pady=8)
+                self.b_gioco[d_] = b_
+            f.bind("<n>", lambda e: self.gioco_playlist(1))
+            f.bind("<p>", lambda e: self.gioco_playlist(-1))
             for tasto, k_ in (("c", "comb"), ("s", "spell"), ("o", "tappato"), ("l", "leak"), ("k", "chiave")):
                 f.bind(f"<{tasto}>", lambda e, k_=k_: self.salta(k_))
                 f.bind(f"<{tasto.upper()}>", lambda e, k_=k_: self.salta(k_, -1))
@@ -1742,7 +1771,9 @@ class PaginaPerformance:
                    if prima_ else "  ·  first game of that day")
         self.l_board.configure(text=f"{x_['quando']:%d %b %Y %H:%M}  ·  {(x_.get('mio') or '-').strip()} vs {x_.get('suo') or '-'}  ·  {esito}"
                                + (f" on turn {x_['turno']}" if x_.get("turno") else "") + (f"  ·  {x_['partenza'].lower()}" if x_.get("partenza") else "") + giorno_)
-        f.title(f"The board · {(x_.get('mio') or '').strip()} vs {x_.get('suo') or ''}")
+        pl_ = self.posto_playlist(x_)
+        f.title(f"The board · {(x_.get('mio') or '').strip()} vs {x_.get('suo') or ''}"
+                + (f" · game {pl_[0] + 1} of {pl_[1]} · {self.playlist['nome']}" if pl_ else ""))
         self.disegna_board()
         f.lift(); f.focus_force()
         return f
@@ -2024,6 +2055,71 @@ class PaginaPerformance:
                 self.vai_board(i)
                 return i
             i += d
+        # R15: in fondo alla partita, la playlist continua nella partita dopo (o prima), fino a trovarne uno; al massimo GIRO_PLAYLIST partite
+        if self.playlist and not getattr(self, "_in_giro", False):
+            x0_, i0_ = b["x"], b["i"]
+            self._in_giro = True
+            try:
+                for _n in range(self.GIRO_PLAYLIST):
+                    x_ = self.gioco_playlist(d, vai=False)
+                    if x_ is None:
+                        break
+                    b2 = self._board
+                    b2["i"] = -1 if d > 0 else len(b2["passi"])
+                    trovato = self.salta(k, d)
+                    if trovato is not None:
+                        return trovato
+            finally:
+                self._in_giro = False
+            if self._board.get("x") is not x0_:      # nessuno nelle partite dopo: si torna dove si era
+                self.apri_board(x0_)
+                self.vai_board(i0_)
+        return None
+
+    GIRO_PLAYLIST = 40
+
+    def posto_playlist(self, x_):
+        """(indice, quante) della partita x_ nella playlist, o None."""
+        pl = self.playlist
+        if not pl:
+            return None
+        i = next((i for i, y in enumerate(pl["partite"]) if y is x_ or y.get("partita") == x_.get("partita")), None)
+        return None if i is None else (i, len(pl["partite"]))
+
+    def apri_playlist(self, partite, nome, k=None):
+        """R14 e R15: dai numeri alle loro partite. Le partite si guardano una dopo l'altra nel replayer (◀ Game, Game ▶, tasti P e N); con k (comb, spell,
+        leak, chiave, tappato) si apre sul primo di quel tipo, e i salti continuano partita dopo partita. Le partite senza la tavola si saltano.
+        -> l'indice del passo, o None se nessuna partita si apre."""
+        self.playlist = dict(partite=list(partite), nome=nome)
+        for x_ in self.playlist["partite"]:
+            self.apri_board(x_, "inizio")
+            b = getattr(self, "_board", None)
+            if b and b.get("x") is x_:
+                if k:
+                    b["i"] = -1
+                    trovato = self.salta(k, 1)
+                    if trovato is None:
+                        self.vai_board(0)
+                    return trovato if trovato is not None else 0
+                return b["i"]
+        return None
+
+    def gioco_playlist(self, d=1, vai=True):
+        """La partita dopo (d=1) o prima (-1) nella playlist, saltando quelle senza la tavola; vai: dall'inizio (la mano tenuta). -> la partita o None."""
+        b = getattr(self, "_board", None)
+        if not b or not self.playlist:
+            return None
+        pos = self.posto_playlist(b["x"])
+        ps = self.playlist["partite"]
+        j = (pos[0] if pos else -1) + d
+        while 0 <= j < len(ps):
+            self.apri_board(ps[j], "inizio")
+            b2 = getattr(self, "_board", None)
+            if b2 and b2.get("x") is ps[j]:
+                if vai:
+                    self.vai_board(0)
+                return ps[j]
+            j += d
         return None
 
     CHI_CHIAVE = (("both", "Keys: both"), ("mine", "Keys: yours"), ("theirs", "Keys: theirs"))
@@ -2124,6 +2220,12 @@ class PaginaPerformance:
         if s_.get("modo") == "azioni":
             self.cambia_modo_board("azioni", ridisegna=False)
         ps = self._board["passi"]
+        if s_.get("i") is None:     # R13: segnato dal vivo, col turno di Arena: il primo momento di quel turno (o l'ultimo prima)
+            dentro = [i for i, p_ in enumerate(ps) if p_[2] <= (s_.get("t") or 0)]
+            stesso = [i for i, p_ in enumerate(ps) if p_[2] == s_.get("t")]
+            i = stesso[0] if stesso else (dentro[-1] if dentro else 0)
+            self.vai_board(i)
+            return f
         stessi = [i for i, p_ in enumerate(ps) if p_[0] == s_.get("passo")]
         i = min(stessi, key=lambda j: abs(j - s_.get("i", 0))) if stessi else min(s_.get("i", 0), len(ps) - 1)
         self.vai_board(i)
@@ -2427,9 +2529,9 @@ class PaginaPerformance:
             w = max(64, len(nome) * 7 + 20)
             on = (b["passi"][i][2] == t_ora) if azioni_ else i == b["i"]
             mio_ = nome.startswith("You") or nome == "Opening hand"
-            cp.create_rectangle(x, 4, x + w, 32, fill="#0f86cc" if on else "#202024", outline="#ffd23f" if i == b.get("svolta") else
-                                ("#0f86cc" if on else ("#3a3a40" if mio_ else "#2c2c32")))
-            cp.create_text(x + w / 2, 18, text=nome, fill="#ffffff" if on else (C["testo"] if mio_ else C["grigio"]), font=F(7, True))
+            chip(cp, x, 4, x + w, 32, nome, on, F(7, True), scritta=None if on else (C["testo"] if mio_ else C["grigio"]))
+            if i == b.get("svolta"):        # il punto di svolta: il filo d'oro intorno
+                cp.create_rectangle(x, 4, x + w - 1, 31, outline="#ffd23f")
             self._box_passi.append((x, x + w, i))
             x += w + 4
         cp.configure(scrollregion=(0, 0, x, 36))
@@ -2652,7 +2754,7 @@ class PaginaPerformance:
         if dz_ is not None:     # R8: la tua decisione di questo momento, col guadagno e lo scarto dalla tua media
             col_d = COLORI_COSTO[dz_["colore"]]
             txt_d = ("YOUR DECISION · not estimable" if dz_["costo"] is None else
-                     f"YOUR DECISION · gain {dz_['guadagno']:+.0f} · {dz_['costo']:+.1f} vs your average")
+                     f"YOUR DECISION · win chance {dz_['guadagno_r8']:+.1f} pts · {dz_['costo']:+.1f} vs your average")
             cc.create_rectangle(x0_r + 14, y + 2, x0_r + 24, y + 12, fill=col_d, outline="")
             i_d = cc.create_text(x0_r + 30, y, text=txt_d, anchor="nw", fill=col_d, font=F(8, True), width=larga_r - 44)
             y = (cc.bbox(i_d) or (0, 0, 0, y + 14))[3] + 6
@@ -3422,6 +3524,14 @@ class PaginaPerformance:
             c.create_text(W - 12, (ultimo + fondo) / 2, text=f"{sotto} more row{'s' if sotto > 1 else ''} below · scroll", anchor="e", fill=C["grigio"],
                           font=self.F(7, True), tags="maschera")
 
+    def partite_numero(self, da):
+        """R14: il doppio clic su una riga del Report o su una cella dei Matchups (il primo clic l'ha messa fra i filtri) apre le sue partite nel replayer,
+        una dopo l'altra (la playlist), dalla piu' recente."""
+        r = sorted(self.scelte(), key=lambda x: x["quando"], reverse=True)
+        if not r:
+            return None
+        return self.apri_playlist(r, "Report row" if da == "report" else "Matchup")
+
     def clic_report(self, e):
         c = getattr(e, "widget", None) or self.tela("report")
         y = c.canvasy(e.y)
@@ -3465,23 +3575,30 @@ class PaginaPerformance:
             return
         F = self.F
         sal = DA.situazioni()
-        voci = ["rest", "all"] + [f"s{i}" for i in range(len(sal))]
+        voci = ["rest", "all"] + (["17l"] if self.tipo == "Limited" else []) + [f"s{i}" for i in range(len(sal))]
         if self.con not in voci:
             self.con = "rest"
-        et = {"rest": "Everything else", "all": f"All {self.tipo.lower()} games", **{f"s{i}": (s_.get("nome") or f"Situation {i + 1}") for i, s_ in enumerate(sal)}}
+        et = {"rest": "Everything else", "all": f"All {self.tipo.lower()} games", "17l": "17Lands players (same sets and colors)",
+              **{f"s{i}": (s_.get("nome") or f"Situation {i + 1}") for i, s_ in enumerate(sal)}}
         for o in self.copie("compare"):
             o["ctl"]["con"].opzioni(voci, lambda v: self.cambia("con", v), etichette=et)
             o["ctl"]["con"].set(self.con)
         W, H = max(c.winfo_width(), 600), max(c.winfo_height(), 240)
         n_f = sum(1 for v in self.filtri.values() if v is not None)
-        if not n_f and self.con in ("rest", "all"):
+        if not n_f and self.con in ("rest", "all"):     # (contro 17Lands si confronta anche senza filtri: A sono tutte le tue partite di limited)
             c.create_text(16, 30, text="A is the situation you build with the smart filters (and the + of each phase).", anchor="w", fill=C["titolo"], font=F(9, True))
             c.create_text(16, 52, text="Set some, then compare it here with everything else, with all your games or with a saved situation.", anchor="w",
                           fill=C["grigio"], font=F(8))
             return
         a = self.scelte()
-        b, nome_b, descr_b = self.b_confronto()
-        res = DA.confronta(a, b)
+        if self.con == "17l":       # C12: contro chi usa 17Lands (dati pubblici, CC BY 4.0), stessi set e stessi colori
+            res = DA.confronta_17lands(a)
+            b, nome_b = [], "17Lands players"
+            descr_b = (f"Premier Draft of {', '.join(res['set']) or '-'}, weighted on your colors · 17Lands public game data (CC BY 4.0), 17lands.com"
+                       + (f" · {res['fuori']} of your games have no 17Lands data" if res["fuori"] else ""))
+        else:
+            b, nome_b, descr_b = self.b_confronto()
+            res = DA.confronta(a, b)
         corto = lambda t, n: t if len(t) <= n else t[:n - 1] + "…"
         meta = (W - 16 - 12) / 2
         for i, (lett, tit, descr, k_, col) in enumerate((("A", "THIS SITUATION", self.descrivi(self.filtri), res["a"], C["azzurro"]),
@@ -3490,7 +3607,7 @@ class PaginaPerformance:
             c.create_rectangle(x0, 4, x0 + meta, 52, fill="#202024", outline="#2c2c32")
             c.create_rectangle(x0, 4, x0 + 3, 52, fill=col, outline="")
             c.create_text(x0 + 14, 17, text=corto(f"{lett} · {tit}", int((meta - 150) / 6.6)), anchor="w", fill=col, font=F(8, True))
-            c.create_text(x0 + meta - 10, 17, text=f"{k_['n']} games · {k_['vinte']}-{k_['perse']}", anchor="e", fill=C["titolo"], font=F(8, True))
+            c.create_text(x0 + meta - 10, 17, text=f"{k_['n']:,} games · {k_['vinte']:,}-{k_['perse']:,}", anchor="e", fill=C["titolo"], font=F(8, True))
             c.create_text(x0 + 14, 37, text=corto(descr, int((meta - 24) / 5.6)), anchor="w", fill=C["grigio"], font=F(7))
         # la tabella: misura, A, B, A meno B, se regge
         cx = (16, 250, 420, 580, 700)
@@ -3507,9 +3624,9 @@ class PaginaPerformance:
                 if v is None:
                     t = "-"
                 elif r["unita"] == "%":
-                    t = f"{v:.0f}%" + (f"  ({ic[0]}–{ic[1]})" if r["k"] == "wr" and ic else "") + f"  · {n} g"
+                    t = f"{v:.0f}%" + (f"  ({ic[0]}–{ic[1]})" if r["k"] == "wr" and ic else "") + f"  · {n:,} g"
                 else:
-                    t = f"T{v}  · {n} g"
+                    t = f"T{v}  · {n:,} g"
                 c.create_text(x_, y + 12, text=t, anchor="w", fill=col if v is not None else C["muto"], font=F(8))
             d = r["delta"]
             buono = r["k"] in ("wr", "play", "draw")
@@ -3542,7 +3659,12 @@ class PaginaPerformance:
                              else ": so small that it is no real difference." if w["servono"] else "."), C["titolo"])
         c.create_text(16, y + 16, text=fr, anchor="w", fill=cf, font=F(9, True), width=W - 32)
         y += 40
-        if H - y >= 130:        # sotto, il win rate di A e di B nel tempo
+        if self.con == "17l":       # la citazione (CC BY 4.0) sempre intera e a vista, non dentro la scheda di B che si accorcia
+            c.create_text(16, y, text=("B: 17Lands public game data (CC BY 4.0), 17lands.com/public_datasets · Premier Draft players, who win about 55% on "
+                                       "average; your games may be Quick Draft. 17Lands does not endorse this app."), anchor="w", fill=C["grigio"], font=F(7),
+                          width=W - 32)
+            y += 24
+        if H - y >= 130 and b:        # sotto, il win rate di A e di B nel tempo (contro 17Lands B non ha partite: niente)
             lin = [(n, p) for n, p in (("A", DA.serie(a, "wr", self.asse, self.finestra)), ("B", DA.serie(b, "wr", self.asse, self.finestra))) if p]
             fin = "cumulative" if self.finestra == "cum" else f"last {self.finestra} games"
             self.traccia(c, lin, (52, y + 18, W - 120, H - 24), "wr", self.asse, (C["azzurro"], C["arancio"]), f"win rate of A and B, {fin}")
@@ -3563,16 +3685,21 @@ class PaginaPerformance:
         if not chiavi:      # una fase senza filtri in piu': niente + more
             return
         t = f"+ {on} on" if on else "+ more"
-        c.create_rectangle(W - 62, H - 19, W - 2, H - 1, fill="#0f86cc" if on else "#202024", outline="#0f86cc" if on else "#3a3a40")
-        c.create_text(W - 32, H - 10, text=t, fill="#ffffff" if on else C["grigio"], font=F(7, True))
+        chip(c, W - 62, H - 19, W - 2, H - 1, t, bool(on), F(7, True))
 
     # ------------------------------------------------------------ Advanced filters (13 nov 2026, Autore: «io voglio una sezione dove posso ottenere una
     # risposta in base a dei filtri ... mio wr quando ho 3 terre in mano on the draw e chiudo entro T5 senza creature e oppo mulliga», poi «tutta sta roba sta in
     # una nuova sotto finestra / il pulsante per aprirla e' advanced filters», «filtri e domanda ma i filtri per me e per oppo stanno in due schede differenti»)
     def chiavi_scheda_av(self, scheda):
         """I filtri di una scheda di Advanced filters (You o Opponent), le righe delle giocate per turno comprese."""
-        return {k2 for _f, sezioni in AVANZATI[scheda] for _t, kk in sezioni for k in kk
-                for k2 in ([f"{k[1:]}{n}" for n in range(1, DA.TURNI_FILTRO + 1)] if k.startswith("@") else [k])}
+        return {k2 for _f, sezioni in AVANZATI[scheda] for _t, kk in sezioni for k in kk for k2 in self.chiavi_av(k)}
+
+    @staticmethod
+    def chiavi_av(k):
+        """Le chiavi dei filtri di una voce di AVANZATI: «@t_io» le righe turno per turno (t_io1 ... t_io5), «&ab_io» le abilita' (ab_io), le altre se stesse."""
+        if k.startswith("@"):
+            return [f"{k[1:]}{n}" for n in range(1, DA.TURNI_FILTRO + 1)]
+        return [k[1:]] if k.startswith("&") else [k]
 
     def reset_scheda_av(self):
         """Il Reset della scheda aperta di Advanced filters: i suoi filtri via, gli altri (le altre schede, gli smart filters) restano."""
@@ -3581,14 +3708,13 @@ class PaginaPerformance:
         for _f, sezioni in AVANZATI[self.scheda_av]:
             for _t, kk in sezioni:
                 for k in kk:
-                    if k.startswith("@"):
+                    if k[:1] in ("@", "&"):
                         self.__dict__.setdefault("_righe_ui", {}).pop(k[1:], None)
         self.disegna()
 
     def avanzati_on(self):
         """Quanti filtri della finestra Advanced filters sono accesi."""
-        chiavi = {k2 for fasi in AVANZATI.values() for _f, sezioni in fasi for _t, kk in sezioni for k in kk
-                  for k2 in ([f"{k[1:]}{n}" for n in range(1, DA.TURNI_FILTRO + 1)] if k.startswith("@") else [k])}
+        chiavi = {k2 for fasi in AVANZATI.values() for _f, sezioni in fasi for _t, kk in sezioni for k in kk for k2 in self.chiavi_av(k)}
         return sum(1 for k, v in self.filtri.items() if v is not None and k in chiavi)
 
     def aggiorna_bottone_avanzati(self):
@@ -3725,6 +3851,9 @@ class PaginaPerformance:
             if len(chiavi) == 1 and chiavi[0].startswith("@"):
                 y = self.righe_avanzate(ca, chiavi[0][1:], y, tutte)
                 continue
+            if len(chiavi) == 1 and chiavi[0].startswith("&"):
+                y = self.righe_abilita(ca, chiavi[0][1:], y, tutte)
+                continue
             for k in chiavi:
                 sc = self.filtri.get(k)
                 # sempre tutte le voci, anche quelle che nelle tue partite non ci sono (13 nov 2026: «mancano anche i planeswalker»)
@@ -3741,8 +3870,7 @@ class PaginaPerformance:
                     if x + w > LARGA_FASE - 6:
                         x, y = 310, y + 30
                     on = (v in sc if v is not None else not sc) if isinstance(sc, list) else sc == v
-                    ca.create_rectangle(x, y + 2, x + w, y + 24, fill="#0f86cc" if on else "#202024", outline="#0f86cc" if on else "#3a3a40")
-                    ca.create_text(x + w / 2, y + 13, text=t, fill="#ffffff" if on else C["grigio"], font=F(7, True))
+                    chip(ca, x, y + 2, x + w, y + 24, t, on, F(7, True))
                     self._box_av.append((x, y + 2, x + w, y + 24, k, v))
                     x += w + 6
                 y += 34
@@ -3793,6 +3921,49 @@ class PaginaPerformance:
         ca.create_window(8, y, window=b.fr, anchor="nw")
         b.fr.update_idletasks()
         return y + b.fr.winfo_reqheight() + 12
+
+    # le abilita' attivate a righe (13 nov 2026): una riga = una carta, e una tendina per ogni momento (Any time, il turno, il passo col turno); piu' momenti
+    # nella stessa riga o piu' righe = tutti nella stessa partita. Il filtro: «ab_io» = [«Carta · quando»]
+    def righe_ab(self, k):
+        """Le righe del costruttore delle abilita': quelle a video se dicono ancora il filtro, se no rifatte dal filtro; di partenza una riga vuota."""
+        ora = sorted(self.filtri.get(k) or [])
+        ui = self.__dict__.setdefault("_righe_ui", {}).get(k)
+        if ui and self._da_righe_ab(ui) == ora:
+            return [[c_, list(v_)] for c_, v_ in ui]
+        per = {}
+        for v in ora:
+            carta, _s, quando = v.partition(" · ")
+            per.setdefault(carta, []).append(quando)
+        return [[c_, q_] for c_, q_ in per.items()] or [[None, [None]]]
+
+    @staticmethod
+    def _da_righe_ab(righe):
+        return sorted({f"{c_} · {q_}" for c_, vv in righe if c_ for q_ in vv or [] if q_})
+
+    def righe_abilita(self, ca, k, y, tutte):
+        """Il costruttore delle abilita' attivate dentro la tela di Advanced filters, a y: le carte sono quelle attivate nelle partite di questo tipo, dalla
+        piu' frequente; i momenti sempre tutti (DA.QUANDO_ATTIVATE). -> la y sotto."""
+        tk, F = self.tk, self.F
+        conta = collections.Counter(v.partition(" · ")[0] for x_ in tutte for v in DA.valori_di(k, x_) if v.endswith(" · Any time"))
+        righe = self.righe_ab(k)
+        carte = [c_ for c_, _n in conta.most_common()] + [c_ for c_, _v in righe if c_ and c_ not in conta]
+        if not carte:
+            ca.create_text(8, y + 10, text="No activated abilities in these games (or games read before this filter existed).", anchor="w",
+                           fill=C["grigio"], font=F(8))
+            return y + 30
+        b = R_F.Righe(tk, F, ca, righe, carte, lambda c_: f"{c_}  ({conta.get(c_, 0)})", lambda c_: list(DA.QUANDO_ATTIVATE),
+                      lambda rr, k=k: self.metti_righe_ab(k, rr), dopo="activated", larga_campo=230, larga_voce=200)
+        self._costruttori_av[k] = b
+        ca.create_window(8, y, window=b.fr, anchor="nw")
+        b.fr.update_idletasks()
+        return y + b.fr.winfo_reqheight() + 12
+
+    def metti_righe_ab(self, k, righe):
+        self.filtri[k] = self._da_righe_ab(righe) or None
+        if self.filtri[k] is None:
+            self.filtri.pop(k)
+        self.__dict__.setdefault("_righe_ui", {})[k] = [[c_, list(v_ or [None])] for c_, v_ in righe]
+        self.fr.after_idle(self.disegna)
 
     def metti_righe_av(self, pre, righe):
         """Dalle righe ai filtri del gruppo; le righe restano come sono a video (anche le tendine ancora vuote)."""
@@ -3896,8 +4067,7 @@ class PaginaPerformance:
                 if x + w > LARGA_FASE - 6:      # va a capo: i valori restano tutti leggibili
                     x, y = 310, y + 30
                 on = sc == v
-                c.create_rectangle(x, y + 2, x + w, y + 24, fill="#0f86cc" if on else "#202024", outline="#0f86cc" if on else "#3a3a40")
-                c.create_text(x + w / 2, y + 13, text=t, fill="#ffffff" if on else C["grigio"], font=F(7, True))
+                chip(c, x, y + 2, x + w, y + 24, t, on, F(7, True))
                 self._box_fase.append((x, y + 2, x + w, y + 24, k, v))
                 x += w + 6
             y += 34
@@ -4017,8 +4187,7 @@ class PaginaPerformance:
         for i, (m, t) in enumerate((("all", "vs all"), ("colors", "vs colors"))):
             x = X + i * 118
             on = modo == m
-            c.create_rectangle(x, y, x + 110, y + 28, fill="#0f86cc" if on else "#202024", outline="#0f86cc" if on else "#3a3a40")
-            c.create_text(x + 55, y + 14, text=t, fill="#ffffff" if on else C["grigio"], font=F(8, True))
+            chip(c, x, y, x + 110, y + 28, t, on, F(8, True))
             self._box_deck.append((x, y, x + 110, y + 28, "modo", m))
         y += 40
         flag = set() if not vs else ({"C"} if vs == "C" else set(vs))
@@ -4183,7 +4352,7 @@ class PaginaPerformance:
             c.create_text(14, y + 14, text=titolo, anchor="w", fill=C["azzurro"], font=F(8, True))
             # le coppie della riga si aprono in una finestra a parte (13 nov 2026, Autore: «non aggiungere le coppie come righe ma come finestre extra che
             # si aprono dalla riga e mostrano le coppie»)
-            i_ = c.create_text(W - 14, y + 14, text="Pairs ›", anchor="e", fill=C["accento"], font=F(8, True))
+            i_ = c.create_text(W - 14, y + 14, text="Answers ›" if chiave == "minacce" else "Pairs ›", anchor="e", fill=C["accento"], font=F(8, True))
             bb = c.bbox(i_)
             c._box_coppie.append((bb[0] - 6, bb[1] - 4, bb[2] + 6, bb[3] + 4, chiave, titolo))
             y += 28
@@ -4226,6 +4395,16 @@ class PaginaPerformance:
         if "salto" in cc:           # un finisher: quante vittorie ha deciso, il salto di vantaggio medio
             c.create_text(xc, y + hc + 12, text=f"decided {cc['n']} win{'s' * (cc['n'] != 1)}", fill=C["azzurro"], font=F(9, True))
             c.create_text(xc, y + hc + 29, text=f"swing +{cc['salto']:.0f} · {cc['quota']:.0f}% of your wins", fill=C["grigio"], font=F(7))
+        elif cc.get("risposta"):    # C15: una tua risposta, quante copie hai
+            c.create_text(xc, y + hc + 12, text=f"you own {(DA._carta(cc['nome']) or {}).get('copie', 0)}", fill=C["azzurro"], font=F(9, True))
+            c.create_text(xc, y + hc + 29, text=f"MV {(DA._carta(cc['nome']) or {}).get('cmc', 0)}", fill=C["grigio"], font=F(7))
+        elif "eccesso" in cc:       # C15: una minaccia, quante sconfitte, quante risposte hai
+            c.create_text(xc, y + hc + 12, text=f"in {cc['perse']} of your losses", fill=C["rosso"], font=F(9, True))
+            c.create_text(xc, y + hc + 29, text=f"+{cc['eccesso']} pts vs wins · {len(cc.get('risposte') or [])} answers", fill=C["grigio"], font=F(7))
+        elif "economici" in cc:     # C13: cosa tolgono le tue rimozioni
+            col_e = C["muto"] if cc["n"] < 5 else (C["rosso"] if cc["economici"] >= 50 else C["azzurro"])
+            c.create_text(xc, y + hc + 12, text=f"removed MV {cc['bers_mv']:.1f} · its {cc['rim_mv']:.0f}", fill=col_e, font=F(9, True))
+            c.create_text(xc, y + hc + 29, text=f"{cc['economici']}% cheap · {cc['tolti']} removed", fill=C["grigio"], font=F(7))
         elif "iwd" in cc:       # C4: l'IWD personale
             col_i = C["muto"] if cc["poche"] else (C["azzurro"] if cc["iwd"] > 0 else C["rosso"] if cc["iwd"] < 0 else C["testo"])
             c.create_text(xc, y + hc + 12, text=f"{cc['iwd']:+.0f} pts when drawn", fill=col_i, font=F(9, True))
@@ -4235,7 +4414,11 @@ class PaginaPerformance:
             c.create_text(xc, y + hc + 29, text=f"{cc['n']} of {cc['mano']} games · {cc['wr']:.0f}% WR", fill=C["grigio"], font=F(7))
         else:
             c.create_text(xc, y + hc + 12, text=f"{cc['wr']:.0f}% WR  ·  {cc['vinte']}-{cc['perse']}", fill=col, font=F(9, True))
-            c.create_text(xc, y + hc + 29, text=f"in {cc['n']} games · {cc['quota']:.0f}% of games", fill=C["grigio"], font=F(7))
+            if cc.get("turno_lancio") is not None:      # R12: il giro medio del primo lancio e i giri in mano prima
+                held_ = f" · held {cc['in_mano_giri']:.1f}" if cc.get("in_mano_giri") is not None else ""
+                c.create_text(xc, y + hc + 29, text=f"cast T{cc['turno_lancio']:.1f}{held_}", fill=C["grigio"], font=F(7))
+            else:
+                c.create_text(xc, y + hc + 29, text=f"in {cc['n']} games · {cc['quota']:.0f}% of games", fill=C["grigio"], font=F(7))
         return larga_c
 
     # ------------------------------------------------------------ la cartella Decisions
@@ -4468,6 +4651,10 @@ class PaginaPerformance:
             return self.disegna_mulligan(c, r, W)
         if self.dec_modo == "costo":
             return self.disegna_costi(c, r, W)
+        if self.dec_modo == "leak":
+            return self.disegna_leak(c, r, W)
+        if self.dec_modo == "cimitero":
+            return self.disegna_cimitero(c, r, W)
         tab = DEC.tabella(r, self.dec_modo, self.dec_f.get(self.dec_modo))
         tutte_ = tab[0]
         att = self.dec_modo == "attacco"
@@ -4547,11 +4734,10 @@ class PaginaPerformance:
         # R9: il quiz sulle decisioni rosse di queste partite
         n_q = len([z for z in cc if z["colore"] == "rosso" and z["tipo"] in ("attacco", "blocco")])
         if n_q:
-            c.create_rectangle(W - 250, 26, W - 14, 46, fill="#0f86cc", outline="", tags="quiz")
-            c.create_text(W - 132, 36, text=f"What would you do? · {n_q} spots", fill="#ffffff", font=F(8, True), tags="quiz")
+            disegna_s3(c, W - 250, 24, W - 14, 48, f"What would you do? · {n_q} spots", F(8, True), tags="quiz", icona=False)
             c._box.append((W - 250, 26, W - 14, 46, ("quiz",)))
         y = 50
-        col = ((14, "VS YOUR AVERAGE"), (150, "GAIN"), (220, "DECISION"), (560, "TURN"), (650, "GAME"))
+        col = ((14, "VS YOUR AVERAGE · pts"), (150, "WIN CHANCE"), (220, "DECISION"), (560, "TURN"), (650, "GAME"))
         for x_, t in col:
             c.create_text(x_, y, text=t, anchor="w", fill=C["titolo"], font=F(7, True))
         y += 16
@@ -4563,7 +4749,7 @@ class PaginaPerformance:
             colr = COLORI_COSTO[z["colore"]]
             c.create_rectangle(14, y + 5, 26, y + 19, fill=colr, outline="")
             c.create_text(34, y + 12, text="not estimable" if z["costo"] is None else f"{z['costo']:+.1f}", anchor="w", fill=colr, font=F(8, True))
-            c.create_text(150, y + 12, text="-" if z["guadagno"] is None else f"{z['guadagno']:+.0f}", anchor="w", fill=C["testo"], font=F(8))
+            c.create_text(150, y + 12, text="-" if z.get("guadagno_r8") is None else f"{z['guadagno_r8']:+.1f}%", anchor="w", fill=C["testo"], font=F(8))
             if z["tipo"] == "attacco":
                 cosa = f"Attack · {z['attaccanti']} of {z['potevano'] or '?'} creatures · {z['aperte'] if z['aperte'] is not None else '?'} untapped lands against you"
             elif z["tipo"] == "blocco":
@@ -4578,10 +4764,169 @@ class PaginaPerformance:
             c._box.append((8, y, W - 8, y + 24, ("costo", z["partita"], z["t"], z["tipo"], z.get("nome"))))
             y += 26
         y += 10
-        c.create_text(14, y, text=("Gain: how much your advantage (life + 2 × power) changed from the decision to the next moment (for a spell, its answer too). "
-                                   "Against the average of your decisions of the same kind in the same part of the game: red 5+ points worse, yellow 2+, "
+        c.create_text(14, y, text=("Win chance: how much your chance to win changed from the decision to the next moment (for a spell, its answer too), read "
+                                   "from the table (life, creatures, lands, cards in hand) by our win-probability model, trained on 17Lands public replay data "
+                                   "(CC BY 4.0, 17lands.com/public_datasets) from six limited sets: in constructed it is a stretch, it compares two tables. "
+                                   "Against the average of your decisions of the same kind in the same part of the game: red 7+ points worse, yellow 3.5+, "
                                    "green the rest. A clue, not a verdict."), anchor="nw", fill=C["grigio"], font=F(7), width=W - 30)
         c.configure(scrollregion=(0, 0, W, y + 40))
+
+    def disegna_leak(self, c, r, W):
+        """R10, il leak tracker (13 nov 2026, come PokerTracker): ogni leak nelle partite della situazione: in quante partite, il win rate con e senza e la
+        differenza, il trend (ultime 50 partite contro quelle prima: verde se scende), e come si corregge. Il clic su una riga la mette fra i filtri (di nuovo
+        la toglie), «Watch ›» apre le sue partite nel replayer sul leak, una dopo l'altra. La popolazione non c'e' (servono i dati condivisi)."""
+        import leak as LK
+        F = self.F
+        tr = LK.tracker(r)
+        n = tr[0]["n"] if tr else 0
+        c.create_text(14, 14, text=f"YOUR LEAKS · {n} games with the moments · clues from the replay, not verdicts", anchor="w", fill=C["muto"], font=F(7, True))
+        c.create_text(W - 14, 14, text="click a row: only its games (again: all) · Watch ›: its games in the replayer, on the leak", anchor="e",
+                      fill=C["grigio"], font=F(7))
+        y = 34
+        col = ((14, "LEAK"), (360, "GAMES"), (450, "WIN RATE WITH"), (560, "WITHOUT"), (650, "DIFFERENCE"), (760, "LAST 50 · BEFORE"))
+        for x_, t in col:
+            c.create_text(x_, y, text=t, anchor="w", fill=C["titolo"], font=F(7, True))
+        y += 16
+        for i, t in enumerate(tr):
+            on = self.filtri.get(f"leak_{t['k']}") == "Yes"
+            alto = 62
+            c.create_rectangle(8, y, W - 8, y + alto, fill="#202024" if i % 2 == 0 else "#1c1c20", outline=C["accento"] if on else "")
+            c.create_text(14, y + 12, text=f"{t['k'].upper()} · {t['nome']}", anchor="w", fill=C["titolo"], font=F(9, True), width=340)
+            c.create_text(360, y + 12, text=f"{t['con']} · {t['tasso']:.0f}%" if t["tasso"] is not None else "-", anchor="w", fill=C["testo"], font=F(8, True))
+            wr_ = lambda v: "-" if v is None else f"{v:.0f}%"
+            c.create_text(450, y + 12, text=wr_(t["wr_con"]), anchor="w", fill=C["testo"], font=F(8))
+            c.create_text(560, y + 12, text=wr_(t["wr_senza"]), anchor="w", fill=C["testo"], font=F(8))
+            poche = t["con"] < 10
+            col_d = C["muto"] if poche or t["delta"] is None else (C["rosso"] if t["delta"] < 0 else C["azzurro"])
+            c.create_text(650, y + 12, text="-" if t["delta"] is None else f"{t['delta']:+.0f} pts" + (" · few" if poche else ""), anchor="w", fill=col_d,
+                          font=F(8, True))
+            if t["tasso_rec"] is not None and t["tasso_prima"] is not None:
+                meglio = t["tasso_rec"] < t["tasso_prima"]
+                c.create_text(760, y + 12, text=f"{t['tasso_rec']:.0f}% · {t['tasso_prima']:.0f}%  {'↓' if meglio else '↑' if t['tasso_rec'] > t['tasso_prima'] else '='}",
+                              anchor="w", fill=C["verde"] if meglio else C["rosso"] if t["tasso_rec"] > t["tasso_prima"] else C["grigio"], font=F(8, True))
+            else:
+                c.create_text(760, y + 12, text="-", anchor="w", fill=C["grigio"], font=F(8))
+            c.create_text(14, y + 30, text=t["spiega"], anchor="w", fill=C["grigio"], font=F(7), width=W - 160)
+            c.create_text(14, y + 47, text="How to fix: " + t["come"], anchor="w", fill="#e8d28a", font=F(7), width=W - 160)
+            c._box.append((8, y, W - 130, y + alto, ("leak", t["k"])))
+            if t["con"]:
+                disegna_s3(c, W - 120, y + 18, W - 16, y + 42, "Watch ›", F(8, True), icona="play")
+                c._box.append((W - 120, y + 18, W - 16, y + 42, ("guarda_leak", t["k"])))
+            y += alto + 4
+        y += 8
+        c.create_text(14, y, text=("Difference: your win rate in the games with the leak minus the games without it (grey under 10 games: a hint). A leak "
+                                   "often comes with games already lost (a concession), so read the difference as a clue. Last 50 · before: how often it "
+                                   "happened in your last 50 games against the ones before, green if it went down. How you compare with other players "
+                                   "needs the shared data."), anchor="nw", fill=C["grigio"], font=F(7), width=W - 30)
+        c.configure(scrollregion=(0, 0, W, y + 50))
+
+    def disegna_cimitero(self, c, r, W):
+        """Cimitero ed esilio in Decisions (14 nov 2026, Autore: «ok fai i filtri per la decisione»): ogni situazione nelle partite scelte, in quante,
+        il win rate con e senza, la differenza; il clic la mette fra i filtri (di nuovo la toglie). Grado C, dal testo delle carte: misurate sui log del 13 nov,
+        nessuna predice le vittorie oltre al vantaggio, quindi non pesano nel costo delle decisioni."""
+        import cimitero as CM
+        F = self.F
+        tr = CM.tracker(r)
+        n = tr[0]["n"] if tr else 0
+        c.create_text(14, 14, text=f"GRAVEYARD AND EXILE · {n} games with the moments · from the card text, clues not verdicts", anchor="w", fill=C["muto"],
+                      font=F(7, True))
+        c.create_text(W - 14, 14, text="click a row: only its games (again: all)", anchor="e", fill=C["grigio"], font=F(7))
+        y = 34
+        for x_, t in ((14, "SITUATION"), (420, "GAMES"), (510, "WIN RATE WITH"), (620, "WITHOUT"), (710, "DIFFERENCE")):
+            c.create_text(x_, y, text=t, anchor="w", fill=C["titolo"], font=F(7, True))
+        y += 16
+        wr_ = lambda v: "-" if v is None else f"{v:.0f}%"
+        for i, t in enumerate(tr):
+            on = self.filtri.get(t["k"]) in t["si"]
+            c.create_rectangle(8, y, W - 8, y + 26, fill="#202024" if i % 2 == 0 else "#1c1c20", outline=C["accento"] if on else "")
+            c.create_text(14, y + 13, text=t["nome"], anchor="w", fill=C["titolo"], font=F(8, True), width=400)
+            c.create_text(420, y + 13, text=f"{t['con']} · {t['tasso']:.0f}%" if t["tasso"] is not None else "-", anchor="w", fill=C["testo"], font=F(8, True))
+            c.create_text(510, y + 13, text=wr_(t["wr_con"]), anchor="w", fill=C["testo"], font=F(8))
+            c.create_text(620, y + 13, text=wr_(t["wr_senza"]), anchor="w", fill=C["testo"], font=F(8))
+            poche = t["con"] < 10
+            col_d = C["muto"] if poche or t["delta"] is None else (C["rosso"] if t["delta"] < 0 else C["azzurro"])
+            c.create_text(710, y + 13, text="-" if t["delta"] is None else f"{t['delta']:+.0f} pts" + (" · few" if poche else ""), anchor="w", fill=col_d,
+                          font=F(8, True))
+            c._box.append((8, y, W - 8, y + 26, ("cimitero", t["k"], t["si"][0])))
+            y += 28
+        y += 8
+        c.create_text(14, y, text=("A reanimation ready: a card in your hand or on the battlefield (theirs: battlefield only) that returns a creature from a "
+                                   "graveyard to the battlefield, with a creature in that graveyard. Playable from exile: foretell, plot, warp, suspend, an "
+                                   "adventure (impulse draw is not seen). Exiled from a graveyard: cards that left it for exile during that player's turn "
+                                   "(on their own turn it can be their escape or delve). Measured on your games: none of these predicts wins beyond life and "
+                                   "power on the battlefield, so they carry no weight in the decision cost; here you see what they meant for you."),
+                      anchor="nw", fill=C["grigio"], font=F(7), width=W - 30)
+        c.configure(scrollregion=(0, 0, W, y + 60))
+
+    def testo_partita(self, html=False):
+        """R2: la partita aperta nel replayer, momento per momento coi suoi fatti, come testo o pagina web. Niente nomi ne' id dell'account: «You», «Opponent»,
+        i mazzi e un codice di partita pseudonimo (condividi.codice, lo stesso dei dati condivisi)."""
+        import condividi
+        import html as H
+        b = self._board
+        x_ = b["x"]
+        passi_ora = b["passi"]
+        passi = b["passi"] = b.get("momenti_passi") or passi_ora     # sempre i momenti, senza cambiare il modo a video
+        testa = [f"{x_['quando']:%d %b %Y %H:%M} · {(x_.get('mio') or '-').strip()} vs {x_.get('suo') or '-'} · {'won' if x_['vinta'] else 'lost'}"
+                 + (f" on turn {x_['turno']}" if x_.get("turno") else "") + (f" · {x_['partenza'].lower()}" if x_.get("partenza") else ""),
+                 f"Game code {condividi.codice(x_.get('partita') or '?')} · exported from 3 Steps Ahead"]
+        blocchi = []
+        for i, p_ in enumerate(passi):
+            try:
+                righe = [t for _m, t in (self.racconto(i) or []) if t]
+            except Exception:       # noqa: BLE001 - un momento che non si racconta non ferma l'esportazione
+                righe = []
+            f = p_[1] or {}
+            v = f.get("vite") or (None, None)
+            blocchi.append((p_[0], f"life you {v[0]} · opponent {v[1]}", righe))
+        b["passi"] = passi_ora
+        nota = DA.nota_partita(x_.get("partita"))
+        if not html:
+            out = testa + ([f"Note: {nota}"] if nota else []) + [""]
+            for nome, vite, righe in blocchi:
+                out += [f"{nome}  ({vite})"] + [f"  - {r_}" for r_ in righe] + [""]
+            return "\n".join(out)
+        e = H.escape
+        corpo = "".join(f"<h3>{e(nome)} <small>{e(vite)}</small></h3><ul>" + "".join(f"<li>{e(r_)}</li>" for r_ in righe) + "</ul>" for nome, vite, righe in blocchi)
+        return ("<!doctype html><html><head><meta charset='utf-8'><title>3 Steps Ahead · game</title><style>body{background:#101014;color:#bebec2;"
+                "font-family:Segoe UI,sans-serif;max-width:860px;margin:24px auto;padding:0 16px}h1{color:#fff;font-size:20px}h3{color:#fff;margin:18px 0 4px;"
+                "font-size:14px}small{color:#7a7a80;font-weight:normal}li{margin:2px 0}.c{color:#7a7a80}</style></head><body>"
+                f"<h1>{e(testa[0])}</h1><p class='c'>{e(testa[1])}</p>" + (f"<p>Note: {e(nota)}</p>" if nota else "") + corpo + "</body></html>")
+
+    def menu_esporta(self):
+        """Il menu di Export: la partita come testo, come pagina web, lo spot come immagine."""
+        tk = self.tk
+        m = tk.Menu(self.fin_board, tearoff=0, bg=C["scheda"], fg=C["titolo"], activebackground="#0f86cc", activeforeground="#ffffff")
+        m.add_command(label="Game as text (.txt)", command=lambda: self.esporta("txt"))
+        m.add_command(label="Game as web page (.html)", command=lambda: self.esporta("html"))
+        m.add_command(label="This spot as image (.png)", command=lambda: self.esporta("png"))
+        try:
+            m.tk_popup(self.b_esporta.winfo_rootx(), self.b_esporta.winfo_rooty() + self.b_esporta.winfo_height())
+        finally:
+            m.grab_release()
+        return m
+
+    def esporta(self, cosa, file=None):
+        """Scrive l'esportazione: file None chiede dove (la finestra di Windows). L'immagine e' la tavola com'e' sullo schermo (R17). -> il file o None."""
+        b = getattr(self, "_board", None)
+        if not b:
+            return None
+        if file is None:
+            from tkinter import filedialog
+            file = filedialog.asksaveasfilename(parent=self.fin_board, defaultextension="." + cosa, initialfile=f"3StepsAhead_{b['x']['quando']:%Y%m%d_%H%M}.{cosa}",
+                                                filetypes=[(cosa.upper(), "*." + cosa)])
+            if not file:
+                return None
+        if cosa == "png":
+            import piattaforma
+            im = piattaforma.foto_finestra(self.cv_board)      # la tavola com'e' disegnata, mai lo schermo (Arena o altro sopra)
+            if im is None:
+                return None
+            im.save(file)
+        else:
+            with open(file, "w", encoding="utf-8") as g:
+                g.write(self.testo_partita(html=cosa == "html"))
+        return file
 
     def apri_nota_board(self):
         """R3: la nota sulla partita aperta nel replayer, e sullo spot se e' segnato: una finestrella con le due caselle, Save e Delete."""
@@ -4712,8 +5057,7 @@ class PaginaPerformance:
             y += 16
             xb = 16
             for k, n in opz:
-                c.create_rectangle(xb, y, xb + 210, y + 34, fill="#0f86cc", outline="")
-                c.create_text(xb + 105, y + 17, text=n, fill="#ffffff", font=F(9, True))
+                disegna_s3(c, xb, y, xb + 210, y + 34, n, F(9, True), icona=False)
                 c._box.append((xb, y, xb + 210, y + 34, ("scegli", k)))
                 xb += 222
             return
@@ -4741,8 +5085,7 @@ class PaginaPerformance:
         c.create_text(16, y, text="Your average, not a rule: a clue to look at the spot again.", anchor="w", fill=C["grigio"], font=F(7))
         y += 24
         if q["i"] + 1 < len(q["voci"]):
-            c.create_rectangle(16, y, 196, y + 32, fill="#0f86cc", outline="")
-            c.create_text(106, y + 16, text="Next spot ›", fill="#ffffff", font=F(9, True))
+            disegna_s3(c, 16, y, 196, y + 32, "Next spot ›", F(9, True), icona=False)
             c._box.append((16, y, 196, y + 32, ("avanti",)))
 
     def clic_quiz(self, e):
@@ -4854,6 +5197,25 @@ class PaginaPerformance:
             return self.apri_decisione(*cosa[1:])
         if cosa[0] == "quiz":       # R9: cosa faresti qui?
             return self.apri_quiz()
+        if cosa[0] == "leak":       # R10: le partite col leak fra i filtri (di nuovo: tutte)
+            k_ = f"leak_{cosa[1]}"
+            if self.filtri.get(k_) == "Yes":
+                self.filtri.pop(k_, None)
+            else:
+                self.filtri[k_] = "Yes"
+            self.disegna()
+            return self.filtri.get(k_)
+        if cosa[0] == "cimitero":   # cimitero ed esilio: la situazione fra i filtri (di nuovo: tutte)
+            if self.filtri.get(cosa[1]) is not None:
+                self.filtri.pop(cosa[1], None)
+            else:
+                self.filtri[cosa[1]] = cosa[2]
+            self.disegna()
+            return self.filtri.get(cosa[1])
+        if cosa[0] == "guarda_leak":        # R10 + R15: le sue partite nel replayer, sul leak
+            import leak as LK
+            rr = sorted((x for x in self.scelte() if LK.valore(x, cosa[1]) == "Yes"), key=lambda x: x["quando"], reverse=True)
+            return self.apri_playlist(rr, "Leak · " + LK.NOMI[cosa[1]], k="leak")
         if cosa[0] == "testa":      # un titolo: ordina per quella colonna, di nuovo al contrario
             ok_, giu_ = getattr(self, "ord_dec", (None, False))
             self.ord_dec = (cosa[1], not giu_) if ok_ == cosa[1] else (cosa[1], False)
@@ -4958,7 +5320,7 @@ class PaginaPerformance:
             cv.bind("<Configure>", lambda e: self.disegna_coppie())
         self.coppie_di = (chiave, titolo or dict(DA.RIGHE_CARTE).get(chiave, chiave))
         self.coppie_k = getattr(self, "coppie_k", 2)
-        f.title("Performance · Pairs · " + self.coppie_di[1].split(" · ")[0].title())
+        f.title("Performance · Answers" if chiave == "minacce" else "Performance · Pairs · " + self.coppie_di[1].split(" · ")[0].title())
         self.disegna_coppie()
         f.lift()
         return f
@@ -4977,18 +5339,18 @@ class PaginaPerformance:
         r = self.scelte()
         k_ = DA.conti(r)
         base = k_["wr"]
+        if chiave == "minacce":         # C15: le minacce e le tue risposte, non le coppie
+            return self.disegna_risposte(c, r, W, base)
         kk = self.coppie_k
         cp = DA.coppie_carte(r, chiave, k=kk)
         quale = "IN YOUR OPENING HAND" if chiave == "pesc1" else "· " + titolo.split(" · ")[0]
         # Pairs e Trios (13 nov 2026, Autore: «nella sezione cards sarebbe bene avere anche oltre alle coppie i tris»): due interruttori in cima
         x_ = 14
         for k2, nome in ((2, "Pairs"), (3, "Trios")):
-            i_ = c.create_text(x_ + 10, 16, text=nome, anchor="w", fill="#ffffff" if kk == k2 else C["grigio"], font=F(9, True))
-            bb = c.bbox(i_)
-            c.create_rectangle(x_, 4, bb[2] + 10, 28, fill="#0f86cc" if kk == k2 else "#202024", outline="#0f86cc" if kk == k2 else "#3a3a40")
-            c.tag_raise(i_)
-            c._box_coppie.append((x_, 4, bb[2] + 10, 28, ("k", k2), None))
-            x_ = bb[2] + 18
+            x1_ = x_ + 20 + int(c.tk.call("font", "measure", F(9, True), nome))
+            chip(c, x_, 4, x1_, 28, nome, kk == k2, F(9, True))
+            c._box_coppie.append((x_, 4, x1_, 28, ("k", k2), None))
+            x_ = x1_ + 8
         c.create_text(x_ + 8, 16, text=f"{'PAIRS' if kk == 2 else 'TRIOS'} {quale} · {k_['n']} GAMES · by win rate, 5 games together at least", anchor="w",
                       fill=C["azzurro"], font=F(8, True))
         if base is not None:
@@ -5007,6 +5369,38 @@ class PaginaPerformance:
                 y += hc + 50
             self.metti_carta(c, 14 + (i % per_riga) * larga, y, cc, chiave, base)
         c.configure(scrollregion=(0, 0, W, y + hc + 56))
+
+    def disegna_risposte(self, c, r, W, base):
+        """C15, «quale carta mi avrebbe salvato?»: ogni minaccia (le sue carte che stanno piu' nelle tue sconfitte) e accanto le rimozioni che hai nella
+        collezione, nei colori dei tuoi mazzi, che dal testo la tolgono (grado C). Il clic su una minaccia tiene le sue partite; il passaggio mostra la carta."""
+        import variabili_c as VC
+        F = self.F
+        mm = VC.minacce(r)
+        c.create_text(14, 16, text=f"THE THREATS THAT BEAT YOU · AND WHAT YOU OWN THAT ANSWERS THEM · {len(r)} games", anchor="w", fill=C["azzurro"],
+                      font=F(8, True))
+        c.create_text(14, 36, text=("Their cards in more of your losses than your wins; on the right the removal in your collection, in your decks' colors (and "
+                                    "Standard-legal if you play Standard), that reads like it removes them. Read from the card text: a clue, not a verdict "
+                                    "(protection, ward and hexproof are not checked)."), anchor="nw", fill=C["grigio"], font=F(7), width=W - 30)
+        if not mm:
+            c.create_text(14, 76, text="No card of theirs stands out in your losses here (3 losses at least).", anchor="w", fill=C["grigio"], font=F(9))
+            c.configure(scrollregion=(0, 0, W, 100))
+            return
+        wc = LARGA_CARTA
+        hc = round(wc * 279 / 200)
+        y = 70
+        for cc in mm:
+            self.metti_carta(c, 14, y, cc, "minacce", base)
+            x_ = 14 + wc + 40
+            c.create_text(x_ - 18, y + hc / 2, text="›", fill=C["accento"], font=F(16, True))
+            if not cc["risposte"]:
+                c.create_text(x_, y + hc / 2, text="Nothing in your collection, in these colors, reads like an answer.", anchor="w", fill=C["muto"], font=F(8))
+            for nm in cc["risposte"]:
+                if x_ + wc > W - 14:
+                    break
+                self.metti_carta(c, x_, y, dict(nome=nm, n=0, vinte=0, perse=0, wr=0, quota=0, risposta=True, filtro=("lanciate", nm)), "lanciate", None)
+                x_ += wc + 10
+            y += hc + 50
+        c.configure(scrollregion=(0, 0, W, y + 10))
 
     def carta_sotto(self, e):
         c = e.widget
@@ -5142,8 +5536,13 @@ class PaginaPerformance:
             c.create_rectangle(0, y, W - 2, y + 38, fill="#202024" if k % 2 == 0 else "#1c1c20", outline="#3a3220")
             c.create_polygon(12, y + 10, 22, y + 10, 22, y + 28, 17, y + 23, 12, y + 28, fill="#ffd23f", outline="")
             quando = s_.get("quando", "")[:16].replace("T", " ")
+            if s_.get("vivo"):     # R13: segnato mentre giocavi, la partita la dicono i log (se non c'e' ancora: «not in your logs yet»)
+                x_v = next((x for x in self.righe or [] if x.get("partita") == s_.get("partita")), None)
+                if x_v:
+                    s_ = dict(s_, mio=(x_v.get("mio") or "").strip(), suo=x_v.get("suo"), vinta=x_v["vinta"])
+            esito_ = "not in your logs yet" if s_.get("vinta") is None else ("won" if s_.get("vinta") else "lost")
             c.create_text(34, y + 12, text=f"{s_.get('mio') or '-'} vs {s_.get('suo') or '-'}", anchor="w", fill=C["titolo"], font=F(8, True))
-            c.create_text(34, y + 27, text=f"{quando} · {'won' if s_.get('vinta') else 'lost'} · {s_.get('passo')}"
+            c.create_text(34, y + 27, text=f"{quando} · {esito_} · {s_.get('passo')}"
                           + (" · every action" if s_.get("modo") == "azioni" else "") + (f"  ·  ✎ {s_['nota'][:60]}" if s_.get("nota") else ""),
                           anchor="w", fill=C["grigio"], font=F(7))
             c.create_text(W - 60, y + 19, text="watch", anchor="e", fill=C["accento"], font=F(8, True))

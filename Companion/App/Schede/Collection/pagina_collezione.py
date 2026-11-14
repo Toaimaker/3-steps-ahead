@@ -64,7 +64,7 @@ class PaginaCollezione(Pagina):
         # in cima solo la ricerca e il pulsante Settings
         PaginaCollezione.ISTANZA = self
         self.drag = None
-        self.b_set = pulsante_solido(tk, F, self.barra_menu, "\u2699  Settings", False, lambda: self.pannello(), alto=34, bg=C["fondo"])
+        self.b_set = pulsante_solido(tk, F, self.barra_menu, "Settings", False, lambda: self.pannello(), alto=34, bg=C["fondo"])
         self.b_set.configure(width=150); self.b_set.pack(side="right", anchor="s", padx=(10, 0))
         # il builder si apre da qui, sopra le carte (Autore, 7 nov 2026: «facciamo che il deck builder è una finestra che si apre dalla sezione collection»)
         self.b_bld = pulsante_solido(tk, F, self.barra_menu, "Deck builder", False, self.apri_builder, alto=34, bg=C["fondo"])
@@ -115,8 +115,8 @@ class PaginaCollezione(Pagina):
         self.t_ordine.opzioni(CC.ORDINI, lambda o: self.chiedi()); self.t_ordine.set("Color")
         self.t_vista = Tendina(tk, r, "View", F, larga=150, bg=fondo); self.t_vista.fr.pack(side="right")
         self.t_vista.opzioni(("Cards", "List"), lambda o: self.cambia_vista()); self.t_vista.set("Cards")
-        azzera = tk.Label(b, text="CLEAR ALL", bg=TEND["campo"], fg=C["testo"], font=F(8, True), pady=6, cursor="hand2", highlightthickness=1, highlightbackground=TEND["bordo"]); azzera.pack(fill="x")
-        azzera.bind("<Button-1>", lambda e: self.azzera())
+        azzera = pulsante_solido(tk, F, b, "Clear all", False, lambda: self.azzera(), alto=30, bg=fondo, colori=("#3a3a40", "#4a4a52", "#2c2c30"))      # stile S3 (14 nov 2026)
+        azzera.pack(fill="x")
         # i set, da flaggare: piu' d'uno si incrociano
         ds = tk.Frame(corpo, bg=fondo); ds.grid(row=0, column=1, sticky="nsew")
         t = tk.Frame(ds, bg=fondo); t.pack(fill="x", pady=(0, 3))
@@ -353,7 +353,7 @@ class PaginaCollezione(Pagina):
     def segna_tasto(self):
         n = self.attivi()
         self.v_sets.set(f"SETS · {len(self.sets_on)} SELECTED" if self.sets_on else "SETS")
-        self.b_set.metti(f"\u2699  Settings · {n}" if n else "\u2699  Settings", self.aperto)
+        self.b_set.metti(f"Settings · {n}" if n else "Settings", self.aperto)
 
     def cambia_retino(self):
         """La spunta del retino: si salva e le carte a vista si rifanno."""

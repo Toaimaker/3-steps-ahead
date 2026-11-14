@@ -242,6 +242,80 @@ def proprietaria(finestra):
     return h, u.GetWindow(h, 4), radice(finestra.master.winfo_toplevel())       # GW_OWNER
 
 
+def foto_finestra(w, prove=3):
+    """La foto (vedi _foto_finestra), riprovata se esce di un colore solo: con il PC carico la finestra appena venuta a vista puo' non essersi ancora
+    ridipinta (13 nov 2026: una volta su tre nella batteria delle prove)."""
+    import time
+    im = None
+    for i in range(prove):
+        im = _foto_finestra(w)
+        if im is None or im.getextrema() != tuple((a, a) for a, _b in im.getextrema()):
+            return im
+        time.sleep(0.15 * (i + 1))
+    return im
+
+
+def _foto_finestra(w):
+    """La foto di un widget di Tk com'e' disegnato, anche coperto da altre finestre o fuori dallo schermo (13 nov 2026, R17: lo spot del replayer come immagine).
+    Su Windows PrintWindow col contenuto intero (PW_RENDERFULLCONTENT): l'immagine composta da Windows della finestra stessa, anche coperta da altre, mai una
+    foto dello schermo, che prenderebbe Arena o altre finestre sopra. Fuori dallo schermo Windows non la disegna e l'immagine viene vuota. Su Mac e Linux
+    la foto della zona del widget (ImageGrab). -> immagine PIL o None."""
+    w.update_idletasks()
+    W, H = max(1, w.winfo_width()), max(1, w.winfo_height())
+    if not WINDOWS:
+        try:
+            from PIL import ImageGrab
+            x, y = w.winfo_rootx(), w.winfo_rooty()
+            return ImageGrab.grab((x, y, x + W, y + H))
+        except Exception:       # noqa: BLE001
+            return None
+    import ctypes
+    from ctypes import wintypes
+    from PIL import Image
+    u = ctypes.WinDLL("user32", use_last_error=True)
+    g = ctypes.WinDLL("gdi32", use_last_error=True)
+    u.GetDC.restype = wintypes.HDC
+    u.GetDC.argtypes = [wintypes.HWND]
+    u.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]
+    u.PrintWindow.argtypes = [wintypes.HWND, wintypes.HDC, ctypes.c_uint]
+    g.CreateCompatibleDC.restype = wintypes.HDC
+    g.CreateCompatibleDC.argtypes = [wintypes.HDC]
+    g.CreateCompatibleBitmap.restype = wintypes.HBITMAP
+    g.CreateCompatibleBitmap.argtypes = [wintypes.HDC, ctypes.c_int, ctypes.c_int]
+    g.SelectObject.restype = wintypes.HGDIOBJ
+    g.SelectObject.argtypes = [wintypes.HDC, wintypes.HGDIOBJ]
+    g.GetDIBits.argtypes = [wintypes.HDC, wintypes.HBITMAP, ctypes.c_uint, ctypes.c_uint, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint]
+    g.DeleteObject.argtypes = [wintypes.HGDIOBJ]
+    g.DeleteDC.argtypes = [wintypes.HDC]
+    hwnd = wintypes.HWND(int(w.winfo_id()))
+    u.RedrawWindow.argtypes = [wintypes.HWND, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint]
+    u.RedrawWindow(hwnd, None, None, 0x0001 | 0x0080 | 0x0100)       # RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_UPDATENOW: una finestra appena venuta a vista
+    w.update()                                                         # (o tornata da fuori dallo schermo) puo' non essersi ancora ridipinta
+    dc = u.GetDC(hwnd)
+    mem = g.CreateCompatibleDC(dc)
+    bmp = g.CreateCompatibleBitmap(dc, W, H)
+    vecchio = g.SelectObject(mem, bmp)
+    try:
+        if not u.PrintWindow(hwnd, mem, 2):     # PW_RENDERFULLCONTENT
+            return None
+
+        class BIH(ctypes.Structure):
+            _fields_ = [("biSize", ctypes.c_uint32), ("biWidth", ctypes.c_int32), ("biHeight", ctypes.c_int32), ("biPlanes", ctypes.c_uint16),
+                        ("biBitCount", ctypes.c_uint16), ("biCompression", ctypes.c_uint32), ("biSizeImage", ctypes.c_uint32), ("biXPelsPerMeter", ctypes.c_int32),
+                        ("biYPelsPerMeter", ctypes.c_int32), ("biClrUsed", ctypes.c_uint32), ("biClrImportant", ctypes.c_uint32)]
+        bi = BIH(ctypes.sizeof(BIH), W, -H, 1, 32, 0, 0, 0, 0, 0, 0)      # dall'alto in basso, BGRA
+        buf = ctypes.create_string_buffer(W * H * 4)
+        g.SelectObject(mem, vecchio)
+        if not g.GetDIBits(mem, bmp, 0, H, buf, ctypes.byref(bi), 0):
+            return None
+        return Image.frombuffer("RGBA", (W, H), buf, "raw", "BGRA", 0, 1).convert("RGB")
+    finally:
+        g.SelectObject(mem, vecchio)
+        g.DeleteObject(bmp)
+        g.DeleteDC(mem)
+        u.ReleaseDC(hwnd, dc)
+
+
 def apri(percorso):
     """Un file, una cartella o un link col programma del sistema."""
     if WINDOWS:

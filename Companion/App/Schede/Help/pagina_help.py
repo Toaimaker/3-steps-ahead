@@ -76,6 +76,10 @@ SEZIONI = (
                        "theirs at the end of your turns 3, 5 and 7 (Advanced filters); the game before (after a win, after a loss, first of the session) "
                        "and the losses in a row before it (When › + more); in Cards the row DRAWN VS NOT DRAWN, your win rate when a card came to your hand "
                        "minus when it stayed in the deck; on the numbers bar your longest losing streak"),
+      ("Activated abilities", "Advanced filters › You (or Opponent) › Abilities: one line per card, then when it was activated: any time, on your "
+                              "turn or theirs, or a precise step (upkeep, draw step, declare attackers, end step...) of whose turn. More lines and more "
+                              "moments in a line: the games must have them all. Loyalty abilities and fetch lands count; mana abilities don't. Then "
+                              "Compare puts those games against the rest, e.g. a graveyard hate cracked in their draw step against every other time."),
       ("Advanced filters", "the button under the smart filters opens your question: every filter you turn on is a piece with its x, the answer (win rate, "
                            "games, record, interval, against all your games) right below, and the whole page follows it. Two tabs, You and Opponent, each with "
                            "its phases: opening hand (your deck's colors, creatures, instants, sorceries, artifacts, enchantments, planeswalkers, battles; the "
@@ -98,7 +102,8 @@ SEZIONI = (
                                   "your attack, a chump block at high life, an unfavourable trade, an instant on their turn while they were tapped out on "
                                   "yours, a concession with outs, lands tapped the wrong way: clues, not verdicts, also as filters in Advanced filters › "
                                   "You › Game); the tab on each list's inner edge (◀ ▶, as in the Board's outliner) closes it towards its side, «Note» writes a note on the game (and "
-                                  "on the spot, if bookmarked: the note shows in My filters too), and the header says your record that day before the game, and «⧉ Detach» moves what happened to its own "
+                                  "on the spot, if bookmarked: the note shows in My filters too), and the header says your record that day before the game, «Export» saves the game as text or as a web page (moment by moment, You and Opponent, a pseudonymous game code, no names or ids) "
+                                  "or this spot as an image, and «⧉ Detach» moves what happened to its own "
                                   "window so the table gets the room; the bar on the "
                                   "right scrolls the games, the mark on top opens them in their own window; click a column title to sort by it (again to "
                                   "reverse); the opponent's colors are mana symbols"),
@@ -108,15 +113,33 @@ SEZIONI = (
       ("Report", "group by a variable; click a row to filter it, a column to sort"),
       ("Matchups", "your decks against the archetypes you met, or only the meta decks; click a cell to filter it"),
       ("Compare", "A, the situation of your filters, against B: everything else, all your games or a saved situation; the difference, and whether it holds "
-                  "(p under 5%) or how many games would tell"),
+                  "(p under 5%) or how many games would tell. In Limited B can also be 17Lands players: the Premier Draft of the same sets, weighted on "
+                  "your colors, from 17Lands public game data (CC BY 4.0, 17lands.com): win rate on the play and on the draw, mulligans, game length, "
+                  "and the win rate of their top players (60%+). Their players win about 55%, not 50%"),
       ("Cards", "the cards of the games you picked, as cards, in rows: most found in your hand, your turn 1 (opening hand and first draw), drawn on "
-                "your turns 2, 3 and 4, your most cast spells, the opponent's most played cards, harder to cast (in your hand and never cast); no lands; under "
+                "your turns 2, 3 and 4, your most cast spells (cast T: the average turn of the first cast, held: the turns it waited in your hand), the opponent's most played cards, harder to cast (in your hand and never cast); no lands; under "
                 "each card the win rate and record of its games, and in how many; click a card to keep only its games, again to go back; hover to see it big; "
                 "Pairs › on each row opens a window with the pairs of cards that come together in the same game (from your turn 1: the pairs of your "
                 "opening hand), by win rate, 5 games together at least; Pairs or Trios; click one to keep only the games with them. Rows opens the "
                 "little window to pick which rows you see. Also: cast by your turn 4 (its Pairs: what you played together early) and Finishers (the decisive play of your "
                 "wins: in the turn with the biggest swing after which you stayed ahead, the spells you cast and the creatures you attacked with, 2+ cards; "
-                "the pairs that decided the most wins, with the average swing)"),
+                "the pairs that decided the most wins, with the average swing); Your removal · on what (the average mana value of what each removal "
+                "took, a token 0, and how often a token or a card cheaper than it); The threats that beat you (their cards in more of your losses than "
+                "your wins: Answers › shows the removal you own, in your decks' colors, that reads like it removes each one; from the card text, a clue)"),
+      ("Leaks (in Decisions)", "every leak in the games you picked: in how many games, your win rate with and without it, how often in your last 50 games "
+                "against before (green if it went down), and how to fix it; click a row to keep its games, Watch › opens them in the replayer on the leak"),
+      ("Graveyard (in Decisions)", "a reanimation ready (a card in hand or on the battlefield that returns a creature from a graveyard, with a creature "
+                "there), cards playable from exile (foretell, plot, warp, suspend, adventure), cards exiled from the other player's graveyard during a turn: "
+                "for you and for the opponent, with the games, the win rate with and without, the difference; click a row to keep its games. Also in "
+                "Advanced filters › Game. Read from the card text; measured on your games they do not predict wins beyond life and power, so they are "
+                "situations to look at, not a weight in the decision cost"),
+      ("Playlists", "open a game from the table under the chart, double-click a Report row or a Matchups cell, or press Watch › on a leak: the games "
+                "come one after the other in the replayer (◀ Game, Game ▶, keys P and N), and the jumps (Combat ›, Spell ›, Key ›, Leak ›) go on into the "
+                "next game when this one has no more"),
+      ("★ MARK", "while you play, next to DECK HUD: one click marks the spot (the game and the turn); it waits in My filters › Bookmarked spots and opens "
+                "the replayer on that turn once the game is in your logs"),
+      ("Deck versions", "Group by › Deck version: every list of the same deck is a version (v1, v2...), with its win rate; a list that comes back is its old "
+                "version again"),
       ("⚙ on the numbers", "top right: pick the numbers you want on top (all of them if you like: 8 a row, then two rows), every name says what it measures (win rate, % of games, average); among win rate, record, games, turns, mulligan, play, draw, how often you start (on the play · % of games, tested against a coin flip), win rate after "
                            "a mulligan or keeping seven, fast wins, long games, concessions, lands kept, attack and defense gain, decided wins"),
       ("Chart, under it", "vs filter: all your games against the filtered ones (the blue line); Gained by decisions: a panel with your decisions "
@@ -129,9 +152,10 @@ SEZIONI = (
                "gave (the deck minus your first 7), in total with a z test and game by game: screw and flood are the 5% tails, fewer and more the 25% "
                "tails, each next to what chance would give; click one to keep only those games. Below, your first 7 cards against one random hand "
                "and against Arena's Bo1 smoothing (best of 2). The same five levels are filters (Opening and first turns › + more, and Advanced filters)"),
-      ("Decisions › Costliest", "the decisions that cost you most: your attacks, blocks and spells with targets, each with the gain of advantage (life + "
-                                 "2 × power) to the next moment and how far it is from the average of your decisions of the same kind in the same part of the "
-                                 "game (red 5+ points worse, yellow 2+, green the rest; not estimable without the data); click a row to open the replayer on that "
+      ("Decisions › Costliest", "the decisions that cost you most: your attacks, blocks and spells with targets, each with how much your chance to win changed "
+                                 "to the next moment (our win-probability model, trained on 17Lands public replay data, CC BY 4.0, 17lands.com/public_datasets; "
+                                 "built on limited, a stretch in constructed) and how far it is from the average of your decisions of the same kind in the same "
+                                 "part of the game (red 7+ points worse, yellow 3.5+, green the rest; not estimable without the data); click a row to open the replayer on that "
                                  "moment, where the story says YOUR DECISION with the same numbers; «What would you do?» shows the red ones one at a time, you choose (attack with "
                                  "everything, with some, don't attack; block or not), then you see what you did and what each choice gained on average in your "
                                  "games. A clue, not a verdict"),

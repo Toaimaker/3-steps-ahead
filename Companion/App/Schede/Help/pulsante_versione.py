@@ -3,10 +3,13 @@ pulsante ben visibile in basso a destra nell'app. se la versione e aggiornata il
 versione»).
 
 Legge l'esito del controllo degli aggiornamenti che fa la scheda Help (aggiornamenti.py: all'avvio e ogni 6 ore, Log_Arena/aggiornamenti_stato.json):
-- versione nuova: pillola arancio piena «Download version X», il clic apre il link dell'aggiornamento nel browser (PaginaHelp.scarica: l'app non scarica e
+- versione nuova: arancio «Download version X» con la freccia, il clic apre il link dell'aggiornamento nel browser (PaginaHelp.scarica: l'app non scarica e
   non installa niente da sola);
-- aggiornata: pillola col bordo verde «Up to date · latest version X», il clic ricontrolla;
-- non ancora controllata, errore, nessun canale: pillola grigia «Check for updates · vX», il clic controlla; durante il controllo «Checking for updates…».
+- aggiornata: verde «Up to date · latest version X» con la spunta, il clic ricontrolla;
+- non ancora controllata, errore, nessun canale: grigio «Check for updates · vX» con la freccia che gira, il clic controlla; durante il controllo
+  «Checking for updates…».
+Dal 14 nov 2026 nello stile S3 dei pulsanti (widget.disegna_s3; Autore: «ogni pulsante esistente deve avere il redesign in linea con lo stile»): fino a
+quel giorno era una pillola col bordo.
 """
 import os, sys
 _casa = os.path.dirname(os.path.abspath(__file__))
@@ -15,10 +18,12 @@ while not os.path.isfile(os.path.join(_casa, "percorsi.py")):
 if _casa not in sys.path:
     sys.path.insert(0, _casa)
 import percorsi  # noqa: E402,F401
-import disegni as DG  # noqa: E402
 from ambiente import VERSIONE  # noqa: E402
 from tema import CI as C  # noqa: E402
-from widget import ARANCIO  # noqa: E402
+from widget import ARANCIO, VERDE_P, disegna_s3  # noqa: E402
+
+GRIGIO_V = ("#3a3a40", "#4a4a52", "#2c2c30")
+STILE = {"nuova": (ARANCIO, "download"), "aggiornata": (VERDE_P, "spunta")}       # gli altri: grigio, la freccia che gira
 
 ALTO = 26
 
@@ -27,11 +32,11 @@ def testo_e_stile(stato, controllo=False, attuale=VERSIONE):
     """-> (testo, tipo) per l'esito del controllo: tipo «nuova», «aggiornata», «controllo» o «altro»."""
     st = stato or {}
     if st.get("stato") == "nuova" and st.get("download"):
-        return f"⬇  Download version {st.get('ultima')}", "nuova"
+        return f"Download version {st.get('ultima')}", "nuova"
     if controllo:
         return "Checking for updates…", "controllo"
     if st.get("stato") == "aggiornata":
-        return f"✓  Up to date · latest version {attuale}", "aggiornata"
+        return f"Up to date · latest version {attuale}", "aggiornata"
     return f"Check for updates · v{attuale}", "altro"
 
 
@@ -60,23 +65,11 @@ class PulsanteVersione:
 
     def disegna(self):
         c, F = self.c, self.F
-        c.delete("all")
-        i_ = c.create_text(0, 0, text=self.testo, font=F(9, True), anchor="nw")
-        bb = c.bbox(i_)
-        c.delete(i_)
-        larga = (bb[2] - bb[0]) + 30 if bb else 200
+        c.delete("all"); c._s3 = []
+        larga = int(c.tk.call("font", "measure", F(9, True), self.testo)) + 30 + ALTO + 6
         c.configure(width=larga)
-        if self.tipo == "nuova":
-            fondo = ARANCIO[1] if self.sopra else ARANCIO[0]
-            bordo, scritta = fondo, "#ffffff"
-        elif self.tipo == "aggiornata":
-            fondo = "#17301f" if self.sopra else C["fondo"]
-            bordo, scritta = C["verde"], C["verde_t"]
-        else:
-            fondo = C["cap"] if self.sopra else C["fondo"]
-            bordo, scritta = C["filo"] if not self.sopra else C["grigio"], C["grigio"] if not self.sopra else C["testo"]
-        c.create_image(0, 0, anchor="nw", image=DG.pillola(larga, ALTO, bordo, fondo), tags="fondo")
-        c.create_text(larga / 2, ALTO / 2, text=self.testo, fill=scritta, font=F(9, True), tags="testo")
+        self.colori, icona = STILE.get(self.tipo, (GRIGIO_V, "ricarica"))
+        disegna_s3(c, 0, 0, larga, ALTO, self.testo, F(9, True), self.colori, self.sopra, icona=icona)
 
     def clic(self):
         """Versione nuova: il link nel browser. Altrimenti un controllo adesso."""
@@ -115,17 +108,16 @@ def prova():
     casi.append(("negativa: durante il controllo il clic non rilancia", p.clic() is False and h.controlli == [1]))
     h.stato = {"stato": "aggiornata", "ultima": VERSIONE}
     p.aggiorna(); root.update()
-    casi.append(("aggiornata: «Up to date · latest version X», verde", scritta() == f"✓  Up to date · latest version {VERSIONE}"
-                 and p.c.itemcget(p.c.find_withtag("testo")[0], "fill") == C["verde_t"]))
+    casi.append(("aggiornata: «Up to date · latest version X», verde", scritta() == f"Up to date · latest version {VERSIONE}" and p.colori == VERDE_P))
     h.stato = {"stato": "nuova", "ultima": "9.9.9", "download": "https://example.org/x.exe"}
     p.aggiorna(); root.update()
     larga_n = int(p.c.cget("width"))
-    casi.append(("versione nuova: «Download version 9.9.9», bianco su arancio, il clic apre il link", scritta() == "⬇  Download version 9.9.9"
-                 and p.c.itemcget(p.c.find_withtag("testo")[0], "fill") == "#ffffff" and p.clic() and h.scaricati == ["https://example.org/x.exe"]))
+    casi.append(("versione nuova: «Download version 9.9.9», bianco su arancio, il clic apre il link", scritta() == "Download version 9.9.9"
+                 and p.colori == ARANCIO and p.c.itemcget(p.c.find_withtag("testo")[0], "fill") == "#ffffff" and p.clic() and h.scaricati == ["https://example.org/x.exe"]))
     casi.append(("la pillola e' larga quanto la scritta", 140 < larga_n < 400))
     h.stato = {"stato": "nuova", "ultima": "9.9.9"}
     p.aggiorna(); root.update()
-    casi.append(("negativa: una versione nuova senza link non e' un Download", not scritta().startswith("⬇")))
+    casi.append(("negativa: una versione nuova senza link non e' un Download", not scritta().startswith("Download")))
     root.destroy()
     for n, ok in casi:
         print(("ok    " if ok else "ROSSO ") + n)

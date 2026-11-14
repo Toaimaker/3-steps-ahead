@@ -24,7 +24,7 @@ import re  # noqa: E402
 
 from ambiente import LOGDIR  # noqa: E402
 
-VERSIONE = 14       # 14 (13 nov 2026, i leak L3 e L6): «fasi», la fase di ogni tua e sua magia lanciata ([turno, posto, grpId, fase di Arena]); 2: le foto della partita; 3: cimitero, esilio, forza e costituzione; 4: i momenti del combattimento e delle magie coi bersagli;
+VERSIONE = 15       # 15 (13 nov 2026, Autore: «Sì, aggiungilo», la Reliquia rotta dopo il suo draw step): «attivate», ogni abilita' attivata (non di mana) di tutti e due, [turno, posto, grpId della carta, fase, step, chi e' di turno]; 14 (i leak L3 e L6): «fasi», la fase di ogni tua e sua magia lanciata ([turno, posto, grpId, fase di Arena]); 2: le foto della partita; 3: cimitero, esilio, forza e costituzione; 4: i momenti del combattimento e delle magie coi bersagli;
 #                    5: ogni istantaneo e stregoneria in pila (anche senza bersagli) e i permanenti che ha tolto dal campo (i board wipe);
 #                    6: per le partite lette dagli archivi, dove stanno («dove»: archivio, byte di inizio e di fine), per il replay azione per azione;
 #                    7: debug del 12 nov 2026: le cancellazioni, chi e' in campo dalle zone, le vite a 0, l'annullamento, emblemi e inneschi, i riassunti;
@@ -109,7 +109,7 @@ def leggi(righe):
     obj, zone, ti = {}, {}, {}
     zown, zids, vite = {}, {}, {}
     # ogni cosa annotata porta lo stato del gioco in cui e' nata, cosi' un annullamento la toglie: [(stato, elemento)]
-    st = dict(attacchi=[], fine=[], foto=[], momenti=[], mano0=None, pend=None, azioni=[], fasi=[])
+    st = dict(attacchi=[], fine=[], foto=[], momenti=[], mano0=None, pend=None, azioni=[], fasi=[], attivate=[])
     riassunti = 0
     visti_ts = {}               # {id dell'annotazione TargetSpec: stato}
     # i momenti in ordine (12 nov 2026, Autore: «una freccia che definisce quali carte interagiscono con quali altre, per vedere come si e' bloccato in
@@ -170,7 +170,7 @@ def leggi(righe):
 
     def annulla(fino):
         """L'annullamento di Arena: via quello che e' nato da questo stato in poi (lo stato Full che segue lo rimanda)."""
-        for k in ("attacchi", "fine", "foto", "momenti", "azioni", "fasi"):
+        for k in ("attacchi", "fine", "foto", "momenti", "azioni", "fasi", "attivate"):
             st[k] = [x for x in st[k] if x[0] < fino]
         for dd in (mom_di, in_pila):
             for k in [k for k, v in dd.items() if v[0] >= fino]:
@@ -243,6 +243,19 @@ def leggi(righe):
             # le azioni del turno (13 nov 2026, Autore: «filtri avanzati per noi e per oppo ... che tipo di carte giochiamo: es t1 instant oppure T3 play creature
             # attack w 2 creature»): ogni terra giocata e ogni magia lanciata, [turno, posto, «terra»|«magia», grpId, tipi in lettere (C creatura, I istantaneo,
             # S stregoneria, A artefatto, E incantesimo, P planeswalker, B battaglia, L terra)]
+            # le abilita' attivate (VERSIONE 15, 13 nov 2026, Autore: «io posso dirti che saccare reliquia dopo draw step di Oppo migliora le mie
+            # possibilita' di vittoria ... non credo proprio sia una cosa che un programma riesce a stimare», poi «Sì, aggiungilo»): Arena scrive ogni azione
+            # del giocatore in UserActionTaken, actionType 1 lanciare, 2 attivare un'abilita' (non di mana), 3 giocare una terra, 4 un'abilita' di mana;
+            # affectorId e' il posto, affectedIds l'abilita' in pila, che risale alla sua carta. [turno, posto, grpId della carta, fase, step, chi e' di turno]
+            for a in gs.get("annotations") or []:
+                if "AnnotationType_UserActionTaken" not in (a.get("type") or []) or a.get("affectorId") not in (1, 2):
+                    continue
+                if next(((x.get("valueInt32") or [None])[0] for x in a.get("details") or [] if x.get("key") == "actionType"), None) != 2:
+                    continue
+                for x in a.get("affectedIds") or []:
+                    o = obj.get(x)
+                    g_ = (grp_vero(o, obj) if o else 0) or 0
+                    st["attivate"].append((sid, [t, a["affectorId"], g_, ti.get("phase") or "", ti.get("step") or "", att]))
             for a in gs.get("annotations") or []:
                 if "AnnotationType_ZoneTransfer" not in (a.get("type") or []):
                     continue
@@ -340,7 +353,7 @@ def leggi(righe):
         m_[4]["fatti"] = sorted(x for x in fatti_da.get(i, ()) if x in prima_)
     ultima = [ti.get("turnNumber"), ti.get("activePlayer"), foto()] if ti.get("turnNumber") else None
     via = lambda lst: [x[1] for x in lst]
-    return dict(azioni=via(st["azioni"]), fasi=via(st["fasi"]), attacchi=via(st["attacchi"]), fine=via(st["fine"]), mano0=st["mano0"][1] if st["mano0"] else None, foto=via(st["foto"]), ultima=ultima,
+    return dict(azioni=via(st["azioni"]), fasi=via(st["fasi"]), attivate=via(st["attivate"]), attacchi=via(st["attacchi"]), fine=via(st["fine"]), mano0=st["mano0"][1] if st["mano0"] else None, foto=via(st["foto"]), ultima=ultima,
                 momenti=via(st["momenti"]), riassunti=riassunti)
 
 
@@ -634,6 +647,23 @@ def prova():
     casi.append(("l'annullamento: via la magia annullata, il momento della magia vera c'e' (anche con lo stesso id)", mu == [300]))
     casi.append(("le fasi delle magie (VERSIONE 14): la magia lanciata in Main1, col turno, il posto e il grpId; negativa: quella annullata no",
                  leggi(fu)["fasi"] == [[5, 1, 300, "Phase_Main1"]] and leggi(fa)["fasi"] == [[3, 2, 151, "Phase_Main1"]]))
+    # le abilita' attivate (VERSIONE 15): la Reliquia rotta dal posto 1 nel draw step del turno del posto 2; negative: l'abilita' di mana (actionType 4) e
+    # quella annullata non ci sono
+    uat = lambda chi, ab, tipo: dict(type=["AnnotationType_UserActionTaken"], affectorId=chi, affectedIds=[ab],
+                                     details=[dict(key="actionType", valueInt32=[tipo]), dict(key="abilityGrpId", valueInt32=[9001])])
+    rel = dict(instanceId=40, grpId=700, type="GameObjectType_Card", zoneId=28, controllerSeatId=1, ownerSeatId=1, cardTypes=["CardType_Artifact"])
+    abi = lambda i: dict(instanceId=i, grpId=9001, type="GameObjectType_Ability", zoneId=27, controllerSeatId=1, parentId=40, objectSourceGrpId=700)
+    td = dict(turnNumber=4, activePlayer=2, phase="Phase_Beginning", step="Step_Draw")
+    fr = [gs(gameStateId=1, type="GameStateType_Full", zones=[dict(zoneId=28, type="ZoneType_Battlefield", objectInstanceIds=[40]), pl()], turnInfo=td,
+             gameObjects=[rel]),
+          gs(gameStateId=2, type="GameStateType_Diff", zones=[pl(50)], gameObjects=[abi(50)], annotations=[uat(1, 50, 4)]),
+          gs(gameStateId=3, type="GameStateType_Diff", zones=[pl(51)], gameObjects=[abi(51)], annotations=[uat(1, 51, 2)]),
+          gs(gameStateId=4, type="GameStateType_Full", update="GameStateUpdate_Undo", prevGameStateId=3, turnInfo=td,
+             zones=[dict(zoneId=28, type="ZoneType_Battlefield", objectInstanceIds=[40]), pl()], gameObjects=[rel]),
+          gs(gameStateId=5, type="GameStateType_Diff", zones=[pl(52)], gameObjects=[abi(52)], diffDeletedInstanceIds=[40], annotations=[uat(1, 52, 2)])]
+    casi.append(("le abilita' attivate (VERSIONE 15): la carta dal padre anche se e' andata via, il passo e chi e' di turno; negative: la sola abilita' di "
+                 "mana e quella annullata non ci sono", leggi(fr)["attivate"] == [[4, 1, 700, "Phase_Beginning", "Step_Draw", 2]]
+                 and leggi(fr[:3])["attivate"] == [[4, 1, 700, "Phase_Beginning", "Step_Draw", 2]] and leggi(fr[:2])["attivate"] == []))
     # chi e' in campo lo dice la zona: un oggetto che resta in memoria con la zona del campo ma non e' nella lista non attacca e non e' una terra
     vecchio = [gs(type="GameStateType_Full", zones=campo(1), turnInfo=dict(turnNumber=7, activePlayer=1, step="Step_DeclareAttack"),
                   gameObjects=[terra(1, 1, False), dict(crea(10, 1, True)), terra(4, 2, False)])]

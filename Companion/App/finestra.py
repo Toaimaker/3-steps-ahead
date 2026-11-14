@@ -250,10 +250,9 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
         self.scorri = {"a": 0.0, "b": 1.0, "presa": None, "sopra": False}
 
         # il pulsante per tornare all'ultima azione (in cima): compare solo quando hai fatto scorrere la chat (13 ott 2026)
-        self.torna = tk.Label(chat_box, text="↑  LATEST ACTION", bg=C["azzurro_s"], fg=C["azzurro"], font=self.F(8, True), padx=10, pady=3, cursor="hand2")
-        self.torna.bind("<Button-1>", lambda e: self.chat.yview_moveto(0.0))
-        self.torna.bind("<Enter>", lambda e: self.torna.configure(fg=C["titolo"]))
-        self.torna.bind("<Leave>", lambda e: self.torna.configure(fg=C["azzurro"]))
+        # stile S3 dei pulsanti dal 14 nov 2026 (prima un'etichetta azzurra)
+        self.torna = pulsante_solido(tk, self.F, chat_box, "↑  Latest action", False, lambda: self.chat.yview_moveto(0.0), alto=26, bg=C["fondo"], icona=False)
+        self.torna.configure(width=150)
 
         self.chat.configure(yscrollcommand=self.barra_set)
         self.barra.bind("<Button-1>", self.barra_premi); self.barra.bind("<B1-Motion>", self.barra_trascina); self.barra.bind("<ButtonRelease-1>", self.barra_lascia)

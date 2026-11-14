@@ -398,9 +398,10 @@ class PaginaMazzi(PaginaStandard):
         return c
 
     def pulsante_scheda(self, c, dx_, H, testo):
-        """Il pulsante in basso a destra di una scheda di mazzo, in proporzione ai numeri grandi del piede (10 nov 2026)."""
-        c.create_rectangle(dx_ - 104, H - 44, dx_, H - 10, fill=C["accento"], outline="")
-        c.create_text(dx_ - 52, H - 27, text=testo, fill=C["fondo"], font=self.F(9, True))
+        """Il pulsante in basso a destra di una scheda di mazzo, in proporzione ai numeri grandi del piede (10 nov 2026); stile S3 dei pulsanti dal 14 nov
+        2026 (widget.disegna_s3), fino a quel giorno un rettangolo azzurro con la scritta scura."""
+        from widget import disegna_s3
+        disegna_s3(c, dx_ - 104, H - 44, dx_, H - 10, testo, self.F(9, True))
 
     @staticmethod
     def colonne_dati(x, dx_):

@@ -7,6 +7,13 @@
     C6  il tilt misurato: dopo una vittoria o una sconfitta, e quante sconfitte di fila prima della partita
     C7  le carte in mano a fine tuo turno 3, 5, 7 (tue e sue)
     C9  le terre nel mazzo
+    C13 il valore dei bersagli delle tue rimozioni: cosa ha tolto ogni tua rimozione (il valore di mana del permanente; una pedina 0), e quante volte
+        su una pedina o su una carta piu' economica della rimozione (grado C: una carta da 1 mana puo' essere la minaccia vera)
+    C15 «quale carta mi avrebbe salvato?»: le sue carte che vedi piu' nelle tue sconfitte che nelle vittorie (le minacce), e per ognuna le rimozioni della
+        tua collezione, nei colori dei tuoi mazzi (e legali in Standard se giochi Standard), che dal testo la tolgono (grado C: il bersaglio, il danno contro la
+        costituzione, -X/-X, «power 3 or less», «nonblack», «with flying»; non le protezioni)
+    C8  le versioni della lista dello stesso mazzo (la lista di ogni partita da partite_log): «nome · v2 · since 12 Nov», col win rate per versione nel Report
+        (Group by), e cosa e' cambiato dalla versione prima
 
 Le rimozioni con le regole delle rimozioni vere di Companion/Comune/rimozioni.py (VERA), copiate qui: quel modulo legge un file di Scryfall che l'app
 pubblica non ha, e le due app devono dire le stesse cose. Il testo delle carte e' quello del database dell'app (dati_analizzatore._carta).
@@ -43,7 +50,7 @@ ORDINE = dict(c2_mano=("Yes", "No"), c2_t3=("Yes", "No"), rim_mano=("0", "1", "2
               serie_prima=("0", "1", "2", "3+"), **{f"mano_io{n}": ("0", "1-2", "3+") for n in (3, 5, 7)}, **{f"mano_lui{n}": ("0", "1-2", "3+") for n in (3, 5, 7)})
 NOMI = dict(c2_mano="Your opening hand · a deck color missing from its lands", c2_t3="A deck color missing on your battlefield at the end of your turn 3",
             rim_mano="Removal in your opening hand", rim_mazzo="Removal in your deck · per 60 cards", rim_prima="Your first removal cast",
-            dopo="The game before", serie_prima="Losses in a row before this game", terre_mazzo="Lands in your deck",
+            dopo="The game before", versione="Deck version", serie_prima="Losses in a row before this game", terre_mazzo="Lands in your deck",
             **{f"mano_io{n}": f"Cards in your hand at the end of your turn {n}" for n in (3, 5, 7)},
             **{f"mano_lui{n}": f"Cards in the opponent's hand at the end of your turn {n}" for n in (3, 5, 7)})
 
@@ -127,6 +134,192 @@ def serie(righe):
     return righe
 
 
+def versioni(righe):
+    """C8: le versioni della lista di ogni tuo mazzo costruito (lo stesso mazzo di Arena, se no lo stesso nome), dalla prima partita: una lista mai vista prima
+    e' una versione nuova, una lista tornata uguale a una di prima riprende il suo numero. Il mazzo principale senza la sideboard (la lista di partite_log).
+    Scrive in ogni riga «versione» («nome · v2 · since 12 Nov») e «versione_cambi» (le carte cambiate dalla versione prima: «+2 Shock, -1 Opt»); il limited
+    no (ogni draft e' un mazzo suo). -> {chiave del mazzo: [(versione, prima partita, cambi)]}."""
+    gruppi = collections.defaultdict(list)
+    for x in righe:
+        if x.get("tipo") != "Constructed" or not x.get("deck"):
+            continue
+        gruppi[x.get("mazzo_id") or (x.get("mio") or "").strip()].append(x)
+    out = {}
+    for k, xs in gruppi.items():
+        viste = []      # [(lista come chiave, numero, prima partita, cambi)]
+        prima_l = None
+        for x in sorted(xs, key=lambda x: x["quando"]):
+            chiave = tuple(sorted((n, q) for n, q in x["deck"].items() if q))
+            v_ = next((v for v in viste if v[0] == chiave), None)
+            if v_ is None:
+                cambi = ""
+                if prima_l is not None:
+                    a_, b_ = dict(prima_l), dict(chiave)
+                    d_ = {n: b_.get(n, 0) - a_.get(n, 0) for n in set(a_) | set(b_)}
+                    piu = [f"+{q} {n}" for n, q in sorted(d_.items()) if q > 0]
+                    meno = [f"-{-q} {n}" for n, q in sorted(d_.items()) if q < 0]
+                    cambi = ", ".join(piu + meno)
+                v_ = (chiave, len(viste) + 1, x["quando"], cambi)
+                viste.append(v_)
+            prima_l = chiave
+            nome = (x.get("mio") or "").strip() or "Deck"
+            x["versione"] = f"{nome} · v{v_[1]} · since {v_[2]:%d %b}"
+            x["versione_cambi"] = v_[3]
+        out[k] = [(f"v{v[1]}", v[2], v[3]) for v in viste]
+    return out
+
+
+def bersagli_rimozioni(x):
+    """C13: le tue rimozioni lanciate (magie, non abilita') coi permanenti dell'avversario che hanno tolto (colpiti_di, dalla foto con la magia in pila).
+    -> [dict(rim, rim_mv, bers, bers_mv, pedina)]; [] senza i momenti."""
+    d = DA._MANA.get(x.get("partita")) or {}
+    seat = x.get("seat")
+    if seat not in (1, 2):
+        return []
+    out = []
+    for m in d.get("momenti") or []:
+        if m[0] != "spell" or len(m) < 5 or not isinstance(m[4], dict):
+            continue
+        info = m[4]
+        if info.get("chi") != seat or info.get("ab"):
+            continue
+        nome = DA.nome_intero(DA.nome_grp(info.get("g")) or "")
+        if not nome or not rimozione(nome):
+            continue
+        suoi = {c_[5]: c_ for c_ in ((m[3] or {}).get("c") or [[], []])[2 - seat] or [] if len(c_) > 5}
+        for id_ in DA.colpiti_di(info):
+            c_ = suoi.get(id_)
+            if c_ is None:
+                continue
+            nb = DA.nome_intero(DA.nome_grp(c_[0]) or "") or "a token"
+            pedina = bool(c_[2])
+            out.append(dict(rim=nome, rim_mv=(DA._carta(nome) or {}).get("cmc", 0), bers=nb, bers_mv=0 if pedina else (DA._carta(nb) or {}).get("cmc", 0),
+                            pedina=pedina))
+    return out
+
+
+def valore_rimozioni(r, quante=40):
+    """C13 in Cards: per ogni tua rimozione, nelle partite r in cui l'hai lanciata (n, il win rate: le partite del suo filtro), quante volte ha tolto qualcosa, il valore di mana medio di cio' che ha tolto e la quota su
+    pedine o carte piu' economiche di lei. -> righe di Cards (filtro: le partite in cui l'hai lanciata)."""
+    per = collections.defaultdict(list)
+    partite, vinte = collections.Counter(), collections.Counter()
+    for x in r:
+        bb = x.get("rim_bersagli") or []
+        for b in bb:
+            per[b["rim"]].append(b)
+        for n in set(x.get("mie_lanciate") or []) | {b["rim"] for b in bb}:     # le partite in cui l'hai lanciata: quelle del suo filtro
+            partite[n] += 1
+            vinte[n] += x["vinta"]
+    out = []
+    for n, bb in per.items():
+        npar = partite[n]
+        econ = sum(1 for b in bb if b["pedina"] or b["bers_mv"] < b["rim_mv"])
+        out.append(dict(nome=n, n=npar, vinte=vinte[n], perse=npar - vinte[n], wr=round(100 * vinte[n] / npar, 1), quota=0.0,
+                        tolti=len(bb), bers_mv=round(sum(b["bers_mv"] for b in bb) / len(bb), 1), economici=round(100 * econ / len(bb)),
+                        rim_mv=bb[0]["rim_mv"], filtro=("lanciate", n)))
+    out.sort(key=lambda c: (-c["tolti"], c["nome"]))
+    return out[:quante]
+
+
+COLORI_PAROLA = {"white": "W", "blue": "U", "black": "B", "red": "R", "green": "G"}
+TOGLIE_PERMANENTE = r"(?:destroy|exile|return) (?:up to one )?target (?:nonland permanent|permanent|{t}(?: or [a-z]+)?|[a-z]+ or {t}|[a-z]+, {t})"
+
+
+def _prima(c):
+    return ((c or {}).get("tipo") or "").split(" // ")[0]
+
+
+def colpisce(rim, minaccia):
+    """C15: la carta rim, dal suo testo, puo' togliere la carta minaccia? (grado C) Il bersaglio giusto (creatura, artefatto, incantesimo, planeswalker,
+    permanente), il danno contro la costituzione, il -X/-X, le restrizioni piu' comuni (power o mana value N or less, non<colore>, with flying)."""
+    cr, cm = DA._carta(rim or "") or {}, DA._carta(minaccia or "") or {}
+    t, tipo = (cr.get("testo") or "").lower(), _prima(cm)
+    if not t or not tipo:
+        return False
+    if "Creature" in tipo:
+        if not (rimozione(rim) or re.search(TOGLIE_PERMANENTE.format(t="creature"), t)):
+            return False
+        try:
+            forza, cost = (int(v) for v in (cm.get("pt") or "").split("/")[:2])
+        except ValueError:
+            forza, cost = None, None
+        m = re.search(r"deals? (\d+) damage to (?:any target|(?:up to one )?target (?:[\w-]+ )*?creature)", t)
+        if m and cost is not None and int(m.group(1)) < cost and not re.search(r"(?:destroy|exile) target (?:[\w-]+ )*?creature", t):
+            return False
+        m = re.search(r"gets? -\d+/-(\d+)", t)
+        if m and not re.search(r"deals? .*damage|(?:destroy|exile) target", t) and cost is not None and int(m.group(1)) < cost:
+            return False
+        m = re.search(r"creature with (power|mana value) (\d+) or less", t)
+        if m and ((m.group(1) == "power" and (forza is None or forza > int(m.group(2)))) or (m.group(1) == "mana value" and (cm.get("cmc") or 0) > int(m.group(2)))):
+            return False
+        m = re.search(r"target non(white|blue|black|red|green) creature", t)
+        if m and COLORI_PAROLA[m.group(1)] in (cm.get("colori") or ""):
+            return False
+        if re.search(r"target creature with flying", t) and "flying" not in (cm.get("testo") or "").lower():
+            return False
+        return True
+    for k in ("Planeswalker", "Artifact", "Enchantment", "Battle"):
+        if k in tipo:
+            kk = k.lower()
+            if re.search(TOGLIE_PERMANENTE.format(t=kk), t):
+                return True
+            if k == "Planeswalker" and (re.search(r"target (?:creature or )?planeswalker", t) or "any target" in t) and re.search(r"destroy|exile|damage", t):
+                return True
+    return False
+
+
+def minacce(r, quante=12, minimo=3):
+    """C15: le sue magie lanciate che stanno piu' nelle tue sconfitte che nelle vittorie (la quota delle sconfitte con la carta meno quella delle vittorie),
+    da `minimo` sconfitte; per ognuna le risposte della tua collezione (risposte). -> righe di Cards: dict(nome, n, vinte, perse, wr, quota, eccesso,
+    risposte, filtro)."""
+    perse = [x for x in r if not x["vinta"]]
+    vinte = [x for x in r if x["vinta"]]
+    if not perse:
+        return []
+    cp, cv = collections.Counter(), collections.Counter()
+    for x in perse:
+        cp.update(set(x.get("sue_lanciate") or []))
+    for x in vinte:
+        cv.update(set(x.get("sue_lanciate") or []))
+    colori = set()
+    for x in r:
+        colori |= _colori_mazzo(x.get("deck") or {})
+    standard = bool(r) and all((x.get("formato") or "").lower() == "standard" for x in r)
+    out = []
+    for n, l in cp.items():
+        tipo_ = _prima(DA._carta(n))
+        if l < minimo or DA.e_terra(n) or not tipo_ or "Instant" in tipo_ or "Sorcery" in tipo_:      # una minaccia resta in campo: si toglie
+            continue
+        ecc = 100 * l / len(perse) - (100 * cv[n] / len(vinte) if vinte else 0)
+        if ecc <= 0:
+            continue
+        tot = l + cv[n]
+        out.append(dict(nome=n, n=tot, vinte=cv[n], perse=l, wr=round(100 * cv[n] / tot, 1), quota=round(100 * tot / len(r), 1), eccesso=round(ecc),
+                        risposte=None, filtro=("sue_lanciate", n)))
+    out.sort(key=lambda c: (-c["eccesso"] * c["perse"], c["nome"]))
+    out = out[:quante]
+    for c in out:
+        c["risposte"] = risposte(c["nome"], colori, standard)
+    return out
+
+
+def risposte(minaccia, colori, standard, quante=8):
+    """C15: le carte che hai (almeno una copia), nei colori dati (tutti i loro colori dentro; incolori sempre), legali in Standard se standard, che dal testo
+    tolgono la minaccia (colpisce), dalla piu' economica."""
+    out = []
+    for c in DA._tabella().values():
+        if not c.get("copie") or "Land" in _prima(c) or (standard and (not c.get("standard") or c.get("ban_std"))):
+            continue
+        if not set(c.get("colori") or "") - {"C"} <= colori:
+            continue
+        if "Creature" in _prima(c) and " enters" not in (c.get("testo") or ""):      # una creatura risponde solo all'entrata (o muore: no)
+            continue
+        if colpisce(c["nome"], minaccia):
+            out.append(c["nome"])
+    out.sort(key=lambda n: ((DA._carta(n) or {}).get("cmc", 99), n))
+    return out[:quante]
+
+
 def serie_piu_lunghe(r):
     """La serie di sconfitte e di vittorie piu' lunghe nelle partite r (in ordine di tempo)."""
     piu = {True: 0, False: 0}
@@ -191,6 +384,48 @@ def prova():
     iw = iwd(ri)
     casi.append(("C4: Mortify vista vince il 100%, non vista lo 0%: IWD +100; negativa: le terre non ci sono", iw and iw[0]["nome"] == "Mortify" and iw[0]["iwd"] == 100
                  and all(c_["nome"] != "Plains" for c_ in iw)))
+    q2 = lambda d: dt.datetime(2026, 11, d, 20)
+    rv = [dict(tipo="Constructed", quando=q2(10), mio="UW", mazzo_id="a", deck={"Opt": 4, "Island": 20}),
+          dict(tipo="Constructed", quando=q2(11), mio="UW", mazzo_id="a", deck={"Opt": 2, "Shock": 2, "Island": 20}),
+          dict(tipo="Constructed", quando=q2(12), mio="UW", mazzo_id="a", deck={"Opt": 4, "Island": 20}),
+          dict(tipo="Constructed", quando=q2(12), mio="Red", mazzo_id="b", deck={"Shock": 4, "Mountain": 20}),
+          dict(tipo="Limited", quando=q2(12), mio="WB", mazzo_id="c", deck={"Bolt": 1})]
+    vv = versioni(rv)
+    casi.append(("C8: due versioni di UW (la terza partita torna alla v1), coi cambi della v2; Red una sola", rv[0]["versione"] == "UW · v1 · since 10 Nov"
+                 and rv[1]["versione"] == "UW · v2 · since 11 Nov" and rv[1]["versione_cambi"] == "+2 Shock, -2 Opt" and rv[2]["versione"] == rv[0]["versione"]
+                 and len(vv["a"]) == 2 and len(vv["b"]) == 1))
+    casi.append(("negativa C8: il limited non ha versioni", "versione" not in rv[4]))
+    rb = [dict(vinta=True, rim_bersagli=[dict(rim="Shock", rim_mv=1, bers="Dragon", bers_mv=5, pedina=False),
+                                         dict(rim="Shock", rim_mv=1, bers="a token", bers_mv=0, pedina=True)]),
+          dict(vinta=False, rim_bersagli=[dict(rim="Murder", rim_mv=3, bers="Goblin", bers_mv=2, pedina=False)]), dict(vinta=False)]
+    vr = {c_["nome"]: c_ for c_ in valore_rimozioni(rb)}
+    casi.append(("C13: Shock ha tolto un Dragon (5) e una pedina: media 2,5, meta' su bersagli economici; Murder su un Goblin da 2: 100% economico",
+                 vr["Shock"]["tolti"] == 2 and vr["Shock"]["bers_mv"] == 2.5 and vr["Shock"]["economici"] == 50 and vr["Murder"]["economici"] == 100
+                 and vr["Shock"]["wr"] == 100.0))
+    casi.append(("negativa C13: una partita senza rimozioni lanciate non entra", sum(c_["n"] for c_ in vr.values()) == 2))
+    vecchia = DA._TAB.get("t")
+    DA._TAB["t"] = {"Shock": dict(nome="Shock", tipo="Instant", cmc=1, colori="R", testo="Shock deals 2 damage to any target.", copie=4, standard=True),
+                    "Murder": dict(nome="Murder", tipo="Instant", cmc=3, colori="B", testo="Destroy target creature.", copie=1, standard=True),
+                    "Doom Blade": dict(nome="Doom Blade", tipo="Instant", cmc=2, colori="B", testo="Destroy target nonblack creature.", copie=2, standard=True),
+                    "Shatter": dict(nome="Shatter", tipo="Instant", cmc=2, colori="R", testo="Destroy target artifact.", copie=1, standard=True),
+                    "Goblin": dict(nome="Goblin", tipo="Creature — Goblin", cmc=1, colori="R", testo="", pt="1/1", copie=0),
+                    "Vampire": dict(nome="Vampire", tipo="Creature — Vampire", cmc=4, colori="B", testo="", pt="4/5", copie=0),
+                    "Relic": dict(nome="Relic", tipo="Artifact", cmc=2, colori="", testo="", copie=0)}
+    _RIM.clear()
+    try:
+        casi.append(("C15: Shock toglie il Goblin 1/1 ma non il Vampire 4/5; Murder il Vampire; Doom Blade non un nero; Shatter il Relic",
+                     colpisce("Shock", "Goblin") and not colpisce("Shock", "Vampire") and colpisce("Murder", "Vampire") and not colpisce("Doom Blade", "Vampire")
+                     and colpisce("Shatter", "Relic") and not colpisce("Shatter", "Goblin")))
+        rm = [dict(vinta=False, sue_lanciate=["Vampire"], deck={"Shock": 4, "Murder": 2}, formato="standard") for _ in range(4)] + \
+             [dict(vinta=True, sue_lanciate=[], deck={"Shock": 4, "Murder": 2}, formato="standard") for _ in range(4)]
+        mn = minacce(rm)
+        casi.append(("C15: il Vampire in 4 sconfitte su 4 e in nessuna vittoria; la risposta che hai nei tuoi colori e' Murder",
+                     bool(mn) and mn[0]["nome"] == "Vampire" and mn[0]["perse"] == 4 and mn[0]["risposte"] == ["Murder"]))
+        casi.append(("negativa C15: Doom Blade (nero ma non lo toglie) e Shock (troppo poco danno) non sono risposte; una carta vista solo nelle vittorie no",
+                     bool(mn) and "Doom Blade" not in mn[0]["risposte"] and "Shock" not in mn[0]["risposte"] and len(mn) == 1))
+    finally:
+        DA._TAB["t"] = vecchia
+        _RIM.clear()
     for n, ok in casi:
         print(("ok    " if ok else "ROSSO ") + n)
     print(f"{sum(1 for _n, ok in casi if ok)}/{len(casi)}")

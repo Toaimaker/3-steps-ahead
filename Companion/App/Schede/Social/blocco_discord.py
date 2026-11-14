@@ -22,6 +22,7 @@ import account as _ACC  # noqa: E402
 import discord_social as DS  # noqa: E402
 
 VIOLA = ("#5865F2", "#6d78f5", "#4752c4")     # il colore di Discord: normale, sotto il mouse, premuto
+GRIGIO_S = ("#3a3a40", "#4a4a52", "#2c2c30")    # i pulsanti grigi (Cancel, Sign out)
 VERDE, SPENTO = "#3ba55d", "#5c5c66"
 OGNI = 120_000          # il battito e la lista degli amici, in ms
 
@@ -37,8 +38,10 @@ class BloccoDiscord:
         logo = tk.Canvas(t, width=14, height=14, bg=P["cap"], highlightthickness=0); logo.pack(side="left", padx=(12, 6), pady=7)
         logo.create_oval(1, 1, 13, 13, fill=VIOLA[0], width=0)
         tk.Label(t, text="DISCORD", bg=P["cap"], fg=P["capo"], font=F(8, True), pady=7).pack(side="left")
-        j = tk.Label(t, text="Join ↗", bg=P["cap"], fg=P["accento"], font=F(8, True), padx=12, cursor="hand2"); j.pack(side="right")
-        j.bind("<Button-1>", lambda e: DS.invito() and self.apri_url(DS.invito()))
+        # i pulsanti della colonna nello stile S3 come tutti (14 nov 2026, Autore: «ogni pulsante esistente deve avere il redesign in linea con lo
+        # stile»); fino a quel giorno erano scritte cliccabili
+        j = pulsante(tk, F, t, "Join ↗", False, lambda: DS.invito() and self.apri_url(DS.invito()), alto=22, bg=P["cap"], colori=VIOLA)
+        j.configure(width=70); j.pack(side="right", padx=(0, 10))
         self.corpo = tk.Frame(self.fr, bg=P["scheda"]); self.corpo.pack(fill="x", padx=12, pady=(8, 10))
         tk.Frame(self.fr, bg=P["filo"], height=1).pack(fill="x")
         self.disegna()
@@ -125,8 +128,8 @@ class BloccoDiscord:
         s = DS.sessione()
         if self.attesa:
             tk.Label(self.corpo, text="Finish signing in in your browser…", bg=P["scheda"], fg=P["testo"], font=F(9), anchor="w").pack(fill="x")
-            a = tk.Label(self.corpo, text="Cancel", bg=P["scheda"], fg=P["accento"], font=F(8, True), anchor="w", cursor="hand2"); a.pack(fill="x", pady=(2, 0))
-            a.bind("<Button-1>", lambda e: self.annulla())
+            a = self.pulsante(tk, F, self.corpo, "Cancel", False, self.annulla, alto=24, bg=P["scheda"], colori=GRIGIO_S)
+            a.configure(width=100); a.pack(anchor="w", pady=(4, 0))
         elif not s:
             b = self.pulsante(tk, F, self.corpo, "Sign in with Discord", False, self.accedi, alto=34, bg=P["scheda"], colori=VIOLA)
             b.configure(width=1); b.pack(fill="x")
@@ -140,8 +143,8 @@ class BloccoDiscord:
             p = tk.Canvas(r, width=10, height=10, bg=P["scheda"], highlightthickness=0); p.pack(side="left", padx=(0, 6))
             p.create_oval(1, 1, 9, 9, fill=VERDE, width=0)
             tk.Label(r, text=u.get("name") or u.get("username") or "You", bg=P["scheda"], fg=P["titolo"], font=F(10, True), anchor="w").pack(side="left")
-            o = tk.Label(r, text="Sign out", bg=P["scheda"], fg=P["grigio"], font=F(8), cursor="hand2"); o.pack(side="right")
-            o.bind("<Button-1>", lambda e: self.esci())
+            o = self.pulsante(tk, F, r, "Sign out", False, self.esci, alto=22, bg=P["scheda"], colori=GRIGIO_S, icona="uscita")
+            o.configure(width=96); o.pack(side="right")
             amici = sorted(self.amici or [], key=lambda a: (not a.get("online"), (a.get("name") or "").lower()))
             for a in amici:
                 self.riga_amico(a)
@@ -149,8 +152,8 @@ class BloccoDiscord:
             self.e_nome = tk.Entry(f, bg=P["cap"], fg=P["titolo"], insertbackground=P["titolo"], font=F(9), bd=0, highlightthickness=0)
             self.e_nome.pack(side="left", fill="both", expand=True, padx=(8, 0))
             self.e_nome.insert(0, ""); self.e_nome.bind("<Return>", lambda e: self.aggiungi())
-            piu = tk.Label(f, text="Add", bg=P["cap"], fg=P["accento"], font=F(8, True), padx=8, cursor="hand2"); piu.pack(side="right")
-            piu.bind("<Button-1>", lambda e: self.aggiungi())
+            piu = self.pulsante(tk, F, f, "Add", False, self.aggiungi, alto=24, bg=P["cap"], icona="piu")
+            piu.configure(width=62); piu.pack(side="right", padx=(0, 2))
             tk.Label(self.corpo, text="Add a friend by Discord username", bg=P["scheda"], fg=P["muto"] if "muto" in P else P["grigio"], font=F(7), anchor="w").pack(fill="x")
         if self.msg:
             tk.Label(self.corpo, text=self.msg, bg=P["scheda"], fg=P["rosso_t"], font=F(8), anchor="w", wraplength=240, justify="left").pack(fill="x", pady=(4, 0))
@@ -164,8 +167,8 @@ class BloccoDiscord:
         tk.Label(r, text=nome, bg=P["scheda"], fg=P["testo"] if a.get("online") else P["grigio"], font=F(9), anchor="w").pack(side="left")
         x = tk.Label(r, text="✕", bg=P["scheda"], fg=P["grigio"], font=F(8), cursor="hand2"); x.pack(side="right", padx=(6, 0))
         x.bind("<Button-1>", lambda e, i=a["id"]: self.togli(i))
-        m = tk.Label(r, text="Message ↗", bg=P["scheda"], fg=P["accento"], font=F(8, True), cursor="hand2"); m.pack(side="right")
-        m.bind("<Button-1>", lambda e, i=a["id"]: self.apri_url(DS.profilo_url(i)))
+        m = self.pulsante(tk, F, r, "Message ↗", False, lambda i=a["id"]: self.apri_url(DS.profilo_url(i)), alto=22, bg=P["scheda"], colori=VIOLA)
+        m.configure(width=90); m.pack(side="right")
         if not a.get("mutual", True):
             tk.Label(self.corpo, text="     waiting for them to add you", bg=P["scheda"], fg=P["grigio"], font=F(7), anchor="w").pack(fill="x")
 
@@ -191,6 +194,8 @@ def prova():
 
         def giro(w):
             for c in w.winfo_children():
+                if hasattr(c, "testo"):     # un pulsante S3: la scritta e' disegnata
+                    out.append(c.testo())
                 try:
                     out.append(c.cget("text"))
                 except tk.TclError:

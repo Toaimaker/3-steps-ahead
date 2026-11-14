@@ -1,6 +1,6 @@
 # Privacy notice · 3 Steps Ahead (beta)
 
-_Last updated: 2026-11-13. Data controller: Francesco Latini. Contact: fun4graphic@gmail.com._
+_Last updated: 2026-11-14. Data controller: Francesco Latini. Contact: fun4graphic@gmail.com._
 
 ## What the app does on your PC
 

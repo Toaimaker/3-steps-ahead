@@ -471,18 +471,136 @@ def conferma(tk, F, padre, titolo, testo, si, fa, colori=ROSSO_P, altro=None):
     return f
 
 
-def pulsante_solido(tk, F, padre, testo, premuto, azione, alto=40, bg="#18181c", colori=None):
-    """Un pulsante azzurro pieno, senza sfumature, che si schiarisce al passaggio del mouse (Autore, 6 nov 2026: «i pulsanti non facciamogli la sfumatura ma facciamoli pieni con light hover»;
-    dal 5 nov erano sfumati con riflesso). Premuto e' piu' scuro. c.metti(testo, premuto) lo cambia."""
+def _hex(c):
+    c = c.lstrip("#")
+    return tuple(int(c[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def _mischia(c, verso, t):
+    """c verso il colore verso per la frazione t (0 = c)."""
+    a, b = _hex(c), _hex(verso)
+    return "#%02x%02x%02x" % tuple(round(x + (y - x) * t) for x, y in zip(a, b))
+
+
+def saturo(c):
+    """Lo stesso colore piu' saturo e piu' acceso: la luce del blocco icona (stile S3, 14 nov 2026). Un grigio resta quasi grigio."""
+    import colorsys
+    h, s, v = colorsys.rgb_to_hsv(*(x / 255 for x in _hex(c)))
+    r, g, b = colorsys.hsv_to_rgb(h, min(1.0, s * 1.5), min(1.0, v * 1.12))
+    return "#%02x%02x%02x" % (round(r * 255), round(g * 255), round(b * 255))
+
+
+RAGGIO_P = 4            # gli angoli dei pulsanti
+_SFONDI = {}            # le immagini dei pulsanti, per misura, colori e stato (si rifanno al passaggio del mouse: costano una volta sola)
+
+
+def _sfondo(w, h, sopra_, sotto_, linea, blocco=0, b_sopra=None, b_sotto=None):
+    """Il pulsante come immagine: la luce dall'alto (sopra_ in cima, sotto_ in fondo), il filo chiaro in cima (linea: alfa 0-255), il blocco icona largo blocco
+    a sinistra coi suoi colori e il filo che lo separa, gli angoli arrotondati con l'antialias. -> PhotoImage, in cache."""
+    chiave = (w, h, sopra_, sotto_, linea, blocco, b_sopra, b_sotto)
+    if chiave in _SFONDI:
+        return _SFONDI[chiave]
+    from PIL import Image, ImageDraw, ImageTk
+
+    def rampa(l, a, b):
+        col = Image.new("RGBA", (1, h))
+        ca, cb = _hex(a), _hex(b)
+        col.putdata([tuple(round(x + (y - x) * (j / max(1, h - 1))) for x, y in zip(ca, cb)) + (255,) for j in range(h)])
+        return col.resize((l, h), Image.NEAREST)
+    im = rampa(w, sopra_, sotto_)
+    if blocco:
+        im.paste(rampa(blocco, b_sopra, b_sotto), (0, 0))
+        im.alpha_composite(Image.new("RGBA", (1, h), (255, 255, 255, 34)), (blocco - 1, 0))
+    im.alpha_composite(Image.new("RGBA", (w, 1), (255, 255, 255, linea)), (0, 0))
+    s = 4
+    maschera = Image.new("L", (w * s, h * s), 0)
+    ImageDraw.Draw(maschera).rounded_rectangle((0, 0, w * s - 1, h * s - 1), radius=RAGGIO_P * s, fill=255)
+    im.putalpha(maschera.resize((w, h), Image.LANCZOS))
+    if len(_SFONDI) > 600:      # via il piu' vecchio: chi lo mostra ancora lo tiene vivo nella sua tela (c._s3)
+        _SFONDI.pop(next(iter(_SFONDI)))
+    _SFONDI[chiave] = ImageTk.PhotoImage(im)
+    return _SFONDI[chiave]
+
+
+def disegna_s3(c, x0, y0, x1, y1, testo, font, colori=None, sopra=False, premuto=False, icona=None, tags=(), scritta="#ffffff"):
+    """Un pulsante stile S3 disegnato su una tela che c'e' gia' (le tele della Performance, le schede dei mazzi, il pulsante della versione...): lo stesso
+    disegno di pulsante_solido, nel riquadro (x0, y0, x1, y1). colori (normale, sotto il mouse, premuto); icona None dal testo, False nessuna, o un nome di
+    icone_pulsanti. Le immagini restano vive nella tela (c._s3). -> la larghezza del blocco icona (0 senza)."""
+    import icone_pulsanti as IP
+    x0, y0, x1, y1 = (int(round(v)) for v in (x0, y0, x1, y1))
+    w, alto = max(2, x1 - x0), max(2, y1 - y0)
+    nor, su, giu = colori or ("#0f86cc", "#2ba3ea", "#0b5f94")
+    if premuto:        # scelto o abbassato: la luce parte poco sopra il colore del premuto
+        sopra_, sotto_, linea = _mischia(giu, "#ffffff", 0.14), giu, 60
+    elif sopra:
+        sopra_, sotto_, linea = _mischia(su, "#ffffff", 0.15), su, 110
+    else:
+        sopra_, sotto_, linea = su, nor, 85
+    nome = IP.per_testo(testo) if icona is None else (icona or None)
+    blocco, lato = 0, 0
+    if nome:
+        blocco = alto + (6 if sopra else 0)
+        lato = max(10, round(alto * 0.47)) + (2 if sopra else 0)
+        try:
+            largo_testo = int((c.tk if hasattr(c, "tk") else c.cv.tk).call("font", "measure", font, testo))      # una CartaTela misura sulla sua tela
+        except Exception:       # noqa: BLE001
+            largo_testo = 7 * len(testo)
+        if w < alto + 6 + largo_testo + 16:     # non ci stanno tutti e due: resta la scritta
+            nome, blocco = None, 0
+    if blocco:
+        s_ = saturo(su)
+        b_sopra, b_sotto = (_mischia(s_, "#ffffff", 0.15), s_) if sopra else (sopra_, sotto_)
+    else:
+        b_sopra = b_sotto = None
+    tags = tuple(tags) if not isinstance(tags, str) else (tags,)
+    fondo = c.create_rectangle(x0 + 2, y0 + 2, x1 - 2, y1 - 2, fill=giu if premuto else nor, width=0, tags=tags + ("s3_fondo",))      # il colore pieno, sotto
+    refs = c.__dict__.setdefault("_s3", [])
+    try:
+        f_ = _sfondo(w, alto, sopra_, sotto_, linea, blocco, b_sopra, b_sotto)
+        refs.append(f_)
+        c.create_image(x0, y0, image=f_, anchor="nw", tags=tags)
+        if nome:
+            ic = IP.icona(nome, lato)
+            refs.append(ic)
+            c.create_image(x0 + blocco / 2, y0 + alto / 2, image=ic, tags=tags)
+    except Exception:       # noqa: BLE001 - senza PIL resta il colore pieno, come prima del 14 nov
+        try:
+            c.coords(fondo, x0, y0, x1, y1)
+        except Exception:       # noqa: BLE001
+            pass
+        blocco = 0
+    if len(refs) > 300:
+        del refs[:len(refs) - 300]
+    c.create_text(x0 + blocco + (w - blocco) / 2, y0 + alto / 2, text=testo, fill=scritta, font=font, tags=tags + ("testo",))
+    return blocco
+
+
+def pulsante_solido(tk, F, padre, testo, premuto, azione, alto=40, bg="#18181c", colori=None, icona=None):
+    """Il pulsante dell'app, stile S3 (Autore, 14 nov 2026: «monta S3 su tutta l'app», scelto fra cinque stili e le loro varianti; poi «ogni pulsante
+    esistente deve avere il redesign in linea con lo stile»): satinato, la luce dall'alto che scende fino al colore e mai sotto (niente rampa scura: «è sempre
+    luce nera»), un filo chiaro in cima, gli angoli tondi. A sinistra il blocco icona: da fermo come la scritta, sotto il mouse si allarga e si accende del
+    colore del pulsante piu' saturo («usa una luce del colore del pulsante ma più satura»), l'icona cresce di due pixel. Fino al 13 nov 2026 era un rettangolo
+    pieno che si schiariva (6 nov: «pieni con light hover»). Su una tela che c'e' gia' lo stesso disegno lo fa disegna_s3.
+    colori: (normale, sotto il mouse, premuto); premuto e' lo stato scelto (le linguette: GRIGI ha l'azzurro) o abbassato. icona: None la sceglie dal testo
+    (icone_pulsanti.per_testo), False nessuna, un nome di icone_pulsanti.NOMI quella. Il pulsante che non e' largo abbastanza per testo e icona perde l'icona.
+    c.metti(testo, premuto) lo cambia; c.colori dice i suoi colori (per le prove)."""
+    import icone_pulsanti as IP
     c = tk.Canvas(padre, height=alto, bg=bg, highlightthickness=0, bd=0, cursor="hand2")
-    stato = {"sopra": False, "testo": testo, "premuto": premuto}
+    stato = {"sopra": False, "testo": testo, "premuto": premuto, "icona": IP.per_testo(testo) if icona is None else (icona or None), "spento": False}
+    c.colori = colori or ("#0f86cc", "#2ba3ea", "#0b5f94")
 
     def disegna(e=None):
-        c.delete("all"); w = max(c.winfo_width(), 2)
-        nor, su, giu = colori or ("#0f86cc", "#2ba3ea", "#0b5f94")
-        col = giu if stato["premuto"] else su if stato["sopra"] else nor
-        c.create_rectangle(0, 0, w, alto, fill=col, width=0)
-        c.create_text(w / 2, alto / 2, text=stato["testo"], fill="#ffffff", font=F(9, True))
+        c.delete("all"); c._s3 = []
+        disegna_s3(c, 0, 0, max(c.winfo_width(), 2), alto, stato["testo"], F(9, True), c.colori, stato["sopra"] and not stato["spento"], stato["premuto"],
+                   stato["icona"] or False, scritta="#6c6c74" if stato["spento"] else "#ffffff")
+
+    def spegni(v):
+        """Spento (Undo senza niente da annullare): la scritta grigia, niente luce sotto il mouse. Il clic arriva lo stesso: decide chi lo riceve."""
+        if bool(v) != stato["spento"]:
+            stato["spento"] = bool(v)
+            disegna()
+    c.spegni = spegni
+    c.testo = lambda: stato["testo"]
 
     def sopra(v):
         stato["sopra"] = v
@@ -490,6 +608,8 @@ def pulsante_solido(tk, F, padre, testo, premuto, azione, alto=40, bg="#18181c",
 
     def metti(testo, premuto):
         if (testo, premuto) != (stato["testo"], stato["premuto"]):
+            if icona is None:       # un testo di passaggio («Saved», «Click again to confirm») tiene l'icona di prima
+                stato["icona"] = IP.per_testo(testo) or stato["icona"]
             stato.update(testo=testo, premuto=premuto)
             disegna()
     c.metti = metti
@@ -560,7 +680,7 @@ class PulsanteVista:
         bg = bg or C["fondo"]
         self.fr = tk.Frame(padre, bg=bg)
         tk.Label(self.fr, text="VIEW", bg=bg, fg=C["titolo"], font=F(7, True), pady=0).pack(anchor="w", pady=(0, 3))
-        self.c = tk.Canvas(self.fr, bg=C["accento"], highlightthickness=0, width=larga, height=32, bd=0, cursor="hand2")
+        self.c = tk.Canvas(self.fr, bg=bg, highlightthickness=0, width=larga, height=32, bd=0, cursor="hand2")
         self.c.pack(anchor="w")
         self.v, self.sopra = self.viste[0], False
         self.c.bind("<Button-1>", lambda e: self.premi())
@@ -573,17 +693,12 @@ class PulsanteVista:
         self.disegna()
 
     def disegna(self):
-        import disegni as DG
+        """Stile S3 (14 nov 2026), col blocco icona: le barre per Charts, i riquadri per Grid."""
         c = self.c
-        c.delete("all")
+        c.delete("all"); c._s3 = []
         w, h = max(c.winfo_width(), int(c.cget("width"))), int(c.cget("height"))
-        c.configure(bg="#2ba3ea" if self.sopra else "#0f86cc")
         testo, icona = self.etichette.get(self.v, (self.v, "griglia"))
-        img = (DG.barre if icona == "barre" else DG.griglia)(16, "#ffffff")
-        c.img_ = img
-        larga_t = 8 + 16 + 8
-        c.create_image(w / 2 - larga_t / 2 - 10, h / 2, image=img)
-        c.create_text(w / 2 + 6, h / 2, text=testo, fill="#ffffff", font=self.F(9, True))
+        disegna_s3(c, 0, 0, w, h, testo, self.F(9, True), sopra=self.sopra, icona="barre" if icona == "barre" else "griglia")
         self.testo = testo
 
     def opzioni(self, viste, cb):

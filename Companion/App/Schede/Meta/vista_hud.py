@@ -28,6 +28,7 @@ ACCESO = ("#0f86cc", "#2ba3ea")     # la pillola accesa: normale, sotto il mouse
 SPENTO = ("#303034", "#3c3c42")
 VERDE = "#5cdb6a"                   # il pallino LIVE durante una partita
 MENU = 380                          # la larghezza del menu
+LARGO_SEGNA = 92                    # R13: la pillola «★ MARK» accanto, durante una partita
 RILANCIO = 15                       # s: dopo un lancio non se ne fa un altro (il pannello scrive il pid quando parte)
 _SEGUITO = {}       # file -> Seguito: uno per la finestra grande
 _LANCIO = {"t": 0.0}
@@ -89,6 +90,10 @@ class Pulsante:
         c.bind("<Enter>", lambda e: self.metti_sopra(True))
         c.bind("<Leave>", lambda e: self.metti_sopra(False))
         self.seg = seguito(file, io)
+        # R13 (13 nov 2026): «★ MARK», solo durante una partita: segna lo spot (la partita e il turno) e lo ritrovi nel replayer, in My filters
+        self.c_segna = tk.Canvas(fin.barra_schede, width=LARGO_SEGNA, height=ALTO, bg=CI["fondo"], highlightthickness=0, bd=0, cursor="hand2")
+        self.c_segna.bind("<Button-1>", lambda e: self.segna())
+        self.ultimo_segno = None
         self.disegna()
 
     def metti_sopra(self, v):
@@ -113,6 +118,31 @@ class Pulsante:
         c.create_text(LARGO - 30, ALTO / 2, text=stato, fill="#ffffff" if on else CI["grigio"], font=self.F(8, True), anchor="e", tags="testo")
         self._img.append(D.chevron(10, self.menu is None, "#ffffff" if on else CI["grigio"]))
         c.create_image(LARGO - 16, ALTO / 2, image=self._img[-1])
+
+    def segna(self):
+        """Segna lo spot di adesso (R13). -> True se segnato."""
+        st = self.seg.stato() if hasattr(self.seg, "stato") else None
+        if not st or not st.get("matchId") or not st.get("turno"):
+            return False
+        import dati_analizzatore as DA
+        ok = DA.segna_vivo(st["matchId"], st["turno"])
+        self.ultimo_segno = (st["matchId"], st["turno"])
+        self.disegna_segna()
+        return ok
+
+    def disegna_segna(self):
+        c, D = self.c_segna, self.D
+        c.delete("all")
+        if not (self.vivo and HA.acceso()):
+            c.pack_forget()
+            return
+        if not c.winfo_manager():
+            c.pack(side="right", padx=(0, 6), pady=(0, 2))
+        st = self.seg.stato() if hasattr(self.seg, "stato") else None
+        fatto = bool(st and self.ultimo_segno == (st.get("matchId"), st.get("turno")))
+        self._img_segna = D.pillola(LARGO_SEGNA, ALTO, "#8a6d1c", "#4a4028" if fatto else "#3a3220")
+        c.create_image(0, 0, image=self._img_segna, anchor="nw")
+        c.create_text(LARGO_SEGNA / 2, ALTO / 2, text="★ MARKED" if fatto else "★ MARK", fill="#e8d28a", font=self.F(8, True), tags="testo")
 
     def testi(self):
         return [self.c.itemcget(i, "text") for i in self.c.find_withtag("testo")]
@@ -202,6 +232,7 @@ class Pulsante:
             if vivo != self.vivo:
                 self.vivo = vivo
                 self.disegna()
+                self.disegna_segna()
             if self.file is None:
                 tieni_vivo(self.lancia)
         except Exception as e:      # noqa: BLE001 - la sorveglianza non ferma la finestra
@@ -269,10 +300,23 @@ def prova():
     casi.append(("di partenza acceso: la pillola dice DECK HUD e ON", p.testi() == ["DECK HUD", "ON"]))
     p.guarda(False)
     casi.append(("in partita: LIVE", p.testi() == ["DECK HUD", "LIVE"]))
+    # R13: «★ MARK» durante la partita (i segnalibri in un file temporaneo: i tuoi veri non si toccano)
+    import dati_analizzatore as DA
+    vecchio_sb = DA.SEGNALIBRI
+    DA.SEGNALIBRI = os.path.join(tempfile.mkdtemp(), "s.json")
+    try:
+        casi.append(("R13: in partita c'e' «★ MARK» accanto a DECK HUD", p.c_segna.winfo_manager() == "pack"))
+        ok1, ok2 = p.segna(), p.segna()
+        sb_ = DA.segnalibri()
+        casi.append(("il clic segna la partita e il turno di Arena; negativa: lo stesso turno una volta sola", ok1 and not ok2 and len(sb_) == 1
+                     and sb_[0]["partita"] == "m4" and sb_[0]["t"] == 2 and sb_[0]["i"] is None
+                     and [p.c_segna.itemcget(i, "text") for i in p.c_segna.find_withtag("testo")] == ["★ MARKED"]))
+    finally:
+        DA.SEGNALIBRI = vecchio_sb
     with open(f, "a", encoding="utf-8") as fh:
         fh.write(stanza("m4", "Ladder", "MatchCompleted"))
     p.guarda(False)
-    casi.append(("a partita finita torna ON", p.testi() == ["DECK HUD", "ON"]))
+    casi.append(("a partita finita torna ON, e «★ MARK» sparisce", p.testi() == ["DECK HUD", "ON"] and not p.c_segna.winfo_manager()))
     casi.append(("negativa: nessuna finestra dell'HUD, il nome dell'avversario da nessuna parte", not any(isinstance(x, tk.Toplevel) for x in root.winfo_children())
                  and not any("NomeAvversario" in x for x in p.testi())))
     p.apri(); root.update()

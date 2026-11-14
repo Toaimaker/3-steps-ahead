@@ -46,6 +46,37 @@ SPIEGA = {"l1": "a turn of yours with no land played and a land in your hand at 
           "l7": f"you conceded with {VITA_CONCEDI}+ life, more than twice their power on the battlefield, and at least one card in hand"}
 
 
+# R10, il leak tracker (13 nov 2026, come il Leak Tracker di PokerTracker): come si corregge ogni leak, una riga (dai coach citati sopra; grado C)
+COME = {"l1": "Play a land every turn unless you hold it on purpose (a landfall, a bluff): a missed drop is a turn of mana you never get back",
+        "l2": "At the end of your turn count your untapped lands against your hand: if a creature fits, cast it unless you are holding up something better",
+        "l3": "Attack first, then cast creatures in your second main phase: they hide what you hold and keep their bluff (unless they help the attack)",
+        "l4": "At high life take the damage: block to trade, not to chump, until the life total starts to matter",
+        "l5": "Before blocking or attacking into a block, compare what you lose with what they lose: avoid trading a big card for a small one",
+        "l6": "Cast your instants when they cannot answer: on their turn while they are tapped out, or on yours before they untap",
+        "l7": "With life and cards in hand, play it out: many games turn on one draw, and a concession gives away every out",
+        "l8": "Tap the lands that make the colors you will not need: leave open the colors of the cards still in your hand"}
+RECENTI = 50        # il trend: le ultime RECENTI partite contro quelle prima
+
+
+def tracker(r):
+    """R10: per ogni leak, nelle partite r che hanno i momenti: in quante c'e' (il tasso), il win rate con e senza, e il trend (il tasso nelle ultime RECENTI
+    partite contro quelle prima). La popolazione (gli altri giocatori) non c'e': servirebbero i dati condivisi (C12, scelta di Autore).
+    -> [dict(k, nome, spiega, come, n, con, tasso, wr_con, wr_senza, delta, tasso_rec, tasso_prima)] nell'ordine di ORDINE."""
+    rr = sorted((x for x in r if x.get("leak")), key=lambda x: x["quando"])
+    out = []
+    wr = lambda xs: round(100 * sum(1 for x in xs if x["vinta"]) / len(xs), 1) if xs else None
+    for k in ORDINE:
+        con = [x for x in rr if valore(x, k) == "Yes"]
+        senza = [x for x in rr if valore(x, k) == "No"]
+        rec, prima = rr[-RECENTI:], rr[:-RECENTI]
+        tasso = lambda xs: round(100 * sum(1 for x in xs if valore(x, k) == "Yes") / len(xs), 1) if xs else None
+        w_c, w_s = wr(con), wr(senza)
+        out.append(dict(k=k, nome=NOMI[k], spiega=SPIEGA[k], come=COME[k], n=len(rr), con=len(con), tasso=tasso(rr), wr_con=w_c, wr_senza=w_s,
+                        delta=None if w_c is None or w_s is None else round(w_c - w_s, 1),
+                        tasso_rec=tasso(rec) if len(rr) > RECENTI else None, tasso_prima=tasso(prima) if len(prima) >= 10 else None))
+    return out
+
+
 def _terra(g):
     n = DA.nome_grp(g) if g not in DA.SENZA_FACCIA else None
     return bool(n) and DA.e_terra(n)
@@ -317,6 +348,15 @@ def prova():
         DA._MANA["lk14"] = dict(DA._MANA["lk13"], momenti=[DA._MANA["lk13"]["momenti"][0], ["fine", 3, 1, foto([], c1=[], c2=[hawk])]])
         casi.append(("negativa L5: se muore solo il tuo non e' uno scambio", per_partita(dict(x13, partita="lk14"))["l5"] == []))
         casi.append(("il filtro dice Yes e No", valore(dict(leak=lk), "l7") == "Yes" and valore(dict(leak=dict(l7=False)), "l7") == "No"))
+        # R10: il tracker
+        q_ = lambda i: datetime.datetime(2026, 11, 1) + datetime.timedelta(hours=i)
+        rt = [dict(quando=q_(i), vinta=i % 2 == 0, leak=dict(l1=[3] if i < 10 else [], l7=False)) for i in range(60)] + [dict(quando=q_(99), vinta=True, leak=None)]
+        tr = {t["k"]: t for t in tracker(rt)}
+        casi.append(("R10: L1 in 10 partite su 60 (16,7%), win rate con 50% e senza 50%; tutte nelle prime 10: nelle ultime 50 lo 0%",
+                     tr["l1"]["con"] == 10 and tr["l1"]["tasso"] == 16.7 and tr["l1"]["tasso_rec"] == 0.0 and tr["l1"]["tasso_prima"] == 100.0
+                     and tr["l1"]["n"] == 60))
+        casi.append(("negativa R10: una partita senza i momenti non conta; un leak mai visto ha tasso 0 e nessun win rate con", tr["l2"]["con"] == 0
+                     and tr["l2"]["wr_con"] is None and tr["l2"]["tasso"] == 0.0))
     finally:
         DA._MANA.clear(); DA._MANA.update(salva)
         DA._NOMI_GRP.clear(); DA._NOMI_GRP.update(nomi)

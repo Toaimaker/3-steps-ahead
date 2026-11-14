@@ -56,6 +56,7 @@ import tela_gpu as TG
 
 from tema import CI as C, barra_scura
 from widget import VERDE_P, pronta_poi, pulsante_solido
+GRIGIO_T = ("#3a3a40", "#4a4a52", "#2c2c30")       # i pulsanti grigi della testata (Undo, Redo, Full page, lo zoom): stile S3, 14 nov 2026
 
 import account as _ACC  # noqa: E402
 FILE = _ACC.lega(globals(), "FILE", "tavoli_mazzi.json")     # Log_Arena/tavoli_mazzi.json; nell'app pubblica uno per account (10 nov 2026, Magic 12)
@@ -1052,18 +1053,19 @@ class TavoloCarte:
             self.b_salva = pulsante_solido(tk, F, dx, "Save", False, self.salva_tutto, alto=28, bg=C["cap"], colori=VERDE_P)
             self.b_salva.configure(width=96); self.b_salva.pack(side="right", padx=(14, 0))
         # lo zoom del foglio (al posto di S M L): − e + a passi, il numero torna al 100%, Fit fa stare il mazzo nella finestra; anche Ctrl+rotella
+        # i pulsanti della testata nello stile S3 come tutti (14 nov 2026, Autore: «ogni pulsante esistente deve avere il redesign in linea con lo stile»);
+        # fino a quel giorno erano scritte cliccabili
         for testo, azione in (("Fit", lambda: self.adatta()), ("+", lambda: self.zoom_a(self.zoom * 1.15)), ("%", None), ("−", lambda: self.zoom_a(self.zoom / 1.15))):
             if azione is None:
                 self.l_zoom = tk.Label(dx, text="100%", bg=C["cap"], fg=C["titolo"], font=F(9, True), width=5, cursor="hand2"); self.l_zoom.pack(side="right")
                 self.l_zoom.bind("<Button-1>", lambda e: self.zoom_a(1.0))
                 continue
-            b = tk.Label(dx, text=testo, bg=C["cap"], fg=C["grigio"] if testo == "Fit" else C["titolo"], font=F(9 if testo == "Fit" else 12, True), padx=6, cursor="hand2")
+            b = pulsante_solido(tk, F, dx, testo, False, azione, alto=26, bg=C["cap"], colori=GRIGIO_T, icona=False)
+            b.configure(width=54 if testo == "Fit" else 28)
             b.pack(side="right", padx=(8, 0) if testo == "Fit" else 0)
-            b.bind("<Button-1>", lambda e, a=azione: a())
         tk.Label(dx, text="ZOOM", bg=C["cap"], fg=C["muto"], font=F(7, True)).pack(side="right", padx=(14, 4))
-        self.b_pagina = tk.Label(dx, text="⤢ Full page", bg=C["cap"], fg=C["titolo"], font=F(9, True), cursor="hand2", padx=6)
-        self.b_pagina.pack(side="right", padx=(10, 0))
-        self.b_pagina.bind("<Button-1>", lambda e: self.tutta_pagina())
+        self.b_pagina = pulsante_solido(tk, F, dx, "Full page", False, lambda: self.tutta_pagina(), alto=26, bg=C["cap"], colori=GRIGIO_T)
+        self.b_pagina.configure(width=122); self.b_pagina.pack(side="right", padx=(10, 0))
         # By type, By cost e Label non ci sono piu' (Autore, 10 nov 2026: «togli i pulsanti by type by cost ecc»): la prima apertura dispone per costo,
         # la label nasce dalle tre linee della cornice della selezione. Resta un pulsante solo: la rete riordinata per connessioni (stesso giorno)
         if self.sola:
@@ -1072,9 +1074,9 @@ class TavoloCarte:
             self.b_griglia = None
         else:
             if self.modifica:       # Undo e Redo (12 nov 2026); Save sta in fondo a destra, dopo lo zoom (sopra)
-                for chi, testo, fa in (("b_redo", "Redo ↷", self.ripeti), ("b_undo", "↶ Undo", self.annulla)):
-                    w_ = tk.Label(dx, text=testo, bg=C["cap"], fg=C["muto"], font=F(9, True), padx=6, cursor="hand2")
-                    w_.pack(side="right", padx=(6, 0)); w_.bind("<Button-1>", lambda e, fa=fa: fa())
+                for chi, testo, fa in (("b_redo", "Redo", self.ripeti), ("b_undo", "Undo", self.annulla)):
+                    w_ = pulsante_solido(tk, F, dx, testo, False, fa, alto=26, bg=C["cap"], colori=GRIGIO_T)
+                    w_.configure(width=88); w_.pack(side="right", padx=(6, 0)); w_.spegni(True)
                     setattr(self, chi, w_)
             self.b_griglia = tk.Label(dx, text="  Grid snap", bg=C["cap"], fg=C["testo"], font=F(9, True), compound="left", cursor="hand2")
             self.b_griglia.pack(side="right", padx=(4, 10))
@@ -1735,7 +1737,7 @@ class TavoloCarte:
         """Full page nella testata: la finestra del Board su tutto lo schermo (l'area di lavoro, sopra la barra di Windows), o com'era."""
         on = (self.fin.state() != "zoomed") if on is None else bool(on)
         self.fin.state("zoomed" if on else "normal")
-        self.b_pagina.configure(text="⤡ Restore" if on else "⤢ Full page")
+        self.b_pagina.metti("Restore" if on else "Full page", False)
         return on
 
     def salva_pref(self, **kw):
@@ -4202,7 +4204,7 @@ class TavoloCarte:
         for chi, attivo in (("b_undo", self.passo > 0), ("b_redo", self.passo < len(self.storia) - 1)):
             w = getattr(self, chi, None)
             if w is not None and w.winfo_exists():
-                w.configure(fg=C["titolo"] if attivo else C["muto"])
+                w.spegni(not attivo)
 
     def nuova_chiave(self, chiave, chiave_rete=None):
         """Il mazzo del builder ha appena preso il suo id (il primo Save): da qui la disposizione e la rete si salvano sotto la sua chiave."""
@@ -6367,9 +6369,9 @@ def prova():
                  and tO2.out_corpo.winfo_manager() == ""))
     tO2.fin.transient(""); tO2.fin.deiconify(); root.update()
     on_ = tO2.tutta_pagina(); root.update()
-    pieno_ = tO2.fin.state() == "zoomed" and "Restore" in tO2.b_pagina.cget("text")
+    pieno_ = tO2.fin.state() == "zoomed" and "Restore" in tO2.b_pagina.testo()
     tO2.tutta_pagina(False); root.update()
-    casi.append(("Full page: il Board a tutto schermo e indietro", on_ and pieno_ and tO2.fin.state() == "normal" and "Full page" in tO2.b_pagina.cget("text")))
+    casi.append(("Full page: il Board a tutto schermo e indietro", on_ and pieno_ and tO2.fin.state() == "normal" and "Full page" in tO2.b_pagina.testo()))
     tO2.apri_comandi(True); tO2.apri_outliner(True); root.update()
     casi.append(("e si riaprono", tO2.f_comandi.winfo_manager() == "grid" and tO2.out_corpo.winfo_manager() == "pack" and tO2.b_out.cget("text") == "◀"))
     tO2.salva_tutto(); tO2.chiudi()
