@@ -238,8 +238,19 @@ def partite(files=None, cache=CACHE, conto=False):
                     per_mid[p["matchId"]] = p
         if cambiata and cache:
             tmp = cache + ".tmp"
-            json.dump(c, open(tmp, "w", encoding="utf-8"))
-            os.replace(tmp, cache)
+            with open(tmp, "w", encoding="utf-8") as g_:
+                json.dump(c, g_)
+            # Windows nega il rename se un altro processo (la finestra, il companion) sta leggendo la copia: si riprova un attimo dopo (13 nov 2026, tre
+            # «Accesso negato» nel registro della finestra); se non passa, la copia resta quella di prima e si rifa' al giro dopo
+            for t_ in range(6):
+                try:
+                    os.replace(tmp, cache)
+                    break
+                except PermissionError:
+                    if t_ == 5:
+                        raise
+                    import time as _t
+                    _t.sleep(0.15 * (t_ + 1))
     _ACC.registra(sorted(visti))        # la tendina degli account conosce anche quelli dei log archiviati
     foto = sorted((tuple(x[:7]) + (x[7] if len(x) > 7 else None,) for x in foto), key=lambda x: x[:7])
     out = sorted((p for p in per_mid.values() if conto is None or p.get("conto") == conto), key=lambda p: p["inizio"])

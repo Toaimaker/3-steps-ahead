@@ -400,34 +400,44 @@ def sfumatura(im, x0, y0, x1, y1, sopra, sotto):
 
 def pannello(l, h, sopra, sotto, bordo, luce=None, raggio=6.0, fondo=None, ombra=0, bagliore=None, alfa_bagliore=70, larghezza=1.0):
     """Il pannello del redesign (14 nov 2026, Note/Redesign_Grafico): la sfumatura appena percettibile dall'alto al basso, un filo di luce sul bordo alto,
-    il bordo sottile, gli angoli tondi e, se chiesti, l'ombra morbida sotto (ombra: pixel) e un bagliore leggero del colore dato (il gruppo del Board in hover).
-    fondo: il colore dietro (i quattro angoli); None = trasparente. -> l'immagine PIL alla misura vera."""
+    il bordo sottile, gli angoli tondi e, se chiesti, l'ombra morbida sotto (ombra: pixel) e un bagliore leggero del colore dato.
+    fondo: il colore dietro (i quattro angoli); None = trasparente. -> l'immagine PIL alla misura vera.
+    Il corpo si fa alla misura vera (la sfumatura e' verticale: una colonna allargata); solo la forma e il bordo, in scala di grigi, si disegnano a SCALA
+    volte e si riducono: un pannello largo 1300 pixel costava 50-60 ms tutto a 4x, ora pochi ms."""
     from PIL import ImageFilter
     s = SCALA
     L, H = max(2, int(l)), max(2, int(h))
-    im = Image.new("RGBA", (L * s, H * s), _rgba(fondo))
+    im = Image.new("RGBA", (L, H), _rgba(fondo))
     m = ombra + (6 if bagliore else 0)
     if ombra or bagliore:        # l'ombra e il bagliore escono dal pannello: si disegnano sotto, sfocati, dentro la sua misura (il pannello si stringe di m)
-        alone = Image.new("RGBA", im.size, (0, 0, 0, 0))
+        alone = Image.new("RGBA", (L, H), (0, 0, 0, 0))
         da = ImageDraw.Draw(alone)
         if ombra:
-            da.rounded_rectangle((m * s, (m + ombra * 0.5) * s, (L - m) * s, (H - m + ombra * 0.6) * s), radius=raggio * s, fill=(0, 0, 0, 150))
+            da.rounded_rectangle((m, m + ombra * 0.5, L - m, H - m + ombra * 0.6), radius=raggio, fill=(0, 0, 0, 150))
         if bagliore:
             r, g, b, _a = _rgba(bagliore)
-            da.rounded_rectangle(((m - 2) * s, (m - 2) * s, (L - m + 2) * s, (H - m + 2) * s), radius=(raggio + 2) * s, fill=(r, g, b, alfa_bagliore))
-        alone = alone.filter(ImageFilter.GaussianBlur((ombra or 4) * s * 0.55))
-        im.alpha_composite(alone)
-    x0, y0, x1, y1 = m * s, m * s, (L - m) * s, (H - m) * s
-    corpo = Image.new("RGBA", im.size, (0, 0, 0, 0))
-    sfumatura(corpo, x0, y0, x1, y1, sopra, sotto)
-    maschera = Image.new("L", im.size, 0)
-    ImageDraw.Draw(maschera).rounded_rectangle((x0, y0, x1 - 1, y1 - 1), radius=raggio * s, fill=255)
-    im.paste(corpo, (0, 0), maschera)
-    d = ImageDraw.Draw(im)
+            da.rounded_rectangle((m - 2, m - 2, L - m + 2, H - m + 2), radius=raggio + 2, fill=(r, g, b, alfa_bagliore))
+        im.alpha_composite(alone.filter(ImageFilter.GaussianBlur((ombra or 4) * 0.55)))
+    w_, h_ = L - 2 * m, H - 2 * m
+    a, b = _rgba(sopra), _rgba(sotto)
+    col = Image.new("RGBA", (1, h_))
+    for y in range(h_):
+        t = y / max(1, h_ - 1)
+        col.putpixel((0, y), tuple(round(p + (q - p) * t) for p, q in zip(a, b)))
+    corpo = col.resize((w_, h_), Image.NEAREST)
     if luce:        # il filo di luce in cima, dentro il bordo, fra gli angoli
-        d.line(((x0 + raggio * s, y0 + s), (x1 - raggio * s, y0 + s)), fill=_rgba(luce), width=s)
-    d.rounded_rectangle((x0, y0, x1 - 1, y1 - 1), radius=raggio * s, outline=_rgba(bordo), width=max(1, round(larghezza * s)))
-    return im.resize((L, H), Image.LANCZOS)
+        ImageDraw.Draw(corpo).line(((round(raggio), 1), (w_ - 1 - round(raggio), 1)), fill=_rgba(luce))
+    forma = Image.new("L", (w_ * s, h_ * s), 0)
+    ImageDraw.Draw(forma).rounded_rectangle((0, 0, w_ * s - 1, h_ * s - 1), radius=raggio * s, fill=255)
+    filo = Image.new("L", (w_ * s, h_ * s), 0)
+    ImageDraw.Draw(filo).rounded_rectangle((0, 0, w_ * s - 1, h_ * s - 1), radius=raggio * s, outline=255, width=max(1, round(larghezza * s)))
+    forma, filo = forma.resize((w_, h_), Image.BOX), filo.resize((w_, h_), Image.BOX)
+    corpo.putalpha(forma)
+    corpo.paste(Image.new("RGBA", (w_, h_), _rgba(bordo)), (0, 0), filo)
+    pezzo = Image.new("RGBA", (L, H), (0, 0, 0, 0))
+    pezzo.paste(corpo, (m, m))
+    im.alpha_composite(pezzo)
+    return im
 
 
 def foto_pannello(l, h, sopra, sotto, bordo, **k):

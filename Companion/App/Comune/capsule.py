@@ -70,7 +70,6 @@ def contesto():
 
 
 COLORI = dict(W="#94896a", U="#1d6cae", B="#3b3644", R="#b23a29", G="#2c7a48", C="#5f646e")
-LARGA_COPIE = 36              # la scatola delle copie
 # il redesign del 14 nov 2026 (Note/Redesign_Grafico): le righe delle liste sono scure, col filo del colore della carta a sinistra e il numero in un riquadro
 STRISCIA = dict(W="#d8c99a", U="#3b8fe0", B="#8a7fa0", R="#e0553f", G="#45b06e", C="#8d939c")
 INIZIO = 30                   # la capsula comincia qui, sopra la scatola
@@ -496,26 +495,6 @@ class Liste:
             self.fondi[k] = self.tk.PhotoImage(data=base64.b64encode(buf.getvalue()))
         return self.fondi[k]
 
-    def scatola(self):
-        """La scatola scura delle copie: la capsula la copre a destra."""
-        if ("scatola", self.alto) not in self.fondi:
-            from PIL import Image, ImageDraw
-            S = 3
-            L, H = LARGA_COPIE * S, self.alto * S
-            im = Image.new("RGBA", (L, H), (0, 0, 0, 0))
-            m = Image.new("L", (L, H), 0)
-            ImageDraw.Draw(m).rounded_rectangle((0, 0, L + 30, H - 1), radius=6 * S, fill=255)
-            col = Image.new("RGB", (1, H)); px = col.load()
-            for y in range(H):
-                g = 30 - int(22 * y / (H - 1))
-                px[0, y] = (g, g, g + 6)
-            im.paste(col.resize((L, H)), (0, 0), m)
-            ImageDraw.Draw(im).rounded_rectangle((0, 0, L + 30, H - 1), radius=6 * S, outline=(120, 120, 130, 255), width=S)
-            im = im.resize((LARGA_COPIE, self.alto), Image.LANCZOS)
-            buf = io.BytesIO(); im.save(buf, "PNG")
-            self.fondi[("scatola", self.alto)] = self.tk.PhotoImage(data=base64.b64encode(buf.getvalue()))
-        return self.fondi[("scatola", self.alto)]        # la chiave porta l'altezza: la cache e' condivisa fra liste alte 20 e alte di serie
-
     def cornice(self, colore, lato=50):
         """La cornice del tier: bordo di metallo nel colore del tier, dentro scuro e lucido."""
         k = ("cornice", colore, lato)
@@ -705,7 +684,7 @@ class Liste:
         larga = max(40, w - INIZIO - fuori)
         c.larga = larga
         # la riga scura del redesign (14 nov 2026): il numero delle copie nel suo riquadro, si legge subito (Autore, 5 nov 2026: «il numero copie a sx un po'
-        # piu' leggibile»); fino a quel giorno la scatola scura e la capsula a due colori sfumati (fondo, scatola restano per chi le chiede)
+        # piu' leggibile»); fino a quel giorno la scatola scura e la capsula a due colori sfumati (fondo resta, la usa la sua prova)
         c.create_image(0, 0, image=self.riga_scura(INIZIO + larga, colori, spenta), anchor="nw")
         from tema import FN
         c.create_text((7 + INIZIO - 3) / 2 + 1, self.alto / 2, text=testo_c, fill="#7a8394" if spenta else "#ffffff", font=FN(10 if self.alto >= ALTO else 9))

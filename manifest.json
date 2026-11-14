@@ -1,6 +1,6 @@
 {
- "version": "0.1.111",
+ "version": "0.1.112",
  "date": "2026-11-14",
- "notes": "Website: every animation and screenshot redone with the new look of the app",
+ "notes": "Redesign polish: lighter panels (8x faster to draw), updates now remove old program files, a retry when Windows locks the games file, the Replayer guide describes the play mat",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

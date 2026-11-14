@@ -266,7 +266,10 @@ def icona_svg(f, lato, colore):
     sulla scheda video), o None se non si puo'."""
     try:
         import re
-        import fitz
+        try:        # pymupdf: «import fitz» stampa l'avviso di API deprecata nel registro della finestra
+            import pymupdf as fitz
+        except ImportError:
+            import fitz
         from PIL import Image, ImageTk
         testo = re.sub(r'fill="#[0-9a-fA-F]{3,6}"', 'fill="#000000"', open(f, encoding="utf-8").read())
         pg = fitz.open(stream=testo.encode("utf-8"), filetype="svg")[0]
