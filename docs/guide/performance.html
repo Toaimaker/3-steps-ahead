@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Performance: win rate and leagues · 3 Steps Ahead Guide</title>
-<meta name="description" content="Your MTG Arena win rate game by game, the leagues you reached, your numbers per event and per deck, constructed and limited in one place.">
+<title>Performance: analyze your games and situations · 3 Steps Ahead Guide</title>
+<meta name="description" content="Analyze your MTG Arena games from your own log: smart filters, preset searches, reports, matchups, compare with 17Lands, cards, decisions, leaks and luck.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800;900&family=Inter:wght@400;500;600&family=Poppins:wght@500;600;700&display=swap">
@@ -17,17 +17,17 @@
 <link rel="apple-touch-icon" href="../apple-touch-icon.png">
 <meta property="og:type" content="article">
 <meta property="og:site_name" content="3 Steps Ahead">
-<meta property="og:title" content="Performance: win rate and leagues · 3 Steps Ahead Guide">
-<meta property="og:description" content="Your MTG Arena win rate game by game, the leagues you reached, your numbers per event and per deck, constructed and limited in one place.">
+<meta property="og:title" content="Performance: analyze your games and situations · 3 Steps Ahead Guide">
+<meta property="og:description" content="Analyze your MTG Arena games from your own log: smart filters, preset searches, reports, matchups, compare with 17Lands, cards, decisions, leaks and luck.">
 <meta property="og:image" content="https://toaimaker.github.io/3-steps-ahead/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Performance: win rate and leagues · 3 Steps Ahead Guide">
-<meta name="twitter:description" content="Your MTG Arena win rate game by game, the leagues you reached, your numbers per event and per deck, constructed and limited in one place.">
+<meta name="twitter:title" content="Performance: analyze your games and situations · 3 Steps Ahead Guide">
+<meta name="twitter:description" content="Analyze your MTG Arena games from your own log: smart filters, preset searches, reports, matchups, compare with 17Lands, cards, decisions, leaks and luck.">
 <meta name="twitter:image" content="https://toaimaker.github.io/3-steps-ahead/og.png">
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "3 Steps Ahead", "item": "https://toaimaker.github.io/3-steps-ahead/"}, {"@type": "ListItem", "position": 2, "name": "Guide", "item": "https://toaimaker.github.io/3-steps-ahead/guide/"}, {"@type": "ListItem", "position": 3, "name": "Performance", "item": "https://toaimaker.github.io/3-steps-ahead/guide/performance.html"}]}</script>
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Performance", "description": "Your MTG Arena win rate game by game, the leagues you reached, your numbers per event and per deck, constructed and limited in one place.", "image": "https://toaimaker.github.io/3-steps-ahead/og.png", "url": "https://toaimaker.github.io/3-steps-ahead/guide/performance.html", "inLanguage": "en", "dateModified": "2026-11-14", "author": {"@type": "Organization", "name": "3 Steps Ahead"}, "publisher": {"@type": "Organization", "name": "3 Steps Ahead"}, "about": {"@type": "SoftwareApplication", "name": "3 Steps Ahead", "applicationCategory": "GameApplication", "operatingSystem": "Windows 10, Windows 11"}}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Performance", "description": "Analyze your MTG Arena games from your own log: smart filters, preset searches, reports, matchups, compare with 17Lands, cards, decisions, leaks and luck.", "image": "https://toaimaker.github.io/3-steps-ahead/og.png", "url": "https://toaimaker.github.io/3-steps-ahead/guide/performance.html", "inLanguage": "en", "dateModified": "2026-11-14", "author": {"@type": "Organization", "name": "3 Steps Ahead"}, "publisher": {"@type": "Organization", "name": "3 Steps Ahead"}, "about": {"@type": "SoftwareApplication", "name": "3 Steps Ahead", "applicationCategory": "GameApplication", "operatingSystem": "Windows 10, Windows 11"}}</script>
 <style>
 /* The guide: the same palette and type as the home page, a sticky category rail on the left, one reading column on the right. Dark-first like the app. */
 :root {
@@ -168,68 +168,61 @@ footer .wrap { padding-block: 28px; font-size: 12px; color: var(--muted); displa
   <div class="wrap">
     <nav class="rail" aria-label="Guide">
       <p class="rail-t">Guide</p>
-      <ol><li><a href="./">Overview</a></li><li><a href="getting-started.html">Getting started</a></li><li><a href="your-decks.html">Your decks</a></li><li><a href="deck-analysis.html">Deck analysis</a></li><li><a href="deck-builder.html">Deck builder &amp; mana base</a></li><li><a href="board.html">Board</a></li><li><a href="deck-hud.html">Deck HUD</a></li><li><a href="meta.html">Meta</a></li><li><a href="collection.html">Collection</a></li><li><a href="performance.html" aria-current="page">Performance</a><ol class="sub"><li><a href="#menus">The menus at the top</a></li><li><a href="#chart">The win rate chart</a></li><li><a href="#numbers">Your numbers</a></li><li><a href="#decks">Decks, meta and field</a></li><li><a href="#sources">Where the numbers come from</a></li></ol></li><li><a href="resources.html">Resources</a></li><li><a href="social-and-accounts.html">Social &amp; accounts</a></li><li><a href="help-and-privacy.html">Help, updates &amp; privacy</a></li></ol>
+      <ol><li><a href="./">Overview</a></li><li><a href="getting-started.html">Getting started</a></li><li><a href="your-decks.html">Your decks</a></li><li><a href="deck-analysis.html">Deck analysis</a></li><li><a href="deck-builder.html">Deck builder &amp; mana base</a></li><li><a href="board.html">Board</a></li><li><a href="deck-hud.html">Deck HUD</a></li><li><a href="meta.html">Meta</a></li><li><a href="collection.html">Collection</a></li><li><a href="performance.html" aria-current="page">Performance</a><ol class="sub"><li><a href="#numbers">The numbers on top</a></li><li><a href="#filters">Smart filters</a></li><li><a href="#views">The folders</a></li><li><a href="#leaks">Leaks and the cost of a decision</a></li><li><a href="#sources">Where the numbers come from</a></li></ol></li><li><a href="replayer.html">Replayer</a></li><li><a href="resources.html">Resources</a></li><li><a href="social-and-accounts.html">Social &amp; accounts</a></li><li><a href="help-and-privacy.html">Help, updates &amp; privacy</a></li></ol>
     </nav>
     <article class="doc">
-      <details class="rail-m"><summary>Guide · Performance</summary><ol><li><a href="./">Overview</a></li><li><a href="getting-started.html">Getting started</a></li><li><a href="your-decks.html">Your decks</a></li><li><a href="deck-analysis.html">Deck analysis</a></li><li><a href="deck-builder.html">Deck builder &amp; mana base</a></li><li><a href="board.html">Board</a></li><li><a href="deck-hud.html">Deck HUD</a></li><li><a href="meta.html">Meta</a></li><li><a href="collection.html">Collection</a></li><li><a href="performance.html" aria-current="page">Performance</a></li><li><a href="resources.html">Resources</a></li><li><a href="social-and-accounts.html">Social &amp; accounts</a></li><li><a href="help-and-privacy.html">Help, updates &amp; privacy</a></li></ol></details>
+      <details class="rail-m"><summary>Guide · Performance</summary><ol><li><a href="./">Overview</a></li><li><a href="getting-started.html">Getting started</a></li><li><a href="your-decks.html">Your decks</a></li><li><a href="deck-analysis.html">Deck analysis</a></li><li><a href="deck-builder.html">Deck builder &amp; mana base</a></li><li><a href="board.html">Board</a></li><li><a href="deck-hud.html">Deck HUD</a></li><li><a href="meta.html">Meta</a></li><li><a href="collection.html">Collection</a></li><li><a href="performance.html" aria-current="page">Performance</a></li><li><a href="replayer.html">Replayer</a></li><li><a href="resources.html">Resources</a></li><li><a href="social-and-accounts.html">Social &amp; accounts</a></li><li><a href="help-and-privacy.html">Help, updates &amp; privacy</a></li></ol></details>
       <nav class="crumbs" aria-label="Breadcrumb"><a href="../">Home</a> › <a href="./">Guide</a> › Performance</nav>
 <h1>Performance</h1>
-<p class="lead">Your history as a player: the win rate game after game with the leagues you reached, your numbers and prizes, and how each deck does in each event. Constructed and limited live in one tab; the Mode menu switches between them.</p>
+<p class="lead">An analyzer of your games and of the situations inside them, read from your Arena log. Build a situation with filters (on the draw, after a mulligan, attacking into open mana, with a removal in hand…) and every number, chart and table answers for those games only. Constructed and Limited sit side by side at the top.</p>
 
-<figure><img src="../img/anim_performance.webp" alt="Performance: the pointer runs along the ranked win rate chart, then Mode switches to Limited." width="1200" height="750" loading="lazy" decoding="async">
-  <figcaption>The chart under the pointer, then the switch to Limited.</figcaption></figure>
+<figure><img src="../img/anim_performance.webp" alt="Performance: all constructed games, then a smart filter for the draw, a preset search in Spots, the leaks in Decisions and the Cards rows." width="1200" height="750" loading="lazy" decoding="async">
+  <figcaption>A filter, a preset search, the leaks, the cards.</figcaption></figure>
 
-<h2 id="menus">The menus at the top</h2>
-<div class="scroll"><table>
-  <thead><tr><th>Menu</th><th>What it does</th></tr></thead>
-  <tbody>
-    <tr><td>Mode</td><td>Standard (your constructed games) or Limited. The tab opens on the mode of your last game.</td></tr>
-    <tr><td>Set</td><td>All sets, or one set period: everything below follows it. Sets are listed by release date, newest first.</td></tr>
-    <tr><td>Event (Standard)</td><td><i>Ranked and Play</i> by default; then every event you played (Ranked, Play, Dual Color Precons, Bot Match, Constructed Event…) and <i>All events</i>.</td></tr>
-    <tr><td>Which event</td><td>Inside Constructed Event: the single events by their Arena name, to see which deck performs where.</td></tr>
-    <tr><td>Format (Limited)</td><td>Quick Draft, Premier Draft, Traditional Draft, Sealed, Arena Cube and the other limited events you played, or all of them.</td></tr>
-  </tbody>
-</table></div>
+<h2 id="numbers">The numbers on top</h2>
+<p>A row of tiles for the games you picked: win rate with its 95% interval, record and how far it is from all your games, game length, mulligan rate, win rate on the play and on the draw. Each name says what it measures (win rate, % of games, average turns). Under 30 games the row says <i>a hint</i>.</p>
+<p>The <span class="ui">⚙</span> wheel on the right picks which numbers you see, all of them if you like, in one or two rows: among them win rate after a mulligan, keeping 7, fast wins, long games, concessions, lands kept, attack and defense gain, decided wins, how often you are on the play (tested against a coin flip), the longest losing streak, and lands drawn against chance.</p>
 
-<h2 id="chart">The win rate chart</h2>
-<p>Across, your games one after another; up, your win rate from the first game to that one, with the 50% line marked. In Standard the chart follows ranked play:</p>
+<h2 id="filters">Smart filters</h2>
+<p>On the left, grouped by the phases of a game: <b>before the game</b> (format, event, a win-rate window, <span class="ui">By deck</span>), <b>opening and first turns</b> (start, mulligans, lands in hand, result), <b>the opponent and the fight</b> (archetype, colours), <b>the end of the game</b> (length, rank), <b>when</b> (date, time of day, game in the session). A menu with a value chosen turns blue.</p>
 <ul>
-  <li>the <b>league logos</b> sit on the line at the game where you reached each league;</li>
-  <li>a demotion is marked under the line;</li>
-  <li>a <b>new season</b> is a dashed line with ↺ and the league you started from.</li>
-</ul>
-<p>In Limited the chart covers all the games of the chosen set, with the dates of the drafts and a trophy at the end of each 7-win run. Move the pointer along the chart to read the game and the win rate at that point. With another event chosen, the chart follows that event, without leagues.</p>
-
-<h2 id="numbers">Your numbers</h2>
-<p>A grid of tiles, each with its name above the figure:</p>
-<ul>
-  <li><b>Win rate, games, wins, losses</b> and the win/loss ratio;</li>
-  <li><b>Rank</b> with the league logo (Standard) or <b>trophies</b> (Limited);</li>
-  <li><b>Gems won, packs won, rares and mythics</b> from event rewards, read from Arena's log, with a note on the entry fees you paid.</li>
+  <li><b>+ more</b> on each phase opens its extra filters: cheap spells and creatures in hand, land drops missed, curve, who attacked first, instants on the other player's turn, attacks into open mana, blocks, how the game ended, the day, the break before the game, the game before (a win, a loss, the first of the session) and the losses in a row before it.</li>
+  <li><b>Win rate</b>: type a percentage, with <span class="ui">≤</span> or <span class="ui">≥</span>, and the analyzer keeps the most recent run of games that makes that win rate. Then every other filter works inside it.</li>
+  <li><b>By deck</b> opens a window with your decks as tiles (by use, win rate or name) and, on the right, <i>vs all</i> or <i>vs colors</i>: tick the colours and you get one exact variant of their deck, from mono-colour to five colours, each with its record on the play and on the draw.</li>
+  <li><b>Advanced filters</b> opens a window with two tabs, <i>You</i> and <i>Opponent</i>, each split in phases: the opening hand (creatures, instants, sorceries, artifacts, enchantments, planeswalkers, removal), what each player cast on their turns and on the other's turns 1 to 5 (build lines with <span class="ui">+</span> and <span class="ui">Add line</span>), draws, attacks with the untapped lands of the defender, blocks, activated abilities and when, and the game: land drops, life, creatures at your turns 3/5/7, removal, board wipes, counters, cards left in hand, the leaks, graveyard and exile. On top the question you are asking, written out, with its answer.</li>
+  <li><span class="ui">Save as my filter</span> keeps the situation; <span class="ui">Clear all filters</span> and <span class="ui">Reset all</span> go back to every game.</li>
 </ul>
 
-<h2 id="decks">Decks, meta and field</h2>
-<p>Next to the numbers, a list you choose with <span class="ui">Show</span>:</p>
+<h2 id="views">The folders</h2>
 <div class="scroll"><table>
-  <thead><tr><th>Show</th><th>What it lists</th></tr></thead>
+  <thead><tr><th>Folder</th><th>What it shows</th></tr></thead>
   <tbody>
-    <tr><td>Your decks</td><td>Your most played decks in the chosen event, best win rate first, each with a bar from 0 to 100% and a tick at 50%. In Limited, by colour pair. Click one to open its deck window.</td></tr>
-    <tr><td>Meta</td><td>The meta of the format chosen in the Format menu next to Show, as in the <a href="meta.html">Meta</a> tab.</td></tr>
-    <tr><td>Field</td><td>The colours of the opponents you met in the chosen event, with their share and your record against them.</td></tr>
-    <tr><td>Farming</td><td>Appears once you have won prizes in constructed events: your decks with the events played, gems won minus gems spent, and packs.</td></tr>
+    <tr><td>Chart</td><td>Win rate, games, average turns or mulligan rate, game by game or by date, cumulative or over the last 10/20/50 games; <i>Split by</i> a variable draws one line per value. League logos and draft trophies on the line (switches <i>Ranks</i>, <i>Trophies</i>), <i>vs filter</i> to compare with all games, <i>Gained by decisions</i>. Under the chart the games of the situation: date, deck, opponent's colours, start, mulligan, result, turns, the opening hand and the board at the end. Click a game to open the <a href="replayer.html">replayer</a>.</td></tr>
+    <tr><td>Spots</td><td><i>Preset searches</i> in groups (opening hand, attack, defense, instant speed, life, board and removal), each with the win rate it would give now: one click sets its filters and opens the view that answers. <i>Auto spots</i>: where you win and lose the most, single conditions and pairs, kept only if they hold against the rest of your games.</td></tr>
+    <tr><td>Report</td><td>Your games grouped by any variable (deck, opponent, mulligan, card in hand, deck version…), sortable; click a row to filter it, double-click to watch its games in the replayer.</td></tr>
+    <tr><td>Matchups</td><td>Your decks against the archetypes you met (or only the meta ones): win rate cells, grey under 5 games. Click a cell to filter, double-click to watch.</td></tr>
+    <tr><td>Compare</td><td>A (your filters) against B: everything else, all your games, a saved filter or, in Limited, <b>17Lands players</b> on the same sets and colours (17Lands public data, CC BY 4.0). Every measure with the difference and whether it holds, or how many games would tell.</td></tr>
+    <tr><td>Cards</td><td>Rows of real cards: most found in hand, your turns 1 to 4, most cast (with the average turn of the first cast and the turns it waited in hand), cast by turn 4, finishers, the opponent's most played cards, harder to cast, drawn vs not drawn (your personal IWD), what your removal took, and the threats that beat you with <span class="ui">Answers ›</span>: the removal you own that answers them. <span class="ui">Pairs ›</span> on a row shows the pairs and trios that come together.</td></tr>
+    <tr><td>Decisions</td><td>Your attacks and blocks by situation, mulligans, <b>Costliest</b> (the decisions that cost you most chance to win, with <i>What would you do?</i> to replay them as a quiz), <b>Leaks</b> (how often each leak happens, your win rate with and without it, the trend and how to fix it, <i>Watch ›</i> to see them) and <b>Graveyard</b> (a reanimation ready, cards playable from exile, graveyards exiled).</td></tr>
+    <tr><td>Luck</td><td>Lands drawn by your turns 3, 5 and 7 against what chance would give, and your opening hands against a random deal and Arena's Bo1 smoothing.</td></tr>
+    <tr><td>My filters</td><td>Your saved filters with their numbers now, and the spots you bookmarked in the replayer.</td></tr>
   </tbody>
 </table></div>
-<p>In Limited the same place holds <span class="ui">Meta and drafts</span>, with three buttons: <i>Meta</i> (how the colour pairs of the set perform), <i>Your drafts</i> (each draft with its record) and <i>Field</i>.</p>
+<p>Every folder can be detached into its own window (the mark on its tab) and follows the filters from there.</p>
+
+<h2 id="leaks">Leaks and the cost of a decision</h2>
+<p>The leaks are the mistakes coaches look for in replays, found in your log: a land drop missed with a land in hand, mana left unused with a castable creature, a creature cast before attacking, a chump block at high life, an unfavourable trade, an instant at the wrong time, a concession with outs, lands tapped the wrong way. They are clues, not verdicts: each one shows the number next to it.</p>
+<p>The cost of a decision is how much your chance to win moved from that attack, block or spell to the next moment, against your average for the same kind of decision at the same stage of the game. The chance to win comes from a model trained on 17Lands public replay data (CC BY 4.0) from limited sets: in constructed it compares two boards, it is not a promise.</p>
 
 <h2 id="sources">Where the numbers come from</h2>
 <ul>
-  <li><b>Constructed:</b> your Arena log, game by game, from the day the app first read it. If you had linked an Untapped.gg profile, the games recorded there <i>before</i> your first log are added as history.</li>
-  <li><b>Limited:</b> your linked Untapped.gg profile (drafts, records, trophies, field). Without a link, the limited view stays empty.</li>
-  <li><b>Prizes:</b> the rewards Arena writes in its log.</li>
+  <li><b>Your Arena log</b>, game by game, from the day the app first read it: hands, draws, every spell, attack and block. Limited and constructed alike.</li>
+  <li><b>Untapped.gg</b>, if you linked your profile: the games recorded there before your first log are added as history.</li>
+  <li><b>17Lands public data</b> (CC BY 4.0, 17lands.com) for the Limited comparison and the win-probability model. 17Lands does not endorse this app.</li>
 </ul>
-<div class="note limit"><b>A record is not a skill rating</b><p>Thirty games are a hint, a few hundred are a measure. The chart shows how your win rate settles as games pile up: watch the slope at the end, not the jumps at the start.</p></div>
+<div class="note limit"><b>A record is not a skill rating</b><p>Thirty games are a hint, a few hundred are a measure. Grey numbers mean too few games; «holds» means the difference is unlikely to be chance. A filter shows what happened in those games, not why.</p></div>
 
-      <nav class="pn" aria-label="Previous and next"><a class="prev" href="collection.html"><span>← Previous</span><b>Collection</b></a><a class="next" href="resources.html"><span>Next →</span><b>Resources</b></a></nav>
+      <nav class="pn" aria-label="Previous and next"><a class="prev" href="collection.html"><span>← Previous</span><b>Collection</b></a><a class="next" href="replayer.html"><span>Next →</span><b>Replayer</b></a></nav>
     </article>
   </div>
 </div>

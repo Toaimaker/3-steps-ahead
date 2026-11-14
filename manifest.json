@@ -1,6 +1,6 @@
 {
- "version": "0.1.106",
+ "version": "0.1.107",
  "date": "2026-11-14",
- "notes": "Performance: export a game or a spot, playlists in the replayer, \u2605 MARK while you play, Leaks, deck versions, removal targets and the threats that beat you, decision cost on win probability, limited vs 17Lands, graveyard and exile situations",
+ "notes": "Website: the Performance guide rewritten for the analyzer, a new Replayer guide, new animations",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }
