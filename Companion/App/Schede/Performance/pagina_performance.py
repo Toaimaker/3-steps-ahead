@@ -1667,8 +1667,10 @@ class PaginaPerformance:
             f.bind("<Left>", lambda e: self.passo_board(-1))
             f.bind("<Right>", lambda e: self.passo_board(1))
             testa_b = tk.Frame(f, bg=C["cap"]); testa_b.pack(fill="x")
+            # il titolo bianco (data, mazzi, il record del giorno) non si mostra piu' (14 nov 2026, Autore: «togli in alto a sx il testo bianco di
+            # titolo»): la testata tiene solo i pulsanti, che cosi' ci stanno tutti; l'etichetta resta, senza posto, per chi le scrive il testo
             self.l_board = tk.Label(testa_b, text="", bg=C["cap"], fg=C["titolo"], font=F(10, True), anchor="w", padx=16, pady=10)
-            self.l_board.pack(side="left", fill="x", expand=True)
+            tk.Frame(testa_b, bg=C["cap"], width=12).pack(side="left")
             # Moments (quello di sempre) o Every action, azione per azione (12 nov 2026, Autore: «il replayer migliore in circolazione ... basta che non
             # perdiamo assolutamente cio' che abbiamo adesso»)
             self.b_modi = {}
@@ -1714,6 +1716,14 @@ class PaginaPerformance:
             # funzioni di un replayer»): inizio, indietro, play e pausa, avanti, fine, la timeline da cliccare o trascinare, la velocita'
             self.cv_ctrl = tk.Canvas(f, bg=C["cap"], highlightthickness=0, bd=0, height=ALTO_CTRL, cursor="hand2")
             self.cv_ctrl.pack(side="bottom", fill="x")
+            # la linguetta sopra la barra: chiude il grafico della partita verso il basso, resta la riga dei comandi (14 nov 2026, Autore: «rendi
+            # chiudibile verso il basso la timeline espansa»)
+            self.cv_linguetta = tk.Canvas(f, height=14, bg=C["scheda"], highlightthickness=0, bd=0, cursor="hand2")
+            self.cv_linguetta.pack(side="bottom", fill="x")
+            self.cv_linguetta.bind("<Configure>", lambda e: self.disegna_linguetta())
+            self.cv_linguetta.bind("<Enter>", lambda e: self.disegna_linguetta(True))
+            self.cv_linguetta.bind("<Leave>", lambda e: self.disegna_linguetta(False))
+            self.cv_linguetta.bind("<Button-1>", lambda e: self.chiudi_grafico())
             self.cv_ctrl.bind("<Configure>", lambda e: self.disegna_controlli())
             self.cv_ctrl.bind("<Button-1>", self.clic_controlli)
             self.cv_ctrl.bind("<B1-Motion>", self.trascina_timeline)
@@ -1963,14 +1973,28 @@ class PaginaPerformance:
         for x0_, x1_, v in self._box_vel:
             on = abs(b["vel"] - v) < 1e-9
             c.create_text((x0_ + x1_) / 2, cy, text=("0.5×" if v == 0.5 else f"{v:.0f}×"), fill="#ffffff" if on else grigio, font=F(7, True))
-        nome = b["passi"][b["i"]][0]
-        c.create_text(W - 166, cy - 7, text=nome + ("   ★" if b["i"] == sv else ""), anchor="e", fill=bianco, font=F(9, True))
-        c.create_text(W - 166, cy + 10, text=f"{b['i'] + 1} / {n}   ·   keys: space, arrows, PgUp/PgDn turn, Home, End, T", anchor="e", fill=grigio, font=F(7))
+        # il nome del passo nel suo spazio fra la timeline e la velocita', sotto «N / M» (14 nov 2026, Autore: «in basso a dx testi si sovrappongono»: il
+        # nome lungo e la riga dei tasti andavano sopra la fine della timeline)
+        nome = b["passi"][b["i"]][0] + ("   ★" if b["i"] == sv else "")
+        import tkinter.font as _tkf
+        f9_ = _tkf.Font(font=F(9, True))
+        spazio_ = (W - 166) - (t1 + 12)
+        while f9_.measure(nome) > spazio_ and len(nome) > 4:
+            nome = nome[:-2].rstrip() + "…"
+        c.create_text(W - 166, cy - 7, text=nome, anchor="e", fill=bianco, font=F(9, True))
+        c.create_text(W - 166, cy + 10, text=f"{b['i'] + 1} / {n}", anchor="e", fill=grigio, font=F(7))
+        # col grafico chiuso la tela si abbassa all'altezza dei comandi e mostra solo la loro riga (la linguetta HIDE CHART, 14 nov 2026)
+        chiuso_ = getattr(self, "_graf_chiuso", False)
+        c.configure(scrollregion=(0, 0, W, ALTO_CTRL))
+        if int(float(c.cget("height"))) != (ALTO_CTRL - ALTO_GRAF if chiuso_ else ALTO_CTRL):
+            c.configure(height=ALTO_CTRL - ALTO_GRAF if chiuso_ else ALTO_CTRL)
+        c.yview_moveto(ALTO_GRAF / ALTO_CTRL if chiuso_ else 0)
 
     def clic_controlli(self, e):
         b = getattr(self, "_board", None)
         if not b:
             return
+        e.y = int(self.cv_ctrl.canvasy(e.y))        # col grafico chiuso la tela e' scorsa in basso
         if self._box_svolta and self._box_svolta[0] <= e.x <= self._box_svolta[2] and self._box_svolta[1] <= e.y <= self._box_svolta[3]:
             self.ferma_board()
             self.vai_board(b["svolta"])
@@ -2555,7 +2579,7 @@ class PaginaPerformance:
         W, H = max(c.winfo_width(), 900), max(c.winfo_height(), 560)
         cr = self.tela_racconto()           # il racconto staccato nella sua finestra (13 nov 2026), o None
         larga_col = LARGA_RACCONTO if cr is None else LARGA_PILA_SOLA
-        Wt = W - larga_col - 12          # la tavola; a destra il racconto (staccato: la sola colonna della magia in pila)
+        Wt = W - LARGA_RACCONTO - 12 if cr is None else W     # col racconto staccato la tavola prende tutto: la pila sta sul tappeto
         nome, f, _t, rel = b["passi"][b["i"]][:4]
         prima = b["passi"][b["i"] - 1][1] if b["i"] > 0 else None
         if getattr(self, "b_segna", None) is not None:
@@ -2565,164 +2589,7 @@ class PaginaPerformance:
             ha_ = bool(DA.nota_partita(b["x"].get("partita")) or DA.nota_segnalibro(b["x"].get("partita"), b.get("modo", "momenti"), b["i"]))
             self.b_nota.metti("Note ✎" if ha_ else "Note", ha_)
         self._pos_id, self._pos_vita = {}, {}       # dove stanno le carte (per id di Arena) e i cuori delle vite: le frecce partono e arrivano li'
-        LARGA_PILE = 150
-
-        def contate(lst):
-            out = {}
-            for n_ in lst:
-                out[n_] = out.get(n_, 0) + 1
-            return out
-
-        def pila(x0, y0, larga, alta, tit, carte, colore, chiave):
-            """Il cimitero o l'esilio: il titolo col numero, l'ultima carta arrivata, il clic apre tutte."""
-            c.create_rectangle(x0, y0, x0 + larga, y0 + alta, fill="#18181e", outline="#2c2c34")
-            c.create_text(x0 + 8, y0 + 11, text=f"{tit} · {len(carte)}", anchor="w", fill=colore, font=F(7, True))
-            if carte:
-                w = max(40, min(larga - 24, int((alta - 30) * 200 / 279)))
-                img = self.immagine_carta(carte[0], w, False)       # in cima la piu' recente: Arena scrive la pila dalla carta arrivata per ultima
-                cx_ = x0 + larga / 2 - w / 2
-                if img is not None:
-                    c.create_image(cx_, y0 + 22, image=img, anchor="nw")
-                    self._box_carte.append((cx_, y0 + 22, cx_ + w, y0 + 22 + round(w * 1.395), carte[0]))
-                else:
-                    c.create_rectangle(cx_, y0 + 22, cx_ + w, y0 + 22 + round(w * 1.395), fill="#26262c", outline="#4a4a52")
-                    c.create_text(cx_ + w / 2, y0 + 22 + w * 0.7, text=carte[0], width=w - 8, fill=C["titolo"], font=F(7, True), justify="center")
-                self._box_pile.append((x0, y0, x0 + larga, y0 + alta, tit, chiave, carte))
-            else:
-                c.create_text(x0 + larga / 2, y0 + alta / 2 + 6, text="empty", fill=C["muto"], font=F(7))
-
-        def info(xd, y, voci):
-            """A destra della testa di una zona: [(icona, testo)] da destra a sinistra, l'icona grigia accanto al numero (12 nov 2026, Autore: «accanto a
-            life e cards in hand metti i loghi del cuore e due carte in mano grigetti»)."""
-            for voce in voci:
-                ic, t_ = voce[0], voce[1]
-                i_ = c.create_text(xd, y, text=t_, anchor="e", fill=C["titolo"], font=F(10, True))
-                bb = c.bbox(i_)
-                xd = (bb[0] if bb else xd - 30) - 6
-                c.create_image(xd, y, image=self.icona_board(ic), anchor="e")
-                if len(voce) > 2:
-                    self._pos_vita[voce[2]] = (xd - 20, y - 10, (bb[2] if bb else xd + 30), y + 10)
-                xd -= 30
-
-        def zona(tit, carte, y, alto, colore, destra="", vecchie=None, largo=Wt, zkey=""):
-            c.create_text(16, y + 12, text=tit, anchor="w", fill=colore, font=F(8, True))
-            if isinstance(destra, list):
-                info(largo - 16, y + 12, destra)
-            elif destra:
-                c.create_text(largo - 16, y + 12, text=destra, anchor="e", fill=C["titolo"], font=F(9, True))
-            # le stesse carte insieme, con quante; nuove = piu' copie di prima
-            gruppi, ids = {}, {}
-            for c_ in carte:
-                k = (c_[0], c_[1], c_[2], c_[3] if len(c_) > 3 else None, c_[4] if len(c_) > 4 else None)
-                gruppi[k] = gruppi.get(k, 0) + 1
-                if len(c_) > 5 and c_[5] is not None:
-                    ids.setdefault(k, []).append(c_[5])
-            prima_n = contate(vecchie) if vecchie is not None else None
-            ora_n = contate([c_[0] for c_ in carte])
-            ordine = sorted(gruppi, key=lambda g: (MS.e_terra(g[0]), g[2], g[0]))
-
-            def misura_area(lista, alto_a, larga_a, massimo=150):
-                """La carta piu' grande con cui le carte ci stanno tutte nel riquadro, a capo compreso (le tappate occupano l'altezza in larghezza)."""
-                for w in range(min(massimo, int((alto_a - 4) * 200 / 279)), 30, -4):
-                    h = round(w * 279 / 200)
-                    xx, righe_ = 0, 1
-                    for g in lista:
-                        ww = h if g[1] else w
-                        if xx + ww > larga_a and xx > 0:
-                            xx, righe_ = 0, righe_ + 1
-                        xx += ww + 8
-                    if righe_ * (h + 8) <= alto_a:
-                        return w
-                return 30
-
-            def posa(lista, x0, y0, larga_a, alto_a, massimo=150):
-                """Le carte di una lista nel riquadro (x0, y0, larga_a, alto_a), da sinistra, a capo se serve."""
-                w_carta = misura_area(lista, alto_a, larga_a, massimo)
-                h_carta = round(w_carta * 279 / 200)
-                x, yy = x0, y0
-                for g in lista:
-                    n, tap, ped, pw, th = g
-                    ww, hh = (h_carta, w_carta) if tap else (w_carta, h_carta)
-                    if x + ww > x0 + larga_a and x > x0:
-                        x, yy = x0, yy + h_carta + 8
-                    if yy + hh > y0 + alto_a + 2:
-                        c.create_text(x0 + larga_a, y0 + alto_a - 6, text="…", anchor="e", fill=C["grigio"], font=F(10, True))
-                        break
-                    ped = ped or n in DA.SENZA_FACCIA.values()      # a faccia in giu' o sconosciuta: il disegno di default col nome
-                    img = self.immagine_token(w_carta, tap) if ped else self.immagine_carta(n, w_carta, tap)
-                    cy = yy + (h_carta - hh)        # le tappate appoggiate in basso
-                    for id_ in ids.get(g, []):
-                        self._pos_id[id_] = (x, cy, x + ww, cy + hh)
-                    it_ = None
-                    if img is not None:
-                        it_ = c.create_image(x, cy, image=img, anchor="nw")
-                        self._box_zona.append((zkey, n, (x, cy, x + ww, cy + hh), tap, it_))
-                        if not ped:
-                            self._box_carte.append((x, cy, x + ww, cy + hh, n))
-                        if ped:     # il nome della pedina sul disegno di default (sopra il riquadro della forza, che sta in basso: debug del 12 nov 2026)
-                            c.create_text(x + ww / 2, cy + (hh - 16 if tap and pw is None else hh * 0.36 if tap else hh * 0.64 if pw is not None else hh * 0.80),
-                                          text=n, width=ww - 8, fill=C["titolo"], font=F(7, True), justify="center")
-                    else:
-                        c.create_rectangle(x, cy, x + ww, cy + hh, fill="#26262c", outline="#4a4a52")
-                        c.create_text(x + ww / 2, cy + hh / 2, text=n, width=ww - 10, fill=C["titolo"], font=F(7, True), justify="center")
-                    nuova = prima_n is not None and ora_n.get(n, 0) > prima_n.get(n, 0)
-                    if nuova and it_ is not None and not ped:
-                        self._nuove.append((zkey, n, (x, cy, x + ww, cy + hh), tap, it_))
-                    if nuova:       # arrivata dal momento prima
-                        c.create_rectangle(x - 2, cy - 2, x + ww + 2, cy + hh + 2, outline="#24baff", width=2)
-                        c.create_rectangle(x + 4, cy + 4, x + 38, cy + 18, fill="#0f86cc", outline="")
-                        c.create_text(x + 21, cy + 11, text="NEW", fill="#ffffff", font=F(6, True))
-                    if pw is not None and th is not None:      # forza e costituzione
-                        c.create_rectangle(x + ww - 38, cy + hh - 22, x + ww - 4, cy + hh - 4, fill="#101014", outline="#e6e6ea")
-                        c.create_text(x + ww - 21, cy + hh - 13, text=f"{pw}/{th}", fill="#ffffff", font=F(8, True))
-                    if gruppi[g] > 1:
-                        c.create_rectangle(x + ww - 28, cy + 4, x + ww - 4, cy + 22, fill="#101014", outline=C["accento"])
-                        c.create_text(x + ww - 16, cy + 13, text=f"×{gruppi[g]}", fill=C["titolo"], font=F(7, True))
-                    x += ww + 8
-
-            if zkey in ("mio", "suo"):
-                # il campo in due righe, come al tavolo (12 nov 2026, Autore: «1 ok, 2 a destra e 3 a sinistra»): davanti, verso il centro del tavolo, le
-                # creature; dietro le terre a sinistra e gli altri permanenti (artefatti, incantesimi, planeswalker...) a destra; il suo campo e' speculare
-                crea = [g for g in ordine if g[3] is not None]
-                terre = [g for g in ordine if g[3] is None and MS.e_terra(g[0])]
-                altri = [g for g in ordine if g[3] is None and not MS.e_terra(g[0])]
-                y0, A, L = y + 26, alto - 30, largo - 32
-                h_cr = A if not (terre or altri) else 0 if not crea else round(A * 0.56)
-                h_di = A - h_cr - (6 if crea and (terre or altri) else 0)
-                y_cr, y_di = (y0 + h_di + 6, y0) if zkey == "suo" else (y0, y0 + h_cr + 6)
-                if crea:
-                    posa(crea, 16, y_cr, L, h_cr)
-                if terre or altri:
-                    if terre and altri:
-                        quota = max(0.3, min(0.7, len(terre) / (len(terre) + len(altri))))
-                        l_t = round(L * quota) - 8
-                        posa(terre, 16, y_di, l_t, h_di, 110)
-                        c.create_line(16 + l_t + 8, y_di + 4, 16 + l_t + 8, y_di + h_di - 4, fill="#2c2c34")
-                        posa(altri, 16 + l_t + 16, y_di, L - l_t - 16, h_di, 120)
-                    else:
-                        posa(terre or altri, 16 if terre else 16, y_di, L, h_di, 110 if terre else 120)
-            else:
-                posa(ordine, 16, y + 28, largo - 32, alto - 30)
-            if not carte:
-                c.create_text(16, y + 44, text="nothing", anchor="w", fill=C["muto"], font=F(8))
-        vite = f.get("vite") or (None, None)
-        cim, esi = f.get("cim") or ([], []), f.get("esi") or ([], [])
-        terzo = (H - 20) / 3
-        largo_campo = Wt - 2 * LARGA_PILE - 20
-        c.create_rectangle(0, 0, Wt, terzo, fill="#18161a", outline="")
-        vv = lambda v: str(v) if v is not None else "-"
-        zona("OPPONENT'S BATTLEFIELD", f["suo"], 4, terzo - 8, C["arancio"], [("carte", str(f["n_suo"])), ("cuore", vv(vite[1]), "vita_suo")],
-             [c_[0] for c_ in prima["suo"]] if prima else None, largo_campo, "suo")
-        pila(largo_campo + 4, 8, LARGA_PILE - 4, terzo - 16, "GRAVEYARD", cim[1], C["arancio"], "cim_suo")
-        pila(largo_campo + LARGA_PILE + 8, 8, LARGA_PILE - 4, terzo - 16, "EXILE", esi[1], C["arancio"], "esi_suo")
-        c.create_line(0, terzo, Wt, terzo, fill=C["filo"])
-        zona("YOUR BATTLEFIELD", f["mio"], terzo + 4, terzo - 8, C["azzurro"], [("carte", str(len(f["mano"]))), ("cuore", vv(vite[0]), "vita_mio")],
-             [c_[0] for c_ in prima["mio"]] if prima else None, largo_campo, "mio")
-        pila(largo_campo + 4, terzo + 8, LARGA_PILE - 4, terzo - 16, "GRAVEYARD", cim[0], C["azzurro"], "cim_mio")
-        pila(largo_campo + LARGA_PILE + 8, terzo + 8, LARGA_PILE - 4, terzo - 16, "EXILE", esi[0], C["azzurro"], "esi_mio")
-        c.create_line(0, 2 * terzo, Wt, 2 * terzo, fill=C["filo"])
-        zona("YOUR HAND" + ("  ·  the hand you kept" if nome == "Opening hand" else ""), [(n, False, False) for n in f["mano"]], 2 * terzo + 4, terzo + 12,
-             C["titolo"], [("carte", str(len(f["mano"])))], prima["mano"] if prima else None, Wt, "mano")
+        self._tappeto_disegno(c, b, f, nome, rel, prima, Wt, H)      # la tavola: il tappetino (disegno_tappeto, 14 nov 2026)
         # il racconto del momento: nella colonna a destra o, staccato, nella sua finestra (13 nov 2026, Autore: «la chat staccabile se vogliamo aumentare le
         # dimensioni del campo»); staccato, sulla tavola resta la colonna stretta della magia in pila, da cui partono le frecce verso i bersagli
         xr = Wt + 12
@@ -2773,25 +2640,12 @@ class PaginaPerformance:
         pila_box = None
         if rel and rel["tipo"] == "spell":      # la magia (o l'abilita') in pila, da cui partono le frecce verso i bersagli
             chi = "You" if rel["mio"] else "Opponent"
-            c.create_text(xr + 14, yp, text=f"{chi.upper()}" + (" · ABILITY OF" if rel["ab"] else "") if cr is not None else
-                          f"ON THE STACK · {chi.upper()}" + (" · ABILITY OF" if rel["ab"] else ""), anchor="w", fill="#b58cff", font=F(7, True))
-            w_p = 130
-            img = self.immagine_carta(rel["nome"], w_p, False)
-            hp = round(w_p * 279 / 200)
-            if img is not None:
-                c.create_image(xr + 14, yp + 12, image=img, anchor="nw")
-                self._box_carte.append((xr + 14, yp + 12, xr + 14 + w_p, yp + 12 + hp, rel["nome"]))
-            else:
-                c.create_rectangle(xr + 14, yp + 12, xr + 14 + w_p, yp + 12 + hp, fill="#26262c", outline="#b58cff")
-                c.create_text(xr + 14 + w_p / 2, yp + 12 + hp / 2, text=rel["nome"], width=w_p - 10, fill=C["titolo"], font=F(8, True), justify="center")
-            pila_box = (xr + 14, yp + 12, xr + 14 + w_p, yp + 12 + hp)
-            self._pila_ora = (pila_box, rel["nome"])
-            if cr is None:
-                y += hp + 28
-            else:       # nella finestra del racconto: la magia in parole
-                cc.create_text(x0_r + 14, y, text=f"ON THE STACK · {chi.upper()}" + (" · ABILITY OF" if rel["ab"] else "") + f" · {rel['nome']}", anchor="w",
-                               fill="#b58cff", font=F(7, True), width=larga_r - 28)
-                y += 26
+            pila_box = getattr(self, "_pila_mat", None)        # la carta sta sul tappeto, nella zona STACK: le frecce viola partono da li'
+            self._pila_ora = (pila_box, rel["nome"]) if pila_box else None
+            hp = 0
+            cc.create_text(x0_r + 14, y, text=f"ON THE STACK · {chi.upper()}" + (" · ABILITY OF" if rel["ab"] else "") + f" · {rel['nome']}", anchor="w",
+                           fill="#b58cff", font=F(7, True), width=larga_r - 28)
+            y += 26
             dove_n = {"cim_mio": "in your graveyard", "cim_suo": "in the opponent's graveyard", "esi_mio": "in your exile", "esi_suo": "in the opponent's exile",
                       "pila": "on the stack", "mano": "in hand", "grimorio": "in the library"}
             for _i, (z_, _l, n_) in (rel.get("fuori") or {}).items():      # i bersagli che non sono in campo: una contromagia, una rianimazione
@@ -2854,6 +2708,85 @@ class PaginaPerformance:
         self.disegna_pila_aperta(c, f, W, H)
         self.disegna_controlli()
 
+    def _tappeto_disegno(self, c, b, f, nome, rel, prima, Wt, H):
+        """La tavola del momento sul tappetino (disegno_tappeto; 13-14 nov 2026, Autore: «un vero tappetino da gioco con la vista delle mie carte in mano e
+        quelle in mano all'avversario di dorso con copertina carte dell'app»): il fondo come un'immagine, ogni carta come un oggetto suo della tela, cosi'
+        animazioni, frecce, danni, hover, cimitero ed esilio aperti funzionano come con le tre fasce di prima (_box_zona, _pos_id, _pos_vita, _box_carte,
+        _box_pile, _nuove). Le scritte GRAVEYARD ed EXILE sono testi della tela."""
+        import disegno_tappeto as DT
+        from PIL import ImageTk
+        Wt, H = int(Wt), int(H)
+        tp = getattr(self, "_tappeto", None)
+        if tp is None or (tp.W, tp.H) != (Wt, H):
+            tp = self._tappeto = DT.Tappeto(Wt, H)
+        try:
+            grim = (DA.lista_mia(b["x"].get("deck"), f, rel) or {}).get("grimorio")
+        except Exception:      # noqa: BLE001 - senza la lista il grimorio non si conta
+            grim = None
+        mio = nome.startswith("You") or nome == "Opening hand"
+        titolo = "Opening hand · the hand you kept" if nome == "Opening hand" else nome
+        base, pezzi, info = tp.disegna(f, prima, rel, None, grim, titolo, mio, pezzi=True)
+        self._img_tappeto = ImageTk.PhotoImage(base)
+        c.create_image(0, 0, image=self._img_tappeto, anchor="nw")
+        self._img_pezzi, mani = [], []
+        for q in pezzi:
+            im = ImageTk.PhotoImage(q["img"])
+            self._img_pezzi.append(im)
+            it = c.create_image(round(q["xy"][0]), round(q["xy"][1]), image=im, anchor="nw")
+            bx = q["box"]
+            if q["zkey"] in ("mio", "suo", "mano"):
+                self._box_zona.append((q["zkey"], q["nome"], bx, q["tap"], it))
+            for id_ in q["ids"]:
+                self._pos_id[id_] = bx
+            if q["nuova"] and not q["ped"]:
+                self._nuove.append((q["zkey"], q["nome"], bx, q["tap"], it))
+            if q["nome"] and not q["ped"]:
+                (mani if q["zkey"] == "mano" else self._box_carte).append(bx + (q["nome"],))
+        self._box_carte += list(reversed(mani))     # nella mano a ventaglio la carta di destra sta sopra: il passaggio del mouse la trova prima
+        if prima is not None:       # le carte arrivate in mano dal passo prima: la pescata le fa volare dal grimorio (anima_board)
+            in_piu = {}
+            for n_ in f.get("mano") or []:
+                in_piu[n_] = in_piu.get(n_, 0) + 1
+            for n_ in prima.get("mano") or []:
+                in_piu[n_] = in_piu.get(n_, 0) - 1
+            for z in reversed([z for z in self._box_zona if z[0] == "mano"]):      # le ultime del ventaglio per prime
+                if in_piu.get(z[1], 0) > 0:
+                    in_piu[z[1]] -= 1
+                    self._nuove.append(z)
+        self._box_grimorio = (info.get("grimori") or {}).get("lib_mio")
+        self._box_carte += info["scatole"]          # la cima di cimiteri ed esili, la carta in pila
+        self._pos_vita.update(info["vite"])
+        titoli = {"cim": "GRAVEYARD", "esi": "EXILE"}
+        for k, (bx, carte) in info["pile"].items():
+            if carte:
+                self._box_pile.append(tuple(bx) + (titoli[k[:3]], k, carte))
+        for k, (x, y, testo, col) in info.get("etichette", {}).items():
+            c.create_text(x, y, text=testo, fill="#%02x%02x%02x" % col, font=self.F(7, True))
+        self._pila_mat = info["pila"]
+
+    def chiudi_grafico(self):
+        """La linguetta: chiude il grafico della partita sopra la timeline verso il basso, o lo riapre."""
+        self._graf_chiuso = not getattr(self, "_graf_chiuso", False)
+        self.disegna_controlli()
+        self.disegna_linguetta(True)
+
+    def disegna_linguetta(self, sopra=False):
+        """La linguetta al centro del bordo alto della barra, nel colore della testata come quelle delle liste: ▾ HIDE CHART, ▴ SHOW CHART."""
+        li = getattr(self, "cv_linguetta", None)
+        if li is None or not li.winfo_exists():
+            return
+        li.delete("all")
+        W = max(li.winfo_width(), 200)
+        chiuso = getattr(self, "_graf_chiuso", False)
+        cx, L = W / 2, 120
+        li.create_polygon(cx - L / 2, 14, cx - L / 2 + 8, 0, cx + L / 2 - 8, 0, cx + L / 2, 14, fill="#2e2e36" if sopra else C["cap"], outline="")
+        col = "#ffffff" if sopra else "#9a9aa2"
+        if chiuso:
+            li.create_polygon(cx - 30, 10, cx - 24, 4, cx - 18, 10, fill=col, outline="")
+        else:
+            li.create_polygon(cx - 30, 4, cx - 24, 10, cx - 18, 4, fill=col, outline="")
+        li.create_text(cx + 16, 7, text="SHOW CHART" if chiuso else "HIDE CHART", fill=col, font=self.F(6, True))
+
     def ferma_animazione(self):
         for a_ in getattr(self, "_anim_after", []):
             try:
@@ -2891,6 +2824,10 @@ class PaginaPerformance:
                 vs_ = self._pos_vita.get("vita_suo")
                 if vs_:
                     da = (vs_[0] - 40, vs_[1], vs_[0] + 20, vs_[3] + 60)
+            elif zkey == "mano":        # la pescata: dal tuo grimorio alla mano (14 nov 2026, Autore: «voglio anche l'animazione di pescata dal mazzo
+                da = getattr(self, "_box_grimorio", None)       # alla mano»); una carta tornata in mano dal campo scivola gia' con le partenze
+                if any(z[0] == "mio" and z[1] == n for z in prima_zone) and not any(c_[0] == n for c_ in f["mio"]):
+                    da = None
             if da:
                 mosse.append((n, tap, da, box, it_))
         ora_conta = {}

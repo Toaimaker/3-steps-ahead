@@ -1,4 +1,4 @@
-"""Il tappetino da gioco del replayer, prototipo (13-14 nov 2026, Autore: «un vero tappetino da gioco con la vista delle mie carte in mano e quelle
+"""Il tappetino da gioco del replayer (13-14 nov 2026, Autore: «un vero tappetino da gioco con la vista delle mie carte in mano e quelle
 in mano all'avversario di dorso con copertina carte dell'app 3 Steps Ahead», poi «metti le terre a sinistra e incantesimi artefatti ecc a destra»,
 «ricostruiscimi qui l'app replayer con queste modifiche, funzionante, poi se va bene la montiamo nell'app»).
 
@@ -9,9 +9,11 @@ Disegna un momento della partita (una foto di dati_analizzatore.foto_partita o a
   col filo azzurro, la tua mano a ventaglio dal bordo basso, la sua di dorso dal bordo alto, grimorio, cimitero ed esilio, la pila, le frecce.
 
 Il campo come al tavolo: davanti, verso la linea di mezzo, le creature; dietro le terre a sinistra e artefatti, incantesimi, planeswalker e battaglie a
-destra; il lato dell'avversario e' speculare. Fuori dall'app: non lo legge nessun modulo dell'app (Companion/Prototipi non entra nell'app pubblica).
+destra; il lato dell'avversario e' speculare. Nato come prototipo (Companion/Prototipi/tappeto: le 240 prove del replayer uguali all'app, prova per
+prova), montato nel replayer di Performance lo stesso giorno (Autore: «Sì, montalo»): pagina_performance.disegna_board chiama disegna(..., pezzi=True),
+mette il fondo come immagine e ogni carta come oggetto della tela (_tappeto_disegno), cosi' animazioni, frecce, danni e hover restano quelli di prima.
 
-    py -I -X utf8 Companion/Prototipi/tappeto/disegno_tappeto.py --prova
+    py -I -X utf8 Companion/App/Schede/Performance/disegno_tappeto.py --prova
 """
 import math, os, sys
 
@@ -28,7 +30,18 @@ DW, DH = 1600, 1000                     # le coordinate del progetto: tutto si s
 BLU, ARANCIO, VIOLA, ROSSO, GIALLO = (36, 186, 255), (240, 173, 78), (181, 140, 255), (255, 93, 93), (255, 210, 63)
 FONDO = (16, 16, 20)
 RAPP = 279 / 200
-BAHN = r"C:\Windows\Fonts\bahnschrift.ttf"
+
+
+def _font_file():
+    """Bahnschrift (Windows 10 e 11, condensato); dove non c'e' (Mac) il Poppins dell'app."""
+    for f in (os.path.join(os.environ.get("WINDIR", "C:" + os.sep + "Windows"), "Fonts", "bahnschrift.ttf"),
+              os.path.join(_casa, "Grafica", "Poppins-Medium.ttf")):
+        if os.path.isfile(f):
+            return f
+    return "DejaVuSans.ttf"
+
+
+BAHN = _font_file()
 # le colonne e le righe del tappeto, nelle coordinate del progetto
 XB0, LC = 170, 1240                     # il campo (a destra la pila)
 ZX0, ZX1 = 1400, 1572                   # grimorio, cimitero, esilio
@@ -341,12 +354,38 @@ class Tappeto:
             d.text((x0 + self.K(8), y0 + self.K(5)), etichetta, font=f, fill=colore + (min(255, alfa + 70),))
 
     # -- i pezzi a 1x
+    @staticmethod
+    def liscio(d, forma, box, fill=None, outline=None, width=0, radius=0):
+        """Una forma senza scalini (14 nov 2026, Autore: «migliora l'aliasing dei disegni»): disegnata a 4x su un ritaglio, ridotta col Lanczos e messa
+        sopra l'immagine di d. forma: «ell» (ellisse) o «rr» (rettangolo arrotondato)."""
+        im = d._image
+        k = 4
+        x0, y0, x1, y1 = box
+        m = width + 2
+        ox, oy = math.floor(x0 - m), math.floor(y0 - m)
+        L, A = math.ceil(x1 + m) - ox, math.ceil(y1 + m) - oy
+        if L <= 0 or A <= 0:
+            return
+        lay = Image.new("RGBA", (L * k, A * k), (0, 0, 0, 0))
+        dd = ImageDraw.Draw(lay)
+        b = ((x0 - ox) * k, (y0 - oy) * k, (x1 - ox) * k, (y1 - oy) * k)
+        w = max(1, round(width * k)) if outline else 0
+        if forma == "ell":
+            dd.ellipse(b, fill=fill, outline=outline, width=w)
+        else:
+            dd.rounded_rectangle(b, radius=radius * k, fill=fill, outline=outline, width=w)
+        lay = lay.resize((L, A), Image.LANCZOS)
+        cx0, cy0 = max(0, -ox), max(0, -oy)          # il pezzo che esce dall'immagine si taglia
+        lay = lay.crop((cx0, cy0, min(L, im.width - ox), min(A, im.height - oy)))
+        if lay.width > 0 and lay.height > 0:
+            im.alpha_composite(lay, (ox + cx0, oy + cy0))
+
     def pillola(self, d, cx, cy, testo, f, fondo=(12, 12, 16, 235), bordo=(230, 230, 236, 255), colore=(255, 255, 255), pad=6):
         bb = d.textbbox((0, 0), testo, font=f)
         tw, th = bb[2] - bb[0], bb[3] - bb[1]
         p = self.K(pad)
         x0, y0, x1, y1 = cx - tw / 2 - p, cy - th / 2 - p * 0.55, cx + tw / 2 + p, cy + th / 2 + p * 0.55
-        d.rounded_rectangle((x0, y0, x1, y1), radius=(y1 - y0) / 2, fill=fondo, outline=bordo, width=max(1, round(self.K(1.2))))
+        self.liscio(d, "rr", (x0, y0, x1, y1), fill=fondo, outline=bordo, width=max(1.0, self.K(1.2)), radius=(y1 - y0) / 2)
         d.text((cx - tw / 2 - bb[0], cy - th / 2 - bb[1]), testo, font=f, fill=colore)
         return (x0, y0, x1, y1)
 
@@ -395,7 +434,7 @@ class Tappeto:
         h = round(w * RAPP)
         tot = sum((h if g[1] else w) for g in lista) + gap * (len(lista) - 1)
         x = x0 + (larga - tot) / 2
-        fpt, fn, fnew = font(max(8, self.K(12)), "Bold"), font(max(7, self.K(10)), "Bold"), font(max(7, self.K(8.5)), "Bold")
+        fpt, fn, fnew = font(max(8, self.K(12)), "Bold"), font(max(15, self.K(18)), "Bold"), font(max(7, self.K(8.5)), "Bold")
         for g in lista:
             ww, hh = (h, w) if g[1] else (w, h)
             y = y0 + (alta - h) / 2 + (h - hh)
@@ -407,12 +446,13 @@ class Tappeto:
             nuova = nuove.get(g[0], 0) > 0
             if nuova:
                 nuove[g[0]] -= 1
-                ds.rounded_rectangle((cx - 3, cy - 3, cx + ww + 3, cy + hh + 3), radius=self.K(6), outline=BLU + (255,), width=max(2, round(self.K(2.5))))
+                self.liscio(ds, "rr", (cx - 3, cy - 3, cx + ww + 3, cy + hh + 3), outline=BLU + (255,), width=max(2.0, self.K(2.5)), radius=self.K(6))
                 self.pillola(ds, cx + self.K(22), cy + hh - self.K(14), "NEW", fnew, fondo=(15, 134, 204, 240), bordo=(15, 134, 204, 255))
             if g[3] is not None and g[4] is not None:
                 self.pillola(ds, cx + ww - self.K(24), cy + hh - self.K(16), f"{g[3]}/{g[4]}", fpt)
             if g[5] > 1:
-                self.pillola(ds, cx + ww - self.K(18), cy + self.K(16), f"×{g[5]}", fn, bordo=colore + (255,))
+                self.pillola(ds, cx + ww - self.K(26), cy + self.K(22), f"×{g[5]}", fn, fondo=colore + (245,), bordo=(255, 255, 255, 230),
+                             colore=(10, 12, 16), pad=7)
             r_ = (x, y, x + ww, y + hh)
             self.posa(tela, sp, ox, oy, x, y, dict(zkey=zkey, nome=g[0], box=r_, tap=g[1], ped=g[2], ids=list(g[6]), nuova=nuova))
             scatole.append(r_ + (g[0],))
@@ -456,6 +496,7 @@ class Tappeto:
         fl = font(max(10, self.K(10)))
         if retro:
             b = dorso(w)
+            self._grimori[chiave] = (cx - w / 2, yc, cx + w / 2, yc + h)       # da qui parte la carta pescata
             strati = (min(5, max(1, q // 8)) if isinstance(q, int) else 3) if q else 0
             if q:
                 o, p = ombra_sprite(b.width, b.height, self.K(8), 150)
@@ -492,8 +533,8 @@ class Tappeto:
         alone = Image.new("RGBA", o.size, colore + (0,))
         alone.putalpha(o.getchannel("A"))
         tela.alpha_composite(alone, (round(cx - R * 1.3) - p, round(cy - R * 1.3) - p))
-        d.ellipse((cx - R, cy - R, cx + R, cy + R), fill=(12, 14, 18, 255), outline=colore + (255,), width=max(2, round(self.K(3))))
-        d.ellipse((cx - R + self.K(6), cy - R + self.K(6), cx + R - self.K(6), cy + R - self.K(6)), outline=colore + (70,), width=1)
+        self.liscio(d, "ell", (cx - R, cy - R, cx + R, cy + R), fill=(12, 14, 18, 255), outline=colore + (255,), width=max(2.0, self.K(3)))
+        self.liscio(d, "ell", (cx - R + self.K(6), cy - R + self.K(6), cx + R - self.K(6), cy + R - self.K(6)), outline=colore + (70,), width=1)
         pos[chiave] = (cx - R, cy - R, cx + R, cy + R)
         f = font(self.K(34), "Bold")
         t = "-" if vite is None else str(vite)
@@ -516,20 +557,20 @@ class Tappeto:
     def icona(self, d, k, x, y):
         g = (150, 156, 168, 255)
         s = self.K
-        w = max(1, round(s(1)))
+        w = max(1.0, s(1))
         if k == "hand":
             for i, dx in enumerate((-3, 2)):
-                d.rounded_rectangle((x + s(dx) - s(4), y - s(6) + s(i), x + s(dx) + s(4), y + s(6) + s(i)), radius=s(1.5), fill=(26, 28, 34), outline=g, width=w)
+                self.liscio(d, "rr", (x + s(dx) - s(4), y - s(6) + s(i), x + s(dx) + s(4), y + s(6) + s(i)), fill=(26, 28, 34, 255), outline=g, width=w, radius=s(1.5))
         else:
             for i in range(3):
-                d.rounded_rectangle((x - s(4) + s(i), y - s(6) - s(i), x + s(4) + s(i), y + s(6) - s(i)), radius=s(1.5), fill=(26, 28, 34), outline=g, width=w)
+                self.liscio(d, "rr", (x - s(4) + s(i), y - s(6) - s(i), x + s(4) + s(i), y + s(6) - s(i)), fill=(26, 28, 34, 255), outline=g, width=w, radius=s(1.5))
 
     # -- il momento
     def disegna(self, f, prima=None, rel=None, danni=None, grimorio=None, titolo="", mio_turno=True, pezzi=False):
         """Un momento: f la foto (dal tuo lato), prima la foto del passo prima (le carte nuove), rel la magia in pila o il combattimento, danni
         [(bersaglio, quanti)] dell'azione. -> (immagine RGB, scatole [(x0, y0, x1, y1, nome)], zone {chiave: (riquadro, carte)})."""
         self._pezzi = [] if pezzi else None
-        self._etichette = {}
+        self._etichette, self._grimori = {}, {}
         tela = self.fondo().copy()
         d = ImageDraw.Draw(tela)
         scatole, zone, pos = [], {}, {}
@@ -608,7 +649,7 @@ class Tappeto:
             pz, self._pezzi = self._pezzi, None
             fuori = [s_ for s_ in scatole if not any(s_[:4] == q["box"] for q in pz)]
             return tela.convert("RGB"), pz, dict(vite={k: pos[k] for k in ("vita_mio", "vita_suo")}, pile=zone, pila=pila_box, scatole=fuori,
-                                                 etichette=self._etichette)
+                                                 etichette=self._etichette, grimori=self._grimori)
         # le frecce: chi blocca chi, chi attacca chi, cosa bersaglia la magia in pila; i permanenti tolti; i danni
         self.frecce(tela, rel, pila_box, pos, zone)
         d = ImageDraw.Draw(tela)
@@ -619,7 +660,7 @@ class Tappeto:
                 continue
             cx, cy = (r_[2] + self.K(18), (r_[1] + r_[3]) / 2) if str(bers).startswith("vita") else (r_[2] - self.K(4), r_[1] + self.K(4))
             R = self.K(17)
-            d.ellipse((cx - R, cy - R, cx + R, cy + R), fill=(217, 83, 79, 255), outline=(255, 255, 255, 255), width=max(2, round(self.K(2))))
+            self.liscio(d, "ell", (cx - R, cy - R, cx + R, cy + R), fill=(217, 83, 79, 255), outline=(255, 255, 255, 255), width=max(2.0, self.K(2)))
             t = f"-{q}"
             bb = d.textbbox((0, 0), t, font=fd)
             d.text((cx - (bb[2] - bb[0]) / 2 - bb[0], cy - (bb[3] - bb[1]) / 2 - bb[1]), t, font=fd, fill=(255, 255, 255))

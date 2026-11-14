@@ -32,7 +32,7 @@ Companion/
                          preimpostate, Chart con Ranks e Trophies, Report, Matchups, Compare, My filters, la tabella delle partite e il
                          replayer), dati_analizzatore (le righe delle partite, le variabili, i filtri turno per turno e dai replay),
                          mana_aperto (la lettura dei log di ogni partita: momenti, azioni, combattimenti, foto; copia in
-                         Log_Arena/mana_aperto.json), replay_log (il replay azione per azione), pagina_limited e pagina_standard (le
+                         Log_Arena/mana_aperto.json), replay_log (il replay azione per azione), disegno_tappeto (il tappetino del replayer: feltro, zone, dorso delle carte, le carte come pezzi della tela), pagina_limited e pagina_standard (le
                          pagine di prima, come classi: Your decks eredita da PaginaStandard)
       Your_decks/        pagina_mazzi, gruppi_mazzi, finestra_mazzo, scheda_mazzo, mani_mazzo, esporta_mazzo,
                          mazzi_salvati, mazzi_arena, dati_mazzo, prezzi_carte

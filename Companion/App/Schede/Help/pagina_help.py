@@ -167,8 +167,12 @@ SEZIONI = (
       ("Save as my filter", "keep a set of filters: it goes to the My filters folder, one under the other with its numbers; click to apply it, ✕ to "
                             "remove it; your filters are also a B of Compare"),
       ("Clear all filters", "the button under it: back to all your games, the chart and the folder stay as they are"),
-      ("The board", "each battlefield as at the table: the creatures in front, toward the middle; behind them the lands on the left and the other "
-                    "permanents on the right; hover a card to see it big; the heart is the life, the two cards the cards in hand; the combat moments have arrows from each "
+      ("The board", "a playmat: each battlefield as at the table, the creatures in front, toward the middle; behind them the lands on the left and the "
+                    "artifacts, enchantments, planeswalkers and battles on the right; your hand fanned from the bottom edge, the opponent's hand face down from "
+                    "the top edge, with the 3 Steps Ahead card back; on the right of each half the library, the graveyard and the exile; the life in the "
+                    "circles on the left, with the cards in hand and in the library; the spell on the stack in the STACK zone on the middle line; ×N on a "
+                    "card when you have more copies of it; a card you draw flies from your library to your hand; «HIDE CHART» on top of the bar folds the "
+                    "game chart down and leaves the controls; hover a card to see it big; the heart is the life, the two cards the cards in hand; the combat moments have arrows from each "
                     "blocker to its attacker (yellow) and from each unblocked attacker to the player (red); the spells and abilities with targets show the card "
                     "on the stack with an arrow to each target (purple); every instant and sorcery has its moment on the stack, before it resolves, with red "
                     "arrows to the permanents it removed (a sweeper shows everything it wiped, marked REMOVED); on top of each graveyard and exile the last "
