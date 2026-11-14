@@ -15,7 +15,7 @@ class RoadmapCheck:
     # le voci del grafico: il ROI acceso di default, poi le voci della tendina Resource del Trend (Autore, 9 nov 2026: «nel grafico della roadmap ne usiamo solo uno
     # con i flag sotto: di default segna il roi di andamento atteso, coi flag che poi sono le stesse voci del menu a tendina della tabella trend controlliamo ogni voce quanto
     # sta sopra o sotto all'andamento atteso»). Colori: azzurro per il ROI, gli altri lontani fra loro e dai rossi e verdi dei numeri
-    VOCI_AND = (("ROI", "ROI", "#24baff"), ("Oro", "Gold", "#e8c15a"), ("Gemme", "Gems", "#a58cff"), ("Buste", "Packs", "#7fd1c7"), ("Carte", "Cards", "#bebec2"),
+    VOCI_AND = (("ROI", "ROI", "#2f9bff"), ("Oro", "Gold", "#e8c15a"), ("Gemme", "Gems", "#a58cff"), ("Buste", "Packs", "#7fd1c7"), ("Carte", "Cards", "#d7dce5"),
                 ("Jolly", "Wildcards", "#ff7a3d"))
 
     def finestra_andamento(self):

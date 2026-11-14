@@ -12,7 +12,7 @@ import webbrowser
 import aggiornamenti as AG
 from account import ASPETTO_PUBBLICO
 from ambiente import PRODOTTO, PUBBLICA, VERSIONE
-from tema import CI as C
+from tema import CI as C, FN
 from widget import ARANCIO, pulsante_solido
 
 def url_donazioni():
@@ -256,7 +256,7 @@ class PaginaHelp:
     def costruisci(self):
         tk, F = self.tk, self.F
         testa = tk.Frame(self.fr, bg=C["fondo"]); testa.pack(fill="x", padx=16, pady=(14, 6))
-        tk.Label(testa, text="HELP", bg=C["fondo"], fg=C["titolo"], font=F(16, True)).pack(side="left")
+        tk.Label(testa, text="HELP", bg=C["fondo"], fg=C["titolo"], font=FN(18)).pack(side="left")
         tk.Label(testa, text=f"{PRODOTTO}  v{VERSIONE}", bg=C["fondo"], fg=C["grigio"], font=F(9)).pack(side="left", padx=14, pady=(6, 0))
         # gli aggiornamenti
         box = tk.Frame(self.fr, bg=C["filo"], padx=1, pady=1); box.pack(fill="x", padx=16, pady=(0, 10))

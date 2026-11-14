@@ -162,9 +162,9 @@ class Pulsante:
             return
         m = self.menu = tk.Toplevel(self.c)
         m.overrideredirect(True)
-        m.configure(bg="#303034")
+        m.configure(bg="#1e2431")
         L = MENU
-        cv = self.cm = tk.Canvas(m, width=L, height=100, bg="#18181c", highlightthickness=0, bd=0)
+        cv = self.cm = tk.Canvas(m, width=L, height=100, bg="#10141b", highlightthickness=0, bd=0)
         cv.pack(padx=1, pady=1)
         A = self.disegna_menu()
         cv.bind("<Button-1>", self.clic_menu)

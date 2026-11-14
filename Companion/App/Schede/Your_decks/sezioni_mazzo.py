@@ -10,7 +10,7 @@ import carta_tela
 import disegni as DG
 
 from ambiente import LOGDIR
-from tema import CI as C
+from tema import CI as C, FN, RD
 
 FILE = [os.path.join(LOGDIR, "scheda_sezioni.json")]
 
@@ -47,8 +47,8 @@ class SezioniMazzo:
         box = tk.Frame(padre, bg=C["scheda"]); box.pack(fill="x", pady=(0, 2 if mini else 8))
         # la testata e' una tela sola (11 nov 2026, sessione Magic 13): il triangolo, il titolo, la spiegazione e a destra il riassunto, disegnati; prima 4-5 widget
         from tkinter import font as tkfont
-        f_tit = F(8 if mini else 9, True)
-        px, py = (4, 5) if mini else (8, 6)
+        f_tit = F(9 if mini else 9, True) if mini else FN(13)       # le sezioni in Bahnschrift (redesign del 14 nov 2026)
+        px, py = (4, 5) if mini else (10, 8)
         alto = tkfont.Font(font=f_tit).metrics("linespace") + 2 * py
         testa = tk.Canvas(box, height=alto, bg=fondo, highlightthickness=0, bd=0, cursor="hand2"); testa.pack(fill="x")
         testa.titolo = titolo.upper()
@@ -60,8 +60,12 @@ class SezioniMazzo:
         def disegna_testa(e=None):
             testa.delete("all")
             W, ym = max(testa.winfo_width(), 200), alto / 2
-            lato = 10 if mini else 12
-            testa.create_image(px, ym, image=DG.triangolo(lato, st["aperta"], C["accento"] if st["aperta"] else C["grigio"]), anchor="w")
+            if not mini:
+                testa.create_line(0, 0, W, 0, fill=RD["luce"])
+            lato = 14 if mini else 16
+            # la freccia sottile del redesign (14 nov 2026): giu' aperta, a destra chiusa (era il triangolo pieno)
+            img_ = DG.chevron(lato, True, C["accento"] if st["aperta"] else C["grigio"]) if st["aperta"] else DG.freccia_destra(lato, C["grigio"])
+            testa.create_image(px, ym, image=img_, anchor="w")
             t = testa.create_text(px + lato + 6, ym, text=titolo.upper(), anchor="w", fill=C["titolo"], font=f_tit)
             if spiega:
                 testa.create_text(testa.bbox(t)[2] + 8, ym, text=spiega, anchor="w", fill=C["grigio"], font=F(7))
@@ -134,14 +138,18 @@ class SezioniMazzo:
                     t = carta_tela.CartaTela(g, round(k * (lw + 6)), y, round(lw), 1, sm, cursore="hand2" if et in clic else "")
                     t.accesa = accesa
                     t.create_rectangle(0, 0, round(lw) - 1, 1, fill=fondo, outline=C["accento"] if accesa else "", tags="fondo")
-                    t.create_rectangle(0, 0, 3, 1, fill=C["accento"] if accesa else col or C["filo"], outline="", tags="filo")
-                    a = t.create_text(12, 6, text=et.upper(), anchor="nw", fill=C["accento"] if accesa else C["muto"], font=F(6, True))
+                    # redesign del 14 nov 2026: le tessere in una fascia sola divisa da fili; il colore del dato sta nel numero (il filo azzurro resta sulla scelta)
+                    t.create_rectangle(0, 0, 1 if not accesa else 3, 1, fill=C["accento"] if accesa else RD["filo2"], outline="", tags="filo")
+                    a = t.create_text(12, 7, text=et.upper(), anchor="nw", fill=C["accento"] if accesa else C["muto"], font=F(7, True))
                     v = str(val)
-                    b = t.create_text(12, t.bbox(a)[3] + 1, text=v, anchor="nw", fill=col or C["titolo"], font=F(13 if len(v) <= 9 else 10 if len(v) <= 16 else 8, True),
-                                      width=round(lw) - 21)
+                    if len(v) <= 9:     # il numero in Bahnschrift, il % piu' piccolo
+                        b = DG.numero(t, 12, t.bbox(a)[3] + 14, v, col or C["titolo"], 20)
+                    else:
+                        b = t.create_text(12, t.bbox(a)[3] + 2, text=v, anchor="nw", fill=col or C["titolo"], font=FN(13 if len(v) <= 16 else 10), width=round(lw) - 21)
                     if et in clic:
                         sotto = (sotto + " · " if sotto else "") + ("click: all games" if accesa else "click: only these")
                     c_ = t.create_text(12, t.bbox(b)[3] + 1, text=sotto or " ", anchor="nw", fill=C["grigio"], font=F(7), width=round(lw) - 21)
+                    t.tag_raise("unita")        # il «%» dopo la riga sotto: i testi restano nell'ordine di prima (nome, dato, riga sotto)
                     fatte.append((t, t.bbox(c_)[3] + 6, fondo))
                     g.tessere_[et] = t
                     if et in clic:

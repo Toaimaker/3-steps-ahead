@@ -54,7 +54,7 @@ import piattaforma
 import rete_sinergie as RS
 import tela_gpu as TG
 
-from tema import CI as C, barra_scura
+from tema import CI as C, FN, barra_scura
 from widget import VERDE_P, pronta_poi, pulsante_solido
 GRIGIO_T = ("#3a3a40", "#4a4a52", "#2c2c30")       # i pulsanti grigi della testata (Undo, Redo, Full page, lo zoom): stile S3, 14 nov 2026
 
@@ -79,7 +79,8 @@ FG_AIUTO, FG_DICI = "#ffffff", "#fff2c4"
 INFO_L, INFO_H, TESTA_HUD = 236, 84, 22     # l'HUD delle carte e della curva, in alto a destra sul foglio: larghezza, corpo, testa
 FONDO_HUD = (16, 16, 20, 168)       # lo sfondo semitrasparente dell'HUD      # il testo sulla testa azzurra dei comandi: il titolo e cosa e' appena successo
 TIT_L, PAD_L = 26, 18           # l'altezza del titolo, l'aria intorno alle pile quando la label nasce
-FONDO_L, TESTA_L, BORDO_L, SEGNO_L = "#26262c", "#303038", "#55555f", "#7a7a86"
+FONDO_L, TESTA_L, BORDO_L, SEGNO_L = "#121722", "#18202c", "#4a5262", "#6d7686"      # i colori del redesign del 14 nov 2026 (erano grigi ArtStation)
+FOGLIO, PUNTINO, PASSO_PUNTI = "#0b0e13", "#232c3b", 24     # il foglio a puntini del redesign: il fondo, il puntino, il passo a zoom 1
 R_PUNTO = 7                     # il raggio del dot di una linea, in pixel
 GRIGIO_L = "#6a6a76"            # il colore di una label nuova
 CONT_PIENO, CONT_MINIMO = 108, 40       # la carta (pixel) da cui il contatore e' intero (− N +), e sotto cui non c'e' (13 nov 2026)
@@ -282,7 +283,7 @@ def icona_svg(f, lato, colore):
         return None
 
 
-def icona_tipo(tipo, lato=18, colore="#bebec2"):
+def icona_tipo(tipo, lato=18, colore="#d7dce5"):
     """L'icona di un tipo di carta: i simboli originali dei tipi (Autore, 12 nov 2026: «qui voglio i loghi originali»), gli svg del font Mana di Andrew Gioia
     (github.com/andrewgioia/mana; i simboli sono di Wizards of the Coast), in Companion/Grafica/tipi. La battaglia nel font non c'e': resta lo scudo disegnato
     da noi, come ogni tipo il cui file manca o non si legge."""
@@ -600,7 +601,7 @@ class TavoloCarte:
         self.riga_filtri()
         # il foglio sulla scheda video (Autore, 9 nov 2026: «Sì, portalo»): la tela GPU ha le funzioni della tela di Tk; se la scheda non parte, Tk come prima.
         # Senza bordi: il pan va ovunque (confine=False nella tela di Tk)
-        self.cv = TG.crea(tk, f, bg=C["scheda"], highlightthickness=0, bd=0, confine=False)
+        self.cv = TG.crea(tk, f, bg=FOGLIO, highlightthickness=0, bd=0, confine=False)
         self.gpu = not isinstance(self.cv, tk.Canvas)
         self.outliner()
         self.cv.pack(fill="both", expand=True)
@@ -754,7 +755,7 @@ class TavoloCarte:
                             cursor="hand2")
             nome.pack(side="left", fill="x", expand=True, pady=4)
             menu = tk.Label(r, image=segno_menu(18), bg=MB.FONDO, cursor="hand2"); menu.pack(side="right", padx=(6, 0))
-            tk.Label(r, image=DG.lucchetto(13, lb.get("lucchetto", True), "#f0ad4e" if lb.get("lucchetto", True) else "#bebec2"), bg=MB.FONDO).pack(side="right", padx=4)
+            tk.Label(r, image=DG.lucchetto(13, lb.get("lucchetto", True), "#f0ad4e" if lb.get("lucchetto", True) else "#d7dce5"), bg=MB.FONDO).pack(side="right", padx=4)
             tk.Label(r, text=f"{n} CARDS" if n else "EMPTY", bg=MB.FONDO, fg=C["grigio"] if n else C["rosso"], font=F(7, True), padx=6).pack(side="right")
             ww = [r, nome] + [w_ for w_ in r.winfo_children() if isinstance(w_, tk.Label)]
 
@@ -1031,7 +1032,7 @@ class TavoloCarte:
     def testata(self):
         tk, F = self.tk, self.F
         t = tk.Frame(self.fin, bg=C["cap"]); t.pack(fill="x")
-        tk.Label(t, text=self.nome, bg=C["cap"], fg=C["titolo"], font=F(13, True)).pack(side="left", padx=(14, 12), pady=10)
+        tk.Label(t, text=self.nome, bg=C["cap"], fg=C["titolo"], font=FN(16)).pack(side="left", padx=(14, 12), pady=10)      # Bahnschrift (redesign del 14 nov 2026)
 
         if self.nomi_ricerca is not None and self.modifica:
             self.ricerca(t)
@@ -1670,7 +1671,7 @@ class TavoloCarte:
         kw = dict(fisso=True) if self.gpu else {}
         X, Y = x0 + ox, y0 + oy
         cv.create_rectangle(X, Y, X + INFO_L, Y + TESTA_HUD, fill=C["accento"], width=0, tags=("hud", "hud_testa"), **kw)
-        cv.create_text(X + 10, Y + TESTA_HUD / 2, text=f"DECK · {conti['main']} CARDS" if tot else "DECK · no list", fill="#ffffff", font=F(7, True), anchor="w",
+        cv.create_text(X + 10, Y + TESTA_HUD / 2, text=f"DECK · {conti['main']} CARDS" if tot else "DECK · no list", fill="#ffffff", font=F(8, True), anchor="w",
                        tags=("hud", "hud_testa"), **kw)
         cv.create_image(X + INFO_L - 8 - 14, Y + TESTA_HUD / 2 - 7, image=DG.triangolo(14, self.info_aperto, "#ffffff"), anchor="nw", tags=("hud", "hud_testa"), **kw)      # disegnato: il font della scheda non ha ▾
         if self.info_aperto and tot:
@@ -1906,6 +1907,7 @@ class TavoloCarte:
         """La vista e' cambiata (pan, rotella, zoom, inquadra): la fascia e le sue carte tornano in cima alla finestra, spostate, senza ridisegnare. Le frecce
         che toccano la fascia si rifanno. -> True se si e' mossa."""
         cv = self.cv
+        self.metti_puntini(crea=False)
         # sulla scheda la vista vera (vx, vy), senza lo zoom immediato della rotella: la fascia sta nello strato che non si ingrandisce (12 nov 2026)
         fx, fy = (cv.vx, cv.vy) if self.gpu else (cv.canvasx(0), cv.canvasy(0))
         dx, dy = fx - self._fx, fy - self._fy
@@ -1923,6 +1925,61 @@ class TavoloCarte:
         if tocca:
             self.disegna_rete()
         return True
+
+    def bagliore_label(self, cx, cy):
+        """Il gruppo sotto il puntatore ha un bagliore leggero sul bordo, nel suo colore (redesign del 14 nov 2026, approvato da Autore): due cornici sfumate
+        verso il foglio, sotto il gruppo. Solo un segno: non cambia niente di cosa fa il gruppo. cy None: nessun bagliore."""
+        cv, z, o = self.cv, self.zoom, self.oy("main")
+        k_ = None
+        if cy is not None:
+            for k, lb in enumerate(self.etichette):
+                if not self.etichetta_vista(k):
+                    continue
+                x0, y0 = lb["x"] * z, o + lb["y"] * z
+                if x0 <= cx <= x0 + lb["w"] * z and y0 <= cy <= y0 + lb["h"] * z:
+                    k_ = k          # l'ultima trovata e' quella disegnata sopra
+        if k_ == getattr(self, "_bagliore", None):
+            return
+        cv.delete("bagliore")
+        self._bagliore = k_
+        if k_ is None:
+            return
+        lb = self.etichette[k_]
+        col = lb.get("colore") or GRIGIO_L
+        x0, y0 = lb["x"] * z, o + lb["y"] * z
+        x1, y1 = x0 + lb["w"] * z, y0 + lb["h"] * z
+        for d_, k2 in ((4, 0.82), (2, 0.6)):
+            cv.create_rectangle(x0 - d_, y0 - d_, x1 + d_, y1 + d_, outline=mescola(col, FOGLIO, k2), width=2, tags=("bagliore",))
+        if cv.find_withtag("label"):
+            cv.tag_lower("bagliore", "label")
+        if cv.find_withtag("puntini"):
+            cv.tag_lower("puntini")
+
+    def metti_puntini(self, crea=True):
+        """Il foglio a puntini del redesign (14 nov 2026): un'immagine di puntini un passo piu' grande della vista, sotto tutto. Il disegno e' periodico, quindi
+        col pan si sposta a scatti di un passo e resta uguale; si rifa' solo quando cambia lo zoom o la misura della finestra. crea False (il giro dell'HUD, il
+        pan): solo lo sposta; l'immagine nuova si fa nel disegno (sulla scheda video una texture creata fuori dal disegno faceva cadere il processo)."""
+        cv = self.cv
+        try:
+            passo = max(16, round(PASSO_PUNTI * self.zoom))
+            W, H = max(cv.winfo_width(), 200), max(cv.winfo_height(), 200)
+            vx, vy = (cv.vx, cv.vy) if self.gpu else (cv.canvasx(0), cv.canvasy(0))
+            x0, y0 = math.floor(vx / passo) * passo - passo, math.floor(vy / passo) * passo - passo
+            chiave = (passo, W + 3 * passo, H + 3 * passo)
+            p_ = getattr(self, "_puntini", None)
+            if p_ and p_[0] == chiave and cv.find_withtag("puntini"):
+                if (p_[1], p_[2]) != (x0, y0):
+                    cv.coords("puntini", x0, y0)
+                    self._puntini = (chiave, x0, y0)
+                return
+            if not crea:
+                return
+            cv.delete("puntini")
+            cv.create_image(x0, y0, image=DG.puntini(chiave[1], chiave[2], passo, PUNTINO, FOGLIO), anchor="nw", tags=("puntini",))
+            cv.tag_lower("puntini")
+            self._puntini = (chiave, x0, y0)
+        except Exception:       # noqa: BLE001 - senza puntini il foglio resta del suo colore
+            pass
 
     def _nomi_rete(self):
         return {n for p_, c_, _f in self.rete.legami({v["nome"] for v in self.voci.values()}) for n in (p_, c_)}
@@ -2643,6 +2700,8 @@ class TavoloCarte:
         if getattr(self, "c_filtri", None) is not None:
             self.disegna_filtri()
         cv.delete("all")
+        self._puntini, self._bagliore = None, None
+        self.metti_puntini()
         L = max(cv.winfo_width(), 400)
         hs = self.hs
         self._fx, self._fy = cv.canvasx(0), cv.canvasy(0)
@@ -4227,6 +4286,7 @@ class TavoloCarte:
         pezzo = self.pezzo_a(cx, cy)[0]
         if self.drag is None and not self.tira:
             self.nota_hover(self.carta_a(cx, cy))
+        self.bagliore_label(cx, cy if self.drag is None and not self.tira else None)
         bx_ = getattr(self, "_barra_box", None)
         verso_barra = bool(bx_ and (self._arco or self._arco_t) and bx_[0] <= cx <= bx_[2] and bx_[1] <= cy <= bx_[3])
         if self.drag is None and not self.tira and not self.sola and not verso_barra and pezzo not in ("rete_x", "rete_s", "rete_c", "rete_xt"):
@@ -4648,7 +4708,7 @@ class TavoloCarte:
             if lb.get("copia"):
                 self.misura_copia(k)
                 x1, y1 = x0 + lb["w"] * z, y0 + lb["h"] * z
-            cv.create_rectangle(x0, y0, x1, y1, fill=mescola(FONDO_L, col, 0.06), outline=col, width=1, tags=tg, **({"dash": (5, 4)} if lb.get("copia") else {}))
+            cv.create_rectangle(x0, y0, x1, y1, fill=mescola(FONDO_L, col, 0.09), outline=col, width=1, tags=tg, **({"dash": (5, 4)} if lb.get("copia") else {}))
             cv.create_rectangle(x0, y0, x1, y0 + th, fill=mescola(TESTA_L, col, 0.3), outline=col, width=1, tags=tg + ("label_t", f"lt{k}"))
             cv.create_text(x0 + 10, y0 + th / 2, text=lb["nome"].upper(), fill=C["titolo"], font=self.F(fz, True), anchor="w",
                            tags=tg + ("label_t", f"lt{k}"))
@@ -4662,7 +4722,7 @@ class TavoloCarte:
                 continue
             cv.create_image(x1 - 8 - 12, y0 + th / 2 - 6, image=croce(12), anchor="nw", tags=tg + ("label_x", f"lx{k}"))
             chiusa = lb.get("lucchetto", True)      # chiusa: si sposta con quello che ha dentro; aperta: da sola
-            cv.create_image(x1 - 30 - 16, y0 + th / 2 - 8, image=DG.lucchetto(16, chiusa, "#f0ad4e" if chiusa else "#bebec2"), anchor="nw",
+            cv.create_image(x1 - 30 - 16, y0 + th / 2 - 8, image=DG.lucchetto(16, chiusa, "#f0ad4e" if chiusa else "#d7dce5"), anchor="nw",
                             tags=tg + ("label_l", f"ll{k}"))
             cv.create_image(x1 - 52 - 16, y0 + th / 2 - 8, image=segno_menu(16), anchor="nw", tags=tg + ("label_m", f"lm{k}"))
             # la nota della label (12 nov 2026): l'icona sul titolo, in alto a destra accanto al menu, piena se c'e' la nota, col + se no (Autore: «in alto a

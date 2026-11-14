@@ -17,7 +17,7 @@ from finestra_mazzo import FinestraMazzo
 from gruppi_mazzi import GRUPPI_CHIUSI, MS_dict, nome_formato, ordine_formato, salva_gruppi
 from pagina_base import Pagina, prepara_capsule
 from pagina_standard import PaginaStandard
-from tema import CI as C, PERSA, VINTA
+from tema import CI as C, FN, PERSA, RD, VINTA
 from widget import ARANCIO, Tendina, pulsante_solido
 
 
@@ -347,7 +347,7 @@ class PaginaMazzi(PaginaStandard):
 
         def disegna():
             c.delete("all")
-            c.create_rectangle(0, 0, L - 1, H - 1, fill=C["fondo"], outline=C["filo"], tags="corpo")
+            c.create_rectangle(0, 0, L - 1, H - 1, fill=RD["p0"], outline=RD["filo2"], tags="corpo")      # i colori del redesign del 14 nov 2026
             f = CAP.file_cover(m["arte"], *self.COVER)
             if os.path.exists(f):
                 if f not in self.foto:
@@ -357,7 +357,7 @@ class PaginaMazzi(PaginaStandard):
             else:
                 self.cuoci(m, disegna)
             alto = self.COVER[1] + 1
-            c.create_line(0, alto, L, alto, fill=C["filo"])
+            c.create_line(0, alto, L, alto, fill=RD["filo2"])
             x, dx_ = 14, L - 14
             # la riga piccola: i simboli, i colori, a destra l'ultima partita col suo pallino
             y = alto + 20
@@ -377,23 +377,23 @@ class PaginaMazzi(PaginaStandard):
                 c.create_text(dx_, y, text="never played", anchor="e", fill=C["muto"], font=F(7, True))
             # il titolo
             nome = m["nome"] if len(m["nome"]) <= 30 else m["nome"][:29] + "…"
-            c.create_text(x, y + 22, text=nome, anchor="w", fill=C["titolo"], font=F(11, True))
+            c.create_text(x, y + 22, text=nome, anchor="w", fill=C["titolo"], font=FN(14))
             # i tre dati, sotto un filo
             y0 = y + 42
-            c.create_line(x, y0, dx_, y0, fill=C["filo"])
+            c.create_line(x, y0, dx_, y0, fill=RD["filo2"])
             for xc, (t, v) in zip(self.colonne_dati(x, dx_), (("RECORD", f"{m['w']}-{m['n'] - m['w']}" if m["n"] else "-"), ("GAMES", f"{m['n']:,}"))):
-                c.create_text(xc, y0 + 14, text=t, anchor="w", fill=C["muto"], font=F(6, True))
-                c.create_text(xc, y0 + 29, text=v, anchor="w", fill=C["testo"], font=F(9))
+                c.create_text(xc, y0 + 14, text=t, anchor="w", fill=C["muto"], font=F(7, True))
+                c.create_text(xc, y0 + 30, text=v, anchor="w", fill=C["titolo"], font=FN(11))        # Bahnschrift (redesign del 14 nov 2026)
             # niente jolly sulle schede (Autore, 10 nov 2026: «sulle schede di anteprima togliamo: wc necessarie», poi «si anche li»): stanno nella finestra del mazzo
             # il piede: il win rate e il pulsante, alla stessa altezza
             wr = round(100 * m["w"] / m["n"]) if m["n"] else 0
-            c.create_text(x, H - 27, text=f"{wr}%" if m["n"] else "-", anchor="w", fill=C["muto"] if not m["n"] else VINTA if wr >= 50 else PERSA, font=F(15, True))
+            DG.numero(c, x, H - 27, f"{wr}%" if m["n"] else "-", C["muto"] if not m["n"] else VINTA if wr >= 50 else PERSA, 18)
             self.pulsante_scheda(c, dx_, H, "View deck")
             c.box_vis = self.vis_mazzo(c, m)
         disegna()
         self.lista.chiedi_arte(c, m["arte"], disegna)
-        c.bind("<Enter>", lambda e: c.itemconfigure("corpo", fill=C["cap"], outline=C["accento"]))
-        c.bind("<Leave>", lambda e: c.itemconfigure("corpo", fill=C["fondo"], outline=C["filo"]))
+        c.bind("<Enter>", lambda e: c.itemconfigure("corpo", fill=RD["p1"], outline=C["accento"]))
+        c.bind("<Leave>", lambda e: c.itemconfigure("corpo", fill=RD["p0"], outline=RD["filo2"]))
         c.bind("<Button-1>", lambda e: self.clic_vis(m, c, e) or self.apri(("mio", m.get("id") or m["nome"])))
         return c
 
@@ -414,13 +414,13 @@ class PaginaMazzi(PaginaStandard):
         tk, F = self.tk, self.F
         L, H = self.LARGA, self.ALTA
         c = self.nuova_scatola()
-        c.create_rectangle(0, 0, L - 1, H - 1, fill=C["fondo"], outline=C["filo"], dash=(4, 3), tags="corpo")
+        c.create_rectangle(0, 0, L - 1, H - 1, fill=RD["p0"], outline=RD["filo2"], dash=(4, 3), tags="corpo")
         cx, cy = L / 2, H / 2 - 32       # un simbolo si disegna, non si scrive: un carattere di testo non sta mai al centro del cerchio (Autore, 7 nov 2026: «i simboli delle varie grafiche non devono essere disordinati»)
         c.create_image(cx, cy, image=DG.piu(61, C["accento"]))
         c.create_text(L / 2, H / 2 + 24, text=m["nome"], fill=C["titolo"], font=F(12, True))
         c.create_text(L / 2, H / 2 + 48, text="Opens the deck builder over your Collection", fill=C["grigio"], font=F(8))
-        c.bind("<Enter>", lambda e: c.itemconfigure("corpo", fill=C["cap"], outline=C["accento"]))
-        c.bind("<Leave>", lambda e: c.itemconfigure("corpo", fill=C["fondo"], outline=C["filo"]))
+        c.bind("<Enter>", lambda e: c.itemconfigure("corpo", fill=RD["p1"], outline=C["accento"]))
+        c.bind("<Leave>", lambda e: c.itemconfigure("corpo", fill=RD["p0"], outline=RD["filo2"]))
         c.bind("<Button-1>", lambda e: self.builder(m.get("_sez") or self.sezione))
         return c
 
@@ -432,7 +432,7 @@ class PaginaMazzi(PaginaStandard):
 
         def disegna():
             c.delete("all")
-            c.create_rectangle(0, 0, L - 1, H - 1, fill=C["fondo"], outline=C["filo"], tags="corpo")
+            c.create_rectangle(0, 0, L - 1, H - 1, fill=RD["p0"], outline=RD["filo2"], tags="corpo")      # i colori del redesign del 14 nov 2026
             f = CAP.file_cover(m["arte"], *self.COVER) if m["arte"] else None
             if f and os.path.exists(f):
                 if f not in self.foto:
@@ -442,7 +442,7 @@ class PaginaMazzi(PaginaStandard):
             elif m["arte"]:
                 self.cuoci(m, disegna)
             alto = self.COVER[1] + 1
-            c.create_line(0, alto, L, alto, fill=C["filo"])
+            c.create_line(0, alto, L, alto, fill=RD["filo2"])
             x, dx_ = 14, L - 14
             y = alto + 20
             sx = x
@@ -455,15 +455,15 @@ class PaginaMazzi(PaginaStandard):
             if m.get("cambio"):
                 c.create_text(dx_, y, text=f"{m['cambio']:%d/%m/%y}", anchor="e", fill=C["grigio"], font=F(7, True))
             nome = m["nome"] if len(m["nome"]) <= 30 else m["nome"][:29] + "…"
-            c.create_text(x, y + 22, text=nome, anchor="w", fill=C["titolo"], font=F(11, True))
+            c.create_text(x, y + 22, text=nome, anchor="w", fill=C["titolo"], font=FN(14))
             y0 = y + 42
-            c.create_line(x, y0, dx_, y0, fill=C["filo"])
+            c.create_line(x, y0, dx_, y0, fill=RD["filo2"])
             fmt = m.get("formato") or ""
             fmt = {"TraditionalStandard": "Standard Bo3", "TraditionalExplorer": "Explorer Bo3", "HistoricBrawl": "Brawl"}.get(fmt, fmt)
             # niente jolly ne' carte possedute sulle schede (Autore, 10 nov 2026: «wc necessarie / x/x owned», «si anche li»): il formato, poi prezzo e pulsante
-            c.create_text(x, y0 + 14, text="FORMAT", anchor="w", fill=C["muto"], font=F(6, True))
-            c.create_text(x, y0 + 29, text=fmt or "-", anchor="w", fill=C["testo"], font=F(9))
-            c.create_text(x, H - 27, text=PZ.euro(m["eur"]) if m.get("eur") else "-", anchor="w", fill=C["testo"], font=F(15, True))
+            c.create_text(x, y0 + 14, text="FORMAT", anchor="w", fill=C["muto"], font=F(7, True))
+            c.create_text(x, y0 + 30, text=fmt or "-", anchor="w", fill=C["titolo"], font=FN(11))
+            c.create_text(x, H - 27, text=PZ.euro(m["eur"]) if m.get("eur") else "-", anchor="w", fill=C["titolo"], font=FN(18))
             self.pulsante_scheda(c, dx_, H, "Edit" if sez == "build" and scrivibile else "View deck")
             if sez in ("wish", "build") and scrivibile:
                 self.cestino(c, *CESTINO(L))
@@ -476,8 +476,8 @@ class PaginaMazzi(PaginaStandard):
         disegna()
         if m["arte"]:
             self.lista.chiedi_arte(c, m["arte"], disegna)
-        c.bind("<Enter>", lambda e: c.itemconfigure("corpo", fill=C["cap"], outline=C["accento"]))
-        c.bind("<Leave>", lambda e: (c.itemconfigure("corpo", fill=C["fondo"], outline=C["filo"]), c.itemconfigure("cestino", image=self.icona_cestino(False)),
+        c.bind("<Enter>", lambda e: c.itemconfigure("corpo", fill=RD["p1"], outline=C["accento"]))
+        c.bind("<Leave>", lambda e: (c.itemconfigure("corpo", fill=RD["p0"], outline=RD["filo2"]), c.itemconfigure("cestino", image=self.icona_cestino(False)),
                                      c.itemconfigure("clona", image=self.icona_clona(False))))
 
         def sopra(e):
@@ -701,8 +701,8 @@ class PaginaMazzi(PaginaStandard):
         cv.create_rectangle(0, y0, larga, y0 + 34, fill=C["scheda"], outline="", tags=t)        # tutta la riga si clicca, non solo le lettere
         # il triangolo disegnato, centrato: giu' aperto, a destra chiuso (un simbolo si disegna, non si scrive: Autore, 7 nov 2026)
         cv.create_image(4, y0 + 6, image=DG.triangolo(22, aperto, C["accento"]), anchor="nw", tags=t)
-        tit = cv.create_text(32, y0 + 17, text=nome.upper(), anchor="w", fill=C["titolo"], font=F(16, True), tags=t + (tit_t,))
-        cv.create_text(cv.bbox(tit)[2] + 12, y0 + 20, text=f"{quanti} deck{'s' if quanti != 1 else ''}", anchor="w", fill=C["grigio"], font=F(10, True), tags=t)
+        tit = cv.create_text(32, y0 + 17, text=nome.upper(), anchor="w", fill=C["titolo"], font=FN(17), tags=t + (tit_t,))      # Bahnschrift (redesign del 14 nov 2026)
+        cv.create_text(cv.bbox(tit)[2] + 12, y0 + 20, text=f"{quanti} deck{'s' if quanti != 1 else ''}", anchor="w", fill=C["muto"], font=F(10), tags=t)
         yl = y0 + 40
         cv.create_line(0, yl, larga, yl, fill=C["filo"], tags="gruppo")
         regola = VM.gruppo(nome) if self.sezione == "mine" else None

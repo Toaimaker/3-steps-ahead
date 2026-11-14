@@ -20,11 +20,11 @@ import piattaforma  # noqa: E402
 from tema import CI as C  # noqa: E402
 from widget import ROSSO_P, VERDE_P, pulsante_solido  # noqa: E402
 
-FONDO = "#0c0c10"           # il corpo: piu' scuro del foglio, cosi' il menu si stacca
-TESTA = "#16161c"           # la testata
-RIGA_SU = "#1a1d24"         # la riga sotto il mouse
+FONDO = "#0a0d12"           # il corpo: piu' scuro del foglio, cosi' il menu si stacca
+TESTA = "#121722"           # la testata
+RIGA_SU = "#18202c"         # la riga sotto il mouse
 NEON = C["accento"]         # #24baff
-NEON_TENUE = "#61cdff"      # le sezioni
+NEON_TENUE = "#6fb6ff"      # le sezioni
 AZZURRO_P = ("#0f86cc", "#2ba3ea", "#0b5f94")
 GRIGIO_P = ("#2a2a32", "#383842", "#1f1f25")
 COLORI_P = dict(primario=AZZURRO_P, salva=VERDE_P, pericolo=ROSSO_P, secondario=GRIGIO_P)
@@ -128,7 +128,7 @@ class Menu:
     def campo(self, padre, var, larga=28, righe=None):
         """Una casella di testo (righe: un Text su piu' righe) col bordo che si accende di azzurro quando ci scrivi. -> la casella."""
         tk = self.tk
-        kw = dict(bg="#16161c", fg="#ffffff", insertbackground="#ffffff", relief="flat", font=self.F(10), highlightthickness=1,
+        kw = dict(bg=TESTA, fg="#ffffff", insertbackground="#ffffff", relief="flat", font=self.F(10), highlightthickness=1,
                   highlightbackground=C["filo"], highlightcolor=NEON)
         if righe:
             e = tk.Text(padre, width=larga, height=righe, wrap="word", padx=8, pady=6, **kw)
@@ -139,7 +139,7 @@ class Menu:
 
     def lista(self, padre, righe=8, larga=40):
         """Una lista (Listbox) nello stile: fondo scuro, riga scelta azzurra, niente bordi. -> la lista."""
-        lb = self.tk.Listbox(padre, bg="#16161c", fg=C["testo"], selectbackground=NEON, selectforeground="#ffffff", relief="flat", bd=0, highlightthickness=1,
+        lb = self.tk.Listbox(padre, bg=TESTA, fg=C["testo"], selectbackground=NEON, selectforeground="#ffffff", relief="flat", bd=0, highlightthickness=1,
                              highlightbackground=C["filo"], highlightcolor=C["filo"], font=self.F(10), activestyle="none", height=righe, width=larga)
         lb.pack(fill="x", pady=(6, 0))
         return lb

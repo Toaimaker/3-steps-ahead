@@ -18,7 +18,7 @@ import threading  # noqa: E402
 import webbrowser  # noqa: E402
 
 import disegni as DG  # noqa: E402
-from tema import CI as C  # noqa: E402
+from tema import CI as C, FN  # noqa: E402
 from widget import pulsante_solido  # noqa: E402
 
 
@@ -86,7 +86,7 @@ class Condivisione:
         self.tk, self.F = tk, F
         self.bg = bg or C["scheda"]
         self.fr = tk.Frame(padre, bg=self.bg)
-        tk.Label(self.fr, text="Data sharing", bg=self.bg, fg=C["titolo"], font=F(16, True)).pack(anchor="w", pady=(0, 6))      # titoli grandi (13 nov 2026)
+        tk.Label(self.fr, text="Data sharing", bg=self.bg, fg=C["titolo"], font=FN(18)).pack(anchor="w", pady=(0, 6))      # titoli grandi (13 nov 2026)
         riga = tk.Frame(self.fr, bg=self.bg); riga.pack(fill="x", pady=(0, 6))
         self.l_stato = tk.Label(riga, text="", bg=self.bg, fg=C["testo"], font=F(10, True), anchor="w", justify="left"); self.l_stato.pack(side="left")
         # un interruttore on/off, non un pulsante (13 nov 2026, Autore: «fai in modo che il pulsante di datasharing sia uno switcher on off»)
@@ -142,7 +142,7 @@ class Collezione:
         self.tk, self.F = tk, F
         self.bg = bg or C["scheda"]
         self.fr = tk.Frame(padre, bg=self.bg)
-        tk.Label(self.fr, text="Your collection", bg=self.bg, fg=C["titolo"], font=F(16, True)).pack(anchor="w", pady=(0, 2))
+        tk.Label(self.fr, text="Your collection", bg=self.bg, fg=C["titolo"], font=FN(18)).pack(anchor="w", pady=(0, 2))
         tk.Label(self.fr, text="from your public Untapped.gg profile", bg=self.bg, fg=C["grigio"], font=F(9)).pack(anchor="w", pady=(0, 8))
         riga = tk.Frame(self.fr, bg=self.bg); riga.pack(fill="x", pady=(0, 4))
         self.v_link = tk.StringVar()
@@ -194,7 +194,7 @@ class Arena:
         self.tk, self.F = tk, F
         self.bg = bg or C["scheda"]
         self.fr = tk.Frame(padre, bg=self.bg)
-        tk.Label(self.fr, text="Arena", bg=self.bg, fg=C["titolo"], font=F(16, True)).pack(anchor="w", pady=(0, 2))
+        tk.Label(self.fr, text="Arena", bg=self.bg, fg=C["titolo"], font=FN(18)).pack(anchor="w", pady=(0, 2))
         tk.Label(self.fr, text="the app reads the log Arena writes for trackers: it needs Detailed Logs (Plugin Support) on", bg=self.bg, fg=C["grigio"],
                  font=F(9)).pack(anchor="w", pady=(0, 8))
         riga = tk.Frame(self.fr, bg=self.bg); riga.pack(fill="x")
@@ -222,7 +222,7 @@ class PaginaSettings:
         self.tk, self.F = tk, F
         self.fr = tk.Frame(padre, bg=C["fondo"])
         testa = tk.Frame(self.fr, bg=C["fondo"]); testa.pack(fill="x", padx=16, pady=(14, 10))
-        tk.Label(testa, text="SETTINGS", bg=C["fondo"], fg=C["titolo"], font=F(13, True)).pack(side="left")
+        tk.Label(testa, text="SETTINGS", bg=C["fondo"], fg=C["titolo"], font=FN(17)).pack(side="left")
         tk.Label(testa, text="what Arena must do, what the app shares, where it reads your collection", bg=C["fondo"], fg=C["grigio"], font=F(9)).pack(side="left", padx=12, pady=(4, 0))
         self.arena = Arena(tk, F, riquadro(tk, self.fr, F)); self.arena.fr.pack(fill="x", padx=12, pady=10)
         self.cond = Condivisione(tk, F, riquadro(tk, self.fr, F)); self.cond.fr.pack(fill="x", padx=12, pady=10)

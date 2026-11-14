@@ -9,6 +9,9 @@ C = dict(fondo="#101015", scheda="#17171f", cap="#1a1d25", testa="#141820", filo
          titolo="#E2E4E9", testo="#ECEAE7", grigio="#9A9794", muto="#7c776f", acciaio="#6FA8D8",
          arancio="#ff5b1f", verde="#1FB877", verde_t="#7fe3b0", rosso="#e5533d", rosso_t="#ff9a8a",
          azzurro="#33BFFF", azzurro_s="#06212E", led="#39FF7A", traccia="#22252e", evidenza="#21222c")
+# il redesign del 14 nov 2026 (Autore: «ogni scheda dell'app deve essere restylata»): anche la chat prende i fondi e i bordi blu notte; i colori dei suoi
+# messaggi (verde, rosso, arancio, azzurro) restano quelli di sempre
+C.update(fondo="#090b0f", scheda="#10141b", cap="#161b25", testa="#0d1016", filo="#222833", filo2="#181d26", traccia="#1e2431", evidenza="#181d28")
 # L'interfaccia (testata, schede, colonna destra, finestra dei mazzi) nei colori di ArtStation (Autore, 17 ott 2026 ~21:30:
 # «usiamo i colori di artstation, per l'interfaccia non per la chat, la chat resta cosi'»). Letti dal foglio di stile di
 # artstation.com lo stesso giorno: fondi #101014 / #18181c / #202024 / #303034 (gray-900..600), testo #bebec2, titoli bianchi,
@@ -19,11 +22,23 @@ CI = dict(C, fondo="#101014", scheda="#18181c", cap="#202024", testa="#18181c", 
           arancio="#f0ad4e", verde="#5cb85c", verde_t="#a9d34f", rosso="#d9534f", rosso_t="#ee8a87",
           azzurro="#24baff", azzurro_s="#0f2a38", led="#24baff", traccia="#303034", evidenza="#202024",
           capo="#ffffff", accento="#24baff", sel="#0f2a38", sopra="#202024")
+# Il redesign grafico del 14 nov 2026 (Autore: «piu' esport», poi «piu' realistico», mockup approvati in Note/Redesign_Grafico): fondi blu notte da #090b0f a
+# #1e2431, bordi bianchi al 6-10% (qui gia' mescolati sul fondo, Tk non ha la trasparenza), testo #d7dce5, secondario #9099a8 e #5f6878, accento #2f9bff, vinto
+# #3ccf8e, perso #ff5d63. Cambia solo lo stile: le stesse chiavi, gli stessi usi. RD tiene i toni in piu' del redesign (le due facce della sfumatura dei
+# pannelli, il filo di luce in cima, il campo delle tendine, le fasce delle tabelle).
+CI.update(fondo="#090b0f", scheda="#10141b", cap="#161b25", testa="#0d1016", filo="#222833", filo2="#181d26",
+          titolo="#ffffff", testo="#d7dce5", grigio="#9099a8", muto="#5f6878", acciaio="#6fb6ff",
+          arancio="#f0a23a", verde="#3ccf8e", verde_t="#7fe3b0", rosso="#ff5d63", rosso_t="#ff9a9c",
+          azzurro="#2f9bff", azzurro_s="#0e2238", led="#2f9bff", traccia="#1e2431", evidenza="#181d28",
+          capo="#ffffff", accento="#2f9bff", sel="#0e2238", sopra="#181d28")
+RD = dict(p0="#0e1117", p1="#131720", p2="#181d28", p3="#1e2431", campo="#0b0e14", luce="#20262f", ombra="#050608",
+          filo="#1d222b", filo2="#2a303b", riga="#121620", riga2="#0f131a", oro="#e9b949", vinto="#3ccf8e", perso="#ff5d63",
+          acc2="#1a6fd6", glow="#2f9bff")
 # i colori del tier del mazzo (S A B C D, rating_mazzi.tier): li usano la finestra grande e quella dei mazzi
 COL_TIER = {"S": CI["arancio"], "A": CI["verde"], "B": CI["azzurro"], "C": CI["grigio"], "D": CI["rosso"], "?": CI["muto"]}
 VINTA, PERSA = CI["azzurro"], CI["rosso"]   # il grafico delle vinte e delle perse (vedi sopra: controllati per i daltonici)
 SALDO = "#f0ad4e"       # la linea del saldo sul Trend: lontana da azzurro, rosso e grigio anche per i daltonici, 13,8 o piu' in OKLab; viola e rosa cadevano sotto 8 sull'azzurro
-SFONDO_FASCIA, SFONDO_LINEA = "#1c1c21", "#26262c"   # lo sfondo del grafico: fasce e linee appena visibili sul fondo #18181c
+SFONDO_FASCIA, SFONDO_LINEA = "#12161e", "#1b2029"   # lo sfondo del grafico: fasce e linee appena visibili sul fondo dei pannelli (redesign del 14 nov 2026)
 LEGHE = ("Bronze", "Silver", "Gold", "Platinum", "Diamond", "Mythic")
 COL_LEGA = {"Bronze": "#c8834e", "Silver": "#b8bcc4", "Gold": "#e8c15a", "Platinum": "#7fd1c7", "Diamond": "#a58cff",
             "Mythic": "#ff7a3d"}   # il colore e' insieme al nome scritto: non e' l'unico segnale
@@ -31,7 +46,32 @@ COL_LEGA = {"Bronze": "#c8834e", "Silver": "#b8bcc4", "Gold": "#e8c15a", "Platin
 
 # ---------------------------------------------------------------- le pagine
 
-TEND = dict(campo="#101014", bordo="#3a3a40", sopra="#1c1f26", testo=CI["testo"], muto=CI["muto"])
+TEND = dict(campo="#0b0e14", bordo="#2a303b", sopra="#181d28", testo=CI["testo"], muto=CI["muto"])
+
+
+# ---------------------------------------------------------------- i font del redesign (14 nov 2026)
+# Testo in Segoe UI, numeri grandi in Bahnschrift (Windows 10 e 11); dove non ci sono (Mac) il Poppins dell'app, come prima.
+
+def famiglie():
+    """(testo, testo medio, numeri, numeri medi): i nomi delle famiglie che Tk conosce in questo processo."""
+    if "_FAM" not in globals():
+        try:
+            from tkinter import font as tkfont
+            ci = set(tkfont.families())
+        except Exception:       # noqa: BLE001 - prima di una finestra di Tk: si richiede dopo
+            return ("Segoe UI", "Segoe UI Semibold", "Bahnschrift", "Bahnschrift SemiBold")
+        t = "Segoe UI" if "Segoe UI" in ci else ("Poppins" if "Poppins" in ci else "TkDefaultFont")
+        tm = "Segoe UI Semibold" if "Segoe UI Semibold" in ci else ("Poppins Medium" if "Poppins Medium" in ci else t)
+        n = "Bahnschrift" if "Bahnschrift" in ci else t
+        nm = "Bahnschrift SemiBold" if "Bahnschrift SemiBold" in ci else (n if n != t else tm)
+        globals()["_FAM"] = (t, tm, n, nm)
+    return globals()["_FAM"]
+
+
+def FN(n, medio=True):
+    """Il font dei numeri grandi (Bahnschrift), per Tk."""
+    f = famiglie()
+    return (f[3] if medio else f[2], n)
 
 
 # ---------------------------------------------------------------- la finestra

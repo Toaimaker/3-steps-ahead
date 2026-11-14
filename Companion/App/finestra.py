@@ -15,7 +15,6 @@ import subprocess
 import threading
 import time
 import tkinter as tk
-import tkinter.font as tkfont
 
 import capsule as CAP
 import collezione_carte as CC
@@ -127,8 +126,9 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
         barra_scura(self.root, CI["testa"], CI["titolo"], CI["filo"])
         from tema import nascondi_titolo
         self.root.after(80, lambda: nascondi_titolo(self.root))       # il nome e il logo stanno nella testata, piu' grandi (10 nov 2026)
-        fam = "Poppins" if "Poppins" in tkfont.families() else "Segoe UI"
-        famm = "Poppins Medium" if "Poppins Medium" in tkfont.families() else fam
+        # il testo in Segoe UI dal redesign del 14 nov 2026 (Note/Redesign_Grafico); dove non c'e' (Mac) il Poppins di prima
+        from tema import famiglie
+        fam, famm = famiglie()[:2]
         self.F = lambda n, m=False: (famm if m else fam, n)
         self.mana = {k: tk.PhotoImage(file=v) for k, v in icone_mana(16).items()}
         self.quadri = {k: tk.PhotoImage(width=10, height=10) for k in ("tu", "lui", "info")}
@@ -143,8 +143,7 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
         # la testata: solo il logo e il nome dell'app, un po' piu' grandi (Autore, 10 nov 2026: «su questa barra dell'app non deve apparire mai null'altro che il
         # nome dell'app in alto a sx un po' piu' grande con il suo logo»). La barra di Windows sopra non scrive niente (nascondi_titolo): il nome resta per la barra
         # delle applicazioni. Fino a quel giorno qui c'erano il quadratino, l'evento o «waiting for a game» e le vite: le vite sono nel pannello della partita.
-        testa = tk.Frame(self.root, bg=CI["testa"], highlightthickness=0)
-        testa.pack(fill="x")
+        # dal redesign del 14 nov 2026 (Note/Redesign_Grafico, mockup approvati) il logo e il nome stanno in testa alla riga delle schede, una barra sola alta 46
         self.v_contro = tk.StringVar(value="")      # le scrive ancora la chat; non si mostrano piu'
         self.v_vite = tk.StringVar(value="")
         try:
@@ -152,15 +151,16 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
             self.logo_testa = ImageTk.PhotoImage(Image.open(logo).convert("RGBA").resize((24, 24), Image.LANCZOS))
         except Exception:
             self.logo_testa = None
-        if self.logo_testa is not None:
-            tk.Label(testa, image=self.logo_testa, bg=CI["testa"], bd=0).pack(side="left", padx=(14, 9), pady=7)
-        tk.Label(testa, text=PRODOTTO, bg=CI["testa"], fg=CI["titolo"], font=self.F(13, True), bd=0).pack(side="left", padx=(0 if self.logo_testa else 14, 0), pady=7)
-        tk.Frame(self.root, bg=CI["filo"], height=1).pack(fill="x")
 
         # la barra delle schede, come le shelf di Maya: una scheda per tipo di gioco, cambia solo la colonna destra
-        self.barra_schede = tk.Frame(self.root, bg=CI["fondo"]); self.barra_schede.pack(fill="x", padx=12, pady=(8, 0))
+        self.barra_schede = tk.Frame(self.root, bg=CI["fondo"]); self.barra_schede.pack(fill="x", padx=(0, 6), pady=(2, 0))
+        testa = tk.Frame(self.barra_schede, bg=CI["fondo"], highlightthickness=0)
+        testa.pack(side="left", padx=(0, 22))
+        if self.logo_testa is not None:
+            tk.Label(testa, image=self.logo_testa, bg=CI["fondo"], bd=0).pack(side="left", padx=(16, 10), pady=7)
+        tk.Label(testa, text=PRODOTTO, bg=CI["fondo"], fg=CI["titolo"], font=self.F(12, True), bd=0).pack(side="left", padx=(0 if self.logo_testa else 16, 0), pady=7)
 
-        tk.Frame(self.root, bg=CI["filo"], height=1).pack(fill="x", padx=12)
+        tk.Frame(self.root, bg=CI["filo"], height=1).pack(fill="x")
         self.linguette = {}
 
         # il nome del prodotto e la versione, sempre in fondo a destra (Autore, 4 nov 2026): si impacca prima del corpo, che se no si prende tutto lo spazio
@@ -418,9 +418,10 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
             cella = tk.Frame(self.barra_schede, bg=CI["fondo"])
             if self.k not in nascoste:
                 cella.pack(side="left", padx=(0, 2))
-            sopra = tk.Frame(cella, bg=CI["fondo"], height=2); sopra.pack(fill="x")
-            lab = tk.Label(cella, text=self.nome, bg=CI["fondo"], fg=CI["grigio"], font=self.F(9, True), padx=16, pady=5, cursor="hand2")
-            lab.pack()
+            # la riga azzurra della linguetta aperta sta sotto il nome, sul filo della barra (redesign del 14 nov 2026)
+            sopra = tk.Frame(cella, bg=CI["fondo"], height=2)
+            lab = tk.Label(cella, text=self.nome, bg=CI["fondo"], fg=CI["grigio"], font=self.F(10), padx=14, pady=10, cursor="hand2")
+            lab.pack(); sopra.pack(fill="x", padx=10)
             lab.bind("<Button-1>", lambda e, k=self.k: self.mostra(k))
             lab.bind("<Enter>", lambda e, k=self.k, lab=lab: lab.configure(fg=CI["titolo"]) if self.scelta["v"] != k else None)
             lab.bind("<Leave>", lambda e, k=self.k, lab=lab: lab.configure(fg=CI["grigio"]) if self.scelta["v"] != k else None)
@@ -455,6 +456,8 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
         t = self.t_conto = Tendina(tk, self.barra_schede, "", self.F, larga=190, bg=CI["fondo"])
         t.fr.winfo_children()[0].pack_forget()       # senza il titolo sopra: la barra delle schede resta bassa
         t.campo.configure(height=28)
+        t.punto = CI["verde"]       # il pallino verde accanto al nome (redesign del 14 nov 2026: l'unica aggiunta approvata, «il pallino verde era bello»)
+        t.disegna_campo()
         t.fr.pack(side="right", padx=(0, 14), pady=(0, 2))
         import account
         account.applica()       # i file dell'account (e con All accounts le copie unite) prima dei dati
@@ -713,7 +716,7 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
             pg.fr.lift(); self.altre.lift()
         for chiave, (lab, sopra) in self.linguette.items():
             on = chiave == k
-            lab.configure(bg=CI["scheda"] if on else CI["fondo"], fg=CI["titolo"] if on else CI["grigio"])
+            lab.configure(bg=CI["fondo"], fg=CI["titolo"] if on else CI["grigio"])
             sopra.configure(bg=CI["accento"] if on else CI["fondo"])
 
 

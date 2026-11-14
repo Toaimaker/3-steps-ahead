@@ -12,7 +12,7 @@ from pagina_base import Pagina
 from roadmap import Roadmap
 from roadmap_check import RoadmapCheck
 from roi import Roi
-from tema import CI as C, TEND
+from tema import CI as C, FN, TEND
 from trend import Trend
 from widget import Numero, Spunte, Tendina, TendinaMulti, pulsante_solido
 
@@ -257,8 +257,10 @@ class PaginaRisorse(Farmer, Roadmap, Roi, RoadmapCheck, Trend, Pagina):
         if not self.saldo_celle:
             for c, (img, nome, _) in enumerate(voci):
                 a_ = tk.Label(self.b_saldo, image=img, bg=C["fondo"], pady=0) if img is not None else tk.Label(self.b_saldo, text=nome, bg=C["fondo"], fg=C["titolo"], font=F(7, True), pady=0)
-                b_ = tk.Label(self.b_saldo, bg=C["fondo"], fg=C["testo"], font=F(9, True), pady=0)
-                a_.grid(row=0, column=2 * c, sticky="e", padx=(14 if c else 0, 4)); b_.grid(row=0, column=2 * c + 1, sticky="w")
+                b_ = tk.Label(self.b_saldo, bg=C["fondo"], fg=C["titolo"], font=FN(11), pady=0)        # i numeri in Bahnschrift bianco (redesign del 14 nov 2026)
+                if c:       # un filo fra una voce e l'altra, come i chip del mockup
+                    tk.Frame(self.b_saldo, bg=C["filo"], width=1, height=20).grid(row=0, column=3 * c - 1, padx=(10, 0))
+                a_.grid(row=0, column=3 * c, sticky="e", padx=(10 if c else 0, 5)); b_.grid(row=0, column=3 * c + 1, sticky="w")
                 self.saldo_celle.append((a_, b_))
         for (_, lab), (_, _, val) in zip(self.saldo_celle, voci):
             lab.configure(text=val)

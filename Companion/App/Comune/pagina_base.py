@@ -9,7 +9,7 @@ import risorse as RS
 import tabella_tela as TT
 
 from icone import emoji_png, icona_set, logo_lega, nome_set
-from tema import CI as C, COL_LEGA, PERSA, SFONDO_FASCIA, SFONDO_LINEA, VINTA
+from tema import CI as C, COL_LEGA, FN, PERSA, RD, SFONDO_FASCIA, SFONDO_LINEA, VINTA
 from widget import Tendina, a_riposo
 
 
@@ -91,9 +91,10 @@ class Pagina:
 
     def scheda(self, titolo, destra="", espandi=False, col=0):
         tk, F = self.tk, self.F
-        cornice = tk.Frame(self.alto if col == "alto" else (self.col[col] if isinstance(col, int) else col), bg=C["filo2"], padx=1, pady=1)
+        cornice = tk.Frame(self.alto if col == "alto" else (self.col[col] if isinstance(col, int) else col), bg=RD["filo2"], padx=1, pady=1)
         cornice.pack(fill="both" if espandi else "x", expand=espandi, pady=(0, 8))
         dentro = tk.Frame(cornice, bg=C["scheda"]); dentro.pack(fill="both", expand=True)
+        tk.Frame(dentro, bg=RD["luce"], height=1).pack(fill="x")        # il filo di luce in cima al pannello (redesign del 14 nov 2026)
         cap = tk.Frame(dentro, bg=C["cap"]); cap.pack(fill="x")
         self.cap_tit = tk.Label(cap, text=titolo.upper(), bg=C["cap"], fg=C["capo"], font=F(8, True)); self.cap_tit.pack(side="left", padx=10, pady=5)
         v = tk.StringVar(value=destra)      # il sottotitolo di recap non si disegna (Autore, 4 nov 2026, vedi finestra_companion)
@@ -197,7 +198,7 @@ class Pagina:
                         yb += 4
                         if img and val:
                             g.create_image(x, yb, image=img, anchor="nw")
-                            t = g.create_text(x + img.width() + 4, yb + img.height() / 2, text=f"× {val}", anchor="w", fill=C["titolo"], font=F(16, True))
+                            t = g.create_text(x + img.width() + 4, yb + img.height() / 2, text=f"× {val}", anchor="w", fill=C["titolo"], font=FN(18))
                             fine = max(g.bbox(t)[3], yb + img.height())
                         else:
                             t = g.create_text(x, yb, text=str(val), anchor="nw", fill=C["titolo"] if val else C["muto"], font=F(9, True))
@@ -205,7 +206,7 @@ class Pagina:
                     else:
                         ic = voce[4] if len(voce) > 4 else icona      # una voce puo' avere l'icona sua: il ROI e' in gemme anche sull'oro
                         xt = x + (ic.width() + 6 if ic else 0)
-                        t = g.create_text(xt, yb, text=val, anchor="nw", fill=col or C["titolo"], font=F(grande if len(str(val)) <= 11 else min(grande, 11), True),
+                        t = g.create_text(xt, yb, text=val, anchor="nw", fill=col or C["titolo"], font=FN(grande + 3 if len(str(val)) <= 11 else min(grande, 11) + 2),      # Bahnschrift (redesign del 14 nov 2026)
                                           width=130)
                         b = g.bbox(t)
                         if ic:

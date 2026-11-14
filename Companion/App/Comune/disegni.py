@@ -166,6 +166,16 @@ def chevron(lato, giu, colore, larghezza=1.5):
     return _icona(("chevron", lato, giu, colore, larghezza), fa)
 
 
+def freccia_destra(lato, colore, larghezza=1.5):
+    """La freccia sottile a destra (>) delle sezioni chiuse, sorella di chevron (redesign del 14 nov 2026)."""
+    def fa():
+        d = Disegno(lato, lato)
+        k = lato / 25
+        d.linea([(10 * k, 8 * k), (14.5 * k, 12.5 * k), (10 * k, 17 * k)], colore, larghezza)
+        return d
+    return _icona(("freccia_destra", lato, colore, larghezza), fa)
+
+
 def triangolo(lato, giu, colore):
     """Il triangolo pieno dei gruppi a tendina: in giu' aperto, a destra chiuso."""
     def fa():
@@ -371,6 +381,110 @@ def punto(diametro, colore, bordo=None, larghezza=0.0):
     return _icona(("punto", diametro, colore, bordo, larghezza), fa)
 
 
+def _mescola(a, b, t):
+    """Il colore a verso b per la frazione t (0 = a)."""
+    ra, rb = _rgba(a), _rgba(b)
+    return "#%02x%02x%02x" % tuple(round(x + (y - x) * t) for x, y in zip(ra[:3], rb[:3]))
+
+
+def sfumatura(im, x0, y0, x1, y1, sopra, sotto):
+    """Riempie (in pixel della tela grande) il rettangolo con la sfumatura verticale da sopra a sotto: una riga per riga di pixel."""
+    a, b = _rgba(sopra), _rgba(sotto)
+    alto = max(1, y1 - y0)
+    col = Image.new("RGBA", (1, alto))
+    for y in range(alto):
+        t = y / max(1, alto - 1)
+        col.putpixel((0, y), tuple(round(p + (q - p) * t) for p, q in zip(a, b)))
+    im.paste(col.resize((max(1, x1 - x0), alto)), (x0, y0))
+
+
+def pannello(l, h, sopra, sotto, bordo, luce=None, raggio=6.0, fondo=None, ombra=0, bagliore=None, alfa_bagliore=70, larghezza=1.0):
+    """Il pannello del redesign (14 nov 2026, Note/Redesign_Grafico): la sfumatura appena percettibile dall'alto al basso, un filo di luce sul bordo alto,
+    il bordo sottile, gli angoli tondi e, se chiesti, l'ombra morbida sotto (ombra: pixel) e un bagliore leggero del colore dato (il gruppo del Board in hover).
+    fondo: il colore dietro (i quattro angoli); None = trasparente. -> l'immagine PIL alla misura vera."""
+    from PIL import ImageFilter
+    s = SCALA
+    L, H = max(2, int(l)), max(2, int(h))
+    im = Image.new("RGBA", (L * s, H * s), _rgba(fondo))
+    m = ombra + (6 if bagliore else 0)
+    if ombra or bagliore:        # l'ombra e il bagliore escono dal pannello: si disegnano sotto, sfocati, dentro la sua misura (il pannello si stringe di m)
+        alone = Image.new("RGBA", im.size, (0, 0, 0, 0))
+        da = ImageDraw.Draw(alone)
+        if ombra:
+            da.rounded_rectangle((m * s, (m + ombra * 0.5) * s, (L - m) * s, (H - m + ombra * 0.6) * s), radius=raggio * s, fill=(0, 0, 0, 150))
+        if bagliore:
+            r, g, b, _a = _rgba(bagliore)
+            da.rounded_rectangle(((m - 2) * s, (m - 2) * s, (L - m + 2) * s, (H - m + 2) * s), radius=(raggio + 2) * s, fill=(r, g, b, alfa_bagliore))
+        alone = alone.filter(ImageFilter.GaussianBlur((ombra or 4) * s * 0.55))
+        im.alpha_composite(alone)
+    x0, y0, x1, y1 = m * s, m * s, (L - m) * s, (H - m) * s
+    corpo = Image.new("RGBA", im.size, (0, 0, 0, 0))
+    sfumatura(corpo, x0, y0, x1, y1, sopra, sotto)
+    maschera = Image.new("L", im.size, 0)
+    ImageDraw.Draw(maschera).rounded_rectangle((x0, y0, x1 - 1, y1 - 1), radius=raggio * s, fill=255)
+    im.paste(corpo, (0, 0), maschera)
+    d = ImageDraw.Draw(im)
+    if luce:        # il filo di luce in cima, dentro il bordo, fra gli angoli
+        d.line(((x0 + raggio * s, y0 + s), (x1 - raggio * s, y0 + s)), fill=_rgba(luce), width=s)
+    d.rounded_rectangle((x0, y0, x1 - 1, y1 - 1), radius=raggio * s, outline=_rgba(bordo), width=max(1, round(larghezza * s)))
+    return im.resize((L, H), Image.LANCZOS)
+
+
+def foto_pannello(l, h, sopra, sotto, bordo, **k):
+    """pannello() come PhotoImage, una volta per misura e colori (le tessere e le schede si ridisegnano spesso)."""
+    chiave = ("pannello", int(l), int(h), sopra, sotto, bordo, tuple(sorted(k.items())))
+    if chiave not in CACHE:
+        from PIL import ImageTk
+        im = pannello(l, h, sopra, sotto, bordo, **k)
+        f = ImageTk.PhotoImage(im)
+        import tela_gpu
+        tela_gpu.registra(f, im)
+        if len(CACHE) > 900:        # via il piu' vecchio dei pannelli: chi lo mostra ancora lo tiene vivo nella sua tela
+            vecchio = next((c_ for c_ in CACHE if c_[0] == "pannello"), None)
+            if vecchio is not None:
+                CACHE.pop(vecchio)
+        CACHE[chiave] = f
+    return CACHE[chiave]
+
+
+def puntini(l, h, passo, colore, fondo):
+    """Il foglio a puntini del Board (redesign del 14 nov 2026): un puntino di un pixel ogni passo, sul fondo. -> PhotoImage, una volta per misura."""
+    chiave = ("puntini", int(l), int(h), int(passo), colore, fondo)
+    if chiave not in CACHE:
+        from PIL import ImageTk
+        im = Image.new("RGBA", (max(1, int(l)), max(1, int(h))), _rgba(fondo))      # RGBA: una texture RGB con righe non multiple di 4 byte faceva cadere pyglet
+        px, col = im.load(), _rgba(colore)
+        for y in range(passo // 2, im.size[1], passo):
+            for x in range(passo // 2, im.size[0], passo):
+                px[x, y] = col
+        f = ImageTk.PhotoImage(im)
+        import tela_gpu         # la sorgente, per il Board sulla scheda video
+        tela_gpu.registra(f, im)
+        vecchie = [c_ for c_ in CACHE if c_[0] == "puntini"]
+        if len(vecchie) > 12:       # le misure di prima (zoom, finestra): via le piu' vecchie
+            CACHE.pop(vecchie[0])
+        CACHE[chiave] = f
+    return CACHE[chiave]
+
+
+def numero(c, x, y, testo, colore, misura=18, anchor="w", tags=()):
+    """Un numero grande del redesign (14 nov 2026) su una tela di Tk o una CartaTela: Bahnschrift, e il «%» in fondo piu' piccolo accanto, come nei mockup.
+    anchor «w» o «e» (a destra il numero finisce in x); il «%» ha il tag «unita». -> l'id del numero."""
+    from tema import FN
+    t = str(testo)
+    unita = "%" if t.endswith("%") and len(t) > 1 else ""
+    corpo = t[:-1] if unita else t
+    if anchor == "e" and unita:
+        i_u = c.create_text(x, y + misura * 0.18, text=unita, anchor="e", fill=colore, font=FN(max(7, round(misura * 0.55)), False), tags=tuple(tags) + ("unita",))
+        x = (c.bbox(i_u) or (x - 10, 0, x, 0))[0] + 2
+        return c.create_text(x, y, text=corpo, anchor="e", fill=colore, font=FN(misura), tags=tags)
+    i_n = c.create_text(x, y, text=corpo, anchor=anchor, fill=colore, font=FN(misura), tags=tags)
+    if unita:
+        c.create_text((c.bbox(i_n) or (0, 0, x + 30, 0))[2] - 2, y + misura * 0.18, text=unita, anchor="w", fill=colore, font=FN(max(7, round(misura * 0.55)), False),
+                      tags=tuple(tags) + ("unita",))      # «unita»: chi legge i testi in ordine la porta in fondo (tag_raise), il numero resta dov'era
+    return i_n
+
+
 def tratti(l, h, linee=(), punti=(), poligoni=()):
     """Lo strato di un grafico in un'immagine sola: linee [(pts, colore, larghezza, tratteggio)], punti [(x, y, r, riempi, bordo, larghezza)],
     poligoni [(pts, riempi, bordo, larghezza)]. -> PhotoImage (chi la mette sulla tela ne tiene il riferimento)."""
@@ -405,6 +519,15 @@ def prova():
     casi.append(("senza la riduzione il bordo e' duro (prova negativa)", not any(0 < duro.load()[x, 10][3] < 255 for x in range(20))))
     casi.append(("i tratti continuano la fase da un segmento all'altro", len(_tratti([(0, 0), (10, 0), (20, 0)], 4, 2)) == 4))
     casi.append(("le icone si fanno una volta", spunta(13, True, "#24baff", "#101014", "#3a3a40", "#101014") is spunta(13, True, "#24baff", "#101014", "#3a3a40", "#101014")))
+    # il pannello del redesign (14 nov 2026): sfumatura dall'alto al basso, filo di luce, bordo, angoli trasparenti; l'ombra esce sotto
+    pn = pannello(120, 60, "#131720", "#0e1117", "#2a303b", luce="#30384a", raggio=6).load()
+    casi.append(("pannello: l'angolo e' trasparente, il centro pieno", pn[0, 0][3] <= 2 and pn[60, 30][3] == 255))
+    casi.append(("pannello: sopra piu' chiaro che sotto (la sfumatura)", sum(pn[60, 8][:3]) > sum(pn[60, 52][:3])))
+    casi.append(("pannello: il filo di luce in cima e' piu' chiaro del corpo subito sotto", sum(pn[60, 1][:3]) > sum(pn[60, 4][:3])))
+    po = pannello(120, 60, "#131720", "#0e1117", "#2a303b", ombra=6).load()
+    casi.append(("pannello con l'ombra: sotto il corpo c'e' l'ombra semitrasparente", 0 < po[60, 58][3] < 255))
+    casi.append(("pannello senza ombra: sotto il corpo niente (prova negativa)", pannello(120, 60, "#131720", "#0e1117", "#2a303b").load()[60, 59][3] == 255
+                 and pannello(120, 60, "#131720", "#0e1117", "#2a303b").load()[0, 59][3] <= 2))
     # il foglio da guardare: ogni icona a misura vera e ingrandita
     pezzi = [Disegno(13, 13), Disegno(13, 13), Disegno(25, 25), Disegno(22, 22), Disegno(60, 60), Disegno(26, 26), Disegno(18, 18)]
     ff = [lambda d: (d.rett(0, 0, 13, 13, riempi="#24baff", raggio=2), d.linea([(3.2, 6.6), (5.6, 9.2), (10, 3.8)], "#101014", 1.9)),

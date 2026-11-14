@@ -22,10 +22,10 @@ import decisioni as DEC
 import numeri_partite as NP
 import righe_filtri as R_F
 import disegni as DG
-from tema import CI as C
+from tema import CI as C, FN, RD
 from widget import ARANCIO, VERDE_P, Tendina, disegna_s3, pulsante_solido
 
-LINEE = ("#d8d8dc", "#24baff", "#f0ad4e", "#a58cff", "#5cb85c", "#ee8a87")      # All, poi i valori: lontani fra loro anche per i daltonici (come il resto dell'app)
+LINEE = ("#d8d8dc", "#2f9bff", "#f0ad4e", "#a58cff", "#5cb85c", "#ee8a87")      # All, poi i valori: lontani fra loro anche per i daltonici (come il resto dell'app)
 COLONNE = (("nome", "", 250), ("n", "GAMES", 70), ("wl", "W-L", 80), ("wr", "WIN RATE", 180), ("play", "PLAY", 70), ("draw", "DRAW", 70), ("mull", "MULL.", 70),
            ("turni", "AVG T", 70), ("delta", "Δ VS ALL", 90))
 TIPI = ("Constructed", "Limited")
@@ -80,7 +80,7 @@ def chip(c, x0, y0, x1, y1, testo, on, font, scritta=None):
     disegna_s3(c, x0, y0, x1, y1, testo, font, GRIGI, premuto=on, icona=False, scritta=scritta or ("#ffffff" if on else C["testo"]))
 ALTO_TAB, LARGA_TAB = 34, 132                   # le cartelle
 LARGA_DECK = 1000                               # la finestra By deck
-ALTO_PARTITA = 24                               # una riga della tabella delle partite
+ALTO_PARTITA = 30                               # una riga della tabella delle partite (30 dal redesign del 14 nov 2026; era 24)
 ALTO_CTRL = 158                                 # la barra del replayer della board: il grafico della partita sopra, i comandi sotto
 ALTO_GRAF = 92                                  # il grafico della partita nella barra
 LARGA_RACCONTO = 300                            # la colonna del racconto a destra della tavola
@@ -324,29 +324,30 @@ class PaginaPerformance:
     # ------------------------------------------------------------ la costruzione
     def costruisci(self):
         tk, F = self.tk, self.F
-        testa = tk.Frame(self.fr, bg=C["cap"]); testa.pack(fill="x")
-        tk.Label(testa, text="PERFORMANCE", bg=C["cap"], fg=C["titolo"], font=F(11, True)).pack(side="left", padx=(16, 6), pady=10)
-        tk.Label(testa, text="analyzer · games and situations from your Arena logs", bg=C["cap"], fg=C["grigio"], font=F(8)).pack(side="left", padx=(0, 18))
+        testa = tk.Frame(self.fr, bg=C["fondo"]); testa.pack(fill="x")       # sul fondo della pagina, il titolo in Bahnschrift (redesign del 14 nov 2026)
+        tk.Label(testa, text="PERFORMANCE", bg=C["fondo"], fg=C["titolo"], font=FN(17), padx=0).pack(side="left", padx=(12, 12), pady=8)
+        tk.Label(testa, text="analyzer · games and situations from your Arena logs", bg=C["fondo"], fg=C["muto"], font=F(9)).pack(side="left", padx=(0, 18))
         self.b_tipi = {}
         for t in TIPI:
-            b = pulsante_solido(tk, F, testa, t, t == self.tipo, lambda t=t: self.cambia_tipo(t), alto=26, bg=C["cap"],
+            b = pulsante_solido(tk, F, testa, t, t == self.tipo, lambda t=t: self.cambia_tipo(t), alto=26, bg=C["fondo"],
                                 colori=("#2a2a30", "#3a3a42", "#0f86cc"))
             b.configure(width=118); b.pack(side="left", padx=(0, 6), pady=8)
             self.b_tipi[t] = b
         # il reset globale (12 nov 2026, Autore: «aggiungiamo anche un reset global che ci porta a tutte le partite di default»): filtri, situazioni, grafico e
         # vista in basso come all'apertura; Constructed o Limited resta
-        self.b_reset = pulsante_solido(tk, F, testa, "Reset all", False, self.reset, alto=26, bg=C["cap"], colori=ARANCIO)      # arancio come gli altri Reset (13 nov 2026)
+        self.b_reset = pulsante_solido(tk, F, testa, "Reset all", False, self.reset, alto=26, bg=C["fondo"], colori=ARANCIO)      # arancio come gli altri Reset (13 nov 2026)
         self.b_reset.configure(width=100); self.b_reset.pack(side="right", padx=(8, 16), pady=8)
-        self.l_info = tk.Label(testa, text="Reading your logs…", bg=C["cap"], fg=C["grigio"], font=F(8))
+        self.l_info = tk.Label(testa, text="Reading your logs…", bg=C["fondo"], fg=C["grigio"], font=F(8))
         self.l_info.pack(side="right", padx=(16, 4))
         corpo = tk.Frame(self.fr, bg=C["fondo"]); corpo.pack(fill="both", expand=True, padx=10, pady=10)
         corpo.columnconfigure(0, weight=0, minsize=300); corpo.columnconfigure(1, weight=1); corpo.rowconfigure(0, weight=1)
         # a sinistra: le variabili e le situazioni salvate, in una colonna che scorre
-        sx = tk.Frame(corpo, bg=C["scheda"], highlightthickness=1, highlightbackground=C["filo"]); sx.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        sx = tk.Frame(corpo, bg=C["scheda"], highlightthickness=1, highlightbackground=RD["filo2"]); sx.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        tk.Frame(sx, bg=RD["luce"], height=1).pack(fill="x")        # il filo di luce in cima al pannello (redesign del 14 nov 2026)
         rs = tk.Frame(sx, bg=C["scheda"]); rs.pack(fill="x", padx=12, pady=(10, 4))
         # «Smart filters» (12 nov 2026, Autore: «i filtri a sinistra potremmo chiamarli smart filters»); il pulsante Add filters (le situazioni) non c'e' piu':
         # le situazioni stanno nel + della loro fase
-        tk.Label(rs, text="SMART FILTERS", bg=C["scheda"], fg=C["muto"], font=F(7, True)).pack(side="left")
+        tk.Label(rs, text="SMART FILTERS", bg=C["scheda"], fg=C["grigio"], font=F(8, True)).pack(side="left")
         # la colonna scorre: con la rotella sopra qualunque sua parte, e con la barra sottile a destra (fino al 12 nov la rotella andava solo sul fondo vuoto e
         # le ultime tendine e le situazioni salvate restavano tagliate in fondo: Autore, «la finestra degli smart filters e' tagliata sul fondo»)
         riga_sx = tk.Frame(sx, bg=C["scheda"]); riga_sx.pack(fill="both", expand=True)
@@ -419,7 +420,7 @@ class PaginaPerformance:
         # staccare dal quadro e renderla una finestra a se stante»), chiusa torna qui
         dx = tk.Frame(corpo, bg=C["fondo"]); dx.grid(row=0, column=1, sticky="nsew")
         dx.columnconfigure(0, weight=1); dx.rowconfigure(2, weight=1)
-        self.cv_num = tk.Canvas(dx, bg=C["scheda"], highlightthickness=1, highlightbackground=C["filo"], height=108, bd=0)       # le tessere centrate fra la riga in alto e il fondo, con aria sotto (12 nov 2026, Autore: «le barre toccano la base della tabella, voglio le cose centrate»)
+        self.cv_num = tk.Canvas(dx, bg=C["fondo"], highlightthickness=0, height=108, bd=0)       # le tessere centrate fra la riga in alto e il fondo, con aria sotto (12 nov 2026, Autore: «le barre toccano la base della tabella, voglio le cose centrate»)
         self.cv_num.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         self.cv_num.bind("<Configure>", lambda e: self.disegna_numeri())
         self.cv_num.bind("<Button-1>", self.clic_numeri_rotella)
@@ -455,19 +456,19 @@ class PaginaPerformance:
         le partite che insieme fanno quel win rate: dopo gli altri filtri, dalle piu' recenti all'indietro finche' regge (DA.finestra_wr; «filtra le partite
         che partecipano a costruire quel dato di wr»). Invio, l'uscita dalla casella o un attimo di pausa lo mettono; la casella vuota lo toglie."""
         tk, F = self.tk, self.F
-        lab = tk.Label(griglia, text="WIN RATE", bg=C["scheda"], fg=C["grigio"], font=F(7, True), anchor="w"); lab.grid(row=i, column=0, sticky="w", pady=2)
+        lab = tk.Label(griglia, text="Win rate", bg=C["scheda"], fg=C["grigio"], font=F(9), anchor="w"); lab.grid(row=i, column=0, sticky="w", pady=2)
         self.lab_filtri = getattr(self, "lab_filtri", {}); self.lab_filtri["wr_rif"] = lab
         fr = tk.Frame(griglia, bg=C["scheda"]); fr.grid(row=i, column=1, sticky="w", pady=2)
         self.wr_segni = {}
         for chiave, segno in (("ge", "≥"), ("le", "≤")):
-            b = tk.Label(fr, text=segno, width=2, bg="#101014", fg=C["grigio"], font=F(10, True), cursor="hand2", highlightthickness=1,
-                         highlightbackground="#3a3a40")
+            b = tk.Label(fr, text=segno, width=2, bg="#0b0e14", fg=C["grigio"], font=F(10, True), cursor="hand2", highlightthickness=1,
+                         highlightbackground="#2a303b")
             b.bind("<Button-1>", lambda e, c_=chiave: self.cambia_segno_wr(c_))
             self.wr_segni[chiave] = b
         self.wr_ge, self.wr_le = False, False
         self.wr_var = tk.StringVar(value="")
-        self.e_wr = tk.Entry(fr, textvariable=self.wr_var, width=6, justify="center", bg="#101014", fg=C["titolo"], insertbackground=C["titolo"],
-                             relief="flat", font=F(10, True), highlightthickness=1, highlightbackground="#3a3a40", highlightcolor=C["accento"])
+        self.e_wr = tk.Entry(fr, textvariable=self.wr_var, width=6, justify="center", bg="#0b0e14", fg=C["titolo"], insertbackground=C["titolo"],
+                             relief="flat", font=F(10, True), highlightthickness=1, highlightbackground="#2a303b", highlightcolor=C["accento"])
         # ≤ prima della casella e ≥ dopo (13 nov 2026, Autore: «affianco alla win rate inverti l'ordine dei bracket»): il significato resta, ≤ al massimo,
         # ≥ almeno
         self.wr_segni["le"].pack(side="left", ipady=1)
@@ -522,11 +523,11 @@ class PaginaPerformance:
             self.wr_ge = self.wr_le = False
         self._wr_ultimo = f
         on = bool(f)
-        self.e_wr.configure(bg="#0f2a38" if on else "#101014", highlightbackground=C["accento"] if on else "#3a3a40")
+        self.e_wr.configure(bg="#0e2238" if on else "#0b0e14", highlightbackground=C["accento"] if on else "#2a303b")
         for chiave, b in self.wr_segni.items():
             acceso = getattr(self, "wr_" + chiave)
-            b.configure(bg=C["accento"] if acceso else "#101014", fg="#101014" if acceso else C["grigio"],
-                        highlightbackground=C["accento"] if acceso or on else "#3a3a40")
+            b.configure(bg=C["accento"] if acceso else "#0b0e14", fg="#0b0e14" if acceso else C["grigio"],
+                        highlightbackground=C["accento"] if acceso or on else "#2a303b")
         self.lab_filtri["wr_rif"].configure(fg=C["accento"] if on else C["grigio"])
 
     def focus_wr(self):
@@ -541,7 +542,7 @@ class PaginaPerformance:
         tk, F = self.tk, self.F
         corto = {"Opponent colors (contains)": "Opp. colors", "Lands in opening hand": "Lands in hand", "Game length (your turns)": "Game length",
                  "Card in opening hand": "Card in hand", "Opponent card seen": "Opponent card"}.get(nome, nome)
-        lab = tk.Label(griglia, text=corto.upper(), bg=C["scheda"], fg=C["grigio"], font=F(7, True), anchor="w"); lab.grid(row=i, column=0, sticky="w", pady=2)
+        lab = tk.Label(griglia, text=corto, bg=C["scheda"], fg=C["grigio"], font=F(9), anchor="w"); lab.grid(row=i, column=0, sticky="w", pady=2)      # come nel mockup del 14 nov 2026
         self.lab_filtri = getattr(self, "lab_filtri", {}); self.lab_filtri[k] = lab
         t = Tendina(tk, griglia, "", F, larga=156, bg=C["scheda"])
         t.fr.winfo_children()[0].pack_forget()        # il nome sta a sinistra, sulla stessa riga
@@ -608,7 +609,7 @@ class PaginaPerformance:
         if k == "chart":       # sotto il grafico le partite della situazione, una per riga, con la mano e la board (12 nov 2026, «proprio come holdem manager»)
             # grafico e partite divisi da una linea da trascinare: allarga uno e stringe l'altro (12 nov 2026, Autore: «tra chart e elenco crea una linea di
             # separazione che possa aumentare la dimensione della lista sotto restringendo lo spazio sopra e viceversa»)
-            corpo_ = tk.PanedWindow(fr, orient="vertical", bg="#2c2c34", bd=0, sashwidth=7, sashrelief="flat", sashpad=0, opaqueresize=True,
+            corpo_ = tk.PanedWindow(fr, orient="vertical", bg="#252b36", bd=0, sashwidth=7, sashrelief="flat", sashpad=0, opaqueresize=True,
                                     sashcursor="sb_v_double_arrow")
             corpo_.pack(fill="both", expand=True, padx=8, pady=(4, 6))
             c = tk.Canvas(corpo_, bg=C["scheda"], highlightthickness=0, bd=0, height=120)
@@ -720,10 +721,8 @@ class PaginaPerformance:
             top = 3 if k == self.vista else 8
             if k == self.vista:
                 att = (x0, x1)
-            else:
-                pts = _cartella(x0, x1, top, H + 1)
-                d.poligono(pts, riempi="#202026" if sopra and sopra[0] == k else "#18181c")
-                d.linea(pts, "#2e2e34", 1.0)
+            elif sopra and sopra[0] == k:       # redesign del 14 nov 2026: le cartelle chiuse sono solo testo, sotto il puntatore un velo appena chiaro
+                d.poligono(_cartella(x0, x1, top, H + 1, sl=0, r=4), riempi="#121722")
             su_segno = sopra == (k, "segno")
             segni.append((x1 - 22, (top + H) / 2, C["titolo"] if su_segno else C["accento"] if fuori else C["muto"], fuori))
             testi.append(((x0 + x1 - 26) / 2, (top + H) / 2 + 1, n + ("  ↗" if fuori else ""), k == self.vista))
@@ -733,9 +732,10 @@ class PaginaPerformance:
             x0, x1 = att
             d.linea([(0, H - 0.5), (x0 + 0.5, H - 0.5)], C["filo"], 1.0)       # il bordo alto del pannello, aperto sotto la cartella scelta
             d.linea([(x1 - 0.5, H - 0.5), (W, H - 0.5)], C["filo"], 1.0)
-            pts = _cartella(x0, x1, 3, H + 1)
+            pts = _cartella(x0, x1, 3, H + 1, sl=0, r=4)      # la cartella aperta unita al pannello, con la riga azzurra in cima (redesign del 14 nov 2026)
             d.poligono(pts, riempi=C["scheda"])
             d.linea(pts, C["filo"], 1.0)
+            d.linea([(x0 + 3, 3.8), (x1 - 3, 3.8)], C["accento"], 2.0)
         else:
             d.linea([(0, H - 0.5), (W, H - 0.5)], C["filo"], 1.0)
         for sx_, sy_, col, fuori in segni:        # sopra le cartelle, anche su quella aperta
@@ -743,7 +743,7 @@ class PaginaPerformance:
         self._img_tab = d.foto()
         c.create_image(0, 0, image=self._img_tab, anchor="nw")
         for tx, ty, t, on in testi:
-            c.create_text(tx, ty, text=t, fill=C["titolo"] if on else C["grigio"], font=F(8, True))
+            c.create_text(tx, ty, text=t, fill=C["titolo"] if on else C["grigio"], font=F(9, on))
 
     def _cartella_a(self, x, y):
         """(vista, «segno» o «tab») sotto il punto, o None."""
@@ -975,8 +975,8 @@ class PaginaPerformance:
         """Una tendina con un valore scelto: il campo azzurro scuro col bordo azzurro e il nome in azzurro (12 nov 2026, Autore: «le tendine dove ho dati
         inseriti le evidenzi in azzurro»); il bordo resta azzurro anche quando il puntatore se ne va."""
         t = self.tendine[k]
-        bordo = C["accento"] if on else "#3a3a40"
-        t.campo.configure(bg="#0f2a38" if on else "#101014", highlightbackground=bordo)
+        bordo = C["accento"] if on else "#2a303b"
+        t.campo.configure(bg="#0e2238" if on else "#0b0e14", highlightbackground=bordo)
         t.campo.bind("<Leave>", lambda e, b=bordo: t.campo.configure(highlightbackground=b))
         lab = getattr(self, "lab_filtri", {}).get(k)
         if lab is not None:
@@ -1021,11 +1021,15 @@ class PaginaPerformance:
         if int(c.cget("height")) != alto:
             c.configure(height=alto)
         cw = (W - 32) / per_riga
+        # il pannello del redesign (14 nov 2026): la sfumatura appena percettibile, il filo di luce in cima; le tessere in una fascia sola divisa da fili
+        c._img_pannello = DG.foto_pannello(W, alto, RD["p1"], RD["p0"], RD["filo2"], luce=RD["luce"], raggio=6, fondo=C["fondo"])
+        c.tag_lower(c.create_image(0, 0, image=c._img_pannello, anchor="nw"))
         for i, (a, v, col, s_) in enumerate(tess):
             x = 16 + (i % per_riga) * cw
             dy = (i // per_riga) * 76
             # piu' aria fra nome, numero e riga sotto (12 nov 2026, Autore: «i testi qui sono tutti incollati, gestisci meglio le spaziature»)
-            c.create_line(x, 32 + dy, x, 96 + dy, fill=col, width=2)
+            if i % per_riga:
+                c.create_line(x - 2, 34 + dy, x - 2, 96 + dy, fill=RD["filo2"], width=1)
             # il nome dice cosa misura (win rate, % delle partite, media: 13 nov 2026), quindi e' lungo: se non sta nella sua tessera si stringe
             i_n = c.create_text(x + 12, 36 + dy, text=a, anchor="nw", fill=C["muto"], font=F(7, True), tags="nome_num")
             for fn in (F(6, True), F(6)):
@@ -1033,7 +1037,11 @@ class PaginaPerformance:
                 if bb_n and bb_n[2] - bb_n[0] <= cw - 16:
                     break
                 c.itemconfigure(i_n, font=fn)
-            c.create_text(x + 12, 65 + dy, text=v, anchor="w", fill=col, font=F(17, True))
+            # il numero in Bahnschrift, l'unita' (%) piu' piccola accanto (redesign del 14 nov 2026)
+            unita = "%" if isinstance(v, str) and v.endswith("%") and len(v) > 1 else ""
+            i_v = c.create_text(x + 12, 66 + dy, text=v[:-1] if unita else v, anchor="w", fill=col, font=FN(22))
+            if unita:
+                c.create_text((c.bbox(i_v) or (0, 0, x + 40, 0))[2] - 2, 70 + dy, text=unita, anchor="w", fill=col, font=FN(12, False))
             c.create_text(x + 12, 89 + dy, text=s_, anchor="w", fill=C["grigio"], font=F(7), width=cw - 20)
 
     def clic_numeri_rotella(self, e):
@@ -1129,18 +1137,22 @@ class PaginaPerformance:
         v = ya
         while v <= yb + 1e-9:
             yy = sy(v)
-            c.create_line(x0, yy, x1, yy, fill="#3a3a42" if metrica == "wr" and abs(v - 50) < 1e-9 else "#26262c")
+            c.create_line(x0, yy, x1, yy, fill="#2c3340" if metrica == "wr" and abs(v - 50) < 1e-9 else "#171c25")
             c.create_text(x0 - 8, yy, text=f"{v:.0f}{'%' if metrica in ('wr', 'mull') else ''}", anchor="e", fill=C["muto"], font=F(7))
             v += passo
         etx = (lambda x: f"game {int(x)}") if asse == "games" else (lambda x: datetime.date.fromordinal(int(x)).strftime("%d %b"))
         c.create_text(x0, y1 + 12, text=etx(xa), anchor="w", fill=C["muto"], font=F(7))
         c.create_text(x1, y1 + 12, text=etx(xb), anchor="e", fill=C["muto"], font=F(7))
-        tratti, etichette = [], []
+        tratti, etichette, aree = [], [], []
         for i, (n, p) in enumerate(lin):
             col = colori[i % len(colori)]
+            if len(lin) == 1:       # la linea sola e' azzurra, con l'area sotto appena velata (redesign del 14 nov 2026)
+                col = C["accento"]
             pts = [(sx(x), sy(y)) for x, y in p]
             if len(pts) == 1:
                 pts = [pts[0], (pts[0][0] + 1, pts[0][1])]
+            if len(lin) == 1 and len(pts) > 1:
+                aree.append((pts + [(pts[-1][0], y1), (pts[0][0], y1)], (47, 155, 255, 22), None, 1.0))
             # sottili (12 nov 2026, Autore: «le linee dei grafici le voglio piu' sottili»; erano 2,4 / 2,0 / 1,6)
             spess = 1.4 if n == "All" and len(lin) == 1 else 1.2 if n != "All" else 1.0
             # una linea divisa si spezza dove quel valore non c'e' per un tratto lungo (un mazzo che per 30 partite non giochi): niente ponti piatti che
@@ -1171,7 +1183,7 @@ class PaginaPerformance:
                 tratti.append(([(x1 + 1, y_vero), (x1 + 5, y_et)], col, 0.8, None))
             c.create_text(x1 + 8, y_et, text=f"{corto(str(n).strip(), 24)}  {v_:.0f}{'%' if metrica in ('wr', 'mull') else ''}", anchor="w", fill=col,
                           font=F(7, True))
-        c._img = DG.tratti(W, H, linee=tratti)
+        c._img = DG.tratti(W, H, linee=tratti, poligoni=aree)
         c.create_image(0, 0, image=c._img, anchor="nw")
         c.create_text((x0 + x1) / 2, y0 - 12, text=titolo, anchor="n", fill=C["grigio"], font=F(7))
         return sx, sy
@@ -1238,7 +1250,7 @@ class PaginaPerformance:
                 tipo_l = "limited" if self.tipo == "Limited" else "constructed"
                 for i_, rango in DA.cambi_rango(r):
                     xx = sx(i_)
-                    c.create_line(xx, 16, xx, H - 44 - banda, fill="#3a3a42", dash=(3, 3))
+                    c.create_line(xx, 16, xx, H - 44 - banda, fill="#2c3340", dash=(3, 3))
                     img = self.logo_grafico(tipo_l, rango)
                     if img is not None:
                         c.create_image(xx, 18, image=img, anchor="n")
@@ -1288,8 +1300,8 @@ class PaginaPerformance:
         m = max(1.0, max(abs(v) for _x, v in pts))
         sx = lambda v: x0 + (v - xa) / ((xb - xa) or 1) * (x1 - x0)
         sy = lambda v: (y0 + y1) / 2 - v / m * (y1 - y0) / 2
-        c.create_rectangle(x0, y0, x1, y1, fill="#18181c", outline="#26262c")
-        c.create_line(x0, sy(0), x1, sy(0), fill="#3a3a42")
+        c.create_rectangle(x0, y0, x1, y1, fill="#10141b", outline="#1d222b")
+        c.create_line(x0, sy(0), x1, sy(0), fill="#2c3340")
         c.create_text(x0 - 8, sy(m), text=f"+{m:.0f}", anchor="e", fill=C["muto"], font=F(7))
         c.create_text(x0 - 8, sy(-m), text=f"-{m:.0f}", anchor="e", fill=C["muto"], font=F(7))
         c.create_text(x0 - 8, sy(0), text="0", anchor="e", fill=C["muto"], font=F(7))
@@ -1496,7 +1508,7 @@ class PaginaPerformance:
             x_ = partite[i]
             y = i * ALTO_PARTITA
             if i % 2 == 0:
-                c.create_rectangle(0, y, W, y + ALTO_PARTITA, fill="#202024", outline="", tags=("riga", "fondo"))
+                c.create_rectangle(0, y, W, y + ALTO_PARTITA, fill="#161b25", outline="", tags=("riga", "fondo"))
             fo = DA.foto_partita(x_)
             for k, _t, x, w in c._col:
                 col, testo, font = C["testo"], "", F(8)
@@ -1518,6 +1530,8 @@ class PaginaPerformance:
                 elif k == "esito":      # dopo il mulligan, e accanto i turni della partita (12 nov 2026, Autore: «result dopo mulligan e dopo result il numero
                     testo = "Won" if x_["vinta"] else "Lost"        # di turni partita»)
                     col, font = (C["azzurro"] if x_["vinta"] else C["rosso"]), F(8, True)
+                    c.create_image(x + 3, y + ALTO_PARTITA / 2, image=DG.punto(6, col), tags="riga")       # il pallino del risultato (redesign del 14 nov 2026)
+                    x, w = x + 12, w - 12
                 elif k == "turni":
                     testo = str(x_["turno"]) if x_.get("turno") else "-"
                 elif k == "via":
@@ -1530,6 +1544,14 @@ class PaginaPerformance:
                     testo, col = self.testo_mano(fo), C["titolo"] if fo else C["muto"]
                 elif k == "board":
                     testo, col = self.testo_board(fo), C["titolo"] if fo else C["muto"]
+                    if fo and "  /  " in testo:     # la parte dell'avversario in grigio (redesign del 14 nov 2026): lo stesso testo, due colori
+                        a_, b_ = testo.split("  /  ", 1)
+                        i_a = c.create_text(x, y + ALTO_PARTITA / 2, text=corto(a_, int((w - 10) / 6.2)), anchor="w", fill=col, font=font, tags="riga")
+                        resto_ = int((w - 10) / 6.2) - len(corto(a_, int((w - 10) / 6.2)))
+                        if resto_ > 3:
+                            c.create_text((c.bbox(i_a) or (0, 0, x, 0))[2], y + ALTO_PARTITA / 2, text=corto("  /  " + b_, resto_), anchor="w",
+                                          fill=C["muto"], font=font, tags="riga")
+                        continue
                 c.create_text(x, y + ALTO_PARTITA / 2, text=corto(testo, int((w - 10) / 6.2)), anchor="w", fill=col, font=font, tags="riga")
 
     def testo_mano(self, fo):
@@ -1746,8 +1768,8 @@ class PaginaPerformance:
                 lab_.pack(side=verso, fill="y")
                 lab_.bind("<Button-1>", lambda e, lato=lato: self.chiudi_lista(lato))
                 self.b_lista[lato] = lab_
-            self.cv_lista_mio = tk.Canvas(self.f_lista_mio, bg="#141418", highlightthickness=1, highlightbackground=C["filo"], bd=0, width=LARGA_LISTA)
-            self.cv_lista_suo = tk.Canvas(self.f_lista_suo, bg="#141418", highlightthickness=1, highlightbackground=C["filo"], bd=0, width=LARGA_LISTA)
+            self.cv_lista_mio = tk.Canvas(self.f_lista_mio, bg="#0d1016", highlightthickness=1, highlightbackground=C["filo"], bd=0, width=LARGA_LISTA)
+            self.cv_lista_suo = tk.Canvas(self.f_lista_suo, bg="#0d1016", highlightthickness=1, highlightbackground=C["filo"], bd=0, width=LARGA_LISTA)
             self.metti_liste()
             for cv_ in (self.cv_lista_mio, self.cv_lista_suo):
                 cv_.bind("<Configure>", lambda e: self.disegna_liste())
@@ -1755,7 +1777,7 @@ class PaginaPerformance:
                 cv_.bind("<Leave>", self.via_hover)
                 cv_.bind("<Button-1>", self.clic_lista)
                 cv_.bind("<MouseWheel>", lambda e: (self.via_hover(), e.widget.yview_scroll(-2 if e.delta > 0 else 2, "units")))
-            self.cv_board = tk.Canvas(mezzo, bg="#141418", highlightthickness=1, highlightbackground=C["filo"], bd=0)
+            self.cv_board = tk.Canvas(mezzo, bg="#0d1016", highlightthickness=1, highlightbackground=C["filo"], bd=0)
             self.cv_board.pack(side="left", fill="both", expand=True)
             self.cv_board.bind("<Configure>", lambda e: self.disegna_board())
             self.cv_board.bind("<Button-1>", self.clic_pila)
@@ -1869,7 +1891,7 @@ class PaginaPerformance:
             if k == "play":
                 d.cerchio(cx, cy, r, riempi="#2ba3ea" if on else "#0f86cc")
             else:
-                d.cerchio(cx, cy, r, riempi="#2e2e36" if on else "#202026", bordo="#3a3a42", larghezza=1)
+                d.cerchio(cx, cy, r, riempi="#262c37" if on else "#1a202b", bordo="#2c3340", larghezza=1)
             col = "#ffffff" if k == "play" else (bianco if on else grigio)
             if k == "play" and b["play"]:
                 d.rett(cx - 6, cy - 7, cx - 2, cy + 7, riempi=col, raggio=1)
@@ -1902,7 +1924,7 @@ class PaginaPerformance:
         sy = lambda v: g1 - (v - vmin) / max(1, vmax - vmin) * (g1 - g0)
         d.linea([(t0, sy(20)), (t1, sy(20))], "#2a2a32", 1)
         if vmin < 0:
-            d.linea([(t0, sy(0)), (t1, sy(0))], "#3a3a42", 1)
+            d.linea([(t0, sy(0)), (t1, sy(0))], "#2c3340", 1)
         fmax = max([1] + [max(z["forza"]) for z in m])
         larga_b = max(2, min(10, (t1 - t0) / max(1, n) / 3))
         for i, z in enumerate(m):
@@ -1913,23 +1935,23 @@ class PaginaPerformance:
                 d.rett(pos(i) + 0.5, f1 - hs, pos(i) + larga_b + 0.5, f1, riempi=(240, 173, 78, 150))
         if n > 1:
             d.linea([(pos(i), sy(z["vite"][1])) for i, z in enumerate(m)], "#f0ad4e", 1.6)
-            d.linea([(pos(i), sy(z["vite"][0])) for i, z in enumerate(m)], "#24baff", 1.8)
+            d.linea([(pos(i), sy(z["vite"][0])) for i, z in enumerate(m)], "#2f9bff", 1.8)
         if sv is not None:      # la stella del punto di svolta
             import math as _m
             sx_, sy_ = pos(sv), 10
             pts = [(sx_ + (7 if j % 2 == 0 else 3) * _m.cos(-_m.pi / 2 + j * _m.pi / 5), sy_ + (7 if j % 2 == 0 else 3) * _m.sin(-_m.pi / 2 + j * _m.pi / 5))
                    for j in range(10)]
             d.poligono(pts, riempi="#ffd23f")
-        d.linea([(0, ALTO_GRAF), (W, ALTO_GRAF)], "#26262c", 1)
-        d.linea([(t0, cy), (t1, cy)], "#3a3a42", 4)
+        d.linea([(0, ALTO_GRAF), (W, ALTO_GRAF)], "#1d222b", 1)
+        d.linea([(t0, cy), (t1, cy)], "#2c3340", 4)
         leak_i = self.leak_passi(b)
         chiave_i = self.chiave_passi(b)
         for i, p_ in enumerate(b["passi"]):
             nome = p_[0]
             mio_ = nome.startswith("You") or nome == "Opening hand"
-            d.cerchio(pos(i), cy, 3.2 if n <= 60 else 1.6, riempi="#24baff" if mio_ else "#8a8a92")
+            d.cerchio(pos(i), cy, 3.2 if n <= 60 else 1.6, riempi="#2f9bff" if mio_ else "#7a8394")
             if i in chiave_i:   # un momento chiave (R7): il rombo sopra, azzurro se il vantaggio sale per te, arancio se per lui
-                col_k = "#24baff" if chiave_i[i] > 0 else "#f0ad4e"
+                col_k = "#2f9bff" if chiave_i[i] > 0 else "#f0ad4e"
                 d.poligono([(pos(i), cy - 15), (pos(i) + 5, cy - 10), (pos(i), cy - 5), (pos(i) - 5, cy - 10)], riempi=col_k)
             if i in leak_i:     # un leak in questo momento: il triangolino rosso sotto la timeline (13 nov 2026, R5)
                 d.poligono([(pos(i), cy + 7), (pos(i) - 5, cy + 15), (pos(i) + 5, cy + 15)], riempi="#ff5d5d")
@@ -1940,7 +1962,7 @@ class PaginaPerformance:
         vx = W - 150
         for v in (0.5, 1.0, 2.0):
             on = abs(b["vel"] - v) < 1e-9
-            d.rett(vx, cy - 12, vx + 42, cy + 12, riempi="#0f86cc" if on else "#202026", bordo="#0f86cc" if on else "#3a3a42", larghezza=1, raggio=4)
+            d.rett(vx, cy - 12, vx + 42, cy + 12, riempi="#0f86cc" if on else "#1a202b", bordo="#0f86cc" if on else "#2c3340", larghezza=1, raggio=4)
             self._box_vel.append((vx, vx + 42, v))
             vx += 46
         if sv is not None:
@@ -1965,7 +1987,7 @@ class PaginaPerformance:
         c.create_text(t0 - 10, (f0 + f1) / 2, text="POWER", anchor="e", fill=grigio, font=F(6, True))
         if m:
             z = m[b["i"]]
-            c.create_text(t1 + 14, 20, text=f"you {z['vite'][0]}", anchor="w", fill="#24baff", font=F(8, True))
+            c.create_text(t1 + 14, 20, text=f"you {z['vite'][0]}", anchor="w", fill="#2f9bff", font=F(8, True))
             c.create_text(t1 + 14, 36, text=f"opponent {z['vite'][1]}", anchor="w", fill="#f0ad4e", font=F(8, True))
             c.create_text(t1 + 14, (f0 + f1) / 2 + 2, text=f"power {z['forza'][0]} vs {z['forza'][1]}", anchor="w", fill=grigio, font=F(7))
         if sv is not None:
@@ -2359,18 +2381,18 @@ class PaginaPerformance:
         if k not in cache:
             h = round(w * 279 / 200)
             d = DG.Disegno(w, h)
-            d.rett(0, 0, w, h, riempi="#1b1b22", bordo="#8a8a94", larghezza=1.4, raggio=max(4, w * 0.06))
+            d.rett(0, 0, w, h, riempi="#141a24", bordo="#8a8a94", larghezza=1.4, raggio=max(4, w * 0.06))
             m = max(4, w * 0.06)
-            d.rett(m, m, w - m, m + h * 0.07, riempi="#2c2c35", raggio=2)                       # la barra del nome
+            d.rett(m, m, w - m, m + h * 0.07, riempi="#222833", raggio=2)                       # la barra del nome
             a0, a1 = m + h * 0.09, h * 0.66                                                     # il riquadro dell'arte
-            d.rett(m, a0, w - m, a1, riempi="#24242d", bordo="#3a3a44", larghezza=1, raggio=2)
+            d.rett(m, a0, w - m, a1, riempi="#1b212b", bordo="#2c3340", larghezza=1, raggio=2)
             cx, cy, r = w / 2, (a0 + a1) / 2, min(w, a1 - a0) * 0.30
             d.cerchio(cx, cy, r, bordo="#c9a24a", larghezza=max(1.2, w * 0.018))
             import math as _m
             punte = lambda fase: [(cx + r * 0.78 * _m.cos(fase + i * 2 * _m.pi / 3), cy + r * 0.78 * _m.sin(fase + i * 2 * _m.pi / 3)) for i in range(3)]
             d.poligono(punte(-_m.pi / 2), riempi="#c9a24a")
             d.poligono(punte(_m.pi / 2), riempi="#a8853a")
-            d.rett(m, h * 0.69, w - m, h * 0.76, riempi="#2c2c35", raggio=2)                   # la riga del tipo
+            d.rett(m, h * 0.69, w - m, h * 0.76, riempi="#222833", raggio=2)                   # la riga del tipo
             im = d.immagine()
             if tappata:
                 im = im.rotate(90, expand=True)
@@ -2416,7 +2438,7 @@ class PaginaPerformance:
                         y += 14
                     col = C["testo"] if rim else "#55555c"
                     if len(c._righe) % 2 == 0:
-                        c.create_rectangle(4, y, W - 4, y + ALTO_RIGA_LISTA, fill="#1a1a20", outline="")
+                        c.create_rectangle(4, y, W - 4, y + ALTO_RIGA_LISTA, fill="#141922", outline="")
                     c.create_text(10, y + ALTO_RIGA_LISTA / 2, text=f"{rim}/{q}", anchor="w", fill=C["titolo"] if rim else "#55555c", font=F(8, True))
                     corto = n if len(n) <= 21 else n[:20] + "…"
                     c.create_text(44, y + ALTO_RIGA_LISTA / 2, text=corto, anchor="w", fill=col, font=F(8))
@@ -2443,14 +2465,14 @@ class PaginaPerformance:
                         c.create_text(10, y + 6, text="LANDS", anchor="w", fill=C["muto"], font=F(6, True))
                         y += 14
                     if len(c._righe) % 2 == 0:
-                        c.create_rectangle(4, y, W - 4, y + ALTO_RIGA_LISTA, fill="#1a1a20", outline="")
+                        c.create_rectangle(4, y, W - 4, y + ALTO_RIGA_LISTA, fill="#141922", outline="")
                     c.create_text(10, y + ALTO_RIGA_LISTA / 2, text=f"{q}x", anchor="w", fill=C["titolo"], font=F(8, True))
                     c.create_text(36, y + ALTO_RIGA_LISTA / 2, text=n if len(n) <= 24 else n[:23] + "…", anchor="w", fill=C["testo"], font=F(8))
                     c._righe.append((0, y, W, y + ALTO_RIGA_LISTA, n))
                     y += ALTO_RIGA_LISTA
                 if righe:
                     y += 10
-                    c.create_rectangle(10, y, W - 10, y + 26, fill="#303034", outline="", tags="copia")
+                    c.create_rectangle(10, y, W - 10, y + 26, fill="#1e2431", outline="", tags="copia")
                     c.create_text(W / 2, y + 13, text=getattr(self, "_copiato", None) == b["x"].get("partita") and "Copied ✓" or "Copy as list",
                                   fill="#ffffff", font=F(8, True), tags="copia")
                     c._copia = (10, y, W - 10, y + 26, DA.testo_lista(righe))
@@ -2477,12 +2499,12 @@ class PaginaPerformance:
         tk = self.tk
         h = self._hover = tk.Toplevel(self.fin_board)
         h.overrideredirect(True)
-        h.configure(bg="#101014")
+        h.configure(bg="#0b0e14")
         try:
             h.attributes("-topmost", True)
         except Exception:      # noqa: BLE001
             pass
-        tk.Label(h, image=img, bg="#101014", bd=0).pack(padx=2, pady=2)
+        tk.Label(h, image=img, bg="#0b0e14", bd=0).pack(padx=2, pady=2)
         self.metti_hover(e)
 
     def liste_chiuse(self):
@@ -2593,7 +2615,7 @@ class PaginaPerformance:
         # il racconto del momento: nella colonna a destra o, staccato, nella sua finestra (13 nov 2026, Autore: «la chat staccabile se vogliamo aumentare le
         # dimensioni del campo»); staccato, sulla tavola resta la colonna stretta della magia in pila, da cui partono le frecce verso i bersagli
         xr = Wt + 12
-        c.create_rectangle(xr, 0, W, H, fill="#18181e", outline="")
+        c.create_rectangle(xr, 0, W, H, fill="#11151c", outline="")
         if cr is None:
             c.create_text(xr + 14, 16, text="WHAT HAPPENED", anchor="w", fill=C["muto"], font=F(7, True))
             i_s = c.create_text(W - 12, 16, text="⧉ Detach", anchor="e", fill=C["accento"], font=F(7, True), tags="stacca")
@@ -2607,7 +2629,7 @@ class PaginaPerformance:
             cc.delete("all")
             larga_r, Hc = max(cc.winfo_width(), 260), max(cc.winfo_height(), 300)
             x0_r = 0
-            cc.create_rectangle(0, 0, larga_r, Hc, fill="#18181e", outline="")
+            cc.create_rectangle(0, 0, larga_r, Hc, fill="#11151c", outline="")
             cc.create_text(14, 16, text="WHAT HAPPENED", anchor="w", fill=C["muto"], font=F(7, True))
         tit_ = cc.create_text(x0_r + 14, 25, text=nome + ("   ★ turning point" if b["i"] == b.get("svolta") else ""), anchor="nw",
                               fill="#ffd23f" if b["i"] == b.get("svolta") else C["titolo"], font=F(10, True), width=larga_r - 28)
@@ -2628,7 +2650,7 @@ class PaginaPerformance:
         sk_ = self.chiave_passi(b).get(b["i"])
         if sk_ is not None:     # R7: un momento chiave, col salto del vantaggio
             i_k = cc.create_text(x0_r + 14, y, text=f"◆ KEY MOMENT · {abs(sk_):.0f} points of advantage to {'you' if sk_ > 0 else 'the opponent'}", anchor="nw",
-                                 fill="#24baff" if sk_ > 0 else "#f0ad4e", font=F(8, True), width=larga_r - 28)
+                                 fill="#2f9bff" if sk_ > 0 else "#f0ad4e", font=F(8, True), width=larga_r - 28)
             y = (cc.bbox(i_k) or (0, 0, 0, y + 14))[3] + 6
         for nl_ in self.leak_passi(b).get(b["i"], []):       # i leak di questo momento (leak.py): un indizio, non una sentenza
             i_l = cc.create_text(x0_r + 14, y, text=f"▲ LEAK · {nl_}", anchor="nw", fill="#ff5d5d", font=F(8, True), width=larga_r - 28)
@@ -2697,7 +2719,7 @@ class PaginaPerformance:
                 y += 20
                 continue
             sp_ = mio_ == "spalla"
-            cc.create_oval(x0_r + 14, y + 4, x0_r + 22, y + 12, fill="#b58cff" if sp_ else "#24baff" if mio_ else "#f0ad4e", outline="")
+            cc.create_oval(x0_r + 14, y + 4, x0_r + 22, y + 12, fill="#b58cff" if sp_ else "#2f9bff" if mio_ else "#f0ad4e", outline="")
             forte = testo.startswith("▸ ")
             i_ = cc.create_text(x0_r + 30, y, text=testo[2:] if forte else testo, anchor="nw", fill="#d6c8ff" if sp_ else C["titolo"] if forte else C["testo"],
                                font=F(7 if sp_ else 8, forte), width=larga_r - 46)      # dall'alto: a capo non copre la riga dopo
@@ -2779,7 +2801,7 @@ class PaginaPerformance:
         W = max(li.winfo_width(), 200)
         chiuso = getattr(self, "_graf_chiuso", False)
         cx, L = W / 2, 120
-        li.create_polygon(cx - L / 2, 14, cx - L / 2 + 8, 0, cx + L / 2 - 8, 0, cx + L / 2, 14, fill="#2e2e36" if sopra else C["cap"], outline="")
+        li.create_polygon(cx - L / 2, 14, cx - L / 2 + 8, 0, cx + L / 2 - 8, 0, cx + L / 2, 14, fill="#262c37" if sopra else C["cap"], outline="")
         col = "#ffffff" if sopra else "#9a9aa2"
         if chiuso:
             li.create_polygon(cx - 30, 10, cx - 24, 4, cx - 18, 10, fill=col, outline="")
@@ -2977,8 +2999,8 @@ class PaginaPerformance:
                 d.cerchio(L * 0.69, L * 0.36, L * 0.24, riempi=grigio)
                 d.poligono([(L * 0.09, L * 0.45), (L * 0.91, L * 0.45), (L * 0.5, L * 0.92)], riempi=grigio)
             else:
-                d.rett(L * 0.10, L * 0.08, L * 0.62, L * 0.78, riempi="#3a3a42", bordo=grigio, larghezza=1.3, raggio=2)
-                d.rett(L * 0.36, L * 0.20, L * 0.90, L * 0.92, riempi=grigio, bordo="#141418", larghezza=1.3, raggio=2)
+                d.rett(L * 0.10, L * 0.08, L * 0.62, L * 0.78, riempi="#2c3340", bordo=grigio, larghezza=1.3, raggio=2)
+                d.rett(L * 0.36, L * 0.20, L * 0.90, L * 0.92, riempi=grigio, bordo="#0d1016", larghezza=1.3, raggio=2)
             cache[k] = d.foto()
         return cache[k]
 
@@ -3002,12 +3024,12 @@ class PaginaPerformance:
         tk = self.tk
         h = self._hover = tk.Toplevel(self.fin_board)
         h.overrideredirect(True)
-        h.configure(bg="#101014")
+        h.configure(bg="#0b0e14")
         try:
             h.attributes("-topmost", True)
         except Exception:      # noqa: BLE001 - non serve fuori da Windows
             pass
-        tk.Label(h, image=img, bg="#101014", bd=0).pack(padx=2, pady=2)
+        tk.Label(h, image=img, bg="#0b0e14", bd=0).pack(padx=2, pady=2)
         self.metti_hover(e)
 
     def metti_hover(self, e):
@@ -3074,7 +3096,7 @@ class PaginaPerformance:
             f.geometry(f"{LARGA_RACCONTO + 60}x{max(500, fb.winfo_height() - 120)}+{fb.winfo_rootx() + fb.winfo_width() - LARGA_RACCONTO - 80}+{fb.winfo_rooty() + 80}")
         except Exception:      # noqa: BLE001
             pass
-        f.cv = tk.Canvas(f, bg="#18181e", highlightthickness=0, bd=0)
+        f.cv = tk.Canvas(f, bg="#11151c", highlightthickness=0, bd=0)
         f.cv.pack(fill="both", expand=True)
         f.cv.bind("<Configure>", lambda e: self.disegna_board())
         f.protocol("WM_DELETE_WINDOW", self.riattacca_racconto)
@@ -3139,7 +3161,7 @@ class PaginaPerformance:
         d.rett(0, 0, W, H, riempi=(8, 8, 12, 190))
         mx = 60
         rx0, ry0, rx1, ry1 = mx, 40, W - mx, H - 40
-        d.rett(rx0, ry0, rx1, ry1, riempi="#18181e", bordo="#3a3a44", larghezza=1.2, raggio=8)
+        d.rett(rx0, ry0, rx1, ry1, riempi="#11151c", bordo="#2c3340", larghezza=1.2, raggio=8)
         self._img_velo = d.foto(veloce=True)
         c.create_image(0, 0, image=self._img_velo, anchor="nw", tags="pila_aperta")
         self._box_riquadro = (rx0, ry0, rx1, ry1)
@@ -3171,7 +3193,7 @@ class PaginaPerformance:
             if img is not None:
                 c.create_image(x, y, image=img, anchor="nw")
             else:
-                c.create_rectangle(x, y, x + w, y + h, fill="#26262c", outline="#4a4a52")
+                c.create_rectangle(x, y, x + w, y + h, fill="#1d222b", outline="#4a4a52")
                 c.create_text(x + w / 2, y + h / 2, text=n, width=w - 10, fill=C["titolo"], font=F(7, True), justify="center")
             self._box_carte.append((x, y, x + w, y + h, n))
 
@@ -3193,7 +3215,7 @@ class PaginaPerformance:
             righe.append((f"{n}: {q[1]:.1f}{pc}", c._colori[i % len(c._colori)]))
         etx = f"game {round(xv)}" if c._asse == "games" else datetime.date.fromordinal(int(round(xv))).strftime("%d %b %Y")
         bx = e.x + 12 if e.x < (x0 + x1) / 2 else e.x - 170
-        c.create_rectangle(bx, y0 + 4, bx + 160, y0 + 22 + 15 * len(righe), fill="#101014", outline="#3a3a42", tags="punta")
+        c.create_rectangle(bx, y0 + 4, bx + 160, y0 + 22 + 15 * len(righe), fill="#0b0e14", outline="#2c3340", tags="punta")
         c.create_text(bx + 8, y0 + 12, text=etx, anchor="w", fill=C["titolo"], font=self.F(7, True), tags="punta")
         for j, (t, col) in enumerate(righe):
             c.create_text(bx + 8, y0 + 27 + 15 * j, text=t, anchor="w", fill=col, font=self.F(7), tags="punta")
@@ -3262,7 +3284,7 @@ class PaginaPerformance:
                 r = DA.filtra(tutte, filtri)
                 k = DA.conti(r)
                 on = p_ is accesa
-                c.create_rectangle(x0, y, x0 + larga, y + alto, fill="#22262c" if on else "#1c1c20", outline=C["azzurro"] if on else "#2c2c32", width=2 if on else 1)
+                c.create_rectangle(x0, y, x0 + larga, y + alto, fill="#22262c" if on else "#131820", outline=C["azzurro"] if on else "#252b36", width=2 if on else 1)
                 c.create_text(x0 + 12, y + 15, text=corto(nome, int((larga - 150) / 6.6)), anchor="w", fill=C["azzurro"] if on else C["titolo"], font=F(8, True))
                 c.create_text(x0 + 12, y + 32, text=corto(sotto, int((larga - 150) / 5.6)), anchor="w", fill=C["grigio"], font=F(7))
                 wr = k.get("wr")
@@ -3312,7 +3334,7 @@ class PaginaPerformance:
                 c.create_text(x0 + 4, y + 12, text=f"nothing yet: no spot with {minimo}+ games that stands out", anchor="w", fill=C["grigio"], font=F(7))
                 y += 28
             for s in lista:
-                c.create_rectangle(x0, y, x0 + larga - 1, y + alto, fill="#202024", outline=col if s["forte"] else "#2c2c32")
+                c.create_rectangle(x0, y, x0 + larga - 1, y + alto, fill="#161b25", outline=col if s["forte"] else "#252b36")
                 c.create_text(x0 + 10, y + 12, text=corto(s["nome"], int((larga - 90) / 6.4)), anchor="w", fill=C["titolo"], font=F(8, True))
                 c.create_text(x0 + 10, y + 27, text=f"{s['n']} games · {s['vinte']}-{s['perse']} · 95% CI {s['ic'][0]}–{s['ic'][1]}%"
                               + ("  ·  strong" if s["forte"] else "  ·  a hint"), anchor="w", fill=C["grigio"] if s["forte"] else C["muto"], font=F(7))
@@ -3369,12 +3391,12 @@ class PaginaPerformance:
                 x = x0 + j * cw
                 v = celle.get((m, a))
                 if v is None:
-                    c.create_rectangle(x + 2, y + 2, x + cw - 2, y + rh - 2, fill="#18181c", outline="#26262c")
+                    c.create_rectangle(x + 2, y + 2, x + cw - 2, y + rh - 2, fill="#10141b", outline="#1d222b")
                     continue
                 nn, _vv, w = v
                 poche = nn < 5
-                fondo = "#26262c" if poche else _colore_wr(w)
-                c.create_rectangle(x + 2, y + 2, x + cw - 2, y + rh - 2, fill=fondo, outline="#26262c")
+                fondo = "#1d222b" if poche else _colore_wr(w)
+                c.create_rectangle(x + 2, y + 2, x + cw - 2, y + rh - 2, fill=fondo, outline="#1d222b")
                 c.create_text(x + cw / 2, y + rh / 2 - 5, text=f"{w:.0f}%", fill=C["muto"] if poche else C["titolo"], font=F(8, True))
                 c.create_text(x + cw / 2, y + rh / 2 + 8, text=f"{nn}", fill=C["muto"] if poche else "#d8d8dc", font=F(6))
                 c._celle.append((x, y, x + cw, y + rh, m, a))
@@ -3411,13 +3433,13 @@ class PaginaPerformance:
         y = 26
         for i, r in enumerate(rep):
             if i % 2 == 0:
-                c.create_rectangle(0, y - 2, W, y + 22, fill="#202024", outline="")
+                c.create_rectangle(0, y - 2, W, y + 22, fill="#161b25", outline="")
             gr_ = r["poche"]
             x = 8
             for k, _t, w in COLONNE:
                 if k == "wr":
                     col = C["muto"] if gr_ or r["wr"] is None else (C["azzurro"] if r["wr"] >= 50 else C["rosso"])
-                    c.create_rectangle(x, y + 5, x + 120, y + 15, fill="#2c2c32", outline="")
+                    c.create_rectangle(x, y + 5, x + 120, y + 15, fill="#252b36", outline="")
                     if r["wr"] is not None:
                         c.create_rectangle(x, y + 5, x + 1.2 * r["wr"], y + 15, fill=col, outline="")
                     c.create_line(x + 60, y + 2, x + 60, y + 18, fill="#d8d8dc")
@@ -3541,7 +3563,7 @@ class PaginaPerformance:
         for i, (lett, tit, descr, k_, col) in enumerate((("A", "THIS SITUATION", self.descrivi(self.filtri), res["a"], C["azzurro"]),
                                                          ("B", nome_b.upper(), descr_b, res["b"], C["arancio"]))):
             x0 = 8 + i * (meta + 12)
-            c.create_rectangle(x0, 4, x0 + meta, 52, fill="#202024", outline="#2c2c32")
+            c.create_rectangle(x0, 4, x0 + meta, 52, fill="#161b25", outline="#252b36")
             c.create_rectangle(x0, 4, x0 + 3, 52, fill=col, outline="")
             c.create_text(x0 + 14, 17, text=corto(f"{lett} · {tit}", int((meta - 150) / 6.6)), anchor="w", fill=col, font=F(8, True))
             c.create_text(x0 + meta - 10, 17, text=f"{k_['n']:,} games · {k_['vinte']:,}-{k_['perse']:,}", anchor="e", fill=C["titolo"], font=F(8, True))
@@ -3555,7 +3577,7 @@ class PaginaPerformance:
         pf = lambda p: "p < 0.001" if p < 0.001 else f"p {p:.3f}" if p < 0.1 else f"p {p:.2f}"
         for i, r in enumerate(res["righe"]):
             if i % 2 == 0:
-                c.create_rectangle(0, y, W, y + 24, fill="#202024", outline="")
+                c.create_rectangle(0, y, W, y + 24, fill="#161b25", outline="")
             c.create_text(cx[0], y + 12, text=r["nome"], anchor="w", fill=C["titolo"], font=F(8, True))
             for x_, v, n, ic, col in ((cx[1], r["a"], r["na"], r["ic_a"], C["azzurro"]), (cx[2], r["b"], r["nb"], r["ic_b"], C["arancio"])):
                 if v is None:
@@ -3918,7 +3940,7 @@ class PaginaPerformance:
         if b - a >= 0.999:
             return
         H = max(c.winfo_height(), int(c.cget("height")))
-        c.create_rectangle(3, 0, 7, H, fill="#202024", outline="")
+        c.create_rectangle(3, 0, 7, H, fill="#161b25", outline="")
         c.create_rectangle(2, a * H, 8, max(a * H + 24, b * H), fill="#4a4a52", outline="")
 
     def trascina_av(self, e):
@@ -4101,7 +4123,7 @@ class PaginaPerformance:
         for v in [None] + mazzi:       # un riquadro per mazzo: il nome, sotto i simboli dei suoi colori, a destra partite e win rate
             k_ = DA.conti(base_m) if v is None else conti_m[v]
             on = mio == v
-            c.create_rectangle(0, y, 270, y + 42, fill="#0f2a38" if on else "#202024", outline=C["accento"] if on else "#2c2c32")
+            c.create_rectangle(0, y, 270, y + 42, fill="#0e2238" if on else "#161b25", outline=C["accento"] if on else "#252b36")
             c.create_text(10, y + 13, text=corto((v or "All decks").strip(), 26), anchor="w", fill=C["titolo"] if on else C["testo"], font=F(8, True))
             if v is not None:
                 for j, ch in enumerate(self.colori_deck(v)):
@@ -4131,7 +4153,7 @@ class PaginaPerformance:
         for i, k in enumerate("WUBRGC"):
             x = X + i * 48
             on = k in flag
-            c.create_rectangle(x, y, x + 40, y + 36, fill="#0f2a38" if on else "#202024", outline=C["accento"] if on else "#2c2c32", width=2 if on else 1)
+            c.create_rectangle(x, y, x + 40, y + 36, fill="#0e2238" if on else "#161b25", outline=C["accento"] if on else "#252b36", width=2 if on else 1)
             img = self.lista().simbolo(k, 22)
             if img is not None:
                 c.create_image(x + 20, y + 18, image=img)
@@ -4165,14 +4187,14 @@ class PaginaPerformance:
             y += 34
 
         def barra(x, yy, wr, colore):
-            c.create_rectangle(x, yy + 8, x + 100, yy + 16, fill="#2c2c32", outline="")
+            c.create_rectangle(x, yy + 8, x + 100, yy + 16, fill="#252b36", outline="")
             if wr is not None:
                 c.create_rectangle(x, yy + 8, x + wr, yy + 16, fill=colore, outline="")
             c.create_line(x + 50, yy + 5, x + 50, yy + 19, fill="#d8d8dc")
             c.create_text(x + 108, yy + 12, text=pc(wr), anchor="w", fill=colore, font=F(8, True))
         for g in gruppi:
             k_ = g["conti"]
-            c.create_rectangle(X - 4, y, LARGA_DECK, y + 24, fill="#26262c", outline="")
+            c.create_rectangle(X - 4, y, LARGA_DECK, y + 24, fill="#1d222b", outline="")
             c.create_text(col["var"], y + 12, text=g["gruppo"].upper(), anchor="w", fill=C["titolo"], font=F(8, True))
             c.create_text(col["n"], y + 12, text=str(k_["n"]), anchor="w", fill=C["titolo"], font=F(8, True))
             c.create_text(col["wl"], y + 12, text=f"{k_['vinte']}-{k_['perse']}", anchor="w", fill=C["testo"], font=F(8))
@@ -4182,7 +4204,7 @@ class PaginaPerformance:
             y += 26
             for i, (v, k_) in enumerate(g["varianti"]):
                 on, poche = v == vs, k_["n"] < 5
-                fondo = "#0f2a38" if on else ("#202024" if i % 2 == 0 else C["scheda"])
+                fondo = "#0e2238" if on else ("#161b25" if i % 2 == 0 else C["scheda"])
                 c.create_rectangle(X - 4, y, LARGA_DECK, y + 24, fill=fondo, outline=C["accento"] if on else "")
                 for j, ch in enumerate(v):
                     img = self.lista().simbolo(ch, 14)
@@ -4285,7 +4307,7 @@ class PaginaPerformance:
             if chiave not in scelte_r:      # solo le righe spuntate in Rows
                 continue
             carte = DA.riga_carte(r, chiave, quante=per_coppie if chiave == "finisher" else per_riga)
-            c.create_line(14, y, W - 14, y, fill="#2c2c34")
+            c.create_line(14, y, W - 14, y, fill="#252b36")
             c.create_text(14, y + 14, text=titolo, anchor="w", fill=C["azzurro"], font=F(8, True))
             # le coppie della riga si aprono in una finestra a parte (13 nov 2026, Autore: «non aggiungere le coppie come righe ma come finestre extra che
             # si aprono dalla riga e mostrano le coppie»)
@@ -4320,7 +4342,7 @@ class PaginaPerformance:
             if img is not None:
                 c.create_image(xx, y, image=img, anchor="nw")
             else:
-                c.create_rectangle(xx, y, xx + wc, y + hc, fill="#1b1b22", outline="#3a3a42")
+                c.create_rectangle(xx, y, xx + wc, y + hc, fill="#141a24", outline="#2c3340")
                 c.create_text(xx + wc / 2, y + hc / 2, text=nm, fill=C["titolo"], font=F(8, True), width=wc - 12, justify="center")
             # il riquadro di ogni carta: la carta grande al passaggio; il filtro della carta o della coppia al clic
             c._box_carte.append((xx, y, (xx + sopra) if j < len(nomi) - 1 else xx + wc, y + hc + 38, nm, chiave, fk, fv))
@@ -4383,7 +4405,7 @@ class PaginaPerformance:
                              "all are needed. The Decisions folder and «Gained by decisions» under the Chart follow them.", bg=C["scheda"], fg=C["grigio"],
                      font=F(8), wraplength=780, justify="left").pack(anchor="w", padx=16)
             self.f_dec_tipi = tk.Frame(f, bg=C["scheda"]); self.f_dec_tipi.pack(anchor="w", padx=16, pady=(10, 4))
-            self.cv_dec_dom = tk.Canvas(f, bg=C["scheda"], highlightthickness=1, highlightbackground="#2c2c34", bd=0, width=820, height=66)
+            self.cv_dec_dom = tk.Canvas(f, bg=C["scheda"], highlightthickness=1, highlightbackground="#252b36", bd=0, width=820, height=66)
             self.cv_dec_dom.pack(anchor="w", padx=16, pady=(4, 8))
             self.f_dec_righe = tk.Frame(f, bg=C["scheda"]); self.f_dec_righe.pack(anchor="w", padx=16, pady=(4, 16), fill="x")
             try:
@@ -4511,7 +4533,7 @@ class PaginaPerformance:
                 v = k["turni"].get(N)
                 if not v:
                     continue
-                c.create_rectangle(8, y, W - 8, y + 26, fill="#202024" if i % 2 == 0 else "#1c1c20", outline="")
+                c.create_rectangle(8, y, W - 8, y + 26, fill="#161b25" if i % 2 == 0 else "#131820", outline="")
                 d_ = v["x"] - v["e"]
                 for x, t, colr in ((14, f"Turn {N}", C["titolo"]), (130, str(v["partite"]), C["testo"]), (200, str(v["x"]), C["testo"]),
                                    (300, f"{v['e']:.1f}", C["testo"]), (420, f"{d_:+.1f}", C["rosso"] if v["p"] < 0.05 and d_ < 0 else C["azzurro"] if v["p"] < 0.05 else C["testo"]),
@@ -4545,7 +4567,7 @@ class PaginaPerformance:
         y += 16
         tot = m["n"]
         for j in range(8):
-            c.create_rectangle(8, y, 700, y + 22, fill="#202024" if j % 2 == 0 else "#1c1c20", outline="")
+            c.create_rectangle(8, y, 700, y + 22, fill="#161b25" if j % 2 == 0 else "#131820", outline="")
             for x, v, colr in ((14, str(j), C["titolo"]), (110, f"{m['oss'][j]}  ({100 * m['oss'][j] / tot:.0f}%)", C["testo"]),
                                (230, f"{m['reg'][j]:.1f}  ({100 * m['reg'][j] / tot:.0f}%)", C["grigio"]),
                                (450, f"{m['liscia'][j]:.1f}  ({100 * m['liscia'][j] / tot:.0f}%)", C["grigio"])):
@@ -4621,7 +4643,7 @@ class PaginaPerformance:
         y += 16
         for i, rg in enumerate(tab):
             on = self.linea_dec == (self.dec_modo, rg["nome"])
-            fondo = "#0f2a38" if on else ("#202024" if i % 2 == 0 else "#1c1c20")
+            fondo = "#0e2238" if on else ("#161b25" if i % 2 == 0 else "#131820")
             c.create_rectangle(8, y, W - 8, y + 24, fill=fondo, outline=C["accento"] if on else "")
             for k, _t, x in col:
                 v = rg[k]
@@ -4682,7 +4704,7 @@ class PaginaPerformance:
             x = per_p.get(z["partita"])
             if x is None:
                 continue
-            c.create_rectangle(8, y, W - 8, y + 24, fill="#202024" if i % 2 == 0 else "#1c1c20", outline="")
+            c.create_rectangle(8, y, W - 8, y + 24, fill="#161b25" if i % 2 == 0 else "#131820", outline="")
             colr = COLORI_COSTO[z["colore"]]
             c.create_rectangle(14, y + 5, 26, y + 19, fill=colr, outline="")
             c.create_text(34, y + 12, text="not estimable" if z["costo"] is None else f"{z['costo']:+.1f}", anchor="w", fill=colr, font=F(8, True))
@@ -4727,7 +4749,7 @@ class PaginaPerformance:
         for i, t in enumerate(tr):
             on = self.filtri.get(f"leak_{t['k']}") == "Yes"
             alto = 62
-            c.create_rectangle(8, y, W - 8, y + alto, fill="#202024" if i % 2 == 0 else "#1c1c20", outline=C["accento"] if on else "")
+            c.create_rectangle(8, y, W - 8, y + alto, fill="#161b25" if i % 2 == 0 else "#131820", outline=C["accento"] if on else "")
             c.create_text(14, y + 12, text=f"{t['k'].upper()} · {t['nome']}", anchor="w", fill=C["titolo"], font=F(9, True), width=340)
             c.create_text(360, y + 12, text=f"{t['con']} · {t['tasso']:.0f}%" if t["tasso"] is not None else "-", anchor="w", fill=C["testo"], font=F(8, True))
             wr_ = lambda v: "-" if v is None else f"{v:.0f}%"
@@ -4775,7 +4797,7 @@ class PaginaPerformance:
         wr_ = lambda v: "-" if v is None else f"{v:.0f}%"
         for i, t in enumerate(tr):
             on = self.filtri.get(t["k"]) in t["si"]
-            c.create_rectangle(8, y, W - 8, y + 26, fill="#202024" if i % 2 == 0 else "#1c1c20", outline=C["accento"] if on else "")
+            c.create_rectangle(8, y, W - 8, y + 26, fill="#161b25" if i % 2 == 0 else "#131820", outline=C["accento"] if on else "")
             c.create_text(14, y + 13, text=t["nome"], anchor="w", fill=C["titolo"], font=F(8, True), width=400)
             c.create_text(420, y + 13, text=f"{t['con']} · {t['tasso']:.0f}%" if t["tasso"] is not None else "-", anchor="w", fill=C["testo"], font=F(8, True))
             c.create_text(510, y + 13, text=wr_(t["wr_con"]), anchor="w", fill=C["testo"], font=F(8))
@@ -4825,7 +4847,7 @@ class PaginaPerformance:
             return "\n".join(out)
         e = H.escape
         corpo = "".join(f"<h3>{e(nome)} <small>{e(vite)}</small></h3><ul>" + "".join(f"<li>{e(r_)}</li>" for r_ in righe) + "</ul>" for nome, vite, righe in blocchi)
-        return ("<!doctype html><html><head><meta charset='utf-8'><title>3 Steps Ahead · game</title><style>body{background:#101014;color:#bebec2;"
+        return ("<!doctype html><html><head><meta charset='utf-8'><title>3 Steps Ahead · game</title><style>body{background:#0b0e14;color:#d7dce5;"
                 "font-family:Segoe UI,sans-serif;max-width:860px;margin:24px auto;padding:0 16px}h1{color:#fff;font-size:20px}h3{color:#fff;margin:18px 0 4px;"
                 "font-size:14px}small{color:#7a7a80;font-weight:normal}li{margin:2px 0}.c{color:#7a7a80}</style></head><body>"
                 f"<h1>{e(testa[0])}</h1><p class='c'>{e(testa[1])}</p>" + (f"<p>Note: {e(nota)}</p>" if nota else "") + corpo + "</body></html>")
@@ -4984,7 +5006,7 @@ class PaginaPerformance:
             c.create_text(16, y, text=k.upper(), anchor="w", fill=C["muto"], font=F(7, True))
             c.create_text(190, y, text=v, anchor="w", fill=C["testo"], font=F(9))
             y += 24
-        c.create_rectangle(16, y + 4, 176, y + 28, fill="#303034", outline="")
+        c.create_rectangle(16, y + 4, 176, y + 28, fill="#1e2431", outline="")
         c.create_text(96, y + 16, text="See the board ›", fill="#ffffff", font=F(8, True))
         c._box.append((16, y + 4, 176, y + 28, ("vedi",)))
         y += 48
@@ -5097,7 +5119,7 @@ class PaginaPerformance:
             d_ = m["tenute"].get(terre, {})
             pl, dr = d_.get("Play", (0, 0)), d_.get("Draw", (0, 0))
             tot = (pl[0] + dr[0], pl[1] + dr[1])
-            c.create_rectangle(8, y, 800, y + 22, fill="#202024" if i % 2 == 0 else "#1c1c20", outline="")
+            c.create_rectangle(8, y, 800, y + 22, fill="#161b25" if i % 2 == 0 else "#131820", outline="")
             c.create_text(14, y + 11, text=f"{terre}{'+' if terre == 7 else ''}", anchor="w", fill=C["titolo"], font=F(8, True))
             for x, t, part in ((120, pl, "Play"), (300, dr, "Draw"), (480, tot, None)):
                 testo = f"{wr(t)}  ·  {t[0]} games" if t[0] else "-"
@@ -5116,7 +5138,7 @@ class PaginaPerformance:
         y += 16
         fmt = lambda v: "-" if v is None else f"{v:.0f}%"
         for i, w in enumerate(DEC.settimane(r)):
-            c.create_rectangle(8, y, 1000, y + 22, fill="#202024" if i % 2 == 0 else "#1c1c20", outline="")
+            c.create_rectangle(8, y, 1000, y + 22, fill="#161b25" if i % 2 == 0 else "#131820", outline="")
             for x, v in ((14, w["da"].strftime("%d %b")), (130, str(w["partite"])), (210, fmt(w["mull"])), (360, fmt(w["rischiose"])),
                          (500, fmt(w["wr_mull"]) + (f"  · {w['n_mull']} games" if w["n_mull"] else "")), (700, fmt(w["wr_sette"])), (900, fmt(w["wr"]))):
                 c.create_text(x, y + 11, text=v, anchor="w", fill=C["testo"], font=F(8))
@@ -5214,7 +5236,7 @@ class PaginaPerformance:
             y += 30
         y += 8
         for x0, testo, k in ((14, "All", "*"), (84, "None", "-")):
-            c.create_rectangle(x0, y, x0 + 60, y + 26, fill="#202024", outline="#3a3a40")
+            c.create_rectangle(x0, y, x0 + 60, y + 26, fill="#161b25", outline="#2a303b")
             c.create_text(x0 + 30, y + 13, text=testo, fill=C["titolo"], font=F(8, True))
             c._box.append((x0, y, x0 + 60, y + 26, k))
 
@@ -5379,8 +5401,8 @@ class PaginaPerformance:
             return
         h = self._hc = self.tk.Toplevel(c.winfo_toplevel())
         h.overrideredirect(True)
-        h.configure(bg="#101014")
-        self.tk.Label(h, image=img, bg="#101014", bd=0).pack(padx=2, pady=2)
+        h.configure(bg="#0b0e14")
+        self.tk.Label(h, image=img, bg="#0b0e14", bd=0).pack(padx=2, pady=2)
         self.metti_hover_carte(e)
 
     def metti_hover_carte(self, e):
@@ -5428,15 +5450,15 @@ class PaginaPerformance:
             k_ = DA.conti(r)
             tot = DA.conti([x for x in self.righe if x["tipo"] == tipo])
             on = tipo == self.tipo and fl == attuali
-            c.create_rectangle(0, y, W - 2, y + ALTO_MIO - 6, fill="#0f2a38" if on else ("#202024" if i % 2 == 0 else "#1c1c20"),
-                               outline=C["accento"] if on else "#2c2c32")
+            c.create_rectangle(0, y, W - 2, y + ALTO_MIO - 6, fill="#0e2238" if on else ("#161b25" if i % 2 == 0 else "#131820"),
+                               outline=C["accento"] if on else "#252b36")
             c.create_text(14, y + 16, text=corto(f"{tipo} · " + self.descrivi(fl, tipo), int((W - 640) / 6.4)), anchor="w", fill=C["titolo"], font=F(9, True))
             c.create_text(14, y + 36, text=f"{k_['n']} games · {k_['vinte']}-{k_['perse']}" + (f" · 95% CI {k_['ic'][0]}–{k_['ic'][1]}%" if k_["ic"] else ""),
                           anchor="w", fill=C["grigio"], font=F(7))
             xw = W - 600
             wr = k_["wr"]
             col = C["muto"] if wr is None else (C["azzurro"] if wr >= 50 else C["rosso"])
-            c.create_rectangle(xw, y + 20, xw + 140, y + 32, fill="#2c2c32", outline="")
+            c.create_rectangle(xw, y + 20, xw + 140, y + 32, fill="#252b36", outline="")
             if wr is not None:
                 c.create_rectangle(xw, y + 20, xw + 1.4 * wr, y + 32, fill=col, outline="")
             c.create_line(xw + 70, y + 16, xw + 70, y + 36, fill="#d8d8dc")
@@ -5470,7 +5492,7 @@ class PaginaPerformance:
                           fill=C["grigio"], font=F(8))
             y += 30
         for k, s_ in enumerate(sb):
-            c.create_rectangle(0, y, W - 2, y + 38, fill="#202024" if k % 2 == 0 else "#1c1c20", outline="#3a3220")
+            c.create_rectangle(0, y, W - 2, y + 38, fill="#161b25" if k % 2 == 0 else "#131820", outline="#3a3220")
             c.create_polygon(12, y + 10, 22, y + 10, 22, y + 28, 17, y + 23, 12, y + 28, fill="#ffd23f", outline="")
             quando = s_.get("quando", "")[:16].replace("T", " ")
             if s_.get("vivo"):     # R13: segnato mentre giocavi, la partita la dicono i log (se non c'e' ancora: «not in your logs yet»)

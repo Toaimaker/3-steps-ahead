@@ -38,6 +38,10 @@ class Tendina:
         W = max(c.winfo_width(), int(c.cget("width")) + 2) - 2
         H = int(c.cget("height"))
         x = 12
+        punto = self.__dict__.get("punto")      # un pallino di stato prima del testo (l'account nella barra in alto, redesign del 14 nov 2026)
+        if punto:
+            c.create_image(x + 3, H / 2, image=DG.punto(7, punto), anchor="center")
+            x += 14
         if self._img:
             c.create_image(x, H / 2, image=self._img, anchor="w")
             x += self._img.width() + 6
@@ -412,15 +416,15 @@ def conferma(tk, F, padre, titolo, testo, si, fa, colori=ROSSO_P, altro=None):
     dell'azione (rosso) e Cancel. Invio conferma, Esc o Cancel annullano; finche' e' aperta il resto della finestra non prende clic. altro: (testo, azione) un
     terzo pulsante fra i due (Don't save, quando si chiude con modifiche non salvate). -> la finestrella, con .si(), .no() e .altro() (anche per le prove)."""
     radice = padre.winfo_toplevel()
-    f = tk.Toplevel(radice); f.overrideredirect(True); f.configure(bg="#24baff")
+    f = tk.Toplevel(radice); f.overrideredirect(True); f.configure(bg="#2f9bff")
     try:
         f.transient(radice)
     except tk.TclError:
         pass
-    dentro = tk.Frame(f, bg="#202024"); dentro.pack(padx=1, pady=1)
-    tk.Label(dentro, text=titolo, bg="#202024", fg="#ffffff", font=F(11, True), anchor="w").pack(fill="x", padx=18, pady=(16, 4))
-    tk.Label(dentro, text=testo, bg="#202024", fg="#bebec2", font=F(9), anchor="w", justify="left", wraplength=360).pack(fill="x", padx=18, pady=(0, 14))
-    riga = tk.Frame(dentro, bg="#202024"); riga.pack(fill="x", padx=18, pady=(0, 16))
+    dentro = tk.Frame(f, bg="#161b25"); dentro.pack(padx=1, pady=1)
+    tk.Label(dentro, text=titolo, bg="#161b25", fg="#ffffff", font=F(11, True), anchor="w").pack(fill="x", padx=18, pady=(16, 4))
+    tk.Label(dentro, text=testo, bg="#161b25", fg="#d7dce5", font=F(9), anchor="w", justify="left", wraplength=360).pack(fill="x", padx=18, pady=(0, 14))
+    riga = tk.Frame(dentro, bg="#161b25"); riga.pack(fill="x", padx=18, pady=(0, 16))
     fatto = {"v": False}
 
     def chiudi():
@@ -441,7 +445,7 @@ def conferma(tk, F, padre, titolo, testo, si, fa, colori=ROSSO_P, altro=None):
     def no(_e=None):
         fatto["v"] = True
         chiudi()
-    b_no = pulsante_solido(tk, F, riga, "Cancel", False, no, alto=32, bg="#202024", colori=("#3a3a40", "#4a4a52", "#2c2c30"))
+    b_no = pulsante_solido(tk, F, riga, "Cancel", False, no, alto=32, bg="#161b25", colori=("#3a3a40", "#4a4a52", "#2c2c30"))
     b_no.configure(width=110); b_no.pack(side="right")
 
     def terzo(_e=None):
@@ -451,9 +455,9 @@ def conferma(tk, F, padre, titolo, testo, si, fa, colori=ROSSO_P, altro=None):
         chiudi()
         altro[1]()
     if altro:
-        b_al = pulsante_solido(tk, F, riga, altro[0], False, terzo, alto=32, bg="#202024", colori=("#3a3a40", "#4a4a52", "#2c2c30"))
+        b_al = pulsante_solido(tk, F, riga, altro[0], False, terzo, alto=32, bg="#161b25", colori=("#3a3a40", "#4a4a52", "#2c2c30"))
         b_al.configure(width=110); b_al.pack(side="right", padx=(0, 8))
-    b_si = pulsante_solido(tk, F, riga, si, False, ok, alto=32, bg="#202024", colori=colori)
+    b_si = pulsante_solido(tk, F, riga, si, False, ok, alto=32, bg="#161b25", colori=colori)
     b_si.configure(width=110); b_si.pack(side="right", padx=(0, 8))
     f.bind("<Return>", ok); f.bind("<Escape>", no)
     f.update_idletasks()

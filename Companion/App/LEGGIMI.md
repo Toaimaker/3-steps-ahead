@@ -72,6 +72,20 @@ I registri delle pagine dei mazzi stanno su `FinestraMazzo`: `IN_VISTA` (chi ha 
    moduli che non si trovano, nomi doppi; esce 1) e `py -I -X utf8 Companion/Strumenti/prove_app.py` (tutte le prove
    dell'app; esce 1 su un rosso). Il controllo ha la sua prova negativa: `controllo_codice.py --prova`.
 
+## Lo stile: il redesign del 14 nov 2026
+
+Mockup approvati e regole in `Note/Redesign_Grafico/LEGGIMI.md` (solo lo stile cambia: niente perso, sostituito o aggiunto; i loghi veri di `Companion/Grafica/`).
+- **I colori stanno in `Comune/tema.py`**: `CI` ha le chiavi di sempre coi valori nuovi (fondi blu notte da #090b0f, testo #d7dce5, secondario #9099a8 e
+  #5f6878, accento #2f9bff, vinto #3ccf8e, perso #ff5d63); `RD` i toni in piu' (`p0`-`p3` le facce dei pannelli, `luce` il filo in cima, `filo2` i bordi,
+  `campo` le tendine). Un pezzo nuovo prende i colori da li', mai un esadecimale scritto a mano. I colori dei pulsanti (stile S3) e quelli scelti da Autore
+  (le linee del Board, `rete_sinergie.COLORI`; il tappeto del replayer) restano dove sono.
+- **I font**: il testo in Segoe UI (`tema.famiglie()`, la `F` della finestra), i numeri grandi in Bahnschrift (`tema.FN(misura)`); dove non ci sono (Mac) il
+  Poppins di prima. `disegni.numero(c, x, y, "48%", colore, misura)` scrive un numero col «%» piu' piccolo, su una tela o una `CartaTela`.
+- **Le forme a 4x** (`Comune/disegni.py`): `pannello`/`foto_pannello` (sfumatura dall'alto, filo di luce, bordo, angoli tondi, ombra e bagliore se chiesti),
+  `puntini` (il foglio del Board), `freccia_destra` e `chevron` (le sezioni). `tela_gpu` conosce Segoe UI, Segoe UI Semibold e Bahnschrift.
+- La barra in alto e' una: logo e nome, le linguette con la riga azzurra sotto quella aperta, l'account col pallino verde (l'unica aggiunta approvata), il
+  saldo coi loghi veri e i numeri in Bahnschrift.
+
 ## Le prove
 
 | Comando | Cosa prova |

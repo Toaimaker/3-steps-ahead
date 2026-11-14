@@ -15,6 +15,7 @@ import collections, threading, webbrowser, zlib
 import capsule as CAP
 import collezione_carte as CC
 import social as SO
+from tema import FN  # noqa: E402  (i numeri e i nomi in Bahnschrift, redesign del 14 nov 2026)
 
 LARGA, LATO, RIGA, GRUPPO = 268, 60, 46, 26
 TINTE = ("#2f6f9f", "#7a4fa3", "#3d8a5f", "#a3573d", "#8a7a3d", "#a33d6b", "#3d8a8a", "#5a64a8")
@@ -48,7 +49,7 @@ class ColonnaSocial:
         self.cv_av = tk.Canvas(b, width=LATO, height=LATO, bg=P["scheda"], highlightthickness=0, cursor="hand2"); self.cv_av.pack(side="left")
         self.cv_av.bind("<Button-1>", lambda e: self.apri(self.f_av))
         t = tk.Frame(b, bg=P["scheda"]); t.pack(side="left", fill="x", expand=True, padx=(10, 0))
-        self.l_nome = tk.Label(t, text=self.d.profilo["nome"], bg=P["scheda"], fg=P["acciaio"], font=F(12, True), anchor="w", pady=0); self.l_nome.pack(fill="x")
+        self.l_nome = tk.Label(t, text=self.d.profilo["nome"], bg=P["scheda"], fg=P["titolo"], font=FN(15), anchor="w", pady=0); self.l_nome.pack(fill="x")
         self.l_stato = tk.Label(t, text="", bg=P["scheda"], fg=P["grigio"], font=F(8), anchor="w", pady=0); self.l_stato.pack(fill="x")
         self.ranghi = {}
         g = tk.Frame(self.fr, bg=P["scheda"]); g.pack(fill="x", padx=12, pady=(0, 8))
@@ -120,7 +121,7 @@ class ColonnaSocial:
                 self.img = None
         if self.img is None:
             cv.create_rectangle(0, 0, LATO - 1, LATO - 1, fill=self.tinta(v["nome"]), outline="")
-            cv.create_text(LATO / 2, LATO / 2, text=v["nome"][:1].upper(), fill="#ffffff", font=self.F(20, True))
+            cv.create_text(LATO / 2, LATO / 2, text=v["nome"][:1].upper(), fill="#ffffff", font=FN(22))
         cv.create_rectangle(0, LATO - 4, LATO, LATO, fill=P["verde"], outline="")
         # niente win rate nella colonna social (Autore, 10 nov 2026: «dalla barra social togli il % win rate»): le partite si'
         self.l_stato.configure(text=f"{v['partite']:,} games" if v.get("partite") else "")

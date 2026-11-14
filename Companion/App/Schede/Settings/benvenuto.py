@@ -22,7 +22,7 @@ import webbrowser  # noqa: E402
 import disegni as DG  # noqa: E402
 import pagina_settings as PS  # noqa: E402
 from ambiente import ASSET, PRODOTTO  # noqa: E402
-from tema import CI as C  # noqa: E402
+from tema import CI as C, FN  # noqa: E402
 
 LARGA, ALTA = 700, 560
 PASSI = ("Arena", "Data sharing", "Collection", "Ready")
@@ -182,7 +182,7 @@ class Benvenuto:
         self.box = []
         if self.logo:
             c.create_image(32, 34, image=self.logo, anchor="w")
-        c.create_text(84, 26, text=f"Welcome to {PRODOTTO}", anchor="w", fill=C["titolo"], font=F(15, True))
+        c.create_text(84, 26, text=f"Welcome to {PRODOTTO}", anchor="w", fill=C["titolo"], font=FN(17))
         c.create_text(84, 50, text="Four steps and you're in: what to do in Arena, what the app shares, your collection, how to use it.", anchor="w",
                       fill=C["grigio"], font=F(9))
         # i passi: i pallini e le linee fra loro
@@ -204,7 +204,7 @@ class Benvenuto:
 
     def disegna_arena(self):
         c, F = self.c, self.F
-        c.create_text(32, 176, text="Arena: turn on Detailed Logs", anchor="w", fill=C["titolo"], font=F(20, True))
+        c.create_text(32, 176, text="Arena: turn on Detailed Logs", anchor="w", fill=C["titolo"], font=FN(22))
         c.create_text(32, 206, text="Without it, Arena's log has no games, decks or hands: the app would see almost nothing.",
                       anchor="w", fill=C["testo"], font=F(10))
         c.create_image(32, 226, image=_riquadro(LARGA - 64, 140, C["filo"], C["scheda"], 1.2), anchor="nw")
@@ -227,7 +227,7 @@ class Benvenuto:
 
     def disegna_pronto(self):
         c, F = self.c, self.F
-        c.create_text(32, 176, text="You're ready", anchor="w", fill=C["titolo"], font=F(20, True))
+        c.create_text(32, 176, text="You're ready", anchor="w", fill=C["titolo"], font=FN(22))
         c.create_text(32, 206, text="How to get the most out of the app:", anchor="w", fill=C["testo"], font=F(10))
         righe = (("Keep the app open while you play.", "Arena overwrites its log at every start: the app saves each finished game within 30 s."),
                  ("Everything fills in by itself.", "Meta, Your decks, Performance, Resources and Collection read your games, no import needed."),
@@ -242,7 +242,7 @@ class Benvenuto:
 
     def disegna_condivisione(self):
         c, F = self.c, self.F
-        c.create_text(32, 176, text="Data sharing", anchor="w", fill=C["titolo"], font=F(20, True))
+        c.create_text(32, 176, text="Data sharing", anchor="w", fill=C["titolo"], font=FN(22))
         c.create_text(32, 206, text="We recommend sharing: it gives you the best, most complete experience. Pick one to continue.", anchor="w",
                       fill=C["testo"], font=F(10))
         c.create_text(32, 448, text="Either way the app works the same, and you can change it any time in Settings.", anchor="w",
@@ -274,7 +274,7 @@ class Benvenuto:
 
     def disegna_collezione(self):
         c, F = self.c, self.F
-        c.create_text(32, 176, text="Your collection", anchor="w", fill=C["titolo"], font=F(20, True))
+        c.create_text(32, 176, text="Your collection", anchor="w", fill=C["titolo"], font=FN(22))
         c.create_text(32, 206, text="Link your Untapped.gg profile: Arena's log does not list every card you own, your public profile does.", anchor="w",
                       fill=C["testo"], font=F(10))
         c.create_image(32, 232, image=_riquadro(LARGA - 64, 200, C["verde"] if self.collegato else C["filo"], C["scheda"], 1.4), anchor="nw")

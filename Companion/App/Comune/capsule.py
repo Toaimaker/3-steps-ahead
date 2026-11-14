@@ -71,6 +71,8 @@ def contesto():
 
 COLORI = dict(W="#94896a", U="#1d6cae", B="#3b3644", R="#b23a29", G="#2c7a48", C="#5f646e")
 LARGA_COPIE = 36              # la scatola delle copie
+# il redesign del 14 nov 2026 (Note/Redesign_Grafico): le righe delle liste sono scure, col filo del colore della carta a sinistra e il numero in un riquadro
+STRISCIA = dict(W="#d8c99a", U="#3b8fe0", B="#8a7fa0", R="#e0553f", G="#45b06e", C="#8d939c")
 INIZIO = 30                   # la capsula comincia qui, sopra la scatola
 ALTO_TESTATA = 62
 GILDE = dict(WU="Azorius", UB="Dimir", BR="Rakdos", RG="Gruul", WG="Selesnya", WB="Orzhov", UR="Izzet", BG="Golgari", WR="Boros", UG="Simic")
@@ -278,7 +280,7 @@ def cuoci(nome, sorgente=None):
     im = Image.open(sorgente or file_immagine(nome)).convert("RGB").resize((LARGA_CARTA, ALTA_CARTA), Image.LANCZOS)
     m = Image.new("L", (LARGA_CARTA * 3, ALTA_CARTA * 3), 0)
     ImageDraw.Draw(m).rounded_rectangle((0, 0, m.width - 1, m.height - 1), radius=30, fill=255)
-    z = Image.new("RGB", im.size, "#18181c")
+    z = Image.new("RGB", im.size, "#10141b")
     z.paste(im, (0, 0), m.resize(im.size, Image.LANCZOS))
     f = file_mini(nome)
     tmp = f"{f}.{threading.get_ident()}.tmp"
@@ -301,7 +303,7 @@ def cover_mazzo(arte, L, H):
     if os.path.exists(f):
         return f
     os.makedirs(os.path.dirname(f), exist_ok=True)
-    im = Image.new("RGB", (L, H), "#202024")
+    im = Image.new("RGB", (L, H), "#161b25")
     if arte and os.path.exists(file_immagine(arte, True)):
         from account import ASPETTO_PUBBLICO as PUBBLICA
         h = H - FASCIA_ARTE if PUBBLICA else H       # nell'app pubblica sotto l'arte la riga con l'artista e il copyright, fuori dall'illustrazione
@@ -313,7 +315,7 @@ def cover_mazzo(arte, L, H):
         if PUBBLICA:
             from PIL import ImageDraw, ImageFont
             d = ImageDraw.Draw(im)
-            d.rectangle((0, h, L, H), fill="#18181c")
+            d.rectangle((0, h, L, H), fill="#10141b")
             chi = artista(arte)
             testo = (f"Art: {chi} · " if chi else "") + "© Wizards of the Coast"
             try:
@@ -473,6 +475,27 @@ class Liste:
             self.fondi[k] = self.tk.PhotoImage(data=base64.b64encode(buf.getvalue()))
         return self.fondi[k]
 
+    def riga_scura(self, w, colori, spenta):
+        """La riga del redesign (14 nov 2026), larga w: fondo scuro con la sfumatura appena percettibile, il filo di luce in cima, il bordo sottile, a sinistra
+        il filo nel colore della carta (due colori: dall'alto al basso) e il riquadro del numero delle copie. Una volta per misura e colori."""
+        k = ("scura", w, colori, spenta, self.alto)
+        if k not in self.fondi:
+            from PIL import Image, ImageDraw
+            import disegni as DG
+            H = self.alto
+            im = DG.pannello(w, H, "#1a2030" if not spenta else "#12161e", "#121722" if not spenta else "#0d1016", "#262d3a", luce="#2a3242" if not spenta else None,
+                             raggio=3)
+            d = ImageDraw.Draw(im)
+            a, b = (colori[0], colori[-1]) if colori else ("C", "C")
+            ca, cb = (DG._rgba(STRISCIA["C" if spenta else x]) for x in (a, b))
+            for y in range(1, H - 1):       # il filo del colore, 3 pixel, dentro il bordo
+                t = (y - 1) / max(1, H - 3)
+                d.line(((1, y), (3, y)), fill=tuple(round(p + (q - p) * t) for p, q in zip(ca, cb)))
+            d.rectangle((7, 3, INIZIO - 3, H - 4), fill=(11, 14, 20, 255), outline=(42, 48, 59, 255))      # il riquadro del numero
+            buf = io.BytesIO(); im.save(buf, "PNG")
+            self.fondi[k] = self.tk.PhotoImage(data=base64.b64encode(buf.getvalue()))
+        return self.fondi[k]
+
     def scatola(self):
         """La scatola scura delle copie: la capsula la copre a destra."""
         if ("scatola", self.alto) not in self.fondi:
@@ -532,7 +555,7 @@ class Liste:
             L, H = w * S, alto * S
             # (11 nov 2026: 20-40 ms per testata, rifatta a ogni mazzo nuovo; ora ~8. Il fondo e la sfumatura si fanno da una riga di pixel, non riga per riga e
             # pixel per pixel; l'arte si riduce col Lanczos dentro il ritaglio; l'ultima riduzione e' un 2:1 esatto, box)
-            col = Image.frombytes("RGBA", (1, H), bytes(v for y in range(H) for g in (44 - int(26 * y / (H - 1)),) for v in (g, g, g + 8, 255)))
+            col = Image.frombytes("RGBA", (1, H), bytes(v for y in range(H) for g in (30 - int(16 * y / (H - 1)),) for v in (g - 4, g, g + 12, 255)))      # blu notte (redesign del 14 nov 2026)
             im = col.resize((L, H), Image.NEAREST)
             if c_e:
                 try:
@@ -550,7 +573,7 @@ class Liste:
                     im.alpha_composite(velo)
                 except Exception:
                     pass
-            ImageDraw.Draw(im).rounded_rectangle((0, 0, L - 1, H - 1), radius=5 * S, outline=(100, 100, 112, 255), width=S)
+            ImageDraw.Draw(im).rounded_rectangle((0, 0, L - 1, H - 1), radius=5 * S, outline=(42, 48, 59, 255), width=S)
             m = Image.new("L", (L, H), 0); ImageDraw.Draw(m).rounded_rectangle((0, 0, L - 1, H - 1), radius=5 * S, fill=255)
             im.putalpha(m)
             im = im.resize((w, alto), Image.LANCZOS)
@@ -579,7 +602,8 @@ class Liste:
         """La testata del mazzo come in Arena: arte, nome, «40/40 Cards» coi colori, a destra la curva di mana."""
         tk = self.tk
         c = tk.Canvas(padre, height=ALTO_TESTATA, bg=bg, highlightthickness=0, bd=0)
-        font = self.F(11, True)
+        from tema import FN
+        font = FN(14)       # il nome del mazzo in Bahnschrift (redesign del 14 nov 2026)
 
         def disegna(e=None):
             w = c.winfo_width()
@@ -587,17 +611,31 @@ class Liste:
                 return
             c.delete("all")
             c.create_image(0, 0, image=self.fondo_testata(w, arte), anchor="nw")
-            passo, largo = 9, 7                   # la curva: tubi neri con dentro l'oro
-            x0 = w - 9 - passo * len(valori_curva) + (passo - largo)
-            cima, base = 10, ALTO_TESTATA - 10
+            # la curva di mana del redesign (14 nov 2026): barre azzurre col numero sopra e il costo sotto, in un riquadro semitrasparente come l'HUD del Board;
+            # fino a quel giorno tubi neri con dentro l'oro
+            from tema import FN
+            passo, largo = 16, 10
+            bw = passo * len(valori_curva) + 10
+            x0 = w - 6 - bw
+            k_r = ("riquadro_curva", bw, ALTO_TESTATA - 8)
+            if k_r not in self.fondi:
+                import disegni as DG
+                d_ = DG.Disegno(bw, ALTO_TESTATA - 8)
+                d_.rett(0, 0, bw, ALTO_TESTATA - 8, riempi=(6, 8, 12, 150), bordo=(255, 255, 255, 30), raggio=4)
+                self.fondi[k_r] = d_.foto()
+            c.create_image(x0, 4, image=self.fondi[k_r], anchor="nw")
+            cima, base = 17, ALTO_TESTATA - 17
             mx = max(valori_curva) or 1
             for i, q in enumerate(valori_curva):
-                x = x0 + i * passo
-                c.create_rectangle(x, cima, x + largo, base, fill="#07070b", outline="#4a4a52")
+                x = x0 + 5 + i * passo + (passo - largo) / 2
                 if q:
-                    h = max(3, round((base - cima - 2) * q / mx))
-                    c.create_rectangle(x + 1, base - h, x + largo, base, fill="#d9a441", outline="")
-                    c.create_rectangle(x + 1, base - h, x + 2, base, fill="#f6d98c", outline="")
+                    h = max(2, round((base - cima) * q / mx))
+                    c.create_rectangle(x, base - h, x + largo, base, fill="#2f9bff", outline="")
+                    c.create_rectangle(x, base - h, x + largo, base - h + 1, fill="#7cc0ff", outline="")
+                    c.create_text(x + largo / 2, base - h - 1, text=str(q), anchor="s", fill="#d7dce5", font=FN(7, False))
+                else:
+                    c.create_line(x, base, x + largo, base, fill="#3a4250")
+                c.create_text(x + largo / 2, base + 2, text=str(i + 1) if i < len(valori_curva) - 1 else f"{i + 1}+", anchor="n", fill="#7a8394", font=FN(7, False))
             t = self.taglia(nome, x0 - 18, self.misura_t)
             for dx, dy in ((1, 1), (1, 2), (0, 1), (2, 1)):
                 c.create_text(10 + dx, 21 + dy, text=t, anchor="w", fill="#000000", font=font)
@@ -666,11 +704,11 @@ class Liste:
         fuori = max(self.misura_di(colonna), self.misura_di(destra)) + 8 if (destra or colonna) else 1
         larga = max(40, w - INIZIO - fuori)
         c.larga = larga
-        c.create_image(0, 0, image=self.scatola(), anchor="nw")
-        # il numero delle copie si deve leggere subito (Autore, 5 nov 2026: «il numero copie a sx un po' piu' leggibile»)
-        c.create_text(16, self.alto / 2 + 1, text=testo_c, fill="#000000", font=self.F(10 if self.alto >= ALTO else 8, True))
-        c.create_text(15, self.alto / 2, text=testo_c, fill="#8a8a90" if spenta else "#ffffff", font=self.F(10 if self.alto >= ALTO else 8, True))
-        c.create_image(INIZIO, 0, image=self.fondo(larga, colori, spenta), anchor="nw")
+        # la riga scura del redesign (14 nov 2026): il numero delle copie nel suo riquadro, si legge subito (Autore, 5 nov 2026: «il numero copie a sx un po'
+        # piu' leggibile»); fino a quel giorno la scatola scura e la capsula a due colori sfumati (fondo, scatola restano per chi le chiede)
+        c.create_image(0, 0, image=self.riga_scura(INIZIO + larga, colori, spenta), anchor="nw")
+        from tema import FN
+        c.create_text((7 + INIZIO - 3) / 2 + 1, self.alto / 2, text=testo_c, fill="#7a8394" if spenta else "#ffffff", font=FN(10 if self.alto >= ALTO else 9))
         x = INIZIO + larga - 9
         for t in reversed(toks):
             img = self.simbolo(t, 15 if self.alto >= ALTO else 14)
@@ -678,12 +716,12 @@ class Liste:
                 c.create_image(x, self.alto / 2, image=img, anchor="e"); x -= 16
         t = self.taglia(nome, x - INIZIO - 14)
         tx = INIZIO + 11
-        # lieve grassetto e ombretta sotto (Autore, 5 nov 2026: «i testi sulle carte con un lieve grassetto e ombretta sotto per vederli meglio»)
-        for dx, dy in ((1, 2), (1, 1), (0, 1)):
-            c.create_text(tx + dx, self.alto / 2 + dy, text=t, anchor="w", fill="#0a0c12", font=font)
-        c.create_text(tx, self.alto / 2, text=t, anchor="w", fill="#a7a9ad" if spenta else "#ffffff", font=font)
+        # lieve grassetto e ombretta sotto (Autore, 5 nov 2026: «i testi sulle carte con un lieve grassetto e ombretta sotto per vederli meglio»); sul fondo
+        # scuro del redesign l'ombra resta un pixel
+        c.create_text(tx, self.alto / 2 + 1, text=t, anchor="w", fill="#05070a", font=font)
+        c.create_text(tx, self.alto / 2, text=t, anchor="w", fill="#7a8394" if spenta else "#e8ecf2", font=font)
         if destra:
-            c.create_text(w - 1, self.alto / 2, text=destra, anchor="e", fill="#707074" if spenta else col_destra, font=self.F(8, True))
+            c.create_text(w - 1, self.alto / 2, text=destra, anchor="e", fill="#5f6878" if spenta else col_destra, font=self.F(8, True))
 
     def riga(self, padre, nome, quante=1, destra="", spenta=False, bg="#18181c", col_destra="#ffffff", copie=None, colonna=""):
         """Una capsula. quante: le copie, nella scatola a sinistra come «3x»; copie: un testo al suo posto (2/3 durante la partita); destra: un testo fuori, a destra.
@@ -785,7 +823,7 @@ class Liste:
         colore = ROSSO_BAN if bandita else "#6e6e74" if spenta else "#e6e6ea"
         c.create_text(LARGA_CARTA / 2, ALTA_CARTA + SOTTO_CARTA / 2, text=sotto, fill=colore, font=self.F(11, True),
                       tags="sotto")     # «x1 x2 ecc e piu' visibile», stesso giorno
-        c.create_rectangle(1, 1, LARGA_CARTA - 1, ALTA_CARTA - 1, fill="#202024", outline="#3a3a42")
+        c.create_rectangle(1, 1, LARGA_CARTA - 1, ALTA_CARTA - 1, fill="#161b25", outline="#2c3340")
         c.create_text(LARGA_CARTA / 2, ALTA_CARTA / 2, text=nome, width=LARGA_CARTA - 30, fill="#a7a9ad", font=self.F(9, True), justify="center")
         c.bind("<Enter>", lambda e: self.entra(c, nome)); c.bind("<Leave>", self.esci); c.bind("<Destroy>", self.esci, add="+")
         if nome not in self.piene and os.path.exists(file_mini(nome)):
@@ -942,9 +980,9 @@ class Liste:
         p = self.pop = self.tk.Toplevel(top)
         p.withdraw()
         p.overrideredirect(True)
-        p.configure(bg="#101014")
+        p.configure(bg="#0b0e14")
         # l'immagine e i dati su una tela sola (11 nov 2026, sessione Magic 13): prima un'etichetta per l'immagine e una per ogni dato, 20-40 widget a ogni hover
-        cv = self.tk.Canvas(p, bg="#101014", highlightthickness=0, bd=0); cv.pack()
+        cv = self.tk.Canvas(p, bg="#0b0e14", highlightthickness=0, bd=0); cv.pack()
         self.disegna_hover(cv, img, self.schede.get(nome), metadati(nome) if self.dati_hover else None)
         p.update_idletasks()
         # il mouse puo' essere gia' uscito mentre la scheda si costruiva: esci() l'ha distrutta (8 nov 2026, «bad window path name» nel registro della finestra)
@@ -969,7 +1007,7 @@ class Liste:
         minidati a sx delle carte li mettiamo sulla scheda della carta quando appare»); righe: la tabella del draft, i nomi sopra con un colore ciascuno
         (Autore, 5 nov 2026: «i titoletti piu' grandi e di colori differenti»), una riga per formato."""
         import tabella_tela as TT
-        fondo, W = "#18181c", img.width()
+        fondo, W = "#10141b", img.width()
         cv.create_image(0, 0, image=img, anchor="nw")
         y = img.height()
         tinte = ("#24baff", "#5cb85c", "#f0ad4e", "#c792ea", "#ffffff")

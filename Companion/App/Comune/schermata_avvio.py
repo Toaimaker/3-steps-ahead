@@ -14,7 +14,7 @@ if _casa not in sys.path:
 import percorsi  # noqa: E402,F401
 
 LARGA, ALTA = 520, 300
-FONDO, BORDO, TITOLO, TESTO, GRIGIO, ACCENTO, TRACCIA = "#101014", "#303034", "#ffffff", "#bebec2", "#7a7a80", "#24baff", "#202024"
+FONDO, BORDO, TITOLO, TESTO, GRIGIO, ACCENTO, TRACCIA = "#0b0e14", "#1e2431", "#ffffff", "#d7dce5", "#7a7a80", "#2f9bff", "#161b25"
 
 
 def centro(schermo, larga=LARGA, alta=ALTA):

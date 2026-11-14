@@ -16,7 +16,7 @@ import mazzi_salvati as MS
 import dati_grafici as DGR
 from icone import icona_set, nome_set
 from vista_grafici import VistaGrafici
-from tema import CI as C, PERSA, VINTA
+from tema import CI as C, FN, PERSA, RD, VINTA
 from widget import PulsanteVista, Tendina
 
 # la pagina senza dati: nell'app pubblica non c'e' il meta di terzi (Untapped e MTGGoldfish vietano di ridistribuirlo, Distribuzione/Business_Model.md
@@ -306,7 +306,7 @@ class PaginaMeta(PaginaMazzi):
 
         def disegna():
             c.delete("all")
-            c.create_rectangle(0, 0, L - 1, H - 1, fill=C["fondo"], outline=C["filo"], tags="corpo")
+            c.create_rectangle(0, 0, L - 1, H - 1, fill=RD["p0"], outline=RD["filo2"], tags="corpo")      # i colori del redesign del 14 nov 2026
             f = CAP.file_cover(m["arte"], *self.COVER) if m["arte"] else None
             if f and os.path.exists(f):
                 if f not in self.foto:
@@ -316,7 +316,7 @@ class PaginaMeta(PaginaMazzi):
             elif m["arte"]:
                 self.cuoci(m, disegna)
             alto = self.COVER[1] + 1
-            c.create_line(0, alto, L, alto, fill=C["filo"])
+            c.create_line(0, alto, L, alto, fill=RD["filo2"])
             x, dx_ = 14, L - 14
             y = alto + 20
             sx = x
@@ -329,9 +329,9 @@ class PaginaMeta(PaginaMazzi):
             prezzo = PZ.euro(m["eur"]) if m.get("eur") else ""        # il prezzo di carta accanto al posto
             c.create_text(dx_, y, text=f"#{m['posto']}" + (f"  ·  {prezzo}" if prezzo else ""), anchor="e", fill=C["grigio"], font=F(8, True))
             nome = m["nome"] if len(m["nome"]) <= 30 else m["nome"][:29] + "…"
-            c.create_text(x, y + 22, text=nome, anchor="w", fill=C["titolo"], font=F(11, True))
+            c.create_text(x, y + 22, text=nome, anchor="w", fill=C["titolo"], font=FN(14))
             y0 = y + 42
-            c.create_line(x, y0, dx_, y0, fill=C["filo"])
+            c.create_line(x, y0, dx_, y0, fill=RD["filo2"])
             if m.get("wr") is not None:
                 secondo = ("WIN RATE", f"{m['wr']:.1f}%", VINTA if m["wr"] >= 50 else PERSA)
             elif m.get("forza"):
@@ -345,15 +345,15 @@ class PaginaMeta(PaginaMazzi):
             # grandi e tutto proporzionato anche al pulsante»)
             for xc, (t, v, col) in zip((x, x + 0.31 * (dx_ - x)), (("META", f"{m['quota']:.1f}%", C["accento"]), secondo)):
                 c.create_text(xc, H - 52, text=t, anchor="w", fill=C["muto"], font=F(7, True))
-                c.create_text(xc, H - 27, text=v, anchor="w", fill=col, font=F(15, True))
+                DG.numero(c, xc, H - 27, v, col, 18)      # Bahnschrift, il % piu' piccolo (redesign del 14 nov 2026)
             self.pulsante_scheda(c, dx_, H, "View deck")
             c.in_wish = None        # la wishlist si rilegge a ogni disegno della scheda, non a ogni movimento del mouse
             self.metti_stella(c, m, 0)
         disegna()
         if m["arte"]:
             self.lista.chiedi_arte(c, m["arte"], disegna)
-        c.bind("<Enter>", lambda e: c.itemconfigure("corpo", fill=C["cap"], outline=C["accento"]))
-        c.bind("<Leave>", lambda e: (c.itemconfigure("corpo", fill=C["fondo"], outline=C["filo"]), self.metti_stella(c, m, 0)))
+        c.bind("<Enter>", lambda e: c.itemconfigure("corpo", fill=RD["p1"], outline=C["accento"]))
+        c.bind("<Leave>", lambda e: (c.itemconfigure("corpo", fill=RD["p0"], outline=RD["filo2"]), self.metti_stella(c, m, 0)))
         c.bind("<Motion>", lambda e: self.metti_stella(c, m, 1 if self.su_stella(e) else 0))
 
         def clic(e):

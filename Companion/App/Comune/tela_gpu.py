@@ -33,7 +33,9 @@ _FONT_PIL = {}          # (file, pixel) -> il font di PIL, caricato una volta
 _GIRO = {"id": None, "root": None}
 GRAFICA = os.path.join(percorsi.ROOT, "Companion", "Grafica")
 FONT = {"Poppins Medium": os.path.join(GRAFICA, "Poppins-Medium.ttf"), "Poppins": os.path.join(GRAFICA, "Poppins-Regular.ttf"),
-        "Segoe UI": r"C:\Windows\Fonts\segoeui.ttf"}
+        "Segoe UI": r"C:\Windows\Fonts\segoeui.ttf", "Segoe UI Semibold": r"C:\Windows\Fonts\seguisb.ttf",
+        "Bahnschrift": r"C:\Windows\Fontsahnschrift.ttf", "Bahnschrift SemiBold": r"C:\Windows\Fontsahnschrift.ttf"}       # i font del redesign (14 nov 2026)
+VARIANTE = {"Bahnschrift SemiBold": b"SemiBold", "Bahnschrift": b"Regular"}      # Bahnschrift e' un font variabile: la sua istanza
 VSYNC = os.environ.get("TELA_VSYNC", "1") == "1"      # i fotogrammi al ritmo del monitor: niente strappi; TELA_VSYNC=0 per misurare il costo vero
 CURSORI = {"fleur": "size", "hand2": "hand", "sb_v_double_arrow": "size_up_down", "": None, None: None}
 
@@ -638,13 +640,20 @@ class TelaGPU:
         file_ = FONT.get(fam) or FONT["Segoe UI"]
         if grassetto and fam == "Poppins":
             file_ = FONT["Poppins Medium"]
-        f = _FONT_PIL.get((file_, max(6, px)))
+        elif grassetto and fam == "Segoe UI":
+            file_ = FONT["Segoe UI Semibold"]
+        var_ = VARIANTE.get(fam)
+        f = _FONT_PIL.get((file_, max(6, px), var_))
         if f is None:
             try:
                 f = ImageFont.truetype(file_, max(6, px))
+                if var_:
+                    f.set_variation_by_name(var_)
             except OSError:
                 f = ImageFont.load_default()
-            _FONT_PIL[(file_, max(6, px))] = f
+            except Exception:       # noqa: BLE001 - un PIL senza le varianti: l'istanza di partenza
+                pass
+            _FONT_PIL[(file_, max(6, px), var_)] = f
         testo = str(o.get("text", ""))
         larg = o.get("width")
         righe = []

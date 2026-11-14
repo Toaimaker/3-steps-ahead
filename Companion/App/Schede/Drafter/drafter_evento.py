@@ -19,7 +19,7 @@ import disegni as DG
 
 from ambiente import DIARIO_FISSO, LOGDIR, PY_MUTO, ROOT
 from diario import processo_vivo
-from tema import CI
+from tema import CI, FN
 
 
 class DrafterEvento:
@@ -285,7 +285,7 @@ class DrafterEvento:
         x = L - 12
         if w is not None and w + l:
             wr = round(100 * w / (w + l))
-            scritta(L - 12, 34, f"{wr}%", "e", CI["verde_t"] if wr >= 50 else CI["rosso_t"], self.F(15, True))
+            scritta(L - 12, 34, f"{wr}%", "e", CI["verde_t"] if wr >= 50 else CI["rosso_t"], FN(18))
             scritta(L - 12, 57, f"{w} won, {l} lost", "e", "#d2d2d6", self.F(8))
             x -= 86
         for k in reversed(self.stato["draft_colori"] or ""):

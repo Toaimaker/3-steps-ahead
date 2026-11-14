@@ -12,7 +12,7 @@ import prezzi_carte as PZ
 from dati_app import BASI, COL_RARITA, NOMI_RARITA, _PREZZI_AGGIORNATI, collezione, collezione_nota, craft, jolly, rarita_nome, saldo_partite
 from dati_meta import FORMATI_META, meta_mazzi
 from icone import icona_azione, icona_jolly
-from tema import CI as C, PERSA, VINTA
+from tema import CI as C, FN, PERSA, VINTA
 
 
 _RADAR = {}       # (lato, assi) -> l'immagine del grafo dell'archetipo
@@ -217,7 +217,7 @@ class SchedaMazzo:
         # la testata: colori e nome, a destra le azioni
         cap = tk.Frame(dentro, bg=C["cap"]); cap.pack(fill="x")
         self.mana_label(cap, colori, C["cap"]).pack(side="left", padx=(12, 8), pady=10)
-        tk.Label(cap, text=nome, bg=C["cap"], fg=C["titolo"], font=F(14, True)).pack(side="left")
+        tk.Label(cap, text=nome, bg=C["cap"], fg=C["titolo"], font=FN(17)).pack(side="left")      # Bahnschrift (redesign del 14 nov 2026)
         tk.Frame(dentro, bg=C["filo"], height=1).pack(fill="x")
         # a sinistra la lista, in due colonne (Autore, 7 nov 2026: «la lista a sx le terre in una sotto lista e la side a sx / tutto piu' piccolo e meglio organizzato»), a destra i dati dall'alto in basso
         # staccata dal fondo della finestra (12 nov 2026, Autore: «i pulsanti in fondo sono troppo bassi alziamoli un po'»)
