@@ -1,6 +1,6 @@
 {
- "version": "0.1.112",
+ "version": "0.1.113",
  "date": "2026-11-14",
- "notes": "Redesign polish: lighter panels (8x faster to draw), updates now remove old program files, a retry when Windows locks the games file, the Replayer guide describes the play mat",
+ "notes": "Performance: filters answer instantly again (the cost of each decision is computed once per game, not four times at every filter)",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

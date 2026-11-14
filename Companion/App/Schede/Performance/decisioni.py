@@ -45,9 +45,29 @@ def _istantaneo(g):
     return "Instant" in ((DA._carta(nm) or {}).get("tipo") or "") if nm else False
 
 
+# Le decisioni di una partita non dipendono dai filtri: si calcolano una volta (14 nov 2026, Autore: «quando setto filtri in performance ... ci mette piu'
+# di ieri»). Ogni filtro rifaceva i numeri in cima, e «Attack/Defense gain» rifaceva le decisioni di tutte le partite quattro volte, col modello della P
+# (R8, ~12.000 valutazioni): 7-17 s a filtro col profilo acceso. La copia vale finche' il dato della partita (DA._MANA) e' lo stesso oggetto.
+_MEMO = {}
+
+
+def _ricorda(nome, x, d, fai):
+    k = (nome, x.get("partita"), x.get("seat"), x.get("inizia"), x.get("mulligan"), x.get("vinta"), x.get("quando"))
+    v = _MEMO.get(k)
+    if v is None or v[0] is not d:
+        v = _MEMO[k] = (d, fai())
+    return [dict(z) for z in v[1]]      # copie: chi le riceve puo' aggiungere campi
+
+
 def per_partita(x):
     """Le decisioni di combattimento di una partita (riga dell'analizzatore): [dict]. Vuota senza i momenti di mana_aperto o senza sapere il tuo posto."""
     d = DA._MANA.get(x.get("partita")) or {}
+    if not d:
+        return []
+    return _ricorda("comb", x, d, lambda: _per_partita(x, d))
+
+
+def _per_partita(x, d):
     seat = x.get("seat")
     mom = d.get("momenti") or []
     if seat not in (1, 2) or not mom:
@@ -105,6 +125,12 @@ def per_partita_magie(x):
     """Le tue magie coi bersagli (e i board wipe) come decisioni (R8, 13 nov 2026): il guadagno e' quanto cambia il vantaggio dallo stato con la magia in
     pila al momento dopo. [dict(tipo="magia", t, turno, partita, nome, guadagno)]."""
     d = DA._MANA.get(x.get("partita")) or {}
+    if not d:
+        return []
+    return _ricorda("magie", x, d, lambda: _per_partita_magie(x, d))
+
+
+def _per_partita_magie(x, d):
     seat = x.get("seat")
     mom = d.get("momenti") or []
     if seat not in (1, 2):
@@ -371,6 +397,25 @@ def prova_opzioni():
     return casi
 
 
+def prova_memo():
+    """Le decisioni tenute a mente (14 nov 2026): la seconda volta non si rifanno, sono copie, e un dato nuovo della partita le rifa'."""
+    casi, conta = [], [0]
+    x = dict(partita="memo1", seat=1, vinta=True)
+    d1, d2 = {"momenti": []}, {"momenti": []}
+    fai = lambda: (conta.__setitem__(0, conta[0] + 1), [dict(tipo="attacco", guadagno=1.0)])[1]
+    a = _ricorda("prova", x, d1, fai)
+    a[0]["costo"] = 9          # chi la riceve la cambia: la copia tenuta a mente no
+    b_ = _ricorda("prova", x, d1, fai)
+    casi.append(("le decisioni di una partita si fanno una volta; chi le riceve ha una copia", conta[0] == 1 and "costo" not in b_[0]))
+    _ricorda("prova", x, d2, fai)
+    casi.append(("negativa: col dato della partita riletto (un altro oggetto) si rifanno", conta[0] == 2))
+    _ricorda("prova", dict(x, seat=2), d2, fai)
+    casi.append(("negativa: un altro posto e' un'altra partita", conta[0] == 3))
+    for k in [k for k in _MEMO if k[0] == "prova"]:
+        del _MEMO[k]
+    return casi
+
+
 def prova_costi():
     """R8: il costo contro la media dello stesso tipo e fase; i colori; senza il dato «nd»."""
     casi = []
@@ -464,6 +509,7 @@ def prova():
     casi.append(("settimana per settimana: due settimane, la seconda col mulligan al 50% e una rischiosa su una tenuta", len(st) == 2 and st[1]["mull"] == 50.0
                  and st[1]["rischiose"] == 100.0 and st[0]["rischiose"] == 50.0 and st[1]["wr_mull"] == 100.0))
     casi.append(("negativa: una mano a 2-4 terre non e' rischiosa", not _rischiosa(2) and not _rischiosa(4) and _rischiosa(1) and _rischiosa(5)))
+    casi += prova_memo()
     casi += prova_costi()
     casi += prova_p()
     casi += prova_opzioni()
