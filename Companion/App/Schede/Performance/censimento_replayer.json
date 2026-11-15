@@ -1,0 +1,1203 @@
+{
+  "_nota": "Il censimento fra il motore di partita, i log di Arena e il replayer (14 nov 2026, Autore: «fai un censimento tra il motore del gioco e quello che oggi il replayer non valuta, dobbiamo trovare un workflow anche per le future espansioni che ci tenga allineati nei comportamenti»). Ogni voce: [stato, come lo mostra o cosa manca]. Stato: si (animato, si capisce guardando), parte (si vede l'esito ma non il gesto, o solo nel racconto), no (invisibile), nonserve (non cambia niente sul tavolo). Lo legge e lo controlla Companion/Strumenti/censimento_replayer.py.",
+  "istruzioni": {
+    "aggiungi_mana": [
+      "si",
+      "il simbolo del mana vola dalla fonte nella vaschetta MANA POOL sotto le terre di chi paga, poi dalla vaschetta alla carta (15 nov 2026); la riserva che resta a galla sta nella vaschetta"
+    ],
+    "attacca": [
+      "si",
+      "il combattimento: tappa, frecce, duelli"
+    ],
+    "base": [
+      "si",
+      "forza e costituzione nei pallini (blu o rossi rispetto allo stampato)"
+    ],
+    "cerca": [
+      "parte",
+      "la carta vola dal grimorio alla mano o al campo; il grimorio che si rimescola non si vede"
+    ],
+    "cima_o_fondo": [
+      "parte",
+      "la carta vola verso il grimorio; sopra o sotto non si distingue"
+    ],
+    "contrasta": [
+      "si",
+      "la freccia dentro la pila sulla magia presa di mira, poi la magia al cimitero dalla pila"
+    ],
+    "contrasta_salvo": [
+      "parte",
+      "come contrasta; la scelta di pagare non si vede"
+    ],
+    "copia_magia": [
+      "parte",
+      "la copia compare in pila; il legame con l'originale no"
+    ],
+    "copia_pedina": [
+      "si",
+      "la pedina nasce dalla carta in pila e scorre in campo"
+    ],
+    "dai_abilita_fino": [
+      "si",
+      "un'abilita' data fino a fine turno: se e' una parola chiave la pillola verde (C2), se no il testo corto sulla carta (A2), finche' Arena la tiene (15 nov 2026)"
+    ],
+    "dai_flashback": [
+      "no",
+      "niente segna che una carta del cimitero si puo' rilanciare"
+    ],
+    "dai_mana": [
+      "si",
+      "come aggiungi_mana"
+    ],
+    "dai_parole": [
+      "si",
+      "le parole chiave date: pillole verdi «+Flying» sul bordo sinistro della carta (14 nov 2026, C2)"
+    ],
+    "dal_cimitero_in_mano": [
+      "si",
+      "la carta vola dal cimitero alla mano"
+    ],
+    "dal_fuori": [
+      "parte",
+      "la carta compare; da dove viene (fuori dalla partita) no"
+    ],
+    "dalla_mano_in_campo": [
+      "si",
+      "la carta vola dalla mano al campo"
+    ],
+    "danno": [
+      "si",
+      "la goccia col -N su chi lo prende; nel combattimento la spada su chi lo infligge"
+    ],
+    "danno_fedelta": [
+      "si",
+      "la goccia sul planeswalker, la fedelta' nel pallino"
+    ],
+    "danno_forza": [
+      "parte",
+      "la goccia su chi lo prende; la spada di chi infligge solo nei duelli"
+    ],
+    "diventa_copia": [
+      "no",
+      "la carta cambia immagine di colpo"
+    ],
+    "diventa_tipo": [
+      "parte",
+      "la carta scivola nella sua fila nuova (un veicolo con equipaggio, una terra che diventa creatura); il perche' no"
+    ],
+    "distruggi": [
+      "si",
+      "la freccia, poi la carta grigia col teschio va al cimitero"
+    ],
+    "distruggi_tranne_tipo": [
+      "si",
+      "come distruggi; da 3 permanenti in su il racconto dice board wipe"
+    ],
+    "emblema": [
+      "no",
+      "gli emblemi non sono sul tavolo"
+    ],
+    "empower_jace": [
+      "parte",
+      "la pedina Jace e i suoi segnalini; il potenziamento in se' no"
+    ],
+    "esilia": [
+      "si",
+      "la freccia, poi la carta vola in esilio"
+    ],
+    "esilia_cima": [
+      "si",
+      "la carta vola dal grimorio all'esilio; se e' giocabile (impulse) sta in oro con PLAYABLE accanto alla mano"
+    ],
+    "esilia_e_cerca": [
+      "parte",
+      "le carte volano; la ricerca no"
+    ],
+    "esilia_e_lancia_copie": [
+      "parte",
+      "le carte volano e le copie vanno in pila; il legame no"
+    ],
+    "esilia_finche": [
+      "parte",
+      "la carta va in esilio; che torni quando la fonte lascia il campo no"
+    ],
+    "esilia_scelta_da_te": [
+      "si",
+      "come esilia"
+    ],
+    "esilia_se_muore": [
+      "si",
+      "la carta va in esilio invece che al cimitero"
+    ],
+    "esilia_tranne_fondo": [
+      "parte",
+      "le carte volano"
+    ],
+    "fedelta_rapida": [
+      "si",
+      "la fedelta' nel pallino del planeswalker"
+    ],
+    "gira_faccia": [
+      "si",
+      "la carta a due facce si gira al suo posto: si stringe, cambia faccia, si riapre (14 nov 2026)"
+    ],
+    "guadagna": [
+      "si",
+      "la vita che sale: il cuore verde col «+N» accanto al cerchio e il numero che sale (14 nov 2026)"
+    ],
+    "guarda_cima_prendi": [
+      "parte",
+      "la carta presa vola in mano; le carte guardate no"
+    ],
+    "in_fondo": [
+      "parte",
+      "la carta vola verso il grimorio"
+    ],
+    "in_grimorio": [
+      "parte",
+      "la carta vola verso il grimorio"
+    ],
+    "lancia_esiliata": [
+      "si",
+      "le carte giocabili (dall'esilio e dal cimitero) come le dice Arena, in oro con PLAYABLE accanto alla mano di chi puo' giocarle (E1, 14 nov 2026)"
+    ],
+    "lotta": [
+      "parte",
+      "le gocce su tutte e due; il duello animato solo nel combattimento"
+    ],
+    "macina": [
+      "si",
+      "le carte volano dal grimorio al cimitero"
+    ],
+    "mana_in_piu": [
+      "nonserve",
+      "come aggiungi_mana"
+    ],
+    "mescola_nel_grimorio": [
+      "parte",
+      "la carta vola verso il grimorio; il rimescolare no"
+    ],
+    "moltiplica_fc": [
+      "si",
+      "forza e costituzione nei pallini"
+    ],
+    "non_blocca": [
+      "no",
+      "il divieto di bloccare non si vede"
+    ],
+    "non_bloccabile": [
+      "no",
+      "il non poter essere bloccata non si vede"
+    ],
+    "paga": [
+      "nonserve",
+      "un costo: si vedono le terre che si tappano"
+    ],
+    "paga_vite": [
+      "parte",
+      "la vita scende; il pagare non ha un segno suo"
+    ],
+    "parola_scelta": [
+      "si",
+      "il fumetto bianco con la scelta in testa alla carta (C1)"
+    ],
+    "pedina": [
+      "si",
+      "la pedina vera (Scryfall) scorre in campo dalla carta in pila"
+    ],
+    "perde": [
+      "si",
+      "la goccia col -N sulla vita"
+    ],
+    "permesso_gioca": [
+      "si",
+      "le carte giocabili (dall'esilio e dal cimitero) come le dice Arena, in oro con PLAYABLE accanto alla mano di chi puo' giocarle (E1, 14 nov 2026)"
+    ],
+    "permesso_questa": [
+      "si",
+      "le carte giocabili (dall'esilio e dal cimitero) come le dice Arena, in oro con PLAYABLE accanto alla mano di chi puo' giocarle (E1, 14 nov 2026)"
+    ],
+    "pesca": [
+      "si",
+      "la carta vola dal grimorio alla mano (l'avversario: un dorso nel suo ventaglio)"
+    ],
+    "pompa": [
+      "si",
+      "forza e costituzione nei pallini blu"
+    ],
+    "prendi_controllo": [
+      "si",
+      "la carta che cambia lato scorre dal campo di prima all'altro (14 nov 2026)"
+    ],
+    "prendi_tra_macinate": [
+      "parte",
+      "le carte volano"
+    ],
+    "prepara": [
+      "si",
+      "la pillola viola PREPARED sulla carta (14 nov 2026, D3)"
+    ],
+    "prolifera": [
+      "si",
+      "i segnalini nuovi accendono la carta d'oro"
+    ],
+    "prossima_incontrastabile": [
+      "no",
+      "non si vede"
+    ],
+    "riflessa": [
+      "parte",
+      "l'abilita' riflessa va in pila se il log la scrive"
+    ],
+    "rimbalza": [
+      "si",
+      "la freccia, poi la carta vola in mano"
+    ],
+    "rimetti_esiliate": [
+      "si",
+      "le carte volano dall'esilio"
+    ],
+    "riprendi_sorvegliata": [
+      "parte",
+      "le carte volano"
+    ],
+    "ritardata": [
+      "parte",
+      "l'abilita' ritardata va in pila quando scatta"
+    ],
+    "ritorna": [
+      "si",
+      "la carta vola al suo posto"
+    ],
+    "ritorna_esiliata": [
+      "si",
+      "la carta vola dall'esilio"
+    ],
+    "ritorna_esiliata_tua": [
+      "si",
+      "come ritorna_esiliata"
+    ],
+    "ritorna_tutte": [
+      "si",
+      "le carte volano, una alla volta"
+    ],
+    "rivela_fino": [
+      "no",
+      "le carte rivelate non si vedono (il log le scrive: RevealedCardCreated)"
+    ],
+    "ruota_scelta": [
+      "si",
+      "il fumetto bianco con la scelta in testa alla carta (C1)"
+    ],
+    "sacrifica": [
+      "si",
+      "la carta grigia col teschio va al cimitero (la pedina si spegne al suo posto)"
+    ],
+    "sacrifica_questo": [
+      "si",
+      "come sacrifica"
+    ],
+    "scambia": [
+      "si",
+      "lo scambio: ognuna scorre nel campo dell'altro, una alla volta (14 nov 2026)"
+    ],
+    "scarta": [
+      "si",
+      "la carta vola dalla mano al cimitero (la sua: un dorso)"
+    ],
+    "scarta_scelta_da_te": [
+      "si",
+      "come scarta"
+    ],
+    "scry": [
+      "si",
+      "le carte guardate escono dal mazzo a ventaglio nella meta' del tavolo di chi guarda, ognuna con TOP o BOTTOM, poi una alla volta tornano (S1, 14 nov 2026); le sue di dorso"
+    ],
+    "segnalini": [
+      "si",
+      "i segnalini in testa alla carta, la carta si accende d'oro"
+    ],
+    "segnalini_della_fonte": [
+      "si",
+      "come segnalini"
+    ],
+    "senza_leggenda": [
+      "nonserve",
+      "una regola"
+    ],
+    "sprepara": [
+      "si",
+      "la pillola PREPARED se ne va quando la copia e' lanciata"
+    ],
+    "stappa": [
+      "si",
+      "la carta si gira, una alla volta"
+    ],
+    "stordisci": [
+      "si",
+      "i segnalini di stordimento in testa alla carta"
+    ],
+    "surveil": [
+      "si",
+      "le tue: il ventaglio con TOP e GRAVEYARD (come lo scry); quelle dell'avversario (15 nov 2026, MultistepEffect SubCategory 11): lo stesso ventaglio, le tenute sopra coperte, quante dal testo dell'abilita'"
+    ],
+    "tappa": [
+      "si",
+      "la carta si gira, una alla volta"
+    ],
+    "terra_in_piu": [
+      "nonserve",
+      "un permesso"
+    ],
+    "togli_abilita": [
+      "no",
+      "le abilita' tolte non si vedono"
+    ],
+    "togli_segnalini": [
+      "si",
+      "i segnalini spariscono dalla carta"
+    ],
+    "togli_segnalini_scelti": [
+      "si",
+      "come togli_segnalini"
+    ],
+    "trama": [
+      "parte",
+      "la carta va in esilio e sta nella fila FROM EXILE"
+    ],
+    "vinci": [
+      "si",
+      "la schermata finale"
+    ],
+    "aumenta_velocita": [
+      "si",
+      "DFT: la pillola arancio SPEED N accanto al giocatore, MAX a 4 (V3)"
+    ],
+    "sella": [
+      "parte",
+      "DFT, sellare: le creature che sellano si tappano (girano una alla volta); il legame con la cavalcatura non si vede"
+    ],
+    "blight": [
+      "si",
+      "ECL, i segnalini -1/-1: i pallini di forza e costituzione diventano rossi e la carta si accende d'oro"
+    ],
+    "warp_esilia": [
+      "si",
+      "EOE, warp: la carta va in esilio a fine turno e sta nella fila FROM EXILE col bordo viola"
+    ],
+    "amass": [
+      "si",
+      "HOB, ammassare: la pedina Esercito nasce dalla pila e i segnalini +1/+1 colorano di blu i pallini"
+    ],
+    "recruit": [
+      "parte",
+      "HOB, reclutare: la carta presa dal grimorio arriva in mano col volo; le carte guardate e rimesse sotto non si vedono"
+    ],
+    "endure": [
+      "si",
+      "TDM, resistere: segnalini +1/+1 (pallini blu) o la pedina Spirito che esce dalla pila"
+    ],
+    "mobilize": [
+      "si",
+      "TDM, mobilitare: le pedine nascono tappate e in attacco, con le frecce; a fine turno si spengono al loro posto"
+    ],
+    "sacrifica_ricordate": [
+      "si",
+      "TDM, il sacrificio delle carte ricordate: volano al cimitero una alla volta"
+    ],
+    "firebending": [
+      "parte",
+      "TLA, dominare il fuoco: il mana aggiunto sta nella vaschetta MANA POOL quando Arena lo scrive nella riserva (15 nov 2026; non visto su una partita TLA)"
+    ],
+    "earthbend": [
+      "parte",
+      "TLA, dominare la terra: la terra diventa creatura coi segnalini (pallini blu), ma resta nella fila delle terre senza un gesto che lo dica"
+    ],
+    "earthbend_ritorna": [
+      "si",
+      "TLA, la terra piegata che muore torna in campo tappata: vola dal cimitero al campo"
+    ],
+    "airbend": [
+      "parte",
+      "TLA, dominare l'aria: la carta vola in esilio; la fila FROM EXILE la prende solo se il testo lo dice (grado C), il costo {2} non si vede"
+    ],
+    "livello_classe": [
+      "no",
+      "TMT, il livello della classe (ClassLevel): il replayer non mostra il livello raggiunto"
+    ],
+    "station_carica": [
+      "si",
+      "EOE e TRK, station: la creatura si tappa e i segnalini di carica compaiono in testa alla carta, viola col nome"
+    ],
+    "esilia_fino_non_terra": [
+      "si",
+      "le carte esiliate dalla cima del grimorio volano una alla volta nell'esilio"
+    ],
+    "in_mano_esiliata": [
+      "si",
+      "la carta esiliata che torna in mano vola dall'esilio alla mano"
+    ],
+    "rianima_tutte": [
+      "si",
+      "le creature tornano dal cimitero in campo, una alla volta"
+    ],
+    "scegli_tipo": [
+      "si",
+      "il fumetto bianco col tipo scelto in testa alla carta (C1)"
+    ],
+    "raddoppia_segnalini": [
+      "si",
+      "i segnalini raddoppiati: i pallini di forza e costituzione cambiano numero e colore, la carta si accende d'oro"
+    ],
+    "distribuisci_segnalini": [
+      "si",
+      "i segnalini distribuiti: i pallini sulle carte cambiano e la carta si accende d'oro"
+    ],
+    "sacrifica_oggetti": [
+      "si",
+      "i permanenti sacrificati diventano grigi al loro posto e volano al cimitero, uno alla volta"
+    ],
+    "sacrifica_ritardata": [
+      "si",
+      "come sacrifica_oggetti, nel passo in cui avviene"
+    ],
+    "scarta_poi_pesca": [
+      "si",
+      "lo scarto vola dalla mano al cimitero, poi la pescata dal grimorio alla mano"
+    ],
+    "scarta_salvo": [
+      "si",
+      "lo scarto vola dalla mano al cimitero"
+    ],
+    "scopri": [
+      "parte",
+      "le carte esiliate dalla cima volano nell'esilio e quella lanciata va in pila; che il lancio sia gratis lo dice solo il racconto"
+    ]
+  },
+  "annotazioni": {
+    "AnnotationType_PhaseOrStepModified": [
+      "nonserve",
+      "il passo: la striscia dei turni"
+    ],
+    "AnnotationType_TappedUntappedPermanent": [
+      "si",
+      "la carta si gira"
+    ],
+    "AnnotationType_EnteredZoneThisTurn": [
+      "nonserve",
+      "contabilita' di Arena"
+    ],
+    "AnnotationType_ZoneTransfer": [
+      "si",
+      "i voli fra le zone (vedi le categorie)"
+    ],
+    "AnnotationType_UserActionTaken": [
+      "parte",
+      "le abilita' attivate: in Performance (filtri), nel replayer solo se vanno in pila"
+    ],
+    "AnnotationType_ObjectIdChanged": [
+      "nonserve",
+      "il replayer segue gli id"
+    ],
+    "AnnotationType_AbilityInstanceDeleted": [
+      "nonserve",
+      "l'abilita' lascia la pila"
+    ],
+    "AnnotationType_AbilityInstanceCreated": [
+      "si",
+      "l'abilita' va in pila (anche quella che si risolve nello stesso messaggio: un passo suo)"
+    ],
+    "AnnotationType_ManaPaid": [
+      "si",
+      "da ogni terra che paga esce il suo simbolo di mana e vola nella vaschetta MANA POOL di chi paga; poi, uno alla volta, i simboli vanno sulla carta (M1, 14-15 nov 2026)"
+    ],
+    "AnnotationType_ResolutionComplete": [
+      "si",
+      "la magia lascia la pila"
+    ],
+    "AnnotationType_ResolutionStart": [
+      "si",
+      "l'effetto della magia (fatti)"
+    ],
+    "AnnotationType_ColorProduction": [
+      "nonserve",
+      "il mana"
+    ],
+    "AnnotationType_NewTurnStarted": [
+      "si",
+      "il turno nuovo, l'ombra che passa"
+    ],
+    "AnnotationType_TriggeringObject": [
+      "parte",
+      "chi ha fatto scattare un innesco: non c'e' una freccia"
+    ],
+    "AnnotationType_DamageDealt": [
+      "si",
+      "goccia su chi riceve, spada su chi infligge"
+    ],
+    "AnnotationType_LayeredEffectCreated": [
+      "parte",
+      "l'effetto si vede nei pallini di forza e costituzione"
+    ],
+    "AnnotationType_Counter": [
+      "si",
+      "i segnalini (persistenti)"
+    ],
+    "AnnotationType_ModifiedLife": [
+      "si",
+      "il numero della vita; la perdita senza danno con la goccia"
+    ],
+    "AnnotationType_CounterAdded": [
+      "si",
+      "il segnalino nuovo, la carta d'oro"
+    ],
+    "AnnotationType_AbilityWordActive": [
+      "si",
+      "l'anello nell'angolo della carta col conto sulla soglia (5/7), verde quando e' attiva, e il nome sotto (W2, 14 nov 2026)"
+    ],
+    "AnnotationType_TargetSpec": [
+      "si",
+      "le frecce viola verso i bersagli"
+    ],
+    "AnnotationType_ModifiedPower": [
+      "si",
+      "il pallino della forza"
+    ],
+    "AnnotationType_PlayerSelectingTargets": [
+      "nonserve",
+      "la scelta in corso"
+    ],
+    "AnnotationType_PlayerSubmittedTargets": [
+      "nonserve",
+      "la scelta fatta: le frecce"
+    ],
+    "AnnotationType_PowerToughnessModCreated": [
+      "si",
+      "i pallini di forza e costituzione"
+    ],
+    "AnnotationType_LayeredEffectDestroyed": [
+      "parte",
+      "i pallini tornano"
+    ],
+    "AnnotationType_ModifiedToughness": [
+      "si",
+      "il pallino della costituzione"
+    ],
+    "AnnotationType_LayeredEffect": [
+      "parte",
+      "come LayeredEffectCreated"
+    ],
+    "AnnotationType_TemporaryPermanent": [
+      "si",
+      "la clessidra arancio in alto a sinistra: se ne va a fine turno (14 nov 2026, B1)"
+    ],
+    "AnnotationType_TokenCreated": [
+      "si",
+      "la pedina scorre in campo"
+    ],
+    "AnnotationType_SyntheticEvent": [
+      "nonserve",
+      "evento interno di Arena"
+    ],
+    "AnnotationType_LoyaltyActivationsRemaining": [
+      "nonserve",
+      "contabilita'"
+    ],
+    "AnnotationType_Qualification": [
+      "parte",
+      "«puoi giocare questa carta» (tipo 47) e' la fila PLAYABLE; gli altri permessi e divieti (non bloccabile, non blocca, non si stappa...) non si vedono"
+    ],
+    "AnnotationType_AddAbility": [
+      "si",
+      "le parole chiave date come pillole verdi (C2); le altre abilita' date col loro testo corto sulla carta (A2, 14 nov 2026)"
+    ],
+    "AnnotationType_RevealedCardCreated": [
+      "si",
+      "la carta rivelata esce dal grimorio del suo proprietario, si mostra grande al centro con REVEALED, torna (14 nov 2026)"
+    ],
+    "AnnotationType_TokenDeleted": [
+      "si",
+      "la pedina si spegne"
+    ],
+    "AnnotationType_MultistepEffectComplete": [
+      "si",
+      "SubCategory 11: la fine del surveil dell'avversario, col ventaglio (15 nov 2026); gli altri interni"
+    ],
+    "AnnotationType_MultistepEffectStarted": [
+      "si",
+      "SubCategory 11: il surveil dell'avversario, che Arena non ti chiede (15 nov 2026); gli altri interni"
+    ],
+    "AnnotationType_ObjectsSelected": [
+      "no",
+      "le carte scelte (cerca, scegli) non si vedono"
+    ],
+    "AnnotationType_RevealedCardDeleted": [
+      "nonserve",
+      "la carta rivelata sparisce"
+    ],
+    "AnnotationType_InstanceRevealedToOpponent": [
+      "no",
+      "la carta della mano mostrata all'avversario non si vede"
+    ],
+    "AnnotationType_DisplayCardUnderCard": [
+      "si",
+      "le carte esiliate sotto di lei, sfalsate dietro la carta (14 nov 2026, A1)"
+    ],
+    "AnnotationType_CounterRemoved": [
+      "si",
+      "il segnalino tolto (la fedelta' dei poteri)"
+    ],
+    "AnnotationType_DamagedThisTurn": [
+      "nonserve",
+      "contabilita'"
+    ],
+    "AnnotationType_CastingTimeOption": [
+      "parte",
+      "kicker, modi, costi alternativi: solo nel racconto"
+    ],
+    "AnnotationType_ShouldntPlay": [
+      "nonserve",
+      "un suggerimento di Arena"
+    ],
+    "AnnotationType_Designation": [
+      "parte",
+      "PREPARED, DOOR UNLOCKED, PLOTTED, SOLVED, SUSPECTED, HARNESSED sulla carta (D3); la velocita' SPEED N accanto al giocatore (V3); il tipo 23 sulle terre no"
+    ],
+    "AnnotationType_Shuffle": [
+      "si",
+      "il grimorio si rimescola: tre dorsi che si mischiano (14 nov 2026)"
+    ],
+    "AnnotationType_LinkInfo": [
+      "nonserve",
+      "interno"
+    ],
+    "AnnotationType_AbilityExhausted": [
+      "no",
+      "l'abilita' esausta (exhaust) non e' segnata"
+    ],
+    "AnnotationType_Scry": [
+      "si",
+      "il ventaglio S1 con TOP e BOTTOM (14 nov 2026)"
+    ],
+    "AnnotationType_GainDesignation": [
+      "parte",
+      "come Designation"
+    ],
+    "AnnotationType_DelayedTriggerAffectees": [
+      "nonserve",
+      "interno"
+    ],
+    "AnnotationType_Attachment": [
+      "parte",
+      "l'aura e l'equipaggiamento stanno fra gli altri permanenti, non accanto a chi incantano"
+    ],
+    "AnnotationType_ReplacementEffect": [
+      "nonserve",
+      "si vede l'esito"
+    ],
+    "AnnotationType_ChoiceResult": [
+      "si",
+      "la scelta (tipo, colore, nome, modalita') in un fumetto bianco in testa alla carta, finche' resta in campo (C1, 14 nov 2026)"
+    ],
+    "AnnotationType_ModifiedType": [
+      "parte",
+      "la carta cambia fila se diventa creatura"
+    ],
+    "AnnotationType_AttachmentCreated": [
+      "parte",
+      "solo nel racconto («attached to»)"
+    ],
+    "AnnotationType_FaceDown": [
+      "parte",
+      "la carta a faccia in giu' e' un dorso; cosa sia per chi la possiede no"
+    ],
+    "AnnotationType_PredictedDirectDamage": [
+      "nonserve",
+      "una previsione di Arena"
+    ],
+    "AnnotationType_SuppressedPowerAndToughness": [
+      "nonserve",
+      "interno"
+    ],
+    "AnnotationType_RemoveAbility": [
+      "no",
+      "le abilita' tolte non si vedono"
+    ],
+    "AnnotationType_LoseDesignation": [
+      "parte",
+      "come Designation: la pillola se ne va"
+    ],
+    "AnnotationType_LossOfGame": [
+      "si",
+      "la schermata finale"
+    ],
+    "AnnotationType_DisqualifiedEffect": [
+      "nonserve",
+      "interno"
+    ],
+    "AnnotationType_ModifiedName": [
+      "no",
+      "il nome cambiato non si vede"
+    ],
+    "AnnotationType_TextChange": [
+      "no",
+      "il testo cambiato non si vede"
+    ],
+    "AnnotationType_ModifiedCost": [
+      "nonserve",
+      "si vedono le terre che pagano"
+    ],
+    "AnnotationType_CardRevealed": [
+      "parte",
+      "nel racconto; la carta grande al centro c'e' quando Arena crea la carta rivelata (RevealedCardCreated)"
+    ],
+    "AnnotationType_MiscContinuousEffect": [
+      "no",
+      "effetti continui vari"
+    ],
+    "AnnotationType_ClassLevel": [
+      "no",
+      "il livello di una Classe non si vede"
+    ],
+    "AnnotationType_ModifiedColor": [
+      "no",
+      "il colore cambiato non si vede"
+    ],
+    "AnnotationType_ReplacementEffectApplied": [
+      "nonserve",
+      "si vede l'esito"
+    ],
+    "AnnotationType_DynamicAbility": [
+      "nonserve",
+      "interno"
+    ],
+    "AnnotationType_ManaDetails": [
+      "nonserve",
+      "il mana"
+    ],
+    "AnnotationType_ControllerChanged": [
+      "si",
+      "la carta che cambia lato scorre da un campo all'altro (14 nov 2026)"
+    ],
+    "AnnotationType_CopiedObject": [
+      "parte",
+      "la copia compare; il legame no"
+    ],
+    "AnnotationType_ReferencedObjects": [
+      "nonserve",
+      "interno"
+    ],
+    "AnnotationType_SaddledThisTurn": [
+      "no",
+      "sellato (saddle) non si vede"
+    ],
+    "AnnotationType_GroupedIds": [
+      "nonserve",
+      "interno"
+    ],
+    "AnnotationType_CrewedThisTurn": [
+      "parte",
+      "il veicolo passa fra le creature; chi l'ha equipaggiato no"
+    ],
+    "AnnotationType_UseOrCostsManaCost": [
+      "nonserve",
+      "interno"
+    ],
+    "AnnotationType_ChoosingAttachments": [
+      "nonserve",
+      "la scelta in corso"
+    ]
+  },
+  "categorie": {
+    "Draw": [
+      "si",
+      "pescata"
+    ],
+    "CastSpell": [
+      "si",
+      "dalla mano alla pila"
+    ],
+    "Resolve": [
+      "si",
+      "dalla pila al suo posto"
+    ],
+    "PlayLand": [
+      "si",
+      "dalla mano al campo"
+    ],
+    "Exile": [
+      "si",
+      "in esilio"
+    ],
+    "SBA_Damage": [
+      "si",
+      "grigia col teschio, poi al cimitero"
+    ],
+    "Return": [
+      "si",
+      "torna"
+    ],
+    "Put": [
+      "si",
+      "messa in campo"
+    ],
+    "Discard": [
+      "si",
+      "scartata"
+    ],
+    "Sacrifice": [
+      "si",
+      "sacrificata"
+    ],
+    "Destroy": [
+      "si",
+      "distrutta"
+    ],
+    "Mill": [
+      "si",
+      "macinata"
+    ],
+    "SBA_ZeroLoyalty": [
+      "si",
+      "il planeswalker senza fedelta' al cimitero"
+    ],
+    "Surveil": [
+      "si",
+      "dal grimorio al cimitero"
+    ],
+    "SBA_ZeroToughness": [
+      "si",
+      "morta"
+    ],
+    "SBA_UnattachedAura": [
+      "si",
+      "l'aura cade"
+    ],
+    "Countered": [
+      "si",
+      "dalla pila al cimitero, con la freccia della contromagia"
+    ],
+    "SBA_Deathtouch": [
+      "si",
+      "morta"
+    ],
+    "SBA_LegendRule": [
+      "si",
+      "al cimitero"
+    ],
+    "Warp": [
+      "si",
+      "in esilio (warp), poi FROM EXILE"
+    ],
+    "ManifestLike": [
+      "parte",
+      "in campo a faccia in giu' (un dorso)"
+    ],
+    "Bounce": [
+      "si",
+      "in mano"
+    ],
+    "nil": [
+      "parte",
+      "lo spostamento si vede, il motivo no"
+    ],
+    "Separate": [
+      "no",
+      "la carta divisa (split) non e' trattata a parte"
+    ],
+    "SBA_IllegalAttachment": [
+      "parte",
+      "l'equipaggiamento cade: si vede che resta, non il distacco"
+    ],
+    "Copy": [
+      "parte",
+      "la copia compare"
+    ]
+  },
+  "parole_viste": [
+    "10,000 Needles",
+    "A Test of Your Reflexes!",
+    "Abandon Ship",
+    "Ability",
+    "Abraxas",
+    "Affinity",
+    "Airbend",
+    "Alliance",
+    "Alter the Past",
+    "Amass",
+    "Angelo Cannon",
+    "Animal May-Ham",
+    "Assimilate",
+    "Attack",
+    "Avian Telepathy",
+    "Bad Breath",
+    "Basic landcycling",
+    "Battle Stations",
+    "Begin Negotiations",
+    "Behold",
+    "Blessing of Light",
+    "Blight",
+    "Blizzaga",
+    "Blizzara",
+    "Blizzard",
+    "Blow Up",
+    "Blue Magic",
+    "Boast",
+    "Boomerang",
+    "Bring Down",
+    "Brontosaurus",
+    "Burning Chains",
+    "Camouflage",
+    "Cascade",
+    "Changeling",
+    "Channel",
+    "Chaosbringer",
+    "Chef's Knife",
+    "Cloaking Device",
+    "Come in Peace",
+    "Conceal",
+    "Connive",
+    "Converge",
+    "Convoke",
+    "Cosmic Awareness",
+    "Crew",
+    "Cura",
+    "Curaga",
+    "Cure",
+    "Cybernetic Senses",
+    "Cycling",
+    "Darkforce Inversion",
+    "Darkness",
+    "Date Night",
+    "Death Gigas",
+    "Deathtouch",
+    "Decayed",
+    "Defender",
+    "Density Control",
+    "Designed Only for Killing",
+    "Destroy the Relic",
+    "Devour",
+    "Diana",
+    "Dinosaur Formula",
+    "Disappear",
+    "Discover",
+    "Do Homework",
+    "Domain",
+    "Double",
+    "Double Overdrive",
+    "Double strike",
+    "Dragonfire Dive",
+    "Earthbend",
+    "Echo of the Lost",
+    "Embiggen Fist",
+    "Empower Jace",
+    "Enchant",
+    "Endure",
+    "Enrage",
+    "Equip",
+    "Evoke",
+    "Exert",
+    "Exhaust",
+    "Explore",
+    "Explosive",
+    "Extort",
+    "Face a dilemma",
+    "Fateful Bite",
+    "Fear Gas",
+    "Ferocious",
+    "Fight",
+    "Fight Crime",
+    "Final Heaven",
+    "Find New Host",
+    "Fira",
+    "Firaga",
+    "Fire",
+    "Fire Cross",
+    "Firebending",
+    "First strike",
+    "Flare Star",
+    "Flash",
+    "Flashback",
+    "Flurry",
+    "Flying",
+    "Follow the 98th Rule",
+    "Food",
+    "Forestcycling",
+    "Foretell",
+    "Formidable",
+    "From the Future",
+    "GOOOOAAAALLL!",
+    "Gae Bolg",
+    "Galian Beast",
+    "Gift",
+    "Goblin Formula",
+    "Grandeur",
+    "Hagneia",
+    "Hail",
+    "Hailing Frequencies",
+    "Halflingcycling",
+    "Harmonize",
+    "Haste",
+    "Heal",
+    "Heckle",
+    "Hellmasker",
+    "Hero Worship",
+    "Hexproof",
+    "Hexproof from",
+    "Hideaway",
+    "I Am Klingon",
+    "I Am Starfleet",
+    "I LOVE Squirrels!",
+    "Immune",
+    "Impending",
+    "Impound",
+    "Improvise",
+    "Increment",
+    "Indestructible",
+    "Infusion",
+    "Intangibility",
+    "Interfere",
+    "Investigate",
+    "Investigative Journalism",
+    "Islandcycling",
+    "Item",
+    "Job select",
+    "Jump",
+    "Kicker",
+    "Kill",
+    "Landcycling",
+    "Landfall",
+    "Legal Justice",
+    "Lifelink",
+    "Lizard Formula",
+    "Look Around",
+    "Machina",
+    "Magic",
+    "Max speed",
+    "Mayhem",
+    "Meld",
+    "Menace",
+    "Mental Organism",
+    "Meteor Strikes",
+    "Mill",
+    "Mind Swap",
+    "Mobilize",
+    "Morbid",
+    "Mountaincycling",
+    "Murasame",
+    "Mutsunokami",
+    "My First Friend",
+    "Net",
+    "No One Dies!",
+    "Nosh",
+    "Obliterate the Transwarp Network",
+    "Observe",
+    "Of the Obsidian Order",
+    "Open a Channel",
+    "Opus",
+    "Paradigm",
+    "Particle Beam",
+    "Patrol Night",
+    "Pavitr's Sevā",
+    "Photographic Reflexes",
+    "Plain, Simple Garak",
+    "Plainscycling",
+    "Power to Engines",
+    "Power to Life Support",
+    "Power-up",
+    "Prepared",
+    "Proliferate",
+    "Protect",
+    "Protection",
+    "Prowess",
+    "Puff Piece",
+    "Radar Sense",
+    "Raid",
+    "Rat Tail",
+    "Reach",
+    "Reckless Behavior",
+    "Recruit",
+    "Remain Fused",
+    "Renew",
+    "Repair",
+    "Repair the Timeline",
+    "Repartee",
+    "Rewrite the Past",
+    "Riot",
+    "Rough Divide",
+    "Saddle",
+    "Scry",
+    "Seismic Takedown",
+    "Selfie Shot",
+    "Sensational Save",
+    "Sensors",
+    "Shaka, When the Walls Fell",
+    "Share",
+    "Shoot to Kill",
+    "Skulk",
+    "Smear Campaign",
+    "Sneak",
+    "Solar Beam",
+    "Somersault",
+    "Sonic Attack",
+    "Sonic Blast",
+    "Stagger",
+    "Starfall",
+    "Starscourge",
+    "Start your engines!",
+    "Station",
+    "Storied",
+    "Storm",
+    "Strange new worlds",
+    "Street Justice",
+    "Stun",
+    "Summon",
+    "Sunburst",
+    "Super Nova",
+    "Surgical Separation",
+    "Surveil",
+    "Suspect",
+    "Swampcycling",
+    "Take 59 Flights of Stairs",
+    "Take the Elevator",
+    "Teamwork",
+    "Technopathy",
+    "Temba, His Arms Wide",
+    "The Allagan Eye",
+    "Threshold",
+    "Thundaga",
+    "Thundara",
+    "Thunder",
+    "Tiered",
+    "Time Compression",
+    "Top of the Food Chain",
+    "Trample",
+    "Trance",
+    "Transfer Symbiont",
+    "Transform",
+    "Transport",
+    "Treasure",
+    "Trick Arrows",
+    "Triple",
+    "Two-Headed Coin",
+    "Typecycling",
+    "Tyrannosaurus Rex",
+    "Unbreakable Skin",
+    "Undying Vengeance",
+    "Unreliable Visions",
+    "Use the Relic",
+    "Venom Blast",
+    "Vibro-Shock Gauntlets",
+    "Vigilance",
+    "Vivid",
+    "Void",
+    "Ward",
+    "Warp",
+    "Wasp's Sting",
+    "Waterbend",
+    "Wave Cannon",
+    "Web Support",
+    "Web-slinging",
+    "Wither"
+  ]
+}

@@ -24,12 +24,14 @@ if _casa not in sys.path:
     sys.path.insert(0, _casa)
 import percorsi  # noqa: E402,F401
 
-from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont  # noqa: E402
+from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFilter, ImageFont  # noqa: E402
 
 DW, DH = 1600, 1000                     # le coordinate del progetto: tutto si scala sulla misura vera
 BLU, ARANCIO, VIOLA, ROSSO, GIALLO = (36, 186, 255), (240, 173, 78), (181, 140, 255), (255, 93, 93), (255, 210, 63)
 FONDO = (16, 16, 20)
 RAPP = 279 / 200
+CREA_FILA = 6                            # oltre 6 gruppi di creature su un lato: due file
+MIN_FILA = 0.8                           # le carte di una fila non scendono sotto l'80% della misura piena: poi si sovrappongono
 
 
 def _font_file():
@@ -43,17 +45,63 @@ def _font_file():
 
 BAHN = _font_file()
 # le colonne e le righe del tappeto, nelle coordinate del progetto
-XB0, LC = 170, 1240                     # il campo (a destra la pila)
-ZX0, ZX1 = 1400, 1572                   # grimorio, cimitero, esilio
 MEZZO = DH / 2
 SPLIT = 0.56                            # nella fila dietro: le terre fino al 56% della larghezza
-STACK = (1250, MEZZO - 64, 1370, MEZZO + 64)
-ZONE = dict(       # chiave -> (x0, y0, x1, y1)
-    suo_dietro=(XB0, 112, LC, 216), suo_crea=(XB0, 224, LC, MEZZO - 14),
-    mio_crea=(XB0, MEZZO + 14, LC, MEZZO + 226), mio_dietro=(XB0, MEZZO + 236, LC, MEZZO + 336),
-    lib_suo=(ZX0, 104, ZX1, 224), cim_suo=(ZX0, 232, ZX1, 362), esi_suo=(ZX0, 370, ZX1, MEZZO - 14),
-    lib_mio=(ZX0, MEZZO + 14, ZX1, MEZZO + 144), cim_mio=(ZX0, MEZZO + 152, ZX1, MEZZO + 282), esi_mio=(ZX0, MEZZO + 290, ZX1, MEZZO + 400))
-VITA = dict(vita_suo=(86, 300), vita_mio=(86, DH - 290))
+# la riserva di mana (15 nov 2026, Autore: «costruiamolo invece in basso a sx poco sotto l'area your lands cosi' vediamo il mana accumulato e poi
+# speso»): una vaschetta sotto le tue terre (la sua sopra le sue), dove arrivano i simboli dalle terre e da dove partono verso la magia
+POOL_W, POOL_TESTO = 236, 64            # larga; lo spazio della scritta MANA a sinistra, poi i simboli
+
+
+def disposizione(mano=True):
+    """Le zone del tappeto nelle coordinate del progetto (DW x DH), nei due modi del replayer.
+
+    14 nov 2026 (Autore: «spostiamo pt vita e turni in maniera ordinata nell'area a destra e ingrandiamo tutto scalando nello spazio rimasto a sx»): a
+    destra, per ogni giocatore, il triangolo di grimorio, cimitero ed esilio (stesso giorno: «possiamo disporre mazzo cimitero e esilio a triangolo e
+    aumentare le dimensioni?»), col cerchio delle vite nell'angolo accanto al grimorio e nell'altro angolo il nome con le carte in mano e nel grimorio; il
+    turno sulla linea di mezzo fra i due triangoli; la pila accanto al campo. Il campo parte quasi dal bordo sinistro (fino a quel giorno le vite e il turno
+    stavano a sinistra, XB0 170).
+    mano=False (stesso giorno: «permetti lo zoom dinamico > in hand e' la versione attuale e se va off la mano a ventaglio scompare e si sposta lo zoom sul
+    tavolo ingrandendo tutto e la mano viene messa in riga piu' piccola»): niente ventaglio; le file del campo prendono l'altezza delle mani e le carte
+    crescono (WMAX), la tua mano e' una riga di carte piccole in fondo, la sua una riga di dorsi in cima."""
+    # la pila non ha piu' una colonna sua: compare al centro del tavolo solo quando c'e' una magia o un'abilita' (14 nov 2026, Autore: «la pila falla
+    # apparire solo quando si gioca al centro del tavolo e poi sparisce quando non serve, cosi' aumentiamo lo spazio per le aree»); il campo arriva all'area
+    # di destra (era fino a 1096, con la pila accanto)
+    XB0, LC = 24, 1216
+    ZX0, ZX1 = 1232, 1584
+    ZXM = (ZX0 + ZX1) / 2
+    # a sinistra del campo, sulla linea di mezzo, grande (stesso giorno: «falla piu' grande la pila, falla apparire a sx del campo di battaglia»)
+    STACK = (XB0 + 10, MEZZO - 150, XB0 + 10 + 196, MEZZO + 150)
+    if mano:
+        su, giu = 96, 904           # dove finiscono le mani a ventaglio
+        Z = dict(suo_dietro=(XB0, 104, LC, 236), suo_crea=(XB0, 244, LC, MEZZO - 14),
+                 mio_crea=(XB0, MEZZO + 14, LC, MEZZO + 240), mio_dietro=(XB0, MEZZO + 248, LC, MEZZO + 370),
+                 pool_suo=(XB0, 64, XB0 + POOL_W, 98), pool_mio=(XB0, MEZZO + 376, XB0 + POOL_W, MEZZO + 410))
+        wmax = dict(crea=140, terre=100, altri=110)
+    else:
+        # la mano al centro della fila dietro, fra le terre (piu' strette) e gli altri permanenti (14 nov 2026, Autore: «stringendo area terre la mano la
+        # mettiamo al centro tra i permanenti di dx e le terre di sx»); prima stava in una riga piccola in fondo, e la sua in cima
+        su, giu = 24, 976
+        Z = dict(suo_dietro=(XB0, 58, LC, 184), suo_crea=(XB0, 192, LC, MEZZO - 10),
+                 mio_crea=(XB0, MEZZO + 10, LC, MEZZO + 308), mio_dietro=(XB0, MEZZO + 316, LC, MEZZO + 442),
+                 pool_suo=(XB0, 16, XB0 + POOL_W, 50), pool_mio=(XB0, MEZZO + 450, XB0 + POOL_W, MEZZO + 484))
+        wmax = dict(crea=180, terre=124, altri=134, mano=124)
+    alto_lib = (MEZZO - 40 - su) / 2        # il triangolo: il grimorio verso il bordo, cimitero ed esilio verso la linea di mezzo
+    Z.update(lib_suo=(ZXM - 64, su, ZXM + 64, su + alto_lib - 3), cim_suo=(ZX0, su + alto_lib + 3, ZXM - 2, MEZZO - 40),
+             esi_suo=(ZXM + 2, su + alto_lib + 3, ZX1, MEZZO - 40),
+             cim_mio=(ZX0, MEZZO + 40, ZXM - 2, MEZZO + 40 + alto_lib - 3), esi_mio=(ZXM + 2, MEZZO + 40, ZX1, MEZZO + 40 + alto_lib - 3),
+             lib_mio=(ZXM - 64, MEZZO + 40 + alto_lib + 3, ZXM + 64, giu))
+    yl_s = (Z["lib_suo"][1] + Z["lib_suo"][3]) / 2
+    yl_m = (Z["lib_mio"][1] + Z["lib_mio"][3]) / 2
+    # la fila dietro: le terre a sinistra e gli altri permanenti a destra; col tavolo ingrandito in mezzo la mano
+    dietro = (("terre", 0.0, SPLIT), ("altri", SPLIT, 1.0)) if mano else (("terre", 0.0, 0.36), ("mano", 0.36, 0.62), ("altri", 0.62, 1.0))
+    return dict(XB0=XB0, LC=LC, ZX0=ZX0, ZX1=ZX1, ZXM=ZXM, STACK=STACK, ZONE=Z, WMAX=wmax, mano=mano, DIETRO=dietro,
+                VITA=dict(vita_suo=((ZX0 + ZXM - 64) / 2, yl_s), vita_mio=((ZX0 + ZXM - 64) / 2, yl_m)),
+                NOMI=dict(vita_suo=((ZX1 + ZXM + 64) / 2, yl_s), vita_mio=((ZX1 + ZXM + 64) / 2, yl_m)),
+                TURNO=(ZXM, MEZZO), MANO=(XB0 + (LC - XB0) / 2, su, giu))
+
+
+_D = disposizione(True)          # per chi legge le zone da fuori (le prove): il modo con la mano
+XB0, LC, ZX0, ZX1, ZXM, STACK, ZONE, VITA = (_D[k] for k in ("XB0", "LC", "ZX0", "ZX1", "ZXM", "STACK", "ZONE", "VITA"))
 
 
 def e_terra(nome):
@@ -62,6 +110,7 @@ def e_terra(nome):
 
 
 _FONT = {}
+_LISCI = {}          # le forme lisce gia' ridotte (liscio)
 
 
 def font(px, peso="Bold SemiCondensed"):
@@ -146,19 +195,31 @@ def dorso(w):
 
 
 _FACCE, _ROT, _OMBRE = {}, {}, {}
+PEDINE_ATTESA = set()       # le pedine disegnate col riquadro perche' l'immagine non e' ancora arrivata: chi disegna ridisegna quando c'e' (pedine.py)
 
 
-def faccia(nome, w, tappata=False):
+def faccia(nome, w, tappata=False, pedina=None):
     """La carta vera larga w (girata se tappata), angoli arrotondati; dall'immagine intera se c'e', se no dalla miniatura cotta; senza immagine un
-    riquadro col nome."""
+    riquadro col nome. pedina: il grpId di una pedina, che prende l'immagine della pedina vera da Scryfall (pedine.py; 14 nov 2026, Autore: «troviamo
+    delle immagini arena per i token o le pedine»); una pedina che copia una carta ha il nome della carta e ne usa l'immagine. Finche' l'immagine della
+    pedina non e' scaricata resta il riquadro col nome (e non si tiene: al prossimo disegno c'e')."""
     w = max(8, int(w))
-    k = (nome, w, tappata)
+    k = (nome, w, tappata, pedina)
     if k in _FACCE:
         return _FACCE[k]
     import capsule
     h = round(w * RAPP)
     im = None
-    for f in (capsule.file_immagine(nome), capsule.file_mini(nome)):
+    file_ = [capsule.file_immagine(nome), capsule.file_mini(nome)]
+    if pedina and not any(nome and os.path.isfile(f) for f in file_):
+        import pedine
+        fp = pedine.immagine(pedina, nome)
+        if fp is None:
+            if pedine.file(pedina) not in ("", None) and pedine._indice().get(int(pedina)) != "":
+                PEDINE_ATTESA.add(int(pedina))
+            return carta_angoli(carta_vuota(nome, w, h), w, h, tappata)
+        file_ = [fp]
+    for f in file_:
         if nome and os.path.isfile(f):
             try:
                 im = Image.open(f).convert("RGBA").resize((w, h), Image.LANCZOS)
@@ -167,6 +228,11 @@ def faccia(nome, w, tappata=False):
                 im = None
     if im is None:
         im = carta_vuota(nome, w, h)
+    _FACCE[k] = carta_angoli(im, w, h, tappata)
+    return _FACCE[k]
+
+
+def carta_angoli(im, w, h, tappata):
     m = Image.new("L", (w * 3, h * 3), 0)
     ImageDraw.Draw(m).rounded_rectangle((0, 0, w * 3 - 1, h * 3 - 1), radius=w * 3 * 0.048, fill=255)
     im.putalpha(ImageChops.multiply(im.getchannel("A"), m.resize((w, h), Image.LANCZOS)))
@@ -175,7 +241,6 @@ def faccia(nome, w, tappata=False):
         vel = Image.new("RGBA", im.size, (0, 0, 0, 70))
         vel.putalpha(ImageChops.multiply(vel.getchannel("A"), im.getchannel("A")))
         im = Image.alpha_composite(im, vel)
-    _FACCE[k] = im
     return im
 
 
@@ -223,17 +288,90 @@ def ombra_sprite(w, h, raggio, alfa):
     return _OMBRE[k]
 
 
-def gruppi(carte):
-    """Le stesse carte insieme: [nome, tappata, pedina, forza, costituzione, quante, [id]] nell'ordine di arrivo."""
+BLU_PT, ROSSO_PT, NEUTRO_PT = (28, 118, 220, 250), (205, 52, 52, 250), (20, 22, 28, 240)
+_PT = {}
+
+
+def pt_stampati(grp):
+    """(forza, costituzione) stampate sulla carta di Arena grp (database di Arena, db_carte), None se non si sanno. Una volta per grpId."""
+    if grp is None:
+        return None
+    if grp not in _PT:
+        try:
+            if "indice" not in _PT:     # l'indice per grpId, una volta per processo
+                import db_carte
+                _PT["indice"] = {c_.get("grpid"): c_ for c_ in db_carte.carte()}
+            c = _PT["indice"].get(grp)
+            _PT[grp] = (int(c.get("power") or 0), int(c.get("toughness") or 0)) if c and c.get("toughness") not in (None, "") else None
+        except (Exception, ValueError):      # noqa: BLE001 - * o X: non si confronta
+            _PT[grp] = None
+    return _PT[grp]
+
+
+FACCIA_GIU = "Face-down card"
+ORO_G = (240, 192, 64)          # le carte giocabili da fuori della mano (E1)
+VERDE_W = (46, 180, 92)         # la parola d'abilita' attiva (W2)
+
+
+def giocabile_esilio(nome):
+    """Una carta in esilio che chi la possiede puo' ancora giocare (grado C, dal testo: foretell, plot, warp, suspend, avventura; cimitero.DALL_ESILIO), o
+    una carta esiliata a faccia in giu' (di solito il foretell)."""
+    if nome == FACCIA_GIU:
+        return True
+    try:
+        import cimitero as CM
+        import dati_analizzatore as DA
+        c = DA._carta(nome) or {}
+    except Exception:      # noqa: BLE001 - senza i dati delle carte non si sa
+        return False
+    return bool(CM.DALL_ESILIO.search(c.get("testo") or "")) or "Adventure" in (c.get("tipo") or "")
+
+
+def dall_esilio(im):
+    """La carta giocabile da fuori della mano (esilio o cimitero), nella fila accanto alla mano: il bordo d'oro e PLAYABLE in testa (14 nov 2026, E1
+    scelto da Autore fra tre disegni: «accanto alla mano oro»; prima il bordo viola e EXILE)."""
+    k = 3
+    w, h = im.size
+    out = im.copy()
+    st = Image.new("RGBA", (w * k, h * k), (0, 0, 0, 0))
+    d = ImageDraw.Draw(st)
+    d.rounded_rectangle((k, k, w * k - k, h * k - k), radius=max(4, w // 12) * k, outline=ORO_G + (255,), width=max(3, w // 26) * k)
+    st = st.resize((w, h), Image.LANCZOS)
+    out.alpha_composite(st)
+    d2 = ImageDraw.Draw(out)
+    f = font(max(8, w // 9), "Bold")
+    tw = d2.textlength("PLAYABLE", font=f)
+    bh = max(10, w // 7)
+    d2.rounded_rectangle(((w - tw) / 2 - 5, 3, (w + tw) / 2 + 5, 3 + bh), radius=bh // 2, fill=ORO_G + (250,), outline=(255, 255, 255, 230))
+    bb = d2.textbbox((0, 0), "PLAYABLE", font=f)
+    d2.text(((w - tw) / 2 - bb[0], 3 + (bh - (bb[3] - bb[1])) / 2 - bb[1]), "PLAYABLE", font=f, fill=(58, 37, 0))
+    return out
+
+
+def gruppi(carte, soli=()):
+    """Le carte del campo: [nome, tappata, pedina, forza, costituzione, quante, [id], grpId, segnalini] nell'ordine di arrivo. Le pedine uguali e le terre
+    uguali (stessi segnalini compresi) stanno insieme col ×N; ogni altra carta sta da sola anche se ce n'e' un'altra uguale (14 nov 2026, Autore: «se ci
+    sono carte non pedina doppie sul tavolo non impiliamole ma che siano ognuna individuale», poi «terre possono restare impilate se sono simili»). soli: gli
+    id che stanno da soli comunque (chi attacca o blocca: ognuno ha la sua freccia e il suo colpo; stesso giorno: «2 attaccanti si impilano nascondendo uno
+    sotto l'altro»)."""
     out, idx = [], {}
+    # le pedine creatura uguali stanno insieme solo da 4 in su: sotto, ognuna al suo posto (14 nov 2026: attaccando si separavano, le creature passavano
+    # da 6 a 7 e la fila si rifaceva di colpo in due file piu' piccole)
+    quante = {}
     for c in carte:
-        k = (c[0], c[1], c[2], c[3] if len(c) > 3 else None, c[4] if len(c) > 4 else None)
-        if k in idx:
+        if c[2] and (len(c) > 3 and c[3] is not None):
+            quante[(c[0], c[1])] = quante.get((c[0], c[1]), 0) + 1
+    for c in carte:
+        seg = c[7] if len(c) > 7 else None
+        k = (c[0], c[1], c[2], c[3] if len(c) > 3 else None, c[4] if len(c) > 4 else None, tuple(sorted((seg or {}).items())))
+        da_solo = (len(c) > 5 and c[5] in soli) or (c[2] and len(c) > 3 and c[3] is not None and quante.get((c[0], c[1]), 0) < 4)
+        if (c[2] or e_terra(c[0])) and k in idx and not da_solo:
             g = out[idx[k]]
             g[5] += 1
         else:
-            idx[k] = len(out)
-            g = [k[0], k[1], k[2], k[3], k[4], 1, []]
+            if not da_solo:
+                idx[k] = len(out)
+            g = [k[0], k[1], k[2], k[3], k[4], 1, [], c[6] if len(c) > 6 else None, seg]
             out.append(g)
         if len(c) > 5 and c[5] is not None:
             g[6].append(c[5])
@@ -245,8 +383,10 @@ def gruppi(carte):
 class Tappeto:
     """Un tappeto di misura W x H. disegna(...) -> (immagine RGB, scatole), le scatole per il passaggio del mouse e i clic."""
 
-    def __init__(self, W, H):
+    def __init__(self, W, H, mano=True):
         self.W, self.H = int(W), int(H)
+        self.mano = bool(mano)
+        self.L = disposizione(self.mano)
         self.kx, self.ky = self.W / DW, self.H / DH
         self.k = min(self.kx, self.ky)
         self._fondo = None
@@ -268,7 +408,7 @@ class Tappeto:
     # -- il fondo, a 2x una volta
     def fondo(self):
         if self._fondo is None:
-            g2 = Tappeto(self.W * 2, self.H * 2)
+            g2 = Tappeto(self.W * 2, self.H * 2, self.mano)
             g2.sup = 2
             self._fondo = g2._disegna_fondo().resize((self.W, self.H), Image.LANCZOS)
         return self._fondo
@@ -300,8 +440,9 @@ class Tappeto:
             ImageDraw.Draw(al).ellipse((self.X(200), self.Y(cy - 260), self.X(1300), self.Y(cy + 260)), fill=col + (16,))
             feltro.alpha_composite(al.filter(ImageFilter.GaussianBlur(self.K(90))))
         fil = Image.new("RGBA", (L, A), (0, 0, 0, 0))     # il logo in filigrana
-        logo_carte(ImageDraw.Draw(fil), self.X(DW / 2 - 60), self.Y(MEZZO), self.K(300), self.K(3), fondo=(0, 0, 0, 0))
-        fil.putalpha(fil.getchannel("A").point(lambda v: int(v * 0.07)))
+        xc = self.L["XB0"] + (self.L["LC"] - self.L["XB0"]) / 2        # il centro del campo
+        logo_carte(ImageDraw.Draw(fil), self.X(xc - 10), self.Y(MEZZO), self.K(300), self.K(3), fondo=(0, 0, 0, 0))
+        fil.putalpha(fil.getchannel("A").point(lambda v: int(v * 0.035)))       # piu' leggero (14 nov 2026: «il logo al centro meno visibile»)
         feltro.alpha_composite(fil)
         m = self.K(8)
         mk = Image.new("L", (L, A), 0)
@@ -320,23 +461,56 @@ class Tappeto:
                        width=max(1, round(self.K(1.2))))
         fl = font(max(11 * self.sup, self.K(13)))       # a 2x: diventa ~11 pixel, mai meno
         # la linea di mezzo e il medaglione
-        for x0, x1 in ((XB0, DW / 2 - 110), (DW / 2 + 10, STACK[0] - 14)):
+        for x0, x1 in ((self.L["XB0"], xc - 60), (xc + 60, self.L["LC"])):
             d.line((self.X(x0), self.Y(MEZZO), self.X(x1), self.Y(MEZZO)), fill=(150, 190, 230, 55), width=max(1, round(self.K(1.5))))
-        cxm, cym = self.X(DW / 2 - 50), self.Y(MEZZO)
+        # il medaglione col logo sulla linea di mezzo, su uno strato a parte e al 40% (14 nov 2026, Autore: «il logo al centro del tappetino meno visibile
+        # e' troppo invasivo»): fino a quel giorno pieno, col cerchio azzurro
+        cxm, cym = self.X(xc), self.Y(MEZZO)
+        med = Image.new("RGBA", (L, A), (0, 0, 0, 0))
+        dm = ImageDraw.Draw(med)
         for rr, fi, ou in ((46, None, (150, 190, 230, 50)), (36, (14, 18, 24, 200), BLU + (110,))):
-            d.ellipse((cxm - self.K(rr), cym - self.K(rr), cxm + self.K(rr), cym + self.K(rr)), fill=fi, outline=ou, width=max(1, round(self.K(1.5))))
-        logo_carte(d, cxm + self.K(1), cym, self.K(54), self.K(1.5), fondo=(22, 24, 30))
+            dm.ellipse((cxm - self.K(rr), cym - self.K(rr), cxm + self.K(rr), cym + self.K(rr)), fill=fi, outline=ou, width=max(1, round(self.K(1.5))))
+        logo_carte(dm, cxm + self.K(1), cym, self.K(54), self.K(1.5), fondo=(22, 24, 30))
+        med.putalpha(med.getchannel("A").point(lambda v: int(v * 0.4)))
+        t.alpha_composite(med)
+        d = ImageDraw.Draw(t)
         # le zone stampate
-        self.slot(d, STACK, "STACK", VIOLA, fl, 60, tratteggio=True)
+        Z = self.L["ZONE"]
         for chi, col, nome in (("suo", ARANCIO, "OPPONENT · "), ("mio", BLU, "YOUR ")):
-            self.slot(d, ZONE[f"{chi}_crea"], f"{nome}CREATURES", col, fl, 40)
-            x0, y0, x1, y1 = ZONE[f"{chi}_dietro"]
-            xm = x0 + (x1 - x0) * SPLIT
-            self.slot(d, (x0, y0, xm - 6, y1), f"{nome}LANDS", col, fl, 40)
-            self.slot(d, (xm + 6, y0, x1, y1), f"{nome}ARTIFACTS · ENCHANTMENTS · PLANESWALKERS", col, fl, 40)
+            self.slot(d, Z[f"{chi}_crea"], f"{nome}CREATURES", col, fl, 40)
+            nomi_d = dict(terre=f"{nome}LANDS", mano="YOUR HAND" if chi == "mio" else "OPPONENT'S HAND",
+                          altri=f"{nome}{'ARTIFACTS · ENCHANTMENTS · PLANESWALKERS' if self.mano else 'OTHER PERMANENTS'}")
+            for k_, (bx0, _y0, bx1, _y1) in self.dietro(chi).items():
+                self.slot(d, (bx0, _y0, bx1, _y1), nomi_d[k_], col, fl, 40)
             for z in ("lib", "cim", "esi"):
-                self.slot(d, ZONE[f"{z}_{chi}"], None, col, fl, 55)
+                self.slot(d, Z[f"{z}_{chi}"], None, col, fl, 55)
+            if f"pool_{chi}" in Z:     # la vaschetta del mana: bordo tondo, MANA POOL a sinistra
+                x0_p, y0_p, x1_p, y1_p = self.box(Z[f"pool_{chi}"])
+                d.rounded_rectangle((x0_p, y0_p, x1_p, y1_p), radius=(y1_p - y0_p) / 2, fill=(8, 10, 14, 150), outline=col + (90,),
+                                    width=max(1, round(self.K(1.2))))
+                fp_ = font(max(9, self.K(11)))
+                for k_t, r_t in enumerate(("MANA", "POOL")):
+                    bb_ = d.textbbox((0, 0), r_t, font=fp_)
+                    d.text((x0_p + self.K(15), (y0_p + y1_p) / 2 + (k_t - 1) * self.K(12) + self.K(1) - bb_[1]), r_t, font=fp_, fill=col + (215,))
         return t
+
+    def posti_pool(self, chi, n):
+        """Dove stanno i simboli nella vaschetta di chi (in pixel): n centri da sinistra, e il lato del simbolo; oltre quanti ne stanno si accavallano."""
+        x0, y0, x1, y1 = self.box(self.L["ZONE"][f"pool_{chi}"])
+        lato = round((y1 - y0) * 0.78)
+        xa, xb = x0 + self.K(POOL_TESTO - 6) + lato / 2, x1 - self.K(10) - lato / 2
+        passo = lato + self.K(4)
+        if n > 1 and passo * (n - 1) > xb - xa:
+            passo = (xb - xa) / (n - 1)
+        return [(xa + k * passo, (y0 + y1) / 2) for k in range(n)], lato
+
+    def dietro(self, chi):
+        """I riquadri della fila dietro di chi, nelle coordinate del progetto: {«terre»|«mano»|«altri»: (x0, y0, x1, y1)}."""
+        x0, y0, x1, y1 = self.L["ZONE"][f"{chi}_dietro"]
+        out, L_ = {}, x1 - x0
+        for k_, a, b in self.L["DIETRO"]:
+            out[k_] = (x0 + L_ * a + (6 if a > 0 else 0), y0, x0 + L_ * b - (6 if b < 1 else 0), y1)
+        return out
 
     def slot(self, d, b, etichetta, colore, f, alfa, tratteggio=False):
         x0, y0, x1, y1 = self.box(b)
@@ -366,15 +540,23 @@ class Tappeto:
         L, A = math.ceil(x1 + m) - ox, math.ceil(y1 + m) - oy
         if L <= 0 or A <= 0:
             return
-        lay = Image.new("RGBA", (L * k, A * k), (0, 0, 0, 0))
-        dd = ImageDraw.Draw(lay)
         b = ((x0 - ox) * k, (y0 - oy) * k, (x1 - ox) * k, (y1 - oy) * k)
         w = max(1, round(width * k)) if outline else 0
-        if forma == "ell":
-            dd.ellipse(b, fill=fill, outline=outline, width=w)
-        else:
-            dd.rounded_rectangle(b, radius=radius * k, fill=fill, outline=outline, width=w)
-        lay = lay.resize((L, A), Image.LANCZOS)
+        # la stessa forma (pillole, cerchi delle vite, cornici) torna a ogni passo: la riduzione si ricorda (15 nov 2026, il debug del replayer: un
+        # terzo del disegno di un passo era qui)
+        chiave = (forma, L, A, tuple(round(v_, 1) for v_ in b), fill, outline, w, round(radius * k, 1))
+        lay = _LISCI.get(chiave)
+        if lay is None:
+            lay = Image.new("RGBA", (L * k, A * k), (0, 0, 0, 0))
+            dd = ImageDraw.Draw(lay)
+            if forma == "ell":
+                dd.ellipse(b, fill=fill, outline=outline, width=w)
+            else:
+                dd.rounded_rectangle(b, radius=radius * k, fill=fill, outline=outline, width=w)
+            lay = lay.resize((L, A), Image.LANCZOS)
+            if len(_LISCI) > 3000:
+                _LISCI.clear()
+            _LISCI[chiave] = lay
         cx0, cy0 = max(0, -ox), max(0, -oy)          # il pezzo che esce dall'immagine si taglia
         lay = lay.crop((cx0, cy0, min(L, im.width - ox), min(A, im.height - oy)))
         if lay.width > 0 and lay.height > 0:
@@ -416,31 +598,51 @@ class Tappeto:
         else:
             tela.alpha_composite(sp, (round(x + ox), round(y + oy)))
 
-    def fila(self, tela, d, lista, b, wmax, colore, nuove, scatole, pos, zkey):
+    def fila(self, tela, d, lista, b, wmax, colore, nuove, scatole, pos, zkey, seg_prima=None):
         """Una fila di carte nel riquadro b (pixel), alla misura piu' grande che ci sta, centrata. Ogni carta e' un pezzo: ombra, carta, forza e
-        costituzione, ×N, il filo azzurro e NEW se e' arrivata dal passo prima."""
+        costituzione, ×N (le pedine uguali), i segnalini, il filo azzurro e NEW se e' arrivata dal passo prima. Le carte non si rimpiccioliscono sotto
+        MIN_FILA della misura piena: se non ci stanno si sovrappongono, come le terre in Arena (14 nov 2026: ogni carta non pedina sta da sola).
+        seg_prima: {id: segnalini} del passo prima, per accendere la carta che ne ha appena ricevuti."""
         if not lista:
             return
         x0, y0, x1, y1 = b
         larga, alta = x1 - x0, y1 - y0
         gap = self.K(10)
         w = int(self.K(wmax))
+        while w > 18 and round(w * RAPP) > alta:       # la misura piena: quella che ci sta in altezza
+            w -= 2
+        piena = w
         while w > 18:
             h = round(w * RAPP)
             tot = sum((h if g[1] else w) for g in lista) + gap * (len(lista) - 1)
-            if h <= alta and tot <= larga:
+            if tot <= larga or w <= piena * MIN_FILA:
                 break
             w -= 2
         h = round(w * RAPP)
-        tot = sum((h if g[1] else w) for g in lista) + gap * (len(lista) - 1)
+        larghe = [(h if g[1] else w) for g in lista]
+        tot = sum(larghe) + gap * (len(lista) - 1)
+        passo = 1.0
+        if tot > larga and len(lista) > 1:      # si sovrappongono: ognuna avanza di meno, l'ultima intera
+            passo = max(0.0, (larga - larghe[-1]) / (tot - larghe[-1]))
+            tot = larga
         x = x0 + (larga - tot) / 2
         fpt, fn, fnew = font(max(8, self.K(12)), "Bold"), font(max(15, self.K(18)), "Bold"), font(max(7, self.K(8.5)), "Bold")
-        for g in lista:
+        fseg = font(max(10, self.K(13)), "Bold")
+        for i_, g in enumerate(lista):
             ww, hh = (h, w) if g[1] else (w, h)
             y = y0 + (alta - h) / 2 + (h - hh)
-            im = faccia(g[0], w, g[1])
+            im = faccia(g[0], w, g[1], pedina=g[7] if g[2] else None)
             o, p = ombra_sprite(im.width, im.height, self.K(10), 150)
-            sp, (ox, oy) = self.componi([(o, -p, -p + self.K(6)), (im, 0, 0), (Image.new("RGBA", (ww + 8, hh + 8)), -4, -4)])
+            sg = {}
+            for id_ in g[6]:
+                sg = (getattr(self, "_segni", {}) or {}).get(id_) or sg
+            # A1 (14 nov 2026, scelto da Autore fra tre disegni): le carte che questa ha esiliato «sotto di se'», sfalsate dietro di lei
+            dietro = []
+            for k_, n_s in enumerate((sg.get("sotto") or [])[:3]):
+                im_s = faccia(n_s, w, g[1])
+                off = self.K(9) * (len(sg["sotto"][:3]) - k_)
+                dietro.append((ImageEnhance.Brightness(im_s).enhance(0.72) if im_s.mode == "RGBA" else im_s, off, off))
+            sp, (ox, oy) = self.componi([(o, -p, -p + self.K(6))] + dietro + [(im, 0, 0), (Image.new("RGBA", (ww + 8, hh + 8)), -4, -4)])
             ds = ImageDraw.Draw(sp)
             cx, cy = -ox, -oy           # l'angolo della carta dentro il pezzo
             nuova = nuove.get(g[0], 0) > 0
@@ -448,17 +650,199 @@ class Tappeto:
                 nuove[g[0]] -= 1
                 self.liscio(ds, "rr", (cx - 3, cy - 3, cx + ww + 3, cy + hh + 3), outline=BLU + (255,), width=max(2.0, self.K(2.5)), radius=self.K(6))
                 self.pillola(ds, cx + self.K(22), cy + hh - self.K(14), "NEW", fnew, fondo=(15, 134, 204, 240), bordo=(15, 134, 204, 255))
-            if g[3] is not None and g[4] is not None:
+            seg = g[8] or {}
+            prima_seg = {}
+            for id_ in g[6]:
+                for k_, q_ in ((seg_prima or {}).get(id_) or {}).items():
+                    prima_seg[k_] = max(prima_seg.get(k_, 0), q_)
+            nuovi = {k_: q_ - prima_seg.get(k_, 0) for k_, q_ in seg.items() if seg_prima is not None and q_ > prima_seg.get(k_, 0)}
+            if nuovi and not nuova:     # segnalini appena arrivati: la carta si accende d'oro
+                self.liscio(ds, "rr", (cx - 4, cy - 4, cx + ww + 4, cy + hh + 4), outline=GIALLO + (255,), width=max(2.5, self.K(3.5)), radius=self.K(7))
+            if sg.get("tmp"):        # B1: la clessidra in alto a sinistra, se ne va a fine turno
+                self.clessidra(ds, cx + self.K(14), cy + self.K(14), self.K(13))
+            fkw = font(max(8, self.K(10.5)), "Bold")
+            for k_, kw_ in enumerate((sg.get("kw") or [])[:4]):     # C2: le parole chiave date da altre carte, pillole verdi sul bordo sinistro
+                self.pillola(ds, cx + self.K(30), cy + hh * 0.66 - k_ * self.K(22), "+" + kw_.title(), fkw, fondo=(30, 138, 79, 240), bordo=(255, 255, 255, 230))
+            for k_, de_ in enumerate((sg.get("des") or [])[:2]):    # D3: la pillola viola col nome (preparata, porta sbloccata, complottata...)
+                self.pillola(ds, cx + ww / 2, cy + hh * 0.78 - k_ * self.K(22), de_, fkw, fondo=(122, 79, 208, 245), bordo=(255, 255, 255, 230))
+            # W2 (14 nov 2026, scelto da Autore fra tre disegni): la parola d'abilita' come anello nell'angolo in alto a destra, pieno quanto il conto
+            # sulla soglia (5/7), verde quando e' attiva; sotto, piccolo, il suo nome
+            for k_, (n_aw, v_aw, s_aw) in enumerate((sg.get("aw") or [])[:1]):
+                attiva = s_aw is None or (v_aw is not None and v_aw >= s_aw)
+                frac = 1.0 if s_aw in (None, 0) else max(0.0, min(1.0, (v_aw or 0) / s_aw))
+                tx_aw = "ON" if s_aw is None and v_aw is None else (f"{v_aw}/{s_aw}" if s_aw is not None else str(v_aw))
+                ra = self.K(15)
+                xa, ya = cx + ww - ra - self.K(2), cy + ra + self.K(2)
+                self.anello(sp, xa, ya, ra, frac, VERDE_W if attiva else BLU)
+                fa = font(max(8, self.K(10 if len(tx_aw) <= 3 else 8.5)), "Bold")
+                bb = ds.textbbox((0, 0), tx_aw, font=fa)
+                ds.text((xa - (bb[2] - bb[0]) / 2 - bb[0], ya - (bb[3] - bb[1]) / 2 - bb[1]), tx_aw, font=fa, fill=(255, 255, 255))
+                self.pillola(ds, xa - self.K(4), ya + ra + self.K(10), n_aw.upper()[:12], font(max(7, self.K(8)), "Bold"),
+                             fondo=(12, 14, 18, 235), bordo=(VERDE_W if attiva else BLU) + (230,), pad=4)
+            # A2: il testo dell'abilita' data da un'altra carta (non una parola chiave), corto, sulla carta; con piu' abilita' «+N»
+            if sg.get("ab"):
+                try:
+                    import testi_arena as TA
+                    testi_ab = [t_ for t_ in (TA.abilita(g_) for g_ in sg["ab"]) if t_]
+                except Exception:      # noqa: BLE001 - senza database niente testo
+                    testi_ab = []
+                if testi_ab:
+                    # sopra le pillole verdi delle parole chiave date, se ci sono (la prima foto: il riquadro e le pillole si coprivano)
+                    n_kw = len((sg.get("kw") or [])[:4])
+                    y_ab = cy + hh * 0.36 if not n_kw else max(cy + self.K(36), cy + hh * 0.66 - n_kw * self.K(22) - self.K(34))
+                    self.testo_abilita(ds, cx, y_ab, ww, "+ " + testi_ab[0], len(testi_ab) - 1)
+            # C1: la scelta fatta (il tipo, il colore, il nome, la modalita') in un fumetto bianco in testa alla carta
+            if sg.get("ch"):
+                self.fumetto(ds, cx + ww / 2, cy + self.K(16), str(sg["ch"]), font(max(9, self.K(11)), "Bold"), ww)
+            altri_seg = {k_: q_ for k_, q_ in seg.items() if k_ not in (1, 2, 7)}
+            if altri_seg:
+                self.segnalini(ds, altri_seg, nuovi, cx, cy, ww, hh, fseg, fnew)
+            # i segnalini di forza e costituzione e la fedelta' come pallini blu col numero bianco al posto della pillola (14 nov 2026, Autore: «invece di
+            # aggiungere segnalini in testa alla carta mettili colorati al posto di forza e costituzione come pallini blu con testo bianco, uno per la forza
+            # uno per la costituzione: se un 1/1 guadagna 2 segnalini avra' 2 pallini con scritto 3 e 3»)
+            # poi, stesso giorno: «colora semplicemente di blu a o entrambe che hanno ricevuto segnalini + e di rosso se gli hanno ridotto attacco o difesa»:
+            # ogni valore contro quello stampato sulla carta (database di Arena), blu se e' piu' alto, rosso se e' piu' basso, normale se e' uguale
+            r_p = self.K(13)
+            base_ = pt_stampati(g[7]) if g[3] is not None else None
+            diversi = base_ is not None and (g[3] != base_[0] or g[4] != base_[1])
+            if g[3] is not None and g[4] is not None and diversi:
+                for k_, (v_, b_v) in enumerate(((g[4], base_[1]), (g[3], base_[0]))):          # da destra: la costituzione, poi la forza
+                    px_, py_ = cx + ww - self.K(16) - k_ * (2 * r_p + self.K(4)), cy + hh - self.K(16)
+                    self.pallino(ds, px_, py_, r_p, str(v_), fpt, colore=BLU_PT if v_ > b_v else ROSSO_PT if v_ < b_v else NEUTRO_PT)
+            elif g[3] is not None and g[4] is not None:
                 self.pillola(ds, cx + ww - self.K(24), cy + hh - self.K(16), f"{g[3]}/{g[4]}", fpt)
+            if 7 in seg:
+                self.pallino(ds, cx + ww - self.K(16), cy + hh - self.K(16) - (2 * r_p + self.K(4) if g[3] is not None else 0), r_p, str(seg[7]), fpt)
             if g[5] > 1:
                 self.pillola(ds, cx + ww - self.K(26), cy + self.K(22), f"×{g[5]}", fn, fondo=colore + (245,), bordo=(255, 255, 255, 230),
                              colore=(10, 12, 16), pad=7)
             r_ = (x, y, x + ww, y + hh)
-            self.posa(tela, sp, ox, oy, x, y, dict(zkey=zkey, nome=g[0], box=r_, tap=g[1], ped=g[2], ids=list(g[6]), nuova=nuova))
-            scatole.append(r_ + (g[0],))
+            avanza = (ww + gap) * passo
+            vis = r_ if i_ == len(lista) - 1 or passo >= 1 else (x, y, x + min(ww, avanza), y + hh)      # la parte che si vede, per il passaggio del mouse
+            self.posa(tela, sp, ox, oy, x, y, dict(zkey=zkey, nome=g[0], box=r_, vis=vis, tap=g[1], ped=g[2], ids=list(g[6]), nuova=nuova, grp=g[7]))
+            scatole.append(vis + (g[0],))
             for id_ in g[6]:
                 pos[id_] = r_
-            x += ww + gap
+            x += avanza
+
+    def anello(self, im, cx, cy, r, frac, colore):
+        """W2: il tondo scuro con l'anello di avanzamento (frac da 0 a 1, dall'alto in senso orario), disegnato a 4x e ridotto."""
+        k = 4
+        L = int(2 * r + 6)
+        lay = Image.new("RGBA", (L * k, L * k), (0, 0, 0, 0))
+        d = ImageDraw.Draw(lay)
+        c0, R = L * k / 2, r * k
+        w = max(2, int(r * 0.28)) * k
+        d.ellipse((c0 - R, c0 - R, c0 + R, c0 + R), fill=(12, 14, 18, 245), outline=(255, 255, 255, 200), width=max(1, k))
+        d.arc((c0 - R + w / 2 + k, c0 - R + w / 2 + k, c0 + R - w / 2 - k, c0 + R - w / 2 - k), 0, 360, fill=(70, 78, 92, 255), width=w)
+        if frac > 0:
+            d.arc((c0 - R + w / 2 + k, c0 - R + w / 2 + k, c0 + R - w / 2 - k, c0 + R - w / 2 - k), -90, -90 + 360 * frac, fill=colore + (255,), width=w)
+        lay = lay.resize((L, L), Image.LANCZOS)
+        im.alpha_composite(lay, (max(0, round(cx - L / 2)), max(0, round(cy - L / 2))))
+
+    def testo_abilita(self, d, cx, y, ww, testo, altre):
+        """A2: il testo corto dell'abilita' data, in un riquadro scuro col bordo verde, al massimo due righe; «+N more» se ce ne sono altre."""
+        f = font(max(8, self.K(9)), "Bold")
+        larga = ww - self.K(10)
+        parole, righe, r_ = testo.split(), [], ""
+        for p_ in parole:
+            prova_ = (r_ + " " + p_).strip()
+            if d.textlength(prova_, font=f) <= larga:
+                r_ = prova_
+            else:
+                righe.append(r_)
+                r_ = p_
+            if len(righe) == 2:
+                break
+        if r_ and len(righe) < 2:
+            righe.append(r_)
+        if len(righe) == 2 and " ".join(righe) != testo.strip():
+            while d.textlength(righe[1] + "…", font=f) > larga and len(righe[1]) > 3:
+                righe[1] = righe[1][:-1]
+            righe[1] += "…"
+        if altre > 0:
+            righe.append(f"+{altre} more")
+        hr = self.K(12)
+        box = (cx + self.K(3), y, cx + ww - self.K(3), y + hr * len(righe) + self.K(8))
+        self.liscio(d, "rr", box, fill=(10, 30, 20, 235), outline=(46, 160, 82, 255), width=max(1.2, self.K(1.4)), radius=self.K(5))
+        for i_, r_ in enumerate(righe):
+            d.text((box[0] + self.K(5), box[1] + self.K(4) + i_ * hr), r_, font=f, fill=(190, 240, 205))
+
+    def fumetto(self, d, cx, cy, testo, f, ww):
+        """C1: il fumetto bianco col testo scuro (la scelta fatta) e la punta verso il basso, in testa alla carta."""
+        while d.textlength(testo, font=f) > ww - self.K(16) and len(testo) > 3:
+            testo = testo[:-2].rstrip() + "…" if not testo.endswith("…") else testo[:-2] + "…"
+        bb = d.textbbox((0, 0), testo, font=f)
+        tw, th = bb[2] - bb[0], bb[3] - bb[1]
+        p = self.K(7)
+        box = (cx - tw / 2 - p, cy - th / 2 - p * 0.7, cx + tw / 2 + p, cy + th / 2 + p * 0.7)
+        self.liscio(d, "rr", box, fill=(255, 255, 255, 250), outline=(40, 40, 60, 255), width=1, radius=self.K(7))
+        d.polygon([(cx - self.K(5), box[3] - 1), (cx + self.K(5), box[3] - 1), (cx, box[3] + self.K(7))], fill=(255, 255, 255, 250))
+        d.text((cx - tw / 2 - bb[0], cy - th / 2 - bb[1]), testo, font=f, fill=(38, 33, 92))
+
+    def clessidra(self, d, cx, cy, r):
+        """La clessidra (il permanente che se ne va a fine turno): un tondo arancio col bordo bianco e la clessidra scura."""
+        self.liscio(d, "ell", (cx - r, cy - r, cx + r, cy + r), fill=(224, 160, 48, 250), outline=(255, 255, 255, 255), width=max(1.2, self.K(1.6)))
+        a, h = r * 0.48, r * 0.58
+        c_ = (58, 37, 0, 255)
+        w_ = max(1, round(self.K(1.8)))
+        d.line((cx - a, cy - h, cx + a, cy - h), fill=c_, width=w_)
+        d.line((cx - a, cy + h, cx + a, cy + h), fill=c_, width=w_)
+        d.line((cx - a * 0.8, cy - h, cx + a * 0.8, cy + h), fill=c_, width=w_)
+        d.line((cx + a * 0.8, cy - h, cx - a * 0.8, cy + h), fill=c_, width=w_)
+
+    def pallino(self, d, cx, cy, r, testo, f, colore=None):
+        """Un pallino pieno col numero bianco: forza o costituzione (blu piu' alta dello stampato, rossa piu' bassa, scura uguale), la fedelta' (blu)."""
+        self.liscio(d, "ell", (cx - r, cy - r, cx + r, cy + r), fill=colore or BLU_PT, outline=(255, 255, 255, 255), width=max(1.2, self.K(1.6)))
+        bb = d.textbbox((0, 0), testo, font=f)
+        d.text((cx - (bb[2] - bb[0]) / 2 - bb[0], cy - (bb[3] - bb[1]) / 2 - bb[1]), testo, font=f, fill=(255, 255, 255))
+
+    def segnalini(self, ds, seg, nuovi, cx, cy, ww, hh, fseg, fnew):
+        """I segnalini sulla carta, ben visibili (14 nov 2026, Autore: «quando a una carta vengono aggiunti segnalini rendiamolo visibilmente piu'
+        chiaro»): in alto una pillola per tipo, piena e grande: +1/+1 verde con «+N/+N», -1/-1 rossa con «-N/-N», la fedelta' d'oro col numero, gli altri
+        viola col numero e il nome; sotto, in giallo, «+N» quando sono appena arrivati."""
+        import nomi_segnalini as NS
+        y = cy + self.K(16)
+        for k_, q_ in sorted(seg.items(), key=lambda kv: (kv[0] not in (1, 2, 7), kv[0])):
+            if k_ == 1:
+                t, fondo = f"+{q_}/+{q_}", (40, 170, 90, 245)
+            elif k_ == 2:
+                t, fondo = f"-{q_}/-{q_}", (200, 60, 60, 245)
+            elif k_ == 7:
+                t, fondo = f"LOYALTY {q_}", (200, 150, 40, 245)
+            else:
+                t, fondo = f"{q_} {NS.nome(k_).upper()}", (120, 80, 200, 245)
+            bx = self.pillola(ds, cx + ww / 2, y, t, fseg, fondo=fondo, bordo=(255, 255, 255, 255), colore=(255, 255, 255), pad=7)
+            if k_ in nuovi:
+                self.pillola(ds, bx[2] + self.K(4) + self.K(14), y, f"+{nuovi[k_]}", fnew, fondo=GIALLO + (250,), bordo=(255, 255, 255, 255), colore=(20, 16, 4))
+            y += (bx[3] - bx[1]) + self.K(4)
+
+    def riga_mano(self, tela, immagini, nomi, b, scatole, zkey):
+        """Una mano in riga nel riquadro b (pixel; il tavolo ingrandito, nel mezzo della fila dietro): le carte alte quanto il riquadro, centrate, che si
+        sovrappongono se non ci stanno. -> la larghezza."""
+        if not immagini:
+            return 0
+        x0_, y0, x1_, y1 = b
+        h = max(10, int(y1 - y0))
+        w = round(h / RAPP)
+        if w > x1_ - x0_:
+            w = int(x1_ - x0_); h = round(w * RAPP)
+        gap = self.K(6)
+        larga_max = x1_ - x0_
+        passo = min(w + gap, (larga_max - w) / max(1, len(immagini) - 1)) if len(immagini) > 1 else w + gap
+        tot = passo * (len(immagini) - 1) + w
+        x = (x0_ + x1_) / 2 - tot / 2
+        for i_, (im, n) in enumerate(zip(immagini, nomi)):
+            im = im.resize((w, h), Image.LANCZOS) if im.size != (w, h) else im
+            o, p = ombra_sprite(w, h, self.K(6), 140)
+            sp, (ox, oy) = self.componi([(o, -p, -p + self.K(3)), (im, 0, 0)])
+            box = (x, y0, x + w, y0 + h)
+            vis = box if i_ == len(immagini) - 1 else (x, y0, x + min(w, passo), y0 + h)
+            self.posa(tela, sp, ox, oy, x, y0, dict(zkey=zkey, nome=n, box=box, vis=vis, tap=False, ped=False, ids=[], nuova=False))
+            if n:
+                scatole.append(vis + (n,))
+            x += passo
+        return tot
 
     def ventaglio(self, tela, carte, cx, base_y, w, apertura, sovrap, capovolto, scatole, larga_max, zkey):
         """Una mano a ventaglio: le immagini [(chiave, immagine)], il perno sotto la base; capovolto per l'avversario. Ogni carta e' un pezzo."""
@@ -483,8 +867,23 @@ class Tappeto:
             if nome:
                 scatole.append(box + (nome,))
 
+    def pannello_pila(self, titolo="STACK", piede=""):
+        """Il riquadro della pila, vuoto: (immagine, x0, y0). Lo stesso della pila disegnata, perche' l'app lo mostri prima che una carta ci arrivi e dopo
+        che l'ultima e' uscita (14 nov 2026, Autore: «la pila ancora appare e scompare, il bambino non capisce»)."""
+        x0, y0, x1, y1 = self.box(self.L["STACK"])
+        fs = font(max(10, self.K(10)))
+        pan = Image.new("RGBA", (round(x1 - x0) + 2, round(y1 - y0) + 2), (0, 0, 0, 0))
+        dp = ImageDraw.Draw(pan)
+        self.liscio(dp, "rr", (0, 0, x1 - x0, y1 - y0), fill=(14, 12, 24, 228), outline=VIOLA + (230,), width=max(1.5, self.K(2)), radius=self.K(10))
+        tw = dp.textlength(titolo, font=fs)
+        dp.text(((x1 - x0) / 2 - tw / 2, self.K(8)), titolo, font=fs, fill=VIOLA + (255,))
+        if piede:
+            tw = dp.textlength(piede, font=fs)
+            dp.text(((x1 - x0) / 2 - tw / 2, (y1 - y0) - self.K(18)), piede, font=fs, fill=VIOLA + (230,))
+        return pan, x0, y0
+
     def pila_zona(self, tela, d, chiave, carte, colore, n=None, retro=False, scatole=None, zone=None):
-        x0, y0, x1, y1 = self.box(ZONE[chiave])
+        x0, y0, x1, y1 = self.box(self.L["ZONE"][chiave])
         tit = {"lib": "LIBRARY", "cim": "GRAVEYARD", "esi": "EXILE"}[chiave[:3]]
         q = n if n is not None else len(carte)
         h = (y1 - y0) - self.K(30)
@@ -510,9 +909,11 @@ class Tappeto:
                 tela.alpha_composite(dietro, (round(cx - dietro.width / 2 + self.K(3)), round(yc + self.K(1))))
             im = faccia(carte[0], w)       # in cima la piu' recente: Arena scrive la pila dalla carta arrivata per ultima
             self.metti(tela, im, cx - w / 2, yc, raggio=8)
+            self._carte_pile[chiave] = (cx - w / 2, yc, cx + w / 2, yc + h)       # da qui e verso qui scorrono le carte (anima_board)
             if scatole is not None:
                 scatole.append((cx - w / 2, yc, cx + w / 2, yc + h, carte[0]))
         else:
+            self._carte_pile[chiave] = (cx - w / 2, yc, cx + w / 2, yc + h)
             fe = font(self.K(10), "SemiBold")
             tw = d.textlength("empty", font=fe)
             d.text((cx - tw / 2, yc + h / 2 - self.K(6)), "empty", font=fe, fill=(120, 126, 138, 160))
@@ -525,8 +926,10 @@ class Tappeto:
         if zone is not None:
             zone[chiave] = ((x0, y0, x1, y1), list(carte))
 
-    def giocatore(self, tela, d, chiave, chi, colore, vite, mano, grimorio, sopra, pos):
-        x, y = VITA[chiave]
+    def giocatore(self, tela, d, chiave, chi, colore, vite, mano, grimorio, sopra, pos, vel=None):
+        """Il cerchio delle vite nell'angolo accanto al suo grimorio; nell'altro angolo il nome, e sotto le carte in mano e nel grimorio (14 nov 2026: le vite
+        a destra, in ordine)."""
+        x, y = self.L["VITA"][chiave]
         R = self.K(42)
         cx, cy = self.X(x), self.Y(y)
         o, p = ombra_sprite(R * 2.6, R * 2.6, self.K(28), 60)
@@ -543,16 +946,19 @@ class Tappeto:
         fl = font(self.K(8.5), "SemiBold")
         tw = d.textlength("LIFE", font=fl)
         d.text((cx - tw / 2, cy + self.K(17)), "LIFE", font=fl, fill=colore + (230,))
+        xn, yn = self.L["NOMI"][chiave]
+        xn, yn = self.X(xn), self.Y(yn)
         fn = font(max(13, self.K(15)))
         tw = d.textlength(chi, font=fn)
-        yn = cy - R - self.K(24) if sopra else cy + R + self.K(10)
-        d.text((cx - tw / 2, yn), chi, font=fn, fill=colore + (255,))
+        d.text((xn - tw / 2, yn - self.K(24)), chi, font=fn, fill=colore + (255,))
         fv = font(max(12, self.K(13)), "SemiBold")
-        yv = yn + (-self.K(26) if sopra else self.K(24))
         for i, (ic, v) in enumerate((("hand", mano), ("library", grimorio))):
-            xx = cx - self.K(38) + i * self.K(46)
-            self.icona(d, ic, xx, yv + self.K(8))
-            d.text((xx + self.K(12), yv), str(v), font=fv, fill=(214, 218, 226))
+            yy = yn + self.K(2) + i * self.K(22)
+            self.icona(d, ic, xn - self.K(14), yy + self.K(8))
+            d.text((xn - self.K(2), yy), str(v), font=fv, fill=(214, 218, 226))
+        if vel:         # V3 (14 nov 2026, scelto da Autore): la velocita' di Aetherdrift (Start your engines!), la pillola arancio sotto i conti
+            self.pillola(d, xn, yn + self.K(62), f"SPEED {vel}" + (" · MAX" if vel >= 4 else ""), font(max(9, self.K(10.5)), "Bold"),
+                         fondo=(224, 160, 48, 250), bordo=(255, 255, 255, 230), colore=(58, 37, 0))
 
     def icona(self, d, k, x, y):
         g = (150, 156, 168, 255)
@@ -570,29 +976,36 @@ class Tappeto:
         """Un momento: f la foto (dal tuo lato), prima la foto del passo prima (le carte nuove), rel la magia in pila o il combattimento, danni
         [(bersaglio, quanti)] dell'azione. -> (immagine RGB, scatole [(x0, y0, x1, y1, nome)], zone {chiave: (riquadro, carte)})."""
         self._pezzi = [] if pezzi else None
-        self._etichette, self._grimori = {}, {}
+        self._etichette, self._grimori, self._carte_pile, self._mani = {}, {}, {}, {}
         tela = self.fondo().copy()
         d = ImageDraw.Draw(tela)
         scatole, zone, pos = [], {}, {}
-        # il passo, a sinistra sulla linea di mezzo
+        # il turno, a destra sulla linea di mezzo fra i due triangoli (14 nov 2026: «spostiamo pt vita e turni ... nell'area a destra»)
         ft = font(max(15, self.K(16)))
         col_t = BLU if mio_turno else ARANCIO
         parti = titolo.split(" · ", 1)
-        self.pillola(d, self.X(86), self.Y(MEZZO), parti[0].upper(), ft, fondo=(10, 30, 44, 235) if mio_turno else (40, 28, 12, 235),
-                     bordo=col_t + (255,), pad=9)
+        xt, yt = self.X(self.L["TURNO"][0]), self.Y(self.L["TURNO"][1])
+        bx_t = self.pillola(d, xt - (self.K(60) if len(parti) > 1 else 0), yt, parti[0].upper(), ft,
+                            fondo=(10, 30, 44, 235) if mio_turno else (40, 28, 12, 235), bordo=col_t + (255,), pad=9)
         if len(parti) > 1:
             fp = font(max(11, self.K(11)), "SemiBold")
             t2 = parti[1].upper()
-            larga_t = min(self.K(150), 2 * (self.X(86) - self.K(18)))     # mai oltre il bordo del tappeto
+            larga_t = self.X(self.L["ZX1"]) - self.K(8) - (bx_t[2] + self.K(10))        # accanto alla pillola, dentro l'area di destra
             while d.textlength(t2, font=fp) > larga_t and len(t2) > 4:
                 t2 = t2[:-2].rstrip(" .…") + "…"
-            tw = d.textlength(t2, font=fp)
-            d.text((self.X(86) - tw / 2, self.Y(MEZZO) + self.K(20)), t2, font=fp, fill=col_t + (220,))
+            bb_ = d.textbbox((0, 0), t2, font=fp)
+            d.text((bx_t[2] + self.K(10), yt - (bb_[3] - bb_[1]) / 2 - bb_[1]), t2, font=fp, fill=col_t + (220,))
         conta = lambda lst: {n: sum(1 for c in lst if c[0] == n) for n in {c[0] for c in lst}}
         vite = f.get("vite") or (None, None)
         cim, esi = f.get("cim") or ([], []), f.get("esi") or ([], [])
         for chi, col in (("suo", ARANCIO), ("mio", BLU)):
-            gg = gruppi(f[chi])
+            in_comb = set()
+            if rel and rel.get("tipo") == "comb":
+                in_comb = {a_[0] for a_ in rel.get("att") or []} | {b_[0] for b_ in rel.get("blocchi") or []}
+            segni_ = f.get("segni") or {}
+            gg = gruppi(f[chi], in_comb | set(segni_))      # una carta coi suoi segni sta da sola (la pedina temporanea fra le uguali)
+            self._segni = segni_
+            seg_prima = {c[5]: (c[7] if len(c) > 7 else None) for c in prima[chi] if len(c) > 5} if prima is not None else None
             nuove = {}
             if prima is not None:
                 ora_n, prima_n = conta(f[chi]), conta(prima[chi])
@@ -600,56 +1013,161 @@ class Tappeto:
             crea = [g for g in gg if g[3] is not None]
             terre = [g for g in gg if g[3] is None and e_terra(g[0])]
             altri = [g for g in gg if g[3] is None and not e_terra(g[0])]
-            x0, y0, x1, y1 = self.box(ZONE[f"{chi}_crea"])
-            self.fila(tela, d, crea, (x0 + self.K(10), y0 + self.K(18), x1 - self.K(10), y1 - self.K(6)), 140, col, nuove, scatole, pos, chi)
-            x0, y0, x1, y1 = ZONE[f"{chi}_dietro"]
-            xm = x0 + (x1 - x0) * SPLIT
-            self.fila(tela, d, terre, self.box((x0 + 10, y0 + 18, xm - 16, y1 - 6)), 80, col, nuove, scatole, pos, chi)
-            self.fila(tela, d, altri, self.box((xm + 16, y0 + 18, x1 - 10, y1 - 6)), 96, col, nuove, scatole, pos, chi)
+            Z, WM = self.L["ZONE"], self.L["WMAX"]
+            x0, y0, x1, y1 = self.box(Z[f"{chi}_crea"])
+            b_ = (x0 + self.K(10), y0 + self.K(18), x1 - self.K(10), y1 - self.K(6))
+            if len(crea) > CREA_FILA:       # oltre 6 creature due file, e le carte un po' piu' piccole (14 nov 2026, Autore: «se ci sono piu' di 6 creature
+                meta = (len(crea) + 1) // 2      # in campo si crea una seconda fila e tutto si riduce un po'»); la prima fila verso la linea di mezzo
+                ym = (b_[1] + b_[3]) / 2
+                alta, bassa = (b_[0], b_[1], b_[2], ym - self.K(3)), (b_[0], ym + self.K(3), b_[2], b_[3])
+                file_ = ((crea[:meta], bassa), (crea[meta:], alta)) if chi == "suo" else ((crea[:meta], alta), (crea[meta:], bassa))
+                for lista_, bb_ in file_:
+                    self.fila(tela, d, lista_, bb_, WM["crea"], col, nuove, scatole, pos, chi, seg_prima)
+            else:
+                self.fila(tela, d, crea, b_, WM["crea"], col, nuove, scatole, pos, chi, seg_prima)
+            for k_, (bx0, by0, bx1, by1) in self.dietro(chi).items():
+                if k_ in ("terre", "altri"):
+                    self.fila(tela, d, terre if k_ == "terre" else altri, self.box((bx0 + 10, by0 + 18, bx1 - 10, by1 - 6)), WM[k_], col, nuove, scatole, pos, chi,
+                              seg_prima)
         self.pila_zona(tela, d, "lib_suo", [], ARANCIO, n="?", retro=True)
         self.pila_zona(tela, d, "cim_suo", cim[1], ARANCIO, scatole=scatole, zone=zone)
         self.pila_zona(tela, d, "esi_suo", esi[1], ARANCIO, scatole=scatole, zone=zone)
         self.pila_zona(tela, d, "lib_mio", [], BLU, n=grimorio if grimorio is not None else "?", retro=True)
         self.pila_zona(tela, d, "cim_mio", cim[0], BLU, scatole=scatole, zone=zone)
         self.pila_zona(tela, d, "esi_mio", esi[0], BLU, scatole=scatole, zone=zone)
-        self.giocatore(tela, d, "vita_suo", "OPPONENT", ARANCIO, vite[1], f.get("n_suo", 0), "?", False, pos)
-        self.giocatore(tela, d, "vita_mio", "YOU", BLU, vite[0], len(f.get("mano") or []), grimorio if grimorio is not None else "?", True, pos)
+        vel_ = f.get("vel") or (None, None)
+        self.giocatore(tela, d, "vita_suo", "OPPONENT", ARANCIO, vite[1], f.get("n_suo", 0), "?", False, pos, vel_[1])
+        self.giocatore(tela, d, "vita_mio", "YOU", BLU, vite[0], len(f.get("mano") or []), grimorio if grimorio is not None else "?", True, pos, vel_[0])
         # la pila: la magia o l'abilita' di questo momento
-        pila_box = None
+        pila_box, pila_rel = None, None
+        # la pila intera della foto (14 nov 2026, Autore: «ora le carte si rispondono in maniera corretta impilandosi ma l'area pila sparisce»): la cima
+        # e sotto le altre, impilate, ognuna con la sua barra del nome a vista; c'e' anche nei passi senza la magia come relazione (un combattimento con
+        # un istantaneo in pila, un pagamento)
+        pila_f = list(f.get("pila") or [])
         if rel and rel.get("tipo") == "spell":
-            x0, y0, x1, y1 = self.box(STACK)
-            h = (y1 - y0) - self.K(26)
+            pila_rel = rel
+        elif pila_f:
+            pila_rel = dict(nome=pila_f[0][0], mio=pila_f[0][1], ab=pila_f[0][2], g=pila_f[0][3])
+        sotto = []
+        if pila_rel:
+            sotto = pila_f[1:] if pila_f and pila_f[0][0] == pila_rel["nome"] else [q for q in pila_f if q[0] != pila_rel["nome"]]
+            sotto = sotto[:3]
+        self._pila_sotto = {}
+        if pila_rel:      # la pila si disegna per ultima (sopra le carte), qui solo dove sta
+            x0, y0, x1, y1 = self.box(self.L["STACK"])
+            passo_s = self.K(20)
+            h = (y1 - y0) - self.K(48) - passo_s * len(sotto)
             w = round(h / RAPP)
-            im = faccia(rel["nome"], w)
             cx = (x0 + x1) / 2
-            self.metti(tela, im, cx - w / 2, y0 + self.K(20), raggio=12, alfa=190)
-            pila_box = (cx - w / 2, y0 + self.K(20), cx + w / 2, y0 + self.K(20) + h)
-            scatole.append(pila_box + (rel["nome"],))
-            fs = font(max(10, self.K(10)))
-            et = ("YOURS" if rel.get("mio") else "OPPONENT'S") + (" · ABILITY" if rel.get("ab") else "")
-            tw = d.textlength(et, font=fs)
-            d.text((cx - tw / 2, y1 + self.K(4)), et, font=fs, fill=VIOLA + (230,))
-        # le mani: la tua a ventaglio dal bordo basso, la sua di dorso dal bordo alto
-        cxm = self.X(XB0 + (LC - XB0) / 2)
+            ys = y0 + self.K(26)
+            for j_, q in enumerate(reversed(sotto)):        # la piu' in fondo in alto, la prossima a risolversi subito sopra la cima
+                yq = ys + j_ * passo_s
+                self._pila_sotto[q[4]] = (cx - w / 2, yq, cx + w / 2, yq + passo_s)
+            pila_box = (cx - w / 2, ys + passo_s * len(sotto), cx + w / 2, ys + passo_s * len(sotto) + h)
+        # le mani: la tua a ventaglio dal bordo basso, la sua di dorso dal bordo alto; col tavolo ingrandito (In hand spento) in riga, piccole
+        cxm = self.X(self.L["MANO"][0])
         fl = font(max(11, self.K(10.5)))
         mano = f.get("mano") or []
-        wm = int(self.K(158))
-        mie = [((n, wm), faccia(n, wm)) for n in mano]
-        self.ventaglio(tela, mie, cxm, self.H + wm * RAPP / 2 - self.K(150), wm, 6, 0.30, False, scatole, self.K(760), "mano")
         n_suo = f.get("n_suo") or 0
-        wr = int(self.K(92))
-        self.ventaglio(tela, [(("dorso", wr), dorso(wr))] * n_suo, cxm, -wr * RAPP / 2 + self.K(100), wr, 6, 0.42, True, [], self.K(560), "mano_suo")
-        larga_mano = min(len(mano) * wm * 0.7, self.K(760))
-        self.pillola(d, cxm - larga_mano / 2 - self.K(110), self.H - self.K(50), f"YOUR HAND · {len(mano)}", fl, fondo=(10, 22, 32, 220),
-                     bordo=BLU + (180,), colore=BLU)
-        larga_suo = min(n_suo * wr * 0.58, self.K(560))
-        self.pillola(d, cxm + larga_suo / 2 + self.K(110), self.K(50), f"OPPONENT'S HAND · {n_suo}", fl, fondo=(24, 18, 10, 220), bordo=ARANCIO + (160,),
-                     colore=ARANCIO)
+        # le carte giocabili dall'esilio (14 nov 2026, Autore: «carte esiliate che in realta' il giocatore puo' giocare non si vedono ne' per immagine ne'
+        # come condizione giocabile, dovrebbero stare a parte nella sua mano e distinguersi se rivelate o meno»): a parte, accanto alla mano, col bordo viola;
+        # le sue a faccia in giu' (non rivelate) di dorso
+        esi_ = f.get("esi") or ([], [])
+        if "segni" in f:        # il replay azione per azione: quelle che Arena dice giocabili, dall'esilio e dal cimitero, di chi puo' giocarle (14 nov 2026)
+            gioca_ = [v_["gioca"] for v_ in (f.get("segni") or {}).values() if v_.get("gioca")]
+            esi_mie = [n for n, mio_, _z in gioca_ if mio_]
+            esi_sue = [n for n, mio_, _z in gioca_ if not mio_]
+        else:                   # i Moments (le foto di mana_aperto non hanno i permessi): dal testo, grado C
+            esi_mie = [n for n in esi_[0] if giocabile_esilio(n)]
+            esi_sue = [n for n in esi_[1] if giocabile_esilio(n)]
+        self._esilio_mano = dict(mio=list(esi_mie), suo=list(esi_sue))
+        if self.mano:
+            wm = int(self.K(158))
+            mie = [((n, wm), faccia(n, wm)) for n in mano]
+            self.ventaglio(tela, mie, cxm, self.H + wm * RAPP / 2 - self.K(130), wm, 6, 0.30, False, scatole, self.K(760), "mano")
+            wr = int(self.K(92))
+            self.ventaglio(tela, [(("dorso", wr), dorso(wr))] * n_suo, cxm, -wr * RAPP / 2 + self.K(100), wr, 6, 0.42, True, [], self.K(560), "mano_suo")
+            larga_mano = min(len(mano) * wm * 0.7, self.K(760))
+            larga_suo = min(n_suo * wr * 0.58, self.K(560))
+            y_mia, y_sua = self.H - self.K(50), self.K(50)
+            we = int(self.K(84))
+            he = round(we * RAPP)
+            if esi_mie:         # a destra del tuo ventaglio
+                x0e = cxm + max(larga_mano, wm) / 2 + self.K(30)
+                x1e = min(x0e + len(esi_mie) * (we + self.K(8)), self.X(self.L["ZONE"]["cim_mio"][0]) - self.K(16))
+                self.riga_mano(tela, [dall_esilio(faccia(n, we)) for n in esi_mie], esi_mie, (x0e, self.H - he - self.K(16), x1e, self.H - self.K(16)),
+                               scatole, "esi_mano")
+                self.pillola(d, (x0e + x1e) / 2, self.H - he - self.K(30), f"PLAYABLE · {len(esi_mie)}", fl, fondo=(44, 32, 6, 230), bordo=ORO_G + (220,),
+                             colore=ORO_G)
+            if esi_sue:         # a sinistra del suo
+                x1e = cxm - max(larga_suo, wr) / 2 - self.K(30)
+                x0e = max(x1e - len(esi_sue) * (we + self.K(8)), self.X(self.L["XB0"]) + self.K(8))
+                imgs_ = [dall_esilio(dorso(we) if n == FACCIA_GIU else faccia(n, we)) for n in esi_sue]
+                self.riga_mano(tela, imgs_, [None if n == FACCIA_GIU else n for n in esi_sue], (x0e, self.K(16), x1e, self.K(16) + he), scatole, "esi_mano")
+                self.pillola(d, (x0e + x1e) / 2, self.K(16) + he + self.K(14), f"PLAYABLE · {len(esi_sue)}", fl, fondo=(44, 32, 6, 230),
+                             bordo=ORO_G + (220,), colore=ORO_G)
+        else:
+            w9 = int(self.K(90))
+            for chi, carte_, nomi_, col_ in (("mio", [faccia(n, w9) for n in mano] + [dall_esilio(faccia(n, w9)) for n in esi_mie], mano + esi_mie, BLU),
+                                             ("suo", [dorso(w9)] * n_suo + [dall_esilio(dorso(w9) if n == FACCIA_GIU else faccia(n, w9)) for n in esi_sue],
+                                              [None] * n_suo + [None if n == FACCIA_GIU else n for n in esi_sue], ARANCIO)):
+                bx0, by0, bx1, by1 = self.box(self.dietro(chi)["mano"])
+                self._mani[chi] = (bx0, by0, bx1, by1)
+                self.riga_mano(tela, carte_, nomi_, (bx0 + self.K(10), by0 + self.K(18), bx1 - self.K(10), by1 - self.K(6)), scatole if chi == "mio" else [],
+                               "mano" if chi == "mio" else "mano_suo")
+                q_ = len(mano) if chi == "mio" else n_suo
+                self.pillola(d, bx1 - self.K(26), by0 + self.K(10), str(q_), fl, fondo=(10, 22, 32, 230) if chi == "mio" else (24, 18, 10, 230),
+                             bordo=col_ + (200,), colore=col_)
+        if self.mano:
+            self.pillola(d, cxm - larga_mano / 2 - self.K(110), y_mia, f"YOUR HAND · {len(mano)}", fl, fondo=(10, 22, 32, 220), bordo=BLU + (180,), colore=BLU)
+            self.pillola(d, cxm + larga_suo / 2 + self.K(110), y_sua, f"OPPONENT'S HAND · {n_suo}", fl, fondo=(24, 18, 10, 220), bordo=ARANCIO + (160,),
+                         colore=ARANCIO)
+        if pila_rel:        # la pila al centro del tavolo, sopra le carte: il riquadro scuro col filo viola, STACK, la carta, di chi e'
+            x0, y0, x1, y1 = self.box(self.L["STACK"])
+            fs = font(max(10, self.K(10)))
+            pan = Image.new("RGBA", (round(x1 - x0) + 2, round(y1 - y0) + 2), (0, 0, 0, 0))
+            dp = ImageDraw.Draw(pan)
+            self.liscio(dp, "rr", (0, 0, x1 - x0, y1 - y0), fill=(14, 12, 24, 228), outline=VIOLA + (230,), width=max(1.5, self.K(2)), radius=self.K(10))
+            tw = dp.textlength("STACK", font=fs)
+            tit_s = "STACK" if not sotto else f"STACK · {len(sotto) + 1}"
+            tw = dp.textlength(tit_s, font=fs)
+            dp.text(((x1 - x0) / 2 - tw / 2, self.K(8)), tit_s, font=fs, fill=VIOLA + (255,))
+            # chi prende di mira una carta gia' in pila (una contromagia; 14 nov 2026, Autore: «se una carta interagisce su un'altra carta gia' in pila,
+            # crea il metodo visivo per capire che quell'azione si risolve nella pila»)
+            in_pila_bers = {i_ for i_, v_ in ((rel or {}).get("fuori") or {}).items() if v_[0] == "pila"}
+            et = ("YOURS" if pila_rel.get("mio") else "OPPONENT'S") + (" · ABILITY" if pila_rel.get("ab") else "")
+            if in_pila_bers & set(self._pila_sotto):
+                et = "RESOLVES ON THE STACK"
+            tw = dp.textlength(et, font=fs)
+            dp.text(((x1 - x0) / 2 - tw / 2, (y1 - y0) - self.K(18)), et, font=fs, fill=VIOLA + (230,))
+            im = faccia(pila_rel["nome"], round(pila_box[2] - pila_box[0]), pedina=pila_rel.get("g"))      # una pedina in pila (un potere di Jace): la sua immagine
+            o, p_ = ombra_sprite(im.width, im.height, self.K(12), 190)
+            strati = [(o, pila_box[0] - x0 - p_, pila_box[1] - y0 - p_ + self.K(6)), (pan, 0, 0)]
+            fsb = font(max(8, self.K(8)), "Bold")
+            for q in reversed(sotto):           # le carte sotto: un po' scure, la barra del nome a vista; il bersaglio in viola con TARGET
+                bq = self._pila_sotto[q[4]]
+                iq = faccia(q[0], round(pila_box[2] - pila_box[0]), pedina=q[3]).copy()
+                scuro = Image.new("RGBA", iq.size, (6, 6, 12, 90 if q[4] not in in_pila_bers else 0))
+                iq.alpha_composite(scuro)
+                if q[4] in in_pila_bers:
+                    dq = ImageDraw.Draw(iq)
+                    dq.rounded_rectangle((1, 1, iq.width - 2, iq.height - 2), radius=max(4, iq.width // 12), outline=VIOLA + (255,), width=max(2, iq.width // 40))
+                    tw_ = dq.textlength("TARGET", font=fsb)
+                    hb = round(passo_s) - 4
+                    dq.rounded_rectangle((iq.width - tw_ - 14, 3, iq.width - 4, 3 + hb), radius=hb // 2, fill=(60, 30, 100, 240), outline=VIOLA + (255,))
+                    dq.text((iq.width - tw_ - 9, 3 + (hb - self.K(8)) / 2 - 1), "TARGET", font=fsb, fill=(240, 230, 255))
+                strati.append((iq, bq[0] - x0, bq[1] - y0))
+            strati.append((im, pila_box[0] - x0, pila_box[1] - y0))
+            sp, (ox, oy) = self.componi(strati)
+            self.posa(tela, sp, ox, oy, x0, y0, dict(zkey="pila", nome=pila_rel["nome"], box=pila_box, tap=False, ped=False, ids=[], nuova=False))
+            scatole.append(tuple(pila_box) + (pila_rel["nome"],))
         if pezzi:       # l'app mette i pezzi come oggetti della tela; frecce e danni li disegna lei
             pz, self._pezzi = self._pezzi, None
-            fuori = [s_ for s_ in scatole if not any(s_[:4] == q["box"] for q in pz)]
+            fuori = [s_ for s_ in scatole if not any(s_[:4] in (tuple(q["box"]), tuple(q.get("vis") or q["box"])) for q in pz)]
             return tela.convert("RGB"), pz, dict(vite={k: pos[k] for k in ("vita_mio", "vita_suo")}, pile=zone, pila=pila_box, scatole=fuori,
-                                                 etichette=self._etichette, grimori=self._grimori)
+                                                 pila_sotto=dict(self._pila_sotto),
+                                                 etichette=self._etichette, grimori=self._grimori, carte_pile=self._carte_pile,
+                                                 mani=self._mani)
         # le frecce: chi blocca chi, chi attacca chi, cosa bersaglia la magia in pila; i permanenti tolti; i danni
         self.frecce(tela, rel, pila_box, pos, zone)
         d = ImageDraw.Draw(tela)
@@ -736,6 +1254,12 @@ class Tappeto:
         tela.alpha_composite(lay.resize((self.W, self.H), Image.LANCZOS))
 
 
+def _pixel(im):
+    """I pixel RGB di un'immagine come terne (getdata sparisce in Pillow 14)."""
+    b = im.convert("RGB").tobytes()
+    return zip(b[0::3], b[1::3], b[2::3])
+
+
 def prova():
     """Disegna i momenti di una partita vera con le foto, alla misura del replayer: ogni passo senza errori, le carte in scatole dentro il tappeto,
     le terre sempre a sinistra degli altri permanenti; negative: una foto vuota disegna il tappeto senza carte."""
@@ -764,6 +1288,95 @@ def prova():
     _im, sc, _z = t.disegna(f2)
     xs = {s_[4]: s_[0] for s_ in sc}
     casi.append(("le terre a sinistra degli artefatti", xs.get("Plains", 9e9) < xs.get("Sol Ring", -1)))
+    # 14 nov 2026: le carte non pedina doppie una per una; le pedine uguali ancora insieme col ×N
+    gg = gruppi([("Bear", False, False, 2, 2, 1), ("Bear", False, False, 2, 2, 2)] + [("Cat", False, True, 1, 1, i_, 9001) for i_ in (3, 4, 5, 6)]
+                + [("Treasure", False, True, None, None, i_, 9002) for i_ in (7, 8)])
+    casi.append(("due carte uguali stanno separate; le pedine creatura uguali insieme da 4 in su, le altre pedine sempre",
+                 [(g[0], g[5]) for g in gg] == [("Bear", 1), ("Bear", 1), ("Cat", 4), ("Treasure", 2)]))
+    gg = gruppi([("Cat", False, True, 1, 1, i_, 9001) for i_ in (3, 4, 5)])
+    casi.append(("negativa: tre pedine creatura uguali stanno ognuna da sola (attaccando non cambia la fila)", [g[5] for g in gg] == [1, 1, 1]))
+    gg = gruppi([("Plains", False, False, None, None, 1), ("Plains", False, False, None, None, 2), ("Plains", True, False, None, None, 3)])
+    casi.append(("le terre uguali stanno insieme col ×N (la tappata a parte)", [(g[0], g[1], g[5]) for g in gg] == [("Plains", False, 2), ("Plains", True, 1)]))
+    gg = gruppi([("Cat", False, True, 1, 1, 3, 9001, {1: 1}), ("Cat", False, True, 1, 1, 4, 9001, None)])
+    casi.append(("negativa: due pedine con segnalini diversi non stanno insieme", len(gg) == 2))
+    # le carte giocabili dall'esilio accanto alla mano (14 nov 2026): la sua a faccia in giu' di dorso, a parte; negativa: una carta qualsiasi in esilio no
+    for mano_on in (True, False):
+        te = Tappeto(1500, 900, mano_on)
+        fe = dict(vuota, mano=["Shock"], n_suo=2, esi=(["Lightning Bolt"], [FACCIA_GIU]))
+        _im, _sc, _z = te.disegna(fe)
+        casi.append((f"esilio giocabile ({'In hand' if mano_on else 'riga'}): la sua carta a faccia in giu' accanto alla sua mano, la tua carta qualsiasi no",
+                     te._esilio_mano == dict(mio=[], suo=[FACCIA_GIU])))
+    casi.append(("negativa: una carta qualsiasi non e' giocabile dall'esilio, una a faccia in giu' si'", not giocabile_esilio("Lightning Bolt") and giocabile_esilio(FACCIA_GIU)))
+    te = Tappeto(1500, 900, True)
+    fe = dict(vuota, mano=["Shock"], n_suo=2, esi=(["Lightning Bolt", "Mountain"], []), cim=(["Abrade"], []),
+              segni={7: dict(gioca=("Mountain", True, "esi")), 8: dict(gioca=("Abrade", True, "cim")), 9: dict(gioca=(FACCIA_GIU, False, "esi"))})
+    te.disegna(fe)
+    casi.append(("le giocabili dal permesso di Arena (dall'esilio e dal cimitero, di chi puo' giocarle); negativa: Lightning Bolt in esilio senza permesso no",
+                 te._esilio_mano == dict(mio=["Mountain", "Abrade"], suo=[FACCIA_GIU])))
+    # la pila intera (14 nov 2026): due magie, la cima e quella sotto con la barra a vista; la contromagia la prende di mira e si risolve nella pila;
+    # negativa: senza pila nella foto e senza magia come relazione niente pila
+    tp_ = Tappeto(1500, 900, True)
+    fp_ = dict(vuota, pila=[("Negate", False, False, 1, 61), ("Shock", True, False, 2, 60)])
+    _im, _pz, inf_ = tp_.disegna(fp_, None, dict(tipo="spell", nome="Negate", mio=False, ab=False, g=1, bers=[60], fuori={60: ("pila", "mio", "Shock")}),
+                                 pezzi=True)
+    _im, _pz, inf0_ = tp_.disegna(fp_, pezzi=True)
+    _im, _pz, inf1_ = tp_.disegna(vuota, pezzi=True)
+    casi.append(("la pila intera: la cima e sotto la magia presa di mira (anche senza la relazione); negativa: senza pila niente",
+                 inf_["pila"] and 60 in inf_["pila_sotto"] and inf_["pila_sotto"][60][3] <= inf_["pila"][1] + 1 and inf0_["pila"] and inf1_["pila"] is None))
+    tre = [("Cat", True, True, 1, 1, i_, 9001) for i_ in (3, 4, 5, 6, 7)]
+    gg, gn = gruppi(tre, {3, 4}), gruppi(tre)
+    casi.append(("le pedine uguali che combattono stanno ognuna da sola, le altre insieme; negativa: senza combattimento tutte col ×5",
+                 [(g[5], g[6]) for g in gg] == [(1, [3]), (1, [4]), (3, [5, 6, 7])] and [(g[5], g[6]) for g in gn] == [(5, [3, 4, 5, 6, 7])]))
+    # i segnalini disegnati: la carta col +1/+1 ha piu' verde della stessa carta senza
+    _PT[777001] = (2, 2)        # una 2/2 stampata
+    f3 = dict(vuota, mio=[("Bear", False, False, 3, 3, 1, 777001, {1: 1})])
+    f4 = dict(vuota, mio=[("Bear", False, False, 2, 2, 1, 777001, None)])
+    im3, sc3, _z = t.disegna(f3)
+    im4, _sc4, _z = t.disegna(f4)
+    b3 = tuple(round(v) for v in sc3[0][:4])
+    blu = lambda im: sum(1 for r_, g_, b_ in _pixel(im.crop(b3)) if b_ > 190 and r_ < 70 and 90 < g_ < 150)
+    rossi = lambda im: sum(1 for r_, g_, b_ in _pixel(im.crop(b3)) if r_ > 180 and g_ < 80 and b_ < 80)
+    im6 = t.disegna(dict(vuota, mio=[("Bear", False, False, 1, 1, 1, 777001, {2: 1})]))[0]
+    casi.append(("forza e costituzione sopra lo stampato in blu, sotto in rosso; negativa: uguali allo stampato niente pallini colorati",
+                 blu(im3) > blu(im4) + 30 and rossi(im6) > rossi(im4) + 30 and blu(im6) <= blu(im4) + 5))
+    im5, _s5, _z = t.disegna(f3, prima=f4)
+    oro = lambda im: sum(1 for r_, g_, b_ in _pixel(im.crop((b3[0] - 6, b3[1] - 6, b3[2] + 6, b3[3] + 6))) if r_ > 220 and g_ > 180 and b_ < 100)
+    casi.append(("un segnalino appena arrivato accende la carta d'oro; negativa: gia' c'era, niente oro", oro(im5) > oro(t.disegna(f3, prima=f3)[0]) + 40))
+    # grimorio, cimitero ed esilio a triangolo: cimitero ed esilio affiancati, il grimorio dalla parte del bordo, a meta' fra i due
+    _im, _sc, zz = t.disegna(dict(vuota, cim=(["Bear"], ["Cat"]), esi=(["Bear"], ["Cat"])))
+    cm, em, cs = zz["cim_mio"][0], zz["esi_mio"][0], zz["cim_suo"][0]
+    lm = t.box(ZONE["lib_mio"])
+    casi.append(("a triangolo: cimitero ed esilio sulla stessa riga, il tuo grimorio sotto e in mezzo, quello dell'avversario sopra",
+                 abs(cm[1] - em[1]) < 1 and cm[2] <= em[0] and lm[1] > cm[3] - 1 and cm[0] < (lm[0] + lm[2]) / 2 < em[2] and t.box(ZONE["lib_suo"])[3] < cs[1] + 1))
+    casi.append(("piu' grandi: la carta del cimitero larga almeno 100 pixel del progetto", (cm[2] - cm[0]) >= t.K(100)))
+    # tante carte uguali: non scendono sotto il MIN_FILA della misura piena, si sovrappongono
+    f6 = dict(vuota, mio=[(f"Relic {i}", False, False, None, None, i) for i in range(14)])
+    _im, sc6, _z = t.disegna(f6)
+    larghe = [s_[2] - s_[0] for s_ in sc6]
+    xb0, _y0, xb1, _y1 = t.box(ZONE["mio_dietro"])
+    una = t.disegna(dict(vuota, mio=[("Relic 0", False, False, None, None, 1)]))[1][0]
+    casi.append(("14 permanenti diversi: restano grandi (l'ultimo almeno l'80% di uno solo) e si sovrappongono dentro la loro zona",
+                 len(sc6) == 14 and larghe[-1] >= 0.8 * (una[2] - una[0]) - 2
+                 and max(larghe[:-1]) < larghe[-1] and sc6[0][0] >= xb0 + (xb1 - xb0) * SPLIT - 1 and sc6[-1][2] <= xb1 + 1))
+    # 14 nov 2026: le vite a destra del campo; col tavolo ingrandito (In hand spento) le creature piu' grandi e la mano in riga piccola
+    fz = dict(vuota, mio=[("Bear", False, False, 2, 2, 1)], mano=["Bear", "Bear"])
+    _im, scm, _z = t.disegna(fz)
+    tz = Tappeto(1560, 940, mano=False)
+    _im, scz, _z = tz.disegna(fz)
+    _b, pz_, info_ = t.disegna(fz, pezzi=True)
+    larga = lambda sc_: max(s_[2] - s_[0] for s_ in sc_ if s_[4] == "Bear" and s_[1] < t.Y(MEZZO + 300))
+    mani_m = [s_ for s_ in scm if s_[1] > t.Y(MEZZO + 300)]
+    mani_z = [s_ for s_ in scz if s_[1] > tz.Y(MEZZO + 300)]
+    casi.append(("le vite a destra del campo (fino al 14 nov 2026 stavano a sinistra)", info_["vite"]["vita_mio"][0] > t.X(LC)))
+    casi.append(("tavolo ingrandito: la creatura piu' grande che con la mano a ventaglio", larga(scz) > larga(scm) * 1.15))
+    mb = tz.box(tz.dietro("mio")["mano"])
+    casi.append(("tavolo ingrandito: la mano in mezzo alla fila dietro, piu' piccola del ventaglio; negativa: col ventaglio la mano sta fuori dal campo",
+                 len(mani_z) == 2 and all(mb[0] - 1 <= s_[0] and s_[2] <= mb[2] + 1 and mb[1] <= s_[1] for s_ in mani_z)
+                 and max(s_[2] - s_[0] for s_ in mani_z) < 0.8 * max(s_[2] - s_[0] for s_ in mani_m)
+                 and min(s_[1] for s_ in mani_m) > t.Y(ZONE["mio_dietro"][3]) - t.K(60)))
+    # oltre 6 creature due file (14 nov 2026: «se ci sono piu' di 6 creature in campo si crea una seconda fila e tutto si riduce un po'»)
+    righe_y = lambda n: {round(s_[1]) for s_ in t.disegna(dict(vuota, mio=[(f"Bear {i}", False, False, 2, 2, i) for i in range(n)]))[1]}
+    casi.append(("7 creature: due file; negativa: 6 creature una fila", len(righe_y(7)) == 2 and len(righe_y(6)) == 1))
     for n, v in casi:
         print(("OK   " if v else "ROSSO") + " " + n)
     print(f"{sum(v for _n, v in casi)}/{len(casi)}")

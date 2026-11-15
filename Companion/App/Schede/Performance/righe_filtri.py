@@ -21,9 +21,11 @@ VUOTA = "—"         # la voce di una tendina ancora da scegliere
 
 
 class Righe:
-    def __init__(self, tk, F, padre, righe, campi, nome_campo, voci_di, on_cambio, bg=None, larga_campo=190, larga_voce=170, dopo=None):
+    def __init__(self, tk, F, padre, righe, campi, nome_campo, voci_di, on_cambio, bg=None, larga_campo=190, larga_voce=170, dopo=None, una_voce=False):
         """righe: la lista [[campo, [voci]]] (la modifica); campi: le chiavi del campo; nome_campo(k) come si legge; voci_di(k): le voci di quel campo;
-        on_cambio(righe): dopo ogni cambio; dopo: il testo fra il campo e le voci (es. «cast»)."""
+        on_cambio(righe): dopo ogni cambio; dopo: il testo fra il campo e le voci (es. «cast»); una_voce: una voce sola per riga, niente + (le famiglie
+        turno per turno con un valore per turno: l'attacco, la difesa, le pescate)."""
+        self.una_voce = una_voce
         self.tk, self.F, self.righe, self.campi = tk, F, righe, list(campi)
         self.nome_campo, self.voci_di, self.on_cambio, self.dopo = nome_campo, voci_di, on_cambio, dopo
         self.bg = bg or C["scheda"]
@@ -50,15 +52,16 @@ class Righe:
             voci_ok = self.voci_di(campo) if campo is not None else []
             sottoriga = tk.Frame(riga, bg=self.bg)
             sottoriga.pack(side="left", fill="x")
-            for j, v in enumerate(voci or [None]):
+            for j, v in enumerate((voci or [None])[:1] if self.una_voce else (voci or [None])):
                 tv = self._tendina(sottoriga, self.lv)
                 tv.opzioni([VUOTA] + list(voci_ok), lambda v_, i=i, j=j: self.metti_voce(i, j, v_))
                 tv.set(v if v is not None else VUOTA)
                 tv.fr.pack(side="left", padx=(6, 0))
                 self.tendine.append((i, j, tv))
-            piu = tk.Label(riga, text="+", bg="#161b25", fg=C["accento"], font=F(11, True), width=2, cursor="hand2")
-            piu.pack(side="left", padx=(6, 0), ipady=1)
-            piu.bind("<Button-1>", lambda e, i=i: self.aggiungi_voce(i))
+            if not self.una_voce:
+                piu = tk.Label(riga, text="+", bg="#161b25", fg=C["accento"], font=F(11, True), width=2, cursor="hand2")
+                piu.pack(side="left", padx=(6, 0), ipady=1)
+                piu.bind("<Button-1>", lambda e, i=i: self.aggiungi_voce(i))
             via = tk.Label(riga, text="✕", bg=self.bg, fg=C["grigio"], font=F(9, True), cursor="hand2")
             via.pack(side="left", padx=(10, 0))
             via.bind("<Button-1>", lambda e, i=i: self.togli_riga(i))

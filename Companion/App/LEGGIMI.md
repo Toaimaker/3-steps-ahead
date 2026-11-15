@@ -20,7 +20,7 @@ Companion/
                          pagina_base (la pagina di una scheda e il grafico del win rate), dati_app (collezione, jolly, partite,
                          meta), capsule (le liste delle carte come in Arena), carta_tela (le carte disegnate sulla
                          tela della griglia, non una finestra per carta), tabella_tela (le tabelle disegnate,
-                         con celle dichiarate), registro_errori, stemmi_icone
+                         con celle dichiarate), registro_errori, stemmi_icone, pedine (le immagini vere delle pedine nel replayer)
     Chat/                chat_partita (la chat), chat_testi (fasi, inglese, righe), diario, pescate, chat_finestra (la chat nella finestra)
     Schede/
       Meta/              pagina_meta, dati_meta, matchup_log (la banca dati delle partite), Deck HUD: hud_partita (la partita dal Player.log),
@@ -32,7 +32,7 @@ Companion/
                          preimpostate, Chart con Ranks e Trophies, Report, Matchups, Compare, My filters, la tabella delle partite e il
                          replayer), dati_analizzatore (le righe delle partite, le variabili, i filtri turno per turno e dai replay),
                          mana_aperto (la lettura dei log di ogni partita: momenti, azioni, combattimenti, foto; copia in
-                         Log_Arena/mana_aperto.json), replay_log (il replay azione per azione), disegno_tappeto (il tappetino del replayer: feltro, zone, dorso delle carte, le carte come pezzi della tela), pagina_limited e pagina_standard (le
+                         Log_Arena/mana_aperto.json), replay_log (il replay azione per azione), disegno_tappeto (il tappetino del replayer: feltro, zone, dorso delle carte, le carte come pezzi della tela; dal 14 nov 2026 grimorio, cimitero ed esilio a triangolo, una carta alla volta, pedine e terre uguali col ×N, i segnalini in vista), nomi_segnalini (i nomi dei segnalini di Arena), pagina_limited e pagina_standard (le
                          pagine di prima, come classi: Your decks eredita da PaginaStandard)
       Your_decks/        pagina_mazzi, gruppi_mazzi, finestra_mazzo, scheda_mazzo, mani_mazzo, esporta_mazzo,
                          mazzi_salvati, mazzi_arena, dati_mazzo, prezzi_carte
@@ -102,6 +102,7 @@ Mockup approvati e regole in `Note/Redesign_Grafico/LEGGIMI.md` (solo lo stile c
 | `Companion/App/Prove/prova_finestra.py` | la finestra grande: chat, inglese, pescate, posizione, solo i limited, Cercatore |
 | `Companion/App/Comune/tabella_tela.py --prova` | le tabelle su tela: misure, fasce, evidenzia, allarga, clic e accensione di una riga (11 nov 2026) |
 | `Companion/App/Comune/carta_tela.py --prova` | le carte sulla tela della griglia: elementi, eventi smistati, distruggi (11 nov 2026) |
+| `Companion/App/Comune/pedine.py --prova` | le pedine del replayer: le ricerche su Scryfall dalla piu' stretta, con le negative (14 nov 2026) |
 | `Companion/Strumenti/prove_app.py` | tutte queste piu' le prove dei moduli di dati, dell'overlay, il collaudo della finestra e il banco della spalla |
 
 Tutte con `py -I -X utf8`. Le finestre di prova stanno fuori schermo o trasparenti, mai davanti a Autore.

@@ -486,7 +486,11 @@ class SchedaMazzo:
         tot = sum(main.values()) + sum(comandante.values())
         own = sum(min(q, coll.get(n, 0)) if n not in BASI else q for n, q in {**comandante, **main}.items())
         pct = lambda x: f"{round(100 * x)}%"
-        voci = [("format", fmt, None),
+        voci = [("format", fmt, None)]
+        if fmt in MS.COMANDANTE:        # il comandante e la sua identita' di colore (15 nov 2026)
+            voci.append(("commander", " + ".join(comandante) if comandante else "none", None if comandante else PERSA,
+                         f"identity {MS.identita_comandante(comandante) or 'colorless'}" if comandante else "add a legendary creature"))
+        voci += [
                 ("legal", "✓ yes" if not self._problemi else f"✗ {len(self._problemi)} issue{'s' if len(self._problemi) > 1 else ''}", VINTA if not self._problemi else PERSA),
                 ("cards owned", f"{own}/{tot}", VINTA if own == tot else None),
                 ("lands", f"{mn['terre']}/{mn['carte']}", None, "2-5 in hand: " + pct(sum(mn["mano"].get(k, 0) for k in range(2, 6))) if mn["carte"] else "")]

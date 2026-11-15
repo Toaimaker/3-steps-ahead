@@ -830,6 +830,18 @@ def una_sola():
 
 # ------------------------------------------------------------------ le prove
 def prova():
+    """Le prove, su una preferenza tutta loro (15 nov 2026: leggevano Log_Arena/hud_arena.json fino al clic sull'occhio, e con le due liste chiuse da Autore
+    le barre non c'erano e la prova cadeva: ValueError su max)."""
+    import tempfile
+    vera = PREF
+    globals()["PREF"] = os.path.join(tempfile.mkdtemp(), "hud_arena.json")
+    try:
+        return _prova()
+    finally:
+        globals()["PREF"] = vera
+
+
+def _prova():
     import tempfile
     casi = []
     ME = "AAAAAAAAAAAAAAAAAAAAAAAAAA"

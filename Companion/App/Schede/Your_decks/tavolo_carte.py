@@ -82,6 +82,10 @@ TIT_L, PAD_L = 26, 18           # l'altezza del titolo, l'aria intorno alle pile
 FONDO_L, TESTA_L, BORDO_L, SEGNO_L = "#121722", "#18202c", "#4a5262", "#6d7686"      # i colori del redesign del 14 nov 2026 (erano grigi ArtStation)
 FOGLIO, PUNTINO, PASSO_PUNTI = "#0b0e13", "#232c3b", 24     # il foglio a puntini del redesign: il fondo, il puntino, il passo a zoom 1
 R_PUNTO = 7                     # il raggio del dot di una linea, in pixel
+# il bagliore sotto le linee (15 nov 2026, i neon del Board): due strati, il colore della linea mescolato al foglio, (quanto colore, pixel in piu' della linea);
+# il primo giro era uno strato solo (0,28, +5) e sulla foto della linea magenta non si vedeva. Tolto lo stesso giorno (Autore: «tolgi l'effetto neon dalle
+# frecce»): le frecce restano coi colori neon, senza alone; per riaccenderlo, ((0.16, 10), (0.36, 5))
+BAGLIORE = ()
 GRIGIO_L = "#6a6a76"            # il colore di una label nuova
 CONT_PIENO, CONT_MINIMO = 108, 40       # la carta (pixel) da cui il contatore e' intero (− N +), e sotto cui non c'e' (13 nov 2026)
 STRUMENTI_MIN = 90              # sotto questa larghezza della carta, alla base resta solo il pallino d'oro (⇄ e + nota quando ti avvicini)
@@ -567,6 +571,9 @@ class TavoloCarte:
         # la griglia (Autore, 10 nov 2026: «rendiamo l'opzione spuntabile in alto: grid snap»): una preferenza sola per tutti i mazzi, nel file delle disposizioni
         pref = carica_tavoli(self.file_tavoli).get(OPZIONI) or {}
         self.griglia = bool(pref.get("griglia", True))
+        # le linee delle sinergie a vista o nascoste (15 nov 2026, Autore: «aggiungiamo un menù per le sinergie, show hide mostra nasconde le linee di
+        # sinergia»): una preferenza per tutti i mazzi, come Grid snap; nascoste, le connessioni restano
+        self.linee = bool(pref.get("linee", True))
         self.comandi_aperti = False      # la lista dei comandi parte sempre chiusa (Autore, 10 nov 2026: «commands parte chiuso»)
         self.outliner_aperto = bool(pref.get("outliner", True))    # l'outliner a sinistra, chiuso o aperto (10 nov 2026)
         self.sel_carta = None       # la carta scelta col clic, sul Board o nell'outliner: F la inquadra
@@ -746,20 +753,31 @@ class TavoloCarte:
                self.auto_visibili, spenta=not self.filtro)
         m.sezione("From your games")
         m.voce("Best performers · Hard to cast · Weak in losses", "Three groups from the analysis of this deck in your logs", self.auto_analisi)
+        if self.etichette:
+            # Show / hide all (15 nov 2026, Autore: «Show hide all lo mettimao anche in menù groups»): gli occhi dei gruppi nell'outliner, tutti insieme
+            spenti = sum(1 for lb in self.etichette if lb.get("nascosta"))
+            m.sezione("View")
+            m.voce("Show all groups" if spenti == len(self.etichette) else "Hide all groups",
+                   (f"{spenti} hidden: every group and its cards back on the sheet" if spenti == len(self.etichette)
+                    else "Every group and its cards off the sheet, like their eyes in the outliner: the deck doesn't change"),
+                   lambda: self.gruppi_visti(spenti == len(self.etichette)),
+                   destra=f"{len(self.etichette) - spenti}/{len(self.etichette)} ON")
+            if 0 < spenti < len(self.etichette):
+                m.voce("Show all groups", f"{spenti} hidden: back on the sheet", lambda: self.gruppi_visti(True))
         m.sezione(f"Your groups · {len(self.etichette)}")
         if not self.etichette:
-            tk.Label(m.corpo, text="No groups yet", bg=MB.FONDO, fg=C["grigio"], font=F(8)).pack(anchor="w", padx=20, pady=(2, 2))
+            tk.Label(m.corpo, text="No groups yet", bg=MB.FONDO, fg=MB.T_RIGA, font=F(8)).pack(anchor="w", padx=20, pady=(2, 2))
         for k, lb in enumerate(self.etichette):
             n = sum(self.carte_gruppo(k).values()) if not lb.get("copia") else sum((lb.get("carte") or {}).values())
             r = m.riga(padx=8, pady=1)
             r.configure(cursor="hand2")
             tk.Frame(r, bg=lb.get("colore") or GRIGIO_L, width=4).pack(side="left", fill="y", padx=(0, 8))
-            nome = tk.Label(r, text=lb["nome"].upper() + ("  · COPY" if lb.get("copia") else ""), bg=MB.FONDO, fg="#ffffff", font=F(9, True), anchor="w",
+            nome = tk.Label(r, text=lb["nome"].upper() + ("  · COPY" if lb.get("copia") else ""), bg=MB.FONDO, fg=MB.T_TITOLO, font=F(9, True), anchor="w",
                             cursor="hand2")
             nome.pack(side="left", fill="x", expand=True, pady=4)
             menu = tk.Label(r, image=segno_menu(18), bg=MB.FONDO, cursor="hand2"); menu.pack(side="right", padx=(6, 0))
             tk.Label(r, image=DG.lucchetto(13, lb.get("lucchetto", True), "#f0ad4e" if lb.get("lucchetto", True) else "#d7dce5"), bg=MB.FONDO).pack(side="right", padx=4)
-            tk.Label(r, text=f"{n} CARDS" if n else "EMPTY", bg=MB.FONDO, fg=C["grigio"] if n else C["rosso"], font=F(7, True), padx=6).pack(side="right")
+            tk.Label(r, text=f"{n} CARDS" if n else "EMPTY", bg=MB.FONDO, fg=MB.T_RIGA if n else MB.T_PIEDE, font=F(7, True), padx=6).pack(side="right")
             ww = [r, nome] + [w_ for w_ in r.winfo_children() if isinstance(w_, tk.Label)]
 
             def acc(on, ww=ww):
@@ -797,6 +815,102 @@ class TavoloCarte:
         self.disegna_sel()
         if getattr(self, "out_cv", None) is not None:
             self.disegna_outliner()
+
+    def gruppi_visti(self, on):
+        """Tutti i gruppi a vista (on) o nascosti, con le loro carte, come gli occhi dell'outliner. -> quanti gruppi sono cambiati."""
+        n = 0
+        for lb in self.etichette:
+            if bool(lb.get("nascosta")) == bool(on):
+                n += 1
+            if on:
+                lb.pop("nascosta", None)
+            else:
+                lb["nascosta"] = True
+        self._solo = None
+        self.disegna()
+        self.salva()
+        if getattr(self, "out_cv", None) is not None:
+            self.disegna_outliner()
+        self.dici(("Every group back on the sheet" if on else "Every group hidden with its cards: Groups ▾ or the outliner's eyes bring them back")
+                  + (f" · {n} changed" if n else ""))
+        return n
+
+    # ------------------------------------------------ il menu Synergies (15 nov 2026)
+    # Autore: «in board editor aggiungiamo un menù per le sinergie, show hide mostra nasconde le linee di sinergia / delete all sinergies ecc.». VIEW: le linee a
+    # vista o nascoste (una preferenza per tutti i mazzi, come Grid snap). TIDY: via tutti i dot (le linee tornano dritte), colori e spessori di partenza. DELETE:
+    # via tutte le connessioni del mazzo, le carte restano; prima la domanda, Undo le riporta. In sola lettura solo VIEW.
+    def menu_sinergie(self):
+        """Il menu del pulsante Synergies, nello stile comune dei mini-menu. -> la finestrella (p.voci: {testo: azione}, per le prove)."""
+        tk, F = self.tk, self.F
+        self.nome_chiudi()
+        m = MB.Menu(tk, F, self.fin, "Synergies", chiudi=self.nome_chiudi)
+        self._nome_pop = p = m.p
+        n, nd = len(self.legami_visti()), len(self.punti)
+        colorate = sum(1 for k_ in self.rete.stili if k_ in self.rete.figli)
+        m.sezione(f"View · {n} link{'s' * (n != 1)}")
+        m.voce("Hide all lines" if self.linee else "Show all lines",
+               "The arrows and their dots leave the sheet: the links stay, the gold dots still link" if self.linee else "Every arrow and dot back on the sheet",
+               lambda: self.linee_viste(not self.linee), destra="ON" if self.linee else "OFF")
+        if self.modifica:
+            m.sezione("Tidy")
+            m.voce("Straighten all lines", f"The {nd} dot{'s' * (nd != 1)} go, every arrow straight from parent to child" if nd else "No dots on the lines",
+                   self.togli_tutti_punti, spenta=not nd)
+            m.voce("Reset colors and weight", f"{colorate} colored line{'s' * (colorate != 1)} back to chrome and thin" if colorate
+                   else "Every line is already chrome and thin", self.stili_base, spenta=not colorate)
+            m.sezione("Delete")
+            m.voce("Delete all synergies", f"The {n} link{'s' * (n != 1)} of this deck go, the cards stay (Undo brings them back)" if n
+                   else "No links in this deck", self.togli_tutte_sinergie, colore=C["rosso"], spenta=not n)
+            m.piede("Gold dot → card links two cards · click a line for its color and weight · ✕ or right-click unlinks one")
+        else:
+            m.piede("Edit the deck to change its synergies")
+        p.voci = m.voci
+        return m.posa(sotto=self.b_sinergie)
+
+    def linee_viste(self, on):
+        """Le linee delle sinergie a vista (on) o nascoste, per tutti i mazzi. Nascoste, le connessioni restano."""
+        self.linee = bool(on)
+        self.salva_pref(linee=self.linee)
+        self.disegna()
+        n = len(self.legami_visti())
+        self.dici(f"Synergy lines on: {n} link{'s' * (n != 1)}" if on else f"Synergy lines hidden: the {n} link{'s' * (n != 1)} stay · Synergies ▾ brings them back")
+        return self.linee
+
+    def togli_tutti_punti(self):
+        """Via tutti i dot: ogni connessione torna una freccia dritta dal padre al figlio. -> quanti."""
+        n = len(self.punti)
+        self.punti, self.vie, self.sel_punti = {}, {}, set()
+        self.disegna(); self.salva()
+        self.dici(f"{n} dot{'s' * (n != 1)} removed: every line straight again" if n else "No dots on the lines")
+        return n
+
+    def stili_base(self):
+        """Ogni linea col colore e lo spessore di partenza (il perla cromato, sottile). -> quante erano colorate."""
+        n = len(self.rete.stili)
+        self.rete.stili = {}
+        self.rete.salva()
+        self.disegna(); self.salva()
+        self.dici(f"{n} line{'s' * (n != 1)} back to chrome and thin" if n else "Every line is already chrome and thin")
+        return n
+
+    def togli_tutte_sinergie(self, chiedi=True):
+        """Via tutte le connessioni del mazzo (coi loro colori e i dot); le carte restano. Prima la domanda. -> la finestrella della domanda, o quante (senza)."""
+        from widget import conferma, ROSSO_P
+
+        def via():
+            n = len(self.rete.figli)
+            self.rete.figli, self.rete.stili = {}, {}
+            self.rete.salva()
+            self.punti, self.vie, self.sel_punti = {}, {}, set()
+            self._arco = None
+            self.disegna(); self.salva()
+            self.dici(f"{n} link{'s' * (n != 1)} deleted: the cards stay · Undo brings them back")
+            return n
+        if not chiedi:
+            return via()
+        n = len(self.legami_visti())
+        self.domanda_sinergie = conferma(self.tk, self.F, self.fin, "Delete all synergies?", f"The {n} links of this deck and their dots go, the cards stay. "
+                                         "Undo brings them back.", "Delete", via, colori=ROSSO_P)
+        return self.domanda_sinergie
 
     def lucchetti_tutti(self, on):
         """Tutti i gruppi col lucchetto chiuso (si spostano con le loro carte) o aperto (da soli)."""
@@ -1040,17 +1154,26 @@ class TavoloCarte:
         if self.nomi_ricerca is not None and self.modifica:
             self.ricerca(t)
         # Arrange accanto ad Add card (13 nov 2026, Autore: «afianco a add card metterei il menù arrange»); prima stava a destra, vicino a Grid snap
+        # anche nel Board dei mazzi in sola lettura, e li' e' l'unico pulsante in alto (15 nov 2026, Autore: «nella board dei mazzi (non editor) l'unico
+        # pulsante in alto deve essere quello di arrange che permette di riarrangiare il deck nel board»)
         self.b_arrange = None
-        if not self.sola:
-            b = self.b_arrange = pulsante_solido(tk, F, t, "Arrange ▾", False, self.menu_disponi, alto=28, bg=C["cap"])
-            b.configure(width=120); b.pack(side="left", padx=(10, 0))
+        b = self.b_arrange = pulsante_solido(tk, F, t, "Arrange ▾", False, self.menu_disponi, alto=28, bg=C["cap"])
+        b.configure(width=120); b.pack(side="left", padx=(10, 0))
         # Groups accanto ad Arrange (13 nov 2026 sera, Autore: «acanto all'arrange mettimao il menu dei groups con tutto il necessario per gestire i gruppi: il
         # menu autogroups non esisterà più e le sue funzioni si troveranno qui d'ora in poi»): solo in modalita' edit, come Auto groups prima
         self.b_gruppi = None
         if self.modifica:
             b = self.b_gruppi = pulsante_solido(tk, F, t, "Groups ▾", False, self.menu_gruppi, alto=28, bg=C["cap"])
             b.configure(width=120); b.pack(side="left", padx=(8, 0))
+        # Synergies accanto a Groups (15 nov 2026, Autore: «in board editor aggiungiamo un menù per le sinergie, show hide mostra nasconde le linee di sinergia /
+        # delete all sinergies ecc.»): sempre, anche in sola lettura (li' solo Show e Hide)
+        self.b_sinergie = None
+        if not self.sola:       # nel Board dei mazzi solo Arrange (15 nov 2026)
+            b = self.b_sinergie = pulsante_solido(tk, F, t, "Synergies ▾", False, self.menu_sinergie, alto=28, bg=C["cap"])
+            b.configure(width=134); b.pack(side="left", padx=(8, 0))
         dx = tk.Frame(t, bg=C["cap"]); dx.pack(side="right", padx=10)
+        # nel Board dei mazzi zoom, Fit e Full page nascono ma non si vedono (la rotella fa lo zoom, A inquadra, la finestra si ingrandisce dalla sua barra)
+        zz = dx if not self.sola else tk.Frame(t, bg=C["cap"])
         # Save in fondo a destra, dopo lo zoom, e verde come in tutta l'app (13 nov 2026, Autore: «e save lo sposti tutto a destra e save ovunque sull'app
         # sempre verde»); prima stava fra Redo e Full page, in arancio
         if not self.sola and self.modifica:
@@ -1061,14 +1184,14 @@ class TavoloCarte:
         # fino a quel giorno erano scritte cliccabili
         for testo, azione in (("Fit", lambda: self.adatta()), ("+", lambda: self.zoom_a(self.zoom * 1.15)), ("%", None), ("−", lambda: self.zoom_a(self.zoom / 1.15))):
             if azione is None:
-                self.l_zoom = tk.Label(dx, text="100%", bg=C["cap"], fg=C["titolo"], font=F(9, True), width=5, cursor="hand2"); self.l_zoom.pack(side="right")
+                self.l_zoom = tk.Label(zz, text="100%", bg=C["cap"], fg=C["titolo"], font=F(9, True), width=5, cursor="hand2"); self.l_zoom.pack(side="right")
                 self.l_zoom.bind("<Button-1>", lambda e: self.zoom_a(1.0))
                 continue
-            b = pulsante_solido(tk, F, dx, testo, False, azione, alto=26, bg=C["cap"], colori=GRIGIO_T, icona=False)
+            b = pulsante_solido(tk, F, zz, testo, False, azione, alto=26, bg=C["cap"], colori=GRIGIO_T, icona=False)
             b.configure(width=54 if testo == "Fit" else 28)
             b.pack(side="right", padx=(8, 0) if testo == "Fit" else 0)
-        tk.Label(dx, text="ZOOM", bg=C["cap"], fg=C["muto"], font=F(7, True)).pack(side="right", padx=(14, 4))
-        self.b_pagina = pulsante_solido(tk, F, dx, "Full page", False, lambda: self.tutta_pagina(), alto=26, bg=C["cap"], colori=GRIGIO_T)
+        tk.Label(zz, text="ZOOM", bg=C["cap"], fg=C["muto"], font=F(7, True)).pack(side="right", padx=(14, 4))
+        self.b_pagina = pulsante_solido(tk, F, zz, "Full page", False, lambda: self.tutta_pagina(), alto=26, bg=C["cap"], colori=GRIGIO_T)
         self.b_pagina.configure(width=122); self.b_pagina.pack(side="right", padx=(10, 0))
         # By type, By cost e Label non ci sono piu' (Autore, 10 nov 2026: «togli i pulsanti by type by cost ecc»): la prima apertura dispone per costo,
         # la label nasce dalle tre linee della cornice della selezione. Resta un pulsante solo: la rete riordinata per connessioni (stesso giorno)
@@ -2268,7 +2391,9 @@ class TavoloCarte:
     # connessioni fai in modo che le connessioni siano belle visibili»). CARDS sono le colonne classiche dei deck builder (costo, tipo, colore, rarita'), le terre
     # sempre in fondo; GROUPS un gruppo per riga, uno sotto l'altro; CONNECTIONS la rete che scorre da sinistra a destra (sotto).
     SEZIONI_ARRANGE = (
-        ("CARDS", (("costo", "By mana cost", "One column per mana value, lands last · the groups below, whole"),
+        ("CARDS", (("tradizionale", "Traditional · mana stacks", "The whole deck in one row of stacks by mana value, lands last, like Arena · the group "
+                                                                    "frames set aside below, empty"),
+                   ("costo", "By mana cost", "One column per mana value, lands last · the groups below, whole"),
                    ("tipo", "By type", "Creatures, planeswalkers, instants, sorceries, artifacts, enchantments, lands"),
                    ("colore", "By color", "White, blue, black, red, green, multicolor, colorless, lands"),
                    ("rarita", "By rarity", "Mythic, rare, uncommon, common, lands"))),
@@ -2289,7 +2414,8 @@ class TavoloCarte:
             m.sezione(sezione)
             for modo, nome, riga in modi:
                 m.voce(nome, riga, lambda modo=modo: self.disponi_modo(modo, inquadra=True))
-        m.piede("Groups stay whole in every mode · Undo brings the board back")
+        m.piede("Groups stay whole in every mode · Undo brings the board back" if not self.sola else
+                "View only: the new layout is saved like a card you move · Traditional with groups is only to look at: reopen the Board for your layout")
         m.p.voci = m.voci
         return m.posa(sotto=self.b_arrange)
 
@@ -2544,7 +2670,38 @@ class TavoloCarte:
         cima = [k for k in range(len(E)) if padre[k] is None]
         sciolte = set(libere)
         gr_s = lambda n: f"{n} group{'s' * (n != 1)}"
-        if modo in self.CRITERI:
+        if modo == "tradizionale":
+            # la classica impilata per mana (15 nov 2026, Autore: «in arrange aggiungiamo la classica tradizionale impilata per mana del mazzo»): tutto il
+            # mazzo, anche le carte dei gruppi, una pila per valore di mana (7+ insieme), le terre in fondo, su una riga sola come in Arena: le pile si allungano
+            # quanto basta, e se le colonne non entrano si uniscono i costi piu' alti. Le cornici dei gruppi restano (nome, colore, nota), vuote, in fila sotto
+            tutte = sorted((i for i, v in self.voci.items() if v["zona"] == "main"), key=self.ordine)
+            gr = collections.OrderedDict()
+            for i in tutte:
+                gr.setdefault(self.gruppo(i, "cost"), []).append(i)
+            gr = collections.OrderedDict(sorted(gr.items()))
+            while len(gr) > larga:
+                magie = [k for k in gr if k != 9]
+                if len(magie) < 2:
+                    break
+                gr[magie[-2]] = gr[magie[-2]] + gr.pop(magie[-1])
+            lunga = next((k for k in (MAX_PILA, 12, 14, 16, 20, 30) if sum(-(-len(c) // k) for c in gr.values()) <= larga), 30)
+            stack = [blocco_pila(cc[a:a + lunga]) for cc in gr.values() for a in range(0, len(cc), lunga)]
+            sezione(stack)
+
+            def blocco_vuoto(k):
+                if E[k].get("copia"):
+                    return blocco_label(k, "fila")
+
+                alta_v = TOP + 3 * PASSO_Y + PAD_L        # vuota: bassa, quanto basta per lasciarci una carta (la cornice cresce col suo angolo)
+
+                def metti_v(bx, by, k=k):
+                    E[k]["x"], E[k]["y"], E[k]["w"], E[k]["h"] = bx + LX, by, 3 * PASSO_X - DW, alta_v
+                return dict(c=3, h=alta_v, metti=metti_v)
+            sezione([blocco_vuoto(k) for k in ordina_gruppi(range(len(E)))])
+            n_fatti = len(tutte)
+            cosa = (f"Traditional: {sum(self.voci[i]['q'] for i in tutte)} cards in {len(stack)} mana stacks, lands last"
+                    + (f" · {gr_s(len(E))} set aside below, empty: Undo brings the cards back in" if E else ""))
+        elif modo in self.CRITERI:
             crit = self.CRITERI[modo]
             sezione(pile_per(libere, crit))
             sezione([blocco_label(k, crit) for k in ordina_gruppi(cima)])
@@ -2585,6 +2742,11 @@ class TavoloCarte:
             cosa = (f"Network with groups: {len(messe)} cards and {gr_s(len(in_rete))} in the flow · {gr_s(len(altri))} more, then the loose cards by cost"
                     if nodi else f"Network with groups: no connections · {gr_s(len(altri))}, then the loose cards by cost")
         self.pile = [pl for pl in self.pile if pl["zona"] != "main"] + nuove
+        if self.sola and modo == "tradizionale" and E:
+            # nel Board dei mazzi non c'e' Undo: la tradizionale svuota i gruppi fatti nell'editor, quindi si guarda e non si salva finche' il Board resta
+            # aperto (15 nov 2026); riaperto torna la disposizione di prima
+            self._solo_guardare = True
+            cosa += " · view only: not saved, your groups stay as you made them"
         self.vuota_sel()
         self.rimetti_punti(main)
         self.disegna()
@@ -3046,7 +3208,7 @@ class TavoloCarte:
         v = self.voci[vid]
         m = MB.Menu(tk, F, self.fin, "Replace card", chiudi=self.scambia_chiudi)       # lo stile comune dei mini-menu (menu_board, 13 nov 2026)
         p = self._scambio = m.p
-        tk.Label(m.corpo, text=f"{v['nome']}  ·  {v['q']}x", bg=MB.FONDO, fg="#ffffff", font=F(9, True), anchor="w").pack(fill="x", padx=12, pady=(6, 0))
+        tk.Label(m.corpo, text=f"{v['nome']}  ·  {v['q']}x", bg=MB.FONDO, fg=MB.T_TITOLO, font=F(9, True), anchor="w").pack(fill="x", padx=12, pady=(6, 0))
         m.sezione("With")
         r_ = m.riga()
         var = tk.StringVar()
@@ -3208,7 +3370,7 @@ class TavoloCarte:
         m = MB.Menu(tk, F, self.fin, "Replace card" if vecchia else "Add a card", chiudi=self.scambia_chiudi)      # lo stile comune dei mini-menu
         p = self._scambio = m.p
         if vecchia:
-            tk.Label(m.corpo, text=vecchia, bg=MB.FONDO, fg="#ffffff", font=F(9, True), anchor="w").pack(fill="x", padx=12, pady=(6, 0))
+            tk.Label(m.corpo, text=vecchia, bg=MB.FONDO, fg=MB.T_TITOLO, font=F(9, True), anchor="w").pack(fill="x", padx=12, pady=(6, 0))
         m.sezione("With" if vecchia else "Card")
         r_ = m.riga()
         var = tk.StringVar()
@@ -3390,6 +3552,11 @@ class TavoloCarte:
         cv = self.cv
         cv.delete("rete"); cv.delete("rete_hover"); cv.delete("punto")
         self._img_rete, self._segmenti, self._tronchi, self._arco, self._arco_t, self._barra_box = None, [], [], None, None, None
+        if not self.linee:      # nascoste dal menu Synergies: niente linee, niente dot; i pallini d'oro restano per legare
+            self._pezzi = []
+            cv.tag_raise("nodo")
+            cv.tag_raise("scambia")
+            return
         self._pezzi = self.pezzi()
         for pz in self._pezzi:
             a, b = self.fine_xy(pz["a"]), self.fine_xy(pz["b"])
@@ -3402,6 +3569,11 @@ class TavoloCarte:
                 self._tronchi.append((pz["punto"], pz["sg"][0], pz["sg"][1], pz["ingresso"]))
         visti = [pz for pz in self._pezzi if pz["sg"]]
         if visti and self.gpu:      # sulla scheda video: linee con la punta, l'antialias lo fa la scheda (MSAA); niente immagine da rifare
+            for k_, piu in BAGLIORE:      # prima i bagliori, tutti sotto: il neon (15 nov 2026, «sci fi cyber punk ... linee»)
+                for pz in visti:
+                    col, w, _ash = self.stile_pezzo(pz)
+                    a, b = pz["sg"]
+                    cv.create_line(a[0], a[1], b[0], b[1], fill=mescola(FOGLIO, col, k_), width=w + piu, capstyle="round", tags=("rete", "rete_glow"))
             for pz in visti:
                 col, w, ash = self.stile_pezzo(pz)
                 a, b = pz["sg"]
@@ -3414,6 +3586,13 @@ class TavoloCarte:
             K = 2 if (x1 - x0) * (y1 - y0) * 4 <= 16_000_000 else 1
             im = Image.new("RGBA", ((x1 - x0) * K, (y1 - y0) * K), (0, 0, 0, 0))
             d = ImageDraw.Draw(im)
+            for k_, piu in BAGLIORE:      # il bagliore del neon, due strati sotto tutte le linee
+                for pz in visti:
+                    col, w, _ash = self.stile_pezzo(pz)
+                    rgb = tuple(int(col.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
+                    a, b = pz["sg"]
+                    d.line([((a[0] - x0) * K, (a[1] - y0) * K), ((b[0] - x0) * K, (b[1] - y0) * K)], fill=rgb + (round(255 * k_),),
+                           width=max(1, round((w + piu) * K)))
             for pz in visti:
                 col, w, ash = self.stile_pezzo(pz)
                 rgb = tuple(int(col.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
@@ -3663,6 +3842,9 @@ class TavoloCarte:
         if esito is None:
             return
         fam = self.rete.figli.get((t["da"], b)) or []
+        if esito == "nuova" and not self.linee:     # legata a linee nascoste: si riaccendono, se no la connessione non si vedrebbe
+            self.linee = True
+            self.salva_pref(linee=True)
         testo = f"{t['da']} → {b}: " + ("linked" + (f" ({RS.etichetta(fam)})" if fam else "") if esito == "nuova" else "unlinked")
         self.aiuto.configure(text=testo, fg=FG_DICI)
         self.aiuto.after(4000, lambda: self.aiuto.winfo_exists() and self.aiuto.configure(text=self.aiuto_base, fg=FG_AIUTO))
@@ -4086,6 +4268,8 @@ class TavoloCarte:
         self.scrivi()
 
     def scrivi(self):
+        if getattr(self, "_solo_guardare", False):      # la tradizionale nel Board dei mazzi coi gruppi: da guardare, non si salva (15 nov 2026)
+            return
         if not self.chiave or (self.sola and not self.sposta):        # in sola lettura si salva solo la disposizione delle carte spostate (10 nov 2026)
             return
         try:
@@ -4713,6 +4897,13 @@ class TavoloCarte:
                 x1, y1 = x0 + lb["w"] * z, y0 + lb["h"] * z
             cv.create_rectangle(x0, y0, x1, y1, fill=mescola(FONDO_L, col, 0.09), outline=col, width=1, tags=tg, **({"dash": (5, 4)} if lb.get("copia") else {}))
             cv.create_rectangle(x0, y0, x1, y0 + th, fill=mescola(TESTA_L, col, 0.3), outline=col, width=1, tags=tg + ("label_t", f"lt{k}"))
+            # le staffe agli angoli, come un mirino da HUD (15 nov 2026, Autore: «roba tipo sci fi cyber punk per tabelle gruppi e linee»): nel colore del
+            # gruppo, piu' acceso del bordo; sotto il titolo un tratto pieno a sinistra, il «tubo» del neon
+            neon = mescola(col, "#ffffff", 0.25)
+            st = max(8, min(22, (x1 - x0) / 5, (y1 - y0) / 4))
+            for cx_, cy_, sx, sy in ((x0, y0, 1, 1), (x1, y0, -1, 1), (x0, y1, 1, -1), (x1, y1, -1, -1)):
+                cv.create_line(cx_, cy_ + sy * st, cx_, cy_, cx_ + sx * st, cy_, fill=neon, width=2.5, capstyle="projecting", tags=tg)
+            cv.create_line(x0 + 1, y0 + th, x0 + 1 + min(70, (x1 - x0) / 3), y0 + th, fill=neon, width=2, tags=tg)
             cv.create_text(x0 + 10, y0 + th / 2, text=lb["nome"].upper(), fill=C["titolo"], font=self.F(fz, True), anchor="w",
                            tags=tg + ("label_t", f"lt{k}"))
             if lb.get("copia"):
@@ -4958,7 +5149,7 @@ class TavoloCarte:
         pa, pb = self.voci[sg[0]]["nome"], self.voci[sg[1]]["nome"]
         m = MB.Menu(tk, F, self.fin, "Link", chiudi=self.stile_chiudi)      # lo stile comune dei mini-menu (menu_board, 13 nov 2026)
         p = self._stile_pop = m.p
-        tk.Label(m.corpo, text=f"{pa}  →  {pb}", bg=MB.FONDO, fg="#ffffff", font=F(9, True), anchor="w").pack(fill="x", padx=12, pady=(6, 0))
+        tk.Label(m.corpo, text=f"{pa}  →  {pb}", bg=MB.FONDO, fg=MB.T_TITOLO, font=F(9, True), anchor="w").pack(fill="x", padx=12, pady=(6, 0))
         m.sezione("Color")
         cv1 = tk.Canvas(m.riga(), width=len(RS.COLORI) * 28 + 4, height=30, bg=MB.FONDO, highlightthickness=0, cursor="hand2"); cv1.pack(anchor="w")
         m.sezione("Width")
@@ -5299,6 +5490,12 @@ def tutti_widget(w):
     for x in w.winfo_children():
         yield from tutti_widget(x)
 
+
+
+def linee_di(t):
+    """Per le prove: le linee della rete sulla tela, senza i bagliori sotto (15 nov 2026)."""
+    glow = set(t.cv.find_withtag("rete_glow"))
+    return [i for i in t.cv.find_withtag("rete") if i not in glow]
 
 def prova():
     """Fuori schermo, file temporanei: le pile, il numero delle copie, il contatore coi limiti, la pila che si apre, il trascinamento, l'impilare, il passaggio di zona,
@@ -5703,7 +5900,7 @@ def prova():
     t8.cv.after_cancel(t8.clic); t8.clic = None
     # una freccia un'immagine; all'inizio del trascinamento si nascondono solo quelle della carta presa
     t8.disegna(); root.update()
-    casi.append(("le frecce: sulla scheda una linea per freccia, in Tk un'immagine sola", len(t8.cv.find_withtag("rete")) == (len(t8._segmenti) if t8.gpu else 1)
+    casi.append(("le frecce: sulla scheda una linea per freccia, in Tk un'immagine sola", len(linee_di(t8)) == (len(t8._segmenti) if t8.gpu else 1)
                  and len(t8._segmenti) == len(t8.legami_visti()) == 2))
     casi.append(("la tela e' quella della scheda video, se pyglet c'e' e TAVOLO_TK non la spegne", t8.gpu == (TG.disponibile() and os.environ.get("TAVOLO_TK") != "1")))
     rv = t8.rett(va); px_, py_ = (rv[0] + rv[2]) / 2, (rv[1] + rv[3]) / 2
@@ -6023,7 +6220,7 @@ def prova():
     EA = lambda x, y, st=0: type("E", (), dict(x=x - tA.cv.canvasx(0), y=y - tA.cv.canvasy(0), state=st))()
     casi.append(("di partenza le linee sono grigio perlato e sottili", len(tA._segmenti) == 2
                  and all(tA.stile_px(a_, b_)[:2] == (RS.PERLA, RS.SPESSORI[1]) for a_, b_, _p, _c in tA._segmenti)
-                 and (not tA.gpu or all(tA.cv.itemcget(i_, "fill") == RS.PERLA for i_ in tA.cv.find_withtag("rete")))))
+                 and (not tA.gpu or all(tA.cv.itemcget(i_, "fill") == RS.PERLA for i_ in linee_di(tA)))))
     tA.pila_di(vid_di(tA, "Anthem"))["x"] += 900; tA.disegna(); root.update()       # la freccia attraversa il foglio vuoto
     sgA = next(x for x in tA._segmenti if tA.voci[x[0]]["nome"] == "Token Maker")
     vuoto = None        # un punto della freccia fuori dalle carte: li' il clic apre la tavolozza
@@ -6066,6 +6263,32 @@ def prova():
     tA.salva_tutto(); tA.chiudi()
     tA2 = nuovo_t("build:stile")
     casi.append(("riaperto, la linea ha il suo colore e il suo spessore", tA2.rete.colore_spessore("Token Maker", "Anthem") == ("#d9534f", 5.0)))
+    # il menu Synergies (15 nov 2026): Hide e Show delle linee, Reset colors, Delete all (con Undo)
+    root.update()
+    pS_ = tA2.menu_sinergie(); root.update()
+    voci_S = set(pS_.voci)
+    tA2.nome_chiudi()
+    casi.append(("il pulsante Synergies ▾ accanto a Groups, e il menu con Hide all lines, Straighten, Reset colors, Delete all synergies",
+                 tA2.b_sinergie.master is tA2.b_gruppi.master and tA2.b_sinergie.pack_info().get("side") == "left"
+                 and {"Hide all lines", "Straighten all lines", "Reset colors and weight", "Delete all synergies"} <= voci_S))
+    sgS = tA2._segmenti[0] if tA2._segmenti else None
+    tA2.linee_viste(False); root.update()
+    pS2_ = tA2.menu_sinergie(); root.update()
+    casi.append(("Hide all lines: niente linee ne' bagliori sul foglio, le connessioni restano; il menu offre Show all lines; la scelta si ricorda",
+                 not tA2.cv.find_withtag("rete") and not tA2._segmenti and len(tA2.rete.figli) == 2 and "Show all lines" in pS2_.voci
+                 and (carica_tavoli(ft).get(OPZIONI) or {}).get("linee") is False))
+    tA2.nome_chiudi()
+    casi.append(("negativa: con le linee nascoste un clic dove passava la linea non prende niente", sgS is not None
+                 and tA2.arco_a((sgS[2][0] + sgS[3][0]) / 2, (sgS[2][1] + sgS[3][1]) / 2) is None))
+    tA2.linee_viste(True); root.update()
+    casi.append(("Show all lines: le linee tornano", len(tA2._segmenti) == 2 and bool(linee_di(tA2) if tA2.gpu else tA2.cv.find_withtag("rete"))))
+    tA2.stili_base(); root.update()
+    casi.append(("Reset colors and weight: ogni linea perla cromato e sottile", tA2.rete.colore_spessore("Token Maker", "Anthem") == (RS.PERLA, RS.SPESSORI[1])))
+    tA2.togli_tutte_sinergie(chiedi=False); root.update()
+    casi.append(("Delete all synergies: nessuna connessione e nessuna linea, le carte restano", not tA2.rete.figli and not tA2._segmenti
+                 and len(tA2.voci) >= 2))
+    tA2.annulla(); root.update()
+    casi.append(("negativa: Undo le riporta tutte", len(tA2.rete.figli) == 2 and len(tA2._segmenti) == 2))
     tA2.salva_tutto(); tA2.chiudi()
     # i dot delle linee, come in Nuke (9 nov 2026): il doppio clic spezza la linea, il dot si trascina, da un dot partono altre linee dello stesso padre
     tD = nuovo_t("build:dot")
@@ -6084,7 +6307,7 @@ def prova():
     q1 = next(iter(tD.punti), None)
     casi.append(("il doppio clic su una linea la spezza con un dot: tronco dal padre al dot, punta dal dot al figlio", q1 is not None
                  and tD.vie.get(("Token Maker", "Anthem")) == q1 and len(tD._tronchi) == 1 and len(tD._segmenti) == 2 and bool(tD.cv.find_withtag(f"p{q1}"))
-                 and (not tD.gpu or len(tD.cv.find_withtag("rete")) == 3)))
+                 and (not tD.gpu or len(linee_di(tD)) == 3)))
     if q1 is not None:
         x1_, y1_, _r = tD.punto_xy(q1)
         tD.premi_tela(ED(x1_, y1_))
@@ -6342,6 +6565,35 @@ def prova():
                  any(["Anthem", 2] in pl_["carte"] and (pl_["x"], pl_["y"]) == xy2 for pl_ in dopo_.get("pile", []))
                  and dopo_.get("etichette") == (json.loads(prima_file) or {}).get("etichette")
                  and (open(fm, encoding="utf-8").read() if os.path.exists(fm) else "") == prima_mazzi))
+    # il Board dei mazzi: in testata solo Arrange, che riordina il mazzo (15 nov 2026, Autore: «l'unico pulsante in alto deve essere quello di arrange»)
+    tV = TavoloCarte(tk, F, root, "Rete", {"Token Maker": 4, "Anthem": 2, "Vanilla": 4, "Plains": 10}, {"Side Anthem": 1}, carte_db=dbr, chiave="build:sola",
+                     file_tavoli=ft, file_mazzi=fm, file_rete=fr, fuori=True, limite=lim, modificabile=("build", "x"), sola_lettura=True)
+    root.update()
+    testata_ = tV.b_arrange.master
+    def a_vista(w_):        # la finestra di prova nasce nascosta (pronta_poi): a vista = lui e i suoi padri fino alla testata messi col geometry manager
+        while w_ is not testata_:
+            if not w_.winfo_manager():
+                return False
+            w_ = w_.master
+        return True
+    pulsanti_ = [w_ for w_ in tutti_widget(testata_) if hasattr(w_, "colori") and a_vista(w_)]
+    casi.append(("Board dei mazzi: in alto l'unico pulsante e' Arrange (niente Synergies, zoom, Fit, Full page)", pulsanti_ == [tV.b_arrange]
+                 and tV.b_sinergie is None and not a_vista(tV.b_pagina)))
+    prima_v = json.dumps(carica_tavoli(ft).get("build:sola"), sort_keys=True)
+    tV.disponi_modo("tradizionale"); root.update()
+    casi.append(("Board dei mazzi: Traditional coi gruppi di edit si guarda e non si salva (niente Undo qui)", json.dumps(carica_tavoli(ft).get("build:sola"),
+                 sort_keys=True) == prima_v and "not saved" in tV.aiuto.cget("text")))
+    tV.chiudi()
+    tV2 = TavoloCarte(tk, F, root, "Rete", {"Token Maker": 4, "Anthem": 2, "Vanilla": 4, "Plains": 10}, {"Side Anthem": 1}, carte_db=dbr, chiave="build:sola",
+                      file_tavoli=ft, file_mazzi=fm, file_rete=fr, fuori=True, limite=lim, modificabile=("build", "x"), sola_lettura=True)
+    root.update()
+    pile_salvate = sorted((pl_["x"], pl_["y"]) for pl_ in (json.loads(prima_v) or {}).get("pile", []) if pl_["zona"] == "main")
+    casi.append(("riaperto, il Board ha di nuovo la disposizione salvata (non la Traditional)", len(tV2.etichette) == 1
+                 and sorted((pl_["x"], pl_["y"]) for pl_ in tV2.pile if pl_["zona"] == "main") == pile_salvate))
+    tV2.disponi_modo("costo"); root.update()
+    casi.append(("negativa: By mana cost nel Board dei mazzi si salva, come una carta spostata", json.dumps(carica_tavoli(ft).get("build:sola"), sort_keys=True) != prima_v))
+    tV2.chiudi()
+    salva_tavolo("build:sola", json.loads(prima_v), ft)        # le prove dopo partono dalla disposizione di prima
     tN = TavoloCarte(tk, F, root, "Rete", {"Token Maker": 4, "Anthem": 2, "Vanilla": 4, "Plains": 10}, {"Side Anthem": 1}, carte_db=dbr, chiave="build:sola",
                      file_tavoli=ft, file_mazzi=fm, file_rete=fr, fuori=True, limite=lim, modificabile=("build", "x"), sola_lettura=True)
     tN.sposta = False       # come con All accounts: niente si sposta
@@ -6612,6 +6864,22 @@ def prova():
     tA.disponi_modo("costo"); root.update()
     tA.annulla(); root.update()
     casi.append(("Undo dopo un Arrange torna alla disposizione di prima", sorted((q["x"], q["y"], tuple(q["carte"])) for q in tA.pile) == disp_m))
+    # Traditional · mana stacks (15 nov 2026): tutto il mazzo, anche le carte dei gruppi, una pila per costo su una riga, le terre in fondo; le cornici vuote sotto
+    copia_carte = dict(next(lb for lb in tA.etichette if lb.get("copia")).get("carte") or {})
+    nT = tA.disponi_modo("tradizionale"); root.update()
+    pm_ = [pl for pl in tA.pile if pl["zona"] == "main"]
+    main_ = sorted(i for i, v in tA.voci.items() if v["zona"] == "main")
+    casi.append(("Traditional: ogni carta del mazzo in una pila sola, una pila per costo, tutte sulla stessa riga, le terre nell'ultima a destra",
+                 nT == len(main_) and sorted(c for pl in pm_ for c in pl["carte"]) == main_ and len({pl["y"] for pl in pm_}) == 1
+                 and all(len({tA.gruppo(c, "cost") for c in pl["carte"]}) == 1 for pl in pm_)
+                 and len({tA.gruppo(pl["carte"][0], "cost") for pl in pm_}) == len(pm_)
+                 and tA.gruppo(max(pm_, key=lambda q: q["x"])["carte"][0], "cost") == 9))
+    casi.append(("Traditional: le cornici dei gruppi restano (nome, colore), vuote, sotto le pile; la copia tiene le sue carte scritte",
+                 len(tA.etichette) == 3 and min(lb["y"] for lb in tA.etichette) > max(tA.ingombro(pl)[3] for pl in pm_)
+                 and not any(tA.struttura()[0].values()) and next(lb for lb in tA.etichette if lb.get("copia")).get("carte") == copia_carte))
+    tA.annulla(); root.update()
+    casi.append(("negativa: Undo dopo Traditional rimette le carte nei loro gruppi", sorted((q["x"], q["y"], tuple(q["carte"])) for q in tA.pile) == disp_m
+                 and any(tA.struttura()[0].values())))
     # col filtro acceso: niente carte in due pile, e il filtro resta
     tA.scegli_filtro("instant"); root.update()
     tA.disponi_modo("misto"); root.update()
@@ -6634,6 +6902,19 @@ def prova():
     casi.append(("filtro Instants: Burn (Bolt) e la sua copia accesi, Top (solo creature) spento; Creatures: tutti accesi", v_ist == (True, False, True)
                  and v_cre == (True, True, True)))
     casi.append(("negativa: filtro Lands, nessun gruppo ha terre: tutti spenti; tornato All si riaccendono", v_ter == (False, False, False) and v_all == (True, True, True)))
+    # Show / hide all nel menu Groups (15 nov 2026): gli occhi di tutti i gruppi, con le loro carte
+    pG_ = tA.menu_gruppi(); root.update()
+    hide_in = "Hide all groups" in pG_.voci
+    tA.nome_chiudi()
+    tA.gruppi_visti(False); root.update()
+    pG2_ = tA.menu_gruppi(); root.update()
+    casi.append(("Groups ▾ › Hide all groups: ogni gruppo nascosto con le sue carte (Bolt, nel gruppo Burn, fuori dal foglio); il menu offre Show all groups",
+                 hide_in and all(lb.get("nascosta") for lb in tA.etichette) and vid_di(tA, "Bolt") in tA._spente
+                 and not tA.cv.find_withtag(f"lt{kB_}") and "Show all groups" in pG2_.voci))
+    tA.nome_chiudi()
+    tA.gruppi_visti(True); root.update()
+    casi.append(("Show all groups: tutti di nuovo a vista, nessuna carta spenta", not any(lb.get("nascosta") for lb in tA.etichette) and not tA._spente
+                 and bool(tA.cv.find_withtag(f"lt{kB_}"))))
     # il pulsante e il menu
     pA = tA.menu_disponi(); root.update()
     testi_A = [w_.cget("text") for w_ in tutti_widget(pA) if isinstance(w_, tk.Label)]

@@ -59,8 +59,9 @@ SEZIONI = (
       ("Chat", "a title per pack, a line per pick: the crown is the pick, the shields the next best"), ("Possible decks", "the three color pairs the drafter sees"),
       ("Select deck", "lights the overlay on Arena's deck builder: green keep or add, red remove"), ("Fix", "with a red gate: the swaps that fix the deck"),
       ("Closed session", "closes the draft by hand: two clicks")]),
-    ("performance", "Performance", "An analyzer of your games and situations, from your Arena logs: pick any variables, and the numbers, the chart, the spots "
-     "and the matchups follow.",
+    ("performance", "Leak Finder", "A leak finder for your games, from your Arena logs: it finds the mistakes that cost you games (the leaks), says how "
+     "often you make each one, how much it costs, how to fix it, and opens the replay on the spot; with the filters you can build any situation and see "
+     "how much you win or lose in it. It adapts to the format: Limited and Constructed have their own rules where they differ (the mulligan).",
      [("Constructed · Limited", "which games"), ("+ more", "on each phase of the game, its extra filters: the 1-2 mana spells and creatures in your opening hand and "
                                              "the first turns (missed land drops, curve, first creature); the fight (who attacked first, spells on the other turn, targeted, "
                                              "attacks into untapped lands, passing with lands up); how it ended (who conceded) and creatures lost; the day of the week and "
@@ -82,19 +83,33 @@ SEZIONI = (
                               "Compare puts those games against the rest, e.g. a graveyard hate cracked in their draw step against every other time."),
       ("Advanced filters", "the button under the smart filters opens your question: every filter you turn on is a piece with its x, the answer (win rate, "
                            "games, record, interval, against all your games) right below, and the whole page follows it. Two tabs, You and Opponent, each with "
-                           "its phases: opening hand (your deck's colors, creatures, instants, sorceries, artifacts, enchantments, planeswalkers, battles; the "
-                           "opponent's mulligans), what was cast on each player's turns 1-5 and on the other one's turns (by type; add the same type twice with + "
+                           "its phases: opening hand (creatures, instants, sorceries, artifacts, enchantments, planeswalkers, battles; your 7-card decision, against the "
+                           "measured mulligan table in Limited and against the 60-card rule in Constructed (0-1 and 6-7 lands mulligan, 2 and 5 it "
+                           "depends, 3-4 keep); the opponent's mulligans; the deck itself is By deck), what was cast on each player's turns 1-10, turn 11+ or any turn, and on the other one's turns (by type; add the same type twice with + "
                            "for two of them, e.g. Instant + Instant = two instants that turn; several in one turn and the games must have them all), the draws on each turn (the draw step too) and "
                            "the extra draws in one turn, attacks turn by turn (how many "
                            "creatures, the defender's untapped lands), defense (blocked or not), and the game: land drops on curve, lowest life, life and "
                            "creatures at the end of your turns, permanents removed, board wipes, counterspells, graveyard targets, spells cast, when the game "
-                           "ended, no creature by a turn"),
+                           "ended, no creature by a turn. Every turn by turn section is a line builder: pick the turn (1-10, 11+, or «any», where one turn "
+                           "that matches is enough) and the value. Attack also has «when you could attack» (couldn't, didn't attack, with some, with everything), "
+                           "and «how many times in the game»: first attack, attacks, turns with an attacker ready and no attack, attacks on a planeswalker, turns "
+                           "ended dead on board, spells cast in the other player's combat; Defense: their unblocked attacks that left you in lethal range; "
+                           "Game: removal cast and when, removal left in hand, their first removal, your first creature removed, missed lethal on board, and "
+                           "WIN CHANCE OVER THE GAME (highest and lowest win chance, game shape: dominated, comeback, collapse, seesaw, outclassed; the biggest "
+                           "swing and in which turns; from the model, grade C). Your turns has INSTANT TIMING: instants and flash cast on your turn, those that "
+                           "could have waited for their turn, those that lost value; and the mana left unused at the end of each turn, and the mana used in the "
+                           "first 5 turns (lands minus what was cast, grade C). Game also has discards, spells countered, scries and the cards sent to the "
+                           "bottom, cards put into the graveyard with surveil, and the game length in minutes. Under the answer, HOW MANY TIMES: for the "
+                           "filters counted by turn, how many times it happened, in how many games, out of how many turns"),
       ("Chart", "win rate, games, average turns or mulligan rate; by game or by date; cumulative or the last N games; split by a variable; under it, "
                 "Ranks (the league logos where your rank changes) and Trophies (the cup on the game that closes a draft with 7 wins)"),
       ("Games in this situation", "under the chart, one game per row: deck, opponent, result, start, your opening hand and the board at the end; click the "
                                   "hand or the board to open the table of that game, turn by turn, with a replayer: first, back, play and pause, forward, last, "
-                                  "the timeline and the speed (keys: space, arrows, Home, End, T); each player's graveyard and exile (click to see them all), the cards that just arrived marked "
-                                  "NEW, power and toughness, what happened in that moment, the chart of the game (life and power) and the turning point (★); on the left your deck card "
+                                  "the timeline and the speed (keys: space, arrows, Home, End, T); each player's library, graveyard and exile in a triangle on the right with life, "
+                                  "hand and library counts and the turn (click a graveyard or an exile to see them all); In hand (key H) switches between the hand "
+                                  "fanned out and a bigger table with the hand between your lands and your other permanents; more than 6 creatures go on two rows; HIDE TURNS folds the turn strip; tokens with their real image, counters "
+                                  "on the cards (gold when they just arrived), every card on its own (tokens and lands grouped ×N), cards sliding from zone to zone; "
+                                  "the cards that just arrived marked NEW, power and toughness, what happened in that moment, the chart of the game (life and power) and the turning point (★); on the left your deck card "
                                   "by card with the copies left in your library and the chance to draw each next, on the right the opponent's cards seen up to "
                                   "that moment (not their whole deck) with Copy as list; diamonds over the timeline and «Key ›» (key K) for the key moments, where "
                                   "the advantage swings most (blue to you, orange to the opponent; «Keys» picks yours, theirs or both); red marks under the timeline and «Leak ›» (key L) for the leaks a coach looks for "
@@ -126,8 +141,25 @@ SEZIONI = (
                 "the pairs that decided the most wins, with the average swing); Your removal · on what (the average mana value of what each removal "
                 "took, a token 0, and how often a token or a card cheaper than it); The threats that beat you (their cards in more of your losses than "
                 "your wins: Answers › shows the removal you own, in your decks' colors, that reads like it removes each one; from the card text, a clue)"),
-      ("Leaks (in Decisions)", "every leak in the games you picked: in how many games, your win rate with and without it, how often in your last 50 games "
-                "against before (green if it went down), and how to fix it; click a row to keep its games, Watch › opens them in the replayer on the leak"),
+      ("Leaks (the folder after Chart, also in Decisions)", "the Leak Finder opens here. A leak is a small mistake that keeps coming back and quietly "
+                "costs you games. Each leak is a card: its name in plain words, what happened in your games in one sentence (in how many games, your win rate "
+                "with it and without it, whether it is getting better), then WHAT IT IS, WHY IT COSTS, an EXAMPLE and HOW TO FIX. The costliest first: the "
+                "cost is how many points of your whole win rate the leak takes away in the format you are looking at (how often it happens times how much it "
+                "hurts when it does), so Limited and Constructed rank their leaks by their own numbers. Click a leak to keep only its games, Watch › opens them "
+                "in the replayer right on the mistake. OTHER PLAYERS: in Limited, how often the same leak happens to 17Lands players (all of them and Mythic), "
+                "from their public replays (CC BY 4.0, 17lands.com/public_datasets): 7 leaks of 15 can be measured there, the others need tapped lands or "
+                "the phase of each spell; Constructed has no public replays, the comparison comes with the shared games. Mana kept open for the "
+                "opponent's turn is not a leak: if you cast something on their turn that mana is taken away first, and if you held an instant you could "
+                "pay it counts only as «held mana open and never used it» when you never used it. Clues from the replay, not verdicts: the replay can't "
+                "see your hand or your plan"),
+      ("Your draft (Limited)", "Advanced filters › You › Draft, from the picks in your logs, Limited only: the pick you settled on your two colors, your "
+                "first-pack picks in your deck's colors, the cards of your colors that wheeled in the first pack (a signal that they were open), your first "
+                "pick in the deck or not, the rares you took and the ones you passed, and how often you took a different card from the Drafter's pick. In "
+                "Constructed the section says so"),
+      ("Missed attacks", "Spots › Attack › Missed attack into an open board, also in Advanced filters, and L9 in Decisions › Leaks "
+                "with Watch ›: turns where you had an attacker ready, the opponent was tapped out with no untapped blockers, and you did not attack. It counts "
+                "windows where attacking was safe, not real mistakes: it cannot see their hand, a bluff, or a creature you kept home on purpose, so the number is a "
+                "maximum (grade C)"),
       ("Graveyard (in Decisions)", "a reanimation ready (a card in hand or on the battlefield that returns a creature from a graveyard, with a creature "
                 "there), cards playable from exile (foretell, plot, warp, suspend, adventure), cards exiled from the other player's graveyard during a turn: "
                 "for you and for the opponent, with the games, the win rate with and without, the difference; click a row to keep its games. Also in "
@@ -183,7 +215,10 @@ SEZIONI = (
                     "too large to write), the action says so and those cards show as Unknown card; the replay opens on the opening hand; PgUp and PgDn jump a turn; "
                     "Combat ›, Spell › and Opp. tapped out › jump to the next one (C, S, O; with Shift the one before); Bookmark (B) marks the spot: it goes to "
                     "My filters, under your filters, one click to watch it again; stepping forward the cards slide from where they were (hand, stack, battlefield, "
-                    "graveyard, exile); in the limited games the companion followed, THE COMPANION SAID shows its advice for that turn")]),
+                    "graveyard, exile), one action at a time; the damage step plays as duels, one at a time: the table dims, the attacker and its blocker "
+                    "meet, the damage shows on top and the life goes down hit by hit, whoever dies turns grey; the stack shows all its cards, and a spell aimed "
+                    "at a card already on the stack points inside the stack; cards you can still play from exile sit next to the hand (FROM EXILE); in the "
+                    "limited games the companion followed, THE COMPANION SAID shows its advice for that turn")]),
     ("risorse", "Resources", "Gold, gems, packs, cards and wildcards: what you earn and spend, the Farmer that plans how to spend them, the roadmap and the ROI.",
      [("Period · Range · Resource", "what the chart and the income show"), ("Farmer", "goal sliders; Create makes the roadmap, Dismiss ends it"),
       ("Gold value", "My win rate or Pack price"), ("Spend gold on packs", "off: gold never buys packs"), ("Roadmap check", "above or below the plan, day by day")]),

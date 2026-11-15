@@ -47,7 +47,7 @@ CACHE = os.path.join(LOGDIR, "partite_log.json")
 import account as _ACC  # noqa: E402
 IO = tuple(x for x in (_ACC.account()["id"], _ACC.account()["nome"]) if x)      # l'account di Arena e il nome in gioco (account.py: Autore, o chi usa l'app pubblica):
 # il ripiego quando nel log non c'e' un accesso prima della partita
-VERSIONE = 4        # si alza quando cambia la lettura: le copie vecchie si rileggono (3: mazzo, mani, carte sue; 4: ranghi interi; 10 nov 2026)
+VERSIONE = 5        # si alza quando cambia la lettura: le copie vecchie si rileggono (3: mazzo, mani, carte sue; 4: ranghi interi; 10 nov 2026; 5: la fine della partita e il rango con gli step e la stagione, 14 nov 2026)
 
 RX_CORSO = re.compile(rb'"CourseDeckSummary":\{"DeckId":"([0-9a-f-]{36})","Name":"((?:[^"\\]|\\.)*)"')
 RX_EVENTO_CORSO = re.compile(rb'"InternalEventName":"([^"]+)"')
@@ -111,8 +111,11 @@ def ranghi(data, acc=None):
             d = json.loads(m.group(7))
         except ValueError:
             continue
+        # dopo l'account (14 nov 2026, la pagella dell'enciclopedia, capitolo 24): lo step dentro il livello, la stagione, il percentile del Mythic
         out.append((ts, d.get("constructedClass"), d.get("constructedLevel"), d.get("constructedMatchesWon", 0) + d.get("constructedMatchesLost", 0),
-                    d.get("limitedClass"), d.get("limitedLevel"), d.get("limitedMatchesWon", 0) + d.get("limitedMatchesLost", 0), _ACC.conto_a(acc, m.start())))
+                    d.get("limitedClass"), d.get("limitedLevel"), d.get("limitedMatchesWon", 0) + d.get("limitedMatchesLost", 0), _ACC.conto_a(acc, m.start()),
+                    d.get("constructedStep"), d.get("limitedStep"), d.get("constructedSeasonOrdinal"), d.get("limitedSeasonOrdinal"),
+                    d.get("constructedPercentile"), d.get("limitedPercentile")))
     return out
 
 
@@ -156,6 +159,7 @@ def leggi(data, acc=None):
                                          bot=any(x.get("isBotPlayer") for x in posti), vinta=None, motivo=None, conto=io.get("userId") or chi))
         if m.group(1) == b"MatchCompleted":
             p["fine_pos"] = m.end()
+            p["fine"] = int(r.get("timestamp") or 0) or None        # quando finisce (la durata in minuti, 14 nov 2026)
             for x in (st.get("finalMatchResult") or {}).get("resultList") or []:
                 if x.get("scope") == "MatchScope_Match":
                     p["vinta"] = x.get("winningTeamId") == p["team"] if x.get("winningTeamId") is not None else None
@@ -252,12 +256,16 @@ def partite(files=None, cache=CACHE, conto=False):
                     import time as _t
                     _t.sleep(0.15 * (t_ + 1))
     _ACC.registra(sorted(visti))        # la tendina degli account conosce anche quelli dei log archiviati
-    foto = sorted((tuple(x[:7]) + (x[7] if len(x) > 7 else None,) for x in foto), key=lambda x: x[:7])
+    foto = sorted((tuple(x[:7]) + (x[7] if len(x) > 7 else None,) + tuple(x[8:14]) + (None,) * max(0, 14 - max(8, len(x))) for x in foto), key=lambda x: x[:7])
     out = sorted((p for p in per_mid.values() if conto is None or p.get("conto") == conto), key=lambda p: p["inizio"])
     for p in out:       # il rango prima della partita e quello che conta la partita, da qualunque log (nell'app pubblica dello stesso account)
         lim = bool(re.search(r"Draft|Sealed|Cube", p["evento"]))
         prima = [x for x in foto if x[0] <= p["inizio"] and (not _ACC.PUBBLICA or x[7] == p.get("conto"))]
         p["rango_prima"] = list(prima[-1][1:7]) if prima else None
+        # lo step, la stagione e il percentile del rango prima della partita, del formato giocato (14 nov 2026)
+        if prima:
+            x_ = prima[-1]
+            p["rango_step"], p["stagione"], p["percentile"] = (x_[9], x_[11], x_[13]) if lim else (x_[8], x_[10], x_[12])
         k = 6 if lim else 3                  # il conto delle partite classificate del limited o del costruito
         base = prima[-1][k] if prima else None
         dopo = next((x for x in foto if p["inizio"] < x[0] < p["inizio"] + 3 * 3600 * 1000 and base is not None and x[k] > base
@@ -341,7 +349,7 @@ def prova():
     zona = lambda zid, tipo, own, ids: '{ "zoneId": %d, "type": "%s", "ownerSeatId": %d, "objectInstanceIds": [ %s ] }' % (zid, tipo, own, ", ".join(map(str, ids)))
     ogg = lambda iid, grp, own, zid: '{ "instanceId": %d, "grpId": %d, "type": "GameObjectType_Card", "zoneId": %d, "ownerSeatId": %d }' % (iid, grp, zid, own)
     mull = '{ "type": "GREMessageType_MulliganReq", "systemSeatIds": [ 2 ] }'
-    rango = '[UnityCrossThreadLogger]%s\n<== RankGetCombinedRankInfo(x)\n{"constructedSeasonOrdinal":95,"constructedClass":"%s","constructedLevel":%d,"constructedMatchesWon":%d,"limitedSeasonOrdinal":95,"limitedClass":"Bronze","limitedLevel":2,"limitedMatchesWon":0}\n'
+    rango = '[UnityCrossThreadLogger]%s\n<== RankGetCombinedRankInfo(x)\n{"constructedSeasonOrdinal":95,"constructedStep":2,"constructedClass":"%s","constructedLevel":%d,"constructedMatchesWon":%d,"limitedSeasonOrdinal":95,"limitedClass":"Bronze","limitedLevel":2,"limitedMatchesWon":0}\n'
     pezzo_b = ('{ "greToClientEvent": { "greToClientMessages": [ { "type": "GREMessageType_ConnectResp", "connectResp": { "deckMessage": { "deckCards": [ 501, 501, 502 ], "sideboardCards": [ 503 ] } } } ] } }\n'
                + gre(2, gs(zona(31, "ZoneType_Hand", 2, [1, 2]) + ", " + zona(28, "ZoneType_Battlefield", 1, [9]), ogg(1, 501, 2, 31) + ", " + ogg(2, 502, 2, 31) + ", " + ogg(9, 777, 1, 28)) + ", " + mull)
                + gre(2, gs(zona(31, "ZoneType_Hand", 2, [3]), ogg(3, 503, 2, 31)) + ", " + mull)
@@ -379,6 +387,8 @@ def prova():
              ("le risposte sul rango", [x[1:4] for x in rr] == [("Silver", 3, 1), ("Gold", 4, 2)]),
              ("senza accessi nel log la partita e' di chi ha l'id in IO", q["conto"] == "AAAAAAAAAAAAAAAAAAAAAAAAAA"),
              ("il rango prima e quello che conta la partita", pq[b]["rango_prima"][:2] == ["Silver", 3] and pq[b]["rango_dopo"][:2] == ["Gold", 4]),
+             ("lo step e la stagione del costruito prima della partita, e la fine (la durata)", pq[b].get("rango_step") == 2 and pq[b].get("stagione") == 95
+              and bool(pq[b].get("fine")) and pq[b]["fine"] > pq[b]["inizio"]),
              ("negativa: una risposta senza partite classificate in piu' non e' il rango dopo", ps[b]["rango_dopo"] is None and ps[b]["rango_prima"][:2] == ["Silver", 3])]
     casi += prova_conti()
     # la prova negativa: senza il corso il mazzo non si inventa

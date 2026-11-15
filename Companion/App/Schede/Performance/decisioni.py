@@ -14,7 +14,7 @@ Limiti dichiarati: «a fine turno» comprende anche quel che succede dopo il com
 nel turno, non il passo esatto (il trucco e' una magia di chi difende fra l'inizio del turno e il danno). Le vite sono quelle a fine turno: comprendono
 anche un'altra perdita dopo il combattimento.
 
-E i mulligan: le mani tenute per numero di terre sul play e sul draw, le mani rimandate indietro, le mani rischiose tenute (0-1 o 5+ terre), settimana per
+E i mulligan: le mani tenute per numero di terre sul play e sul draw, le mani rimandate indietro, le mani rischiose tenute (0 o 6+ terre: la tabella dice mulligan), settimana per
 settimana, cosi' si legge se le decisioni al mulligan migliorano.
 """
 import os, sys
@@ -333,15 +333,20 @@ def tabella(r, tipo, f=None):
 
 
 # ------------------------------------------------------------------ i mulligan
-def _rischiosa(terre):
-    return terre is not None and (terre <= 1 or terre >= 5)
+def _rischiosa(terre, tipo=None):
+    """Una mano da 7 che la tabella misurata dice da mulligan (Regole/mulligan.json, Note/Mulligan_Misurato.md: con 2-5 terre si tiene sempre, con 1 e'
+    pari, 0 e 6-7 sono mulligan). Fino al 14 nov 2026 era 0-1 o 5+ terre: la pagella dell'enciclopedia (D7) ha visto che contava come rischiose le mani da 5
+    terre, che la tabella dice di tenere (+4 punti)."""
+    if tipo == "Constructed":       # il 60 carte (14 nov 2026): la regola della guida letta, 0-1 e 6-7 terre mulligan (dati_analizzatore.mull_60)
+        return terre is not None and (terre <= 1 or terre >= 6)
+    return terre is not None and (terre == 0 or terre >= 6)
 
 
 def mulligan(r):
     """I mulligan delle partite r (righe dell'analizzatore, coi campi «terre», «partenza», «mulligan», «scartate»):
     tenute: {terre: {"Play": (partite, vinte), "Draw": (...)}} delle mani tenute (le terre 0-7);
     scartate: {terre: quante} delle mani rimandate indietro;
-    dopo: (partite, vinte) di chi ha fatto almeno un mulligan; rischiose: (partite, vinte) delle mani tenute con 0-1 o 5+ terre senza mulligan; normali:
+    dopo: (partite, vinte) di chi ha fatto almeno un mulligan; rischiose: (partite, vinte) delle mani tenute con 0 o 6+ terre senza mulligan; normali:
     (partite, vinte) delle altre tenute a 7."""
     ten = collections.defaultdict(lambda: {"Play": [0, 0], "Draw": [0, 0]})
     scart = collections.Counter()
@@ -355,7 +360,7 @@ def mulligan(r):
         if (x.get("mulligan") or 0) > 0:
             dopo[0] += 1; dopo[1] += 1 if x["vinta"] else 0
         elif x.get("terre") is not None:
-            b = risc if _rischiosa(x["terre"]) else norm
+            b = risc if _rischiosa(x["terre"], x.get("tipo")) else norm
             b[0] += 1; b[1] += 1 if x["vinta"] else 0
     return dict(tenute={k: {p: tuple(v) for p, v in d.items()} for k, d in ten.items()}, scartate=dict(scart), dopo=tuple(dopo), rischiose=tuple(risc),
                 normali=tuple(norm))
@@ -373,7 +378,7 @@ def settimane(r, quante=8):
         g = per[da]
         mull = [x for x in g if (x.get("mulligan") or 0) > 0]
         sette = [x for x in g if not (x.get("mulligan") or 0) and x.get("terre") is not None]
-        risc = [x for x in sette if _rischiosa(x["terre"])]
+        risc = [x for x in sette if _rischiosa(x["terre"], x.get("tipo"))]
         wr = lambda xs: round(100 * sum(1 for x in xs if x["vinta"]) / len(xs), 1) if xs else None
         out.append(dict(da=da, partite=len(g), mull=round(100 * len(mull) / len(g), 1), rischiose=round(100 * len(risc) / len(sette), 1) if sette else None,
                         wr_mull=wr(mull), wr_sette=wr(sette), wr=wr(g), n_mull=len(mull)))
@@ -498,17 +503,20 @@ def prova():
         DA._MANA.clear(); DA._MANA.update(vecchio)
     # i mulligan
     rr = [dict(quando=q, terre=3, partenza="Play", mulligan=0, vinta=True, scartate=[]),
-          dict(quando=q, terre=1, partenza="Draw", mulligan=0, vinta=False, scartate=[]),
+          dict(quando=q, terre=0, partenza="Draw", mulligan=0, vinta=False, scartate=[]),
           dict(quando=q + datetime.timedelta(days=7), terre=2, partenza="Play", mulligan=1, vinta=True, scartate=[0]),
           dict(quando=q + datetime.timedelta(days=7), terre=6, partenza="Draw", mulligan=0, vinta=False, scartate=[])]
     m = mulligan(rr)
-    casi.append(("i mulligan: tenute per terre e play/draw, una scartata a 0 terre, dopo il mulligan 1-0, rischiose (1 e 6 terre) 0-2, normali 1-0",
-                 m["tenute"][3]["Play"] == (1, 1) and m["tenute"][1]["Draw"] == (1, 0) and m["scartate"] == {0: 1} and m["dopo"] == (1, 1)
+    casi.append(("i mulligan: tenute per terre e play/draw, una scartata a 0 terre, dopo il mulligan 1-0, rischiose (0 e 6 terre) 0-2, normali 1-0",
+                 m["tenute"][3]["Play"] == (1, 1) and m["tenute"][0]["Draw"] == (1, 0) and m["scartate"] == {0: 1} and m["dopo"] == (1, 1)
                  and m["rischiose"] == (2, 0) and m["normali"] == (1, 1)))
     st = settimane(rr)
     casi.append(("settimana per settimana: due settimane, la seconda col mulligan al 50% e una rischiosa su una tenuta", len(st) == 2 and st[1]["mull"] == 50.0
                  and st[1]["rischiose"] == 100.0 and st[0]["rischiose"] == 50.0 and st[1]["wr_mull"] == 100.0))
-    casi.append(("negativa: una mano a 2-4 terre non e' rischiosa", not _rischiosa(2) and not _rischiosa(4) and _rischiosa(1) and _rischiosa(5)))
+    casi.append(("negativa: una mano a 1-5 terre non e' rischiosa (1 e' pari, 2-5 si tiene); 0 e 6 si'", not _rischiosa(1) and not _rischiosa(5)
+                 and _rischiosa(0) and _rischiosa(6)))
+    casi.append(("Constructed: 1 terra e' rischiosa (la regola a 60 carte), 2 e 5 no", _rischiosa(1, "Constructed") and not _rischiosa(2, "Constructed")
+                 and not _rischiosa(5, "Constructed") and _rischiosa(6, "Constructed")))
     casi += prova_memo()
     casi += prova_costi()
     casi += prova_p()

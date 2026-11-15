@@ -78,10 +78,15 @@ def scrivi(f, d):
     os.replace(f + ".tmp", f)
 
 
-PERLA = "#c9cad0"      # il grigio perlato delle linee (Autore, 9 nov 2026: «le vorrei un po' piu' sottili e grigio perlato»)
-# la tavolozza delle linee: il colore lo sceglie Autore, il significato anche (effetto, importanza)
-COLORI = [("Pearl", PERLA), ("Gold", "#d6ac2e"), ("Blue", "#24baff"), ("Green", "#5cb85c"), ("Red", "#d9534f"), ("Violet", "#a77bdb"), ("Orange", "#f0ad4e"),
-          ("White", "#f4f4f6")]
+from tema import CYBER  # noqa: E402
+
+# il grigio perlato delle linee (Autore, 9 nov 2026: «le vorrei un po' piu' sottili e grigio perlato»); dal 15 nov 2026 un perla cromato, appena freddo, in
+# linea coi neon del Board (Autore: «roba tipo sci fi cyber punk per tabelle gruppi e linee»). Fino a quel giorno #c9cad0
+PERLA = CYBER["cromo"]
+# la tavolozza delle linee e dei gruppi: il colore lo sceglie Autore, il significato anche (effetto, importanza). Dal 15 nov 2026 i neon di tema.CYBER (prima oro,
+# azzurro, verde, rosso, viola, arancio, bianco dell'app): le linee gia' colorate tengono il loro colore salvato
+COLORI = [("Chrome", PERLA), ("Cyan", CYBER["ciano"]), ("Magenta", CYBER["magenta"]), ("Violet", CYBER["viola"]), ("Acid", CYBER["acido"]),
+          ("Amber", CYBER["ambra"]), ("Laser", CYBER["laser"]), ("Pink", CYBER["rosa"])]
 SPESSORI = {1: 1.3, 2: 2.4, 3: 3.8}       # l'importanza in pixel della linea
 SPESSORE_MIN, SPESSORE_MAX = 0.6, 6.0       # lo slider dello spessore (10 nov 2026): in pixel, scelto da Autore; vince sull'importanza
 

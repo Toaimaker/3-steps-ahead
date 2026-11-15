@@ -28,33 +28,108 @@ while not os.path.isfile(os.path.join(_casa, "percorsi.py")):
 if _casa not in sys.path:
     sys.path.insert(0, _casa)
 import percorsi  # noqa: E402,F401
+import re  # noqa: E402
 import dati_analizzatore as DA  # noqa: E402
 
 VITA_ALTA = 10          # da qui in su un chump block costa una carta per vite che non servono ancora (grado C)
 VITA_CONCEDI = 8        # L7: sotto, una concessione e' di solito una partita persa davvero (grado C)
-NOMI = {"l1": "Missed a land drop with a land in hand", "l2": "Unused mana with a castable creature in hand", "l3": "Creature cast before your attack",
-        "l4": "Chump block at high life", "l5": "Unfavourable trade", "l6": "Instant on their turn while they were tapped out on yours",
-        "l7": "Conceded with outs", "l8": "Lands tapped the wrong way"}
-ORDINE = ("l1", "l2", "l3", "l4", "l5", "l6", "l7", "l8")
-SPIEGA = {"l1": "a turn of yours with no land played and a land in your hand at its end",
-          "l4": f"you blocked, your blockers died and their attackers did not, at {VITA_ALTA}+ life against an attack that was not lethal",
-          "l2": "at the end of your turn your untapped lands could pay a creature (without flash) in your hand, colors included",
-          "l3": "on a turn you attacked, a creature without haste cast in your first main phase (land, attack, then spells)",
-          "l5": "in an attack or a block of yours you lost creatures costing 2+ mana more than theirs",
-          "l6": "an instant cast on their turn (not in combat, not a counterspell) while they had every land tapped at the end of your turn",
-          "l8": "at the end of your turn a card in hand cost what your untapped lands could make, but not their colors; tapping other lands would have paid it",
-          "l7": f"you conceded with {VITA_CONCEDI}+ life, more than twice their power on the battlefield, and at least one card in hand"}
+# i testi dei leak (15 nov 2026, Autore: «la scheda leak deve avere definizioni dei leak e descrizioni moooolto più intendibili»): per ognuno il nome
+# in parole di tutti i giorni (NOMI), cosa si cerca nella partita (SPIEGA), perche' costa (PERCHE), un esempio (ESEMPIO) e come si corregge (COME)
+NOMI = {"l1": "You skipped a land drop", "l2": "You left mana unused with a creature in hand", "l3": "You cast a creature before attacking",
+        "l4": "You chump blocked while your life was high", "l5": "You traded a bigger creature for a smaller one",
+        "l6": "You waited to cast an instant when they couldn't answer it", "l7": "You conceded a game you could still win",
+        "l8": "You tapped the wrong lands", "l9": "You didn't attack when nothing could block",
+        # il Leak Finder (15 nov 2026, Autore: «cambia anche il nome della scheda, da ora non si chiama più performance ma leak finder, deve essere un leak
+        # finder a tutti gli effetti»): i leak della pagella dell'enciclopedia e quelli di un leak finder per Magic (mulligan, sequenza delle pescate, mana tenuto)
+        "l10": "You cast an instant on your own turn for no reason", "l11": "You missed lethal", "l12": "You kept a hand you should have mulliganed",
+        "l13": "You mulliganed a hand you should have kept", "l14": "You played your land before your card draw",
+        "l15": "You held mana open and never used it"}
+ORDINE = ("l1", "l2", "l3", "l4", "l5", "l6", "l7", "l8", "l9", "l10", "l11", "l12", "l13", "l14", "l15")
+PARTITA = {"l7", "l12", "l13"}       # i leak della partita intera (gli altri hanno i turni)
+SPIEGA = {"l1": "At the end of one of your turns you still had a land in your hand, but you hadn't played a land that turn.",
+          "l2": "At the end of your turn you had enough untapped lands, of the right colors, to cast a creature in your hand, and you didn't cast it. "
+                "Mana kept for the opponent's turn is not counted: if on their turn you cast something, that mana is taken away first and it is a leak "
+                "only if the creature still fit; if you held an instant or a flash card those lands could pay, it was held on purpose (if you then never "
+                "used it, that is the leak «held mana open and never used it»); an ability activated on their turn clears it.",
+          "l3": "On a turn you attacked, you first cast a creature (without haste) in your first main phase, and only then attacked.",
+          "l4": f"You blocked, your blocker died and their attacker survived. You had {VITA_ALTA} or more life and the attack would not have killed you.",
+          "l5": "In one of your combats (attacking or blocking) creatures died on both sides, and the ones you lost cost at least 2 mana more than theirs.",
+          "l6": "At the end of your turn the opponent had every land tapped, so they couldn't respond. You waited and cast your instant on their turn, "
+                "when their mana was back (combat tricks and counterspells don't count).",
+          "l7": f"You conceded with {VITA_CONCEDI} or more life, more than twice the power they had on the battlefield, and at least one card in your hand.",
+          "l8": "At the end of your turn your untapped lands were enough to cast a card in your hand, but they made the wrong colors. If you had tapped "
+                "different lands for the spells you cast, the right colors would have stayed open.",
+          "l9": "One of your creatures could attack, the opponent had every land tapped and no untapped creature to block, and you didn't attack.",
+          "l10": "You cast an instant or a flash creature during your own main phase when it could have waited for their turn, and at the end of your turn "
+                 "you still had a spell in hand that the same mana would have cast (or the flash creature died before it ever attacked).",
+          "l11": "Your creatures had enough power to kill the opponent that turn, even after their untapped creatures blocked your biggest ones, and they "
+                 "were still alive at the end of your turn.",
+          "l12": "You kept your 7 cards, but the numbers say that hand should go back: in Limited no lands or 6-7 lands (17Lands data), in Constructed "
+                 "0-1 or 6-7 lands (the usual rule for 60-card decks).",
+          "l13": "You sent back your 7 cards, but the numbers say that hand was a keep: 2-5 lands in Limited, 3-4 lands in Constructed.",
+          "l14": "On your turn you played your land first and then cast a spell that draws, scries or surveils, even though you could already pay for "
+                 "that spell before playing the land.",
+          "l15": "At the end of the opponent's turn you still had untapped lands and an instant or a flash creature you could pay for, and you cast nothing "
+                 "during their turn."}
+PERCHE = {"l1": "Every land you don't play is mana you lose for the rest of the game: from the next turn you are one land behind on everything you want to cast.",
+          "l2": "A creature not cast this turn is a turn of attacking and blocking you never get back, and the mana you didn't use is simply gone.",
+          "l3": "That creature can't attack this turn anyway. Casting it first shows your opponent what you had and that your mana is spent, so they block "
+                "knowing you have no tricks.",
+          "l4": "You gave away a card to save a few life points you didn't need yet. In a long game cards win; life matters only when it gets low.",
+          "l5": "You spent more mana and a better card to get rid of a cheaper one: after the trade you are behind on the battlefield.",
+          "l6": "While they are tapped out they can't counter, protect or answer. By waiting you gave them back the chance to respond.",
+          "l7": "With that much life you had several more turns to draw an answer. Conceding throws away every one of those chances.",
+          "l8": "The same lands could have cast one more spell that turn: a wrong tap costs you a whole card's worth of tempo.",
+          "l9": "That damage was free: nothing could block it and they had no mana for a trick. (We can't see your hand: sometimes staying home is right, "
+                "for example to block a lethal counter-attack.)",
+          "l10": "Instants are strongest on the opponent's turn: they surprise, they dodge sorcery-speed answers, and on your turn the mana is better "
+                 "spent on your other spells.",
+          "l11": "You could have ended the game that turn. Every extra turn you give the opponent is a chance for them to come back.",
+          "l12": "Hands with too few or too many lands lose more often than a fresh hand of 6 cards.",
+          "l13": "Each mulligan costs you a card: a normal 7 wins more often than a random 6.",
+          "l14": "Casting the draw spell first shows you one more card before you choose which land to play: maybe a land you'd rather play, or a spell "
+                 "that needs a color you'd keep open.",
+          "l15": "Keeping mana open only pays off if you use it. If nothing happened worth answering, you should spend it at the end of their turn: "
+                 "otherwise that mana is lost."}
+ESEMPIO = {"l1": "Turn 4: you have a Forest in hand, you cast a 3-drop with your three lands and forget the Forest. On turn 5 you have 4 lands instead of 5.",
+           "l2": "You end your turn with 3 untapped lands and a 3-mana creature in your hand.",
+           "l3": "You cast a 2/2, then attack with your 3/3. The opponent sees your lands are tapped and blocks without fear of a trick.",
+           "l4": "At 16 life you block their 4/4 with your 1/1 just to avoid 4 damage, and lose the 1/1.",
+           "l5": "Your 5-mana 4/4 blocks their 2-mana 2/2 with deathtouch: both die.",
+           "l6": "They tap out for a big creature. On your turn you could kill it safely, but you wait for their turn and they save it with a trick.",
+           "l7": "At 12 life, facing a single 4/4 and holding 2 cards, you concede.",
+           "l8": "You have Island, Island, Mountain, Mountain. You pay a {1}{U} spell with both Islands: now the {1}{U} instant in your hand can't be cast. "
+                 "Paying with Island + Mountain would have left Island + Mountain open for it.",
+           "l9": "They tapped out and their only creature is tapped: your 3/3 stays home.",
+           "l10": "On your turn you flash in a 2/2, and now you can't cast the 2-mana creature still in your hand.",
+           "l11": "They are at 5 with one untapped blocker. You have a 4/4, a 3/3 and a 2/2: attacking with all three deals at least 5, but you attack "
+                  "with one.",
+           "l12": "You keep 7 cards with one land and six spells, hoping to draw lands.",
+           "l13": "You send back a 7 with 3 lands because the spells look weak.",
+           "l14": "You play a Plains, then cast a draw spell with your Island: it finds a dual land you would rather have played this turn.",
+           "l15": "You keep 3 lands open for a removal spell, they play nothing worth killing, and you pass the turn back without casting the card-draw "
+                  "instant in your hand."}
 
 
 # R10, il leak tracker (13 nov 2026, come il Leak Tracker di PokerTracker): come si corregge ogni leak, una riga (dai coach citati sopra; grado C)
-COME = {"l1": "Play a land every turn unless you hold it on purpose (a landfall, a bluff): a missed drop is a turn of mana you never get back",
-        "l2": "At the end of your turn count your untapped lands against your hand: if a creature fits, cast it unless you are holding up something better",
-        "l3": "Attack first, then cast creatures in your second main phase: they hide what you hold and keep their bluff (unless they help the attack)",
-        "l4": "At high life take the damage: block to trade, not to chump, until the life total starts to matter",
-        "l5": "Before blocking or attacking into a block, compare what you lose with what they lose: avoid trading a big card for a small one",
-        "l6": "Cast your instants when they cannot answer: on their turn while they are tapped out, or on yours before they untap",
-        "l7": "With life and cards in hand, play it out: many games turn on one draw, and a concession gives away every out",
-        "l8": "Tap the lands that make the colors you will not need: leave open the colors of the cards still in your hand"}
+COME = {"l1": "Play a land every turn, unless you are holding it on purpose (a landfall card, a bluff).",
+        "l2": "At the end of your turn count your untapped lands against your hand: if a creature fits, cast it, unless you are holding up an instant for "
+              "their turn (and then use it).",
+        "l3": "Attack first, then cast your creatures in the second main phase (unless the new creature helps the attack).",
+        "l4": "While your life is high, take the damage: block to trade creatures, not to throw one away. Start chump blocking only when the life total "
+              "matters.",
+        "l5": "Before blocking or attacking into a block, compare what you lose with what they lose: avoid trading an expensive card for a cheap one.",
+        "l6": "Cast your instants when they can't answer: on your turn while they are tapped out, or at a moment they can't respond.",
+        "l7": "With life and cards in hand, play it out: many games turn on one draw.",
+        "l8": "Before tapping, look at the cards left in your hand: tap the lands whose colors you won't need, and leave open the colors you will.",
+        "l9": "When they are tapped out with no untapped blockers, attack with what is ready, unless you need it home against a lethal swing back.",
+        "l10": "Hold instants and flash creatures for their turn, unless they win a combat or answer a threat right now.",
+        "l11": "Before passing the turn, add up your power and subtract what their untapped blockers can stop: if it is enough to kill, attack with "
+               "everything.",
+        "l12": "Mulligan the hands the numbers say to mulligan, even when the spells look good.",
+        "l13": "Keep the hands the numbers say to keep, even when the spells look weak.",
+        "l14": "Cast the draw or scry spell first, then choose which land to play.",
+        "l15": "If you held mana up and they gave you no reason to use it, use it at the end of their turn: draw, flash in a creature, remove a threat."}
 RECENTI = 50        # il trend: le ultime RECENTI partite contro quelle prima
 
 
@@ -71,7 +146,7 @@ def tracker(r):
         rec, prima = rr[-RECENTI:], rr[:-RECENTI]
         tasso = lambda xs: round(100 * sum(1 for x in xs if valore(x, k) == "Yes") / len(xs), 1) if xs else None
         w_c, w_s = wr(con), wr(senza)
-        out.append(dict(k=k, nome=NOMI[k], spiega=SPIEGA[k], come=COME[k], n=len(rr), con=len(con), tasso=tasso(rr), wr_con=w_c, wr_senza=w_s,
+        out.append(dict(k=k, nome=NOMI[k], spiega=SPIEGA[k], perche=PERCHE[k], esempio=ESEMPIO[k], come=COME[k], n=len(rr), con=len(con), tasso=tasso(rr), wr_con=w_c, wr_senza=w_s,
                         delta=None if w_c is None or w_s is None else round(w_c - w_s, 1),
                         tasso_rec=tasso(rec) if len(rr) > RECENTI else None, tasso_prima=tasso(prima) if len(prima) >= 10 else None))
     return out
@@ -125,9 +200,19 @@ def per_partita(x):
             tutte_col.append(_colori_terra(c[0]))
         lanciabili = [n for n in mano if not DA.e_terra(n) and "Instant" not in (_carta(n).get("tipo") or "") and _costo(n) is not None]
         creature = [n for n in lanciabili if "Creature" in (_carta(n).get("tipo") or "") and "Flash" not in (_carta(n).get("testo") or "")]
-        if any(_paga([_costo(n)], stap) for n in creature if 0 < len(_costo(n))):
+        # il mana tenuto per il suo turno (15 nov 2026, Autore: «quel mana poteva essere utile per giocare una spell nel turno avversario, come
+        # sistemiamo questo dilemma?»): se nel suo turno dopo hai lanciato qualcosa, quel mana si toglie e il leak c'e' solo se la creatura ci stava lo
+        # stesso; un'abilita' attivata nel suo turno (costo che non si legge) chiude il dubbio a tuo favore; se non hai lanciato niente ma in mano avevi un
+        # istantaneo o un flash che quelle terre pagavano, il mana era tenuto apposta: non e' L2 (se poi non l'hai usato e' L15)
+        spese_suo = [c_ for c_ in (_costo(_nome(g)) for t_, s_, g, _f in d.get("fasi") or [] if t_ == t + 1 and s_ == seat) if c_]
+        abil_suo = any(a_[0] == t + 1 and a_[1] == seat for a_ in d.get("attivate") or [])
+        tenuti = [n for n in mano if _costo(n) and ("Instant" in (_carta(n).get("tipo") or "") or "Flash" in (_carta(n).get("testo") or ""))
+                  and _paga([_costo(n)], stap)]
+        if abil_suo or (not spese_suo and tenuti):
+            pass
+        elif any(_paga([_costo(n)] + spese_suo, stap) for n in creature if 0 < len(_costo(n))):
             l2.append(t)
-        else:       # L8: non la pagano le stappate, ma le terre di adesso, ripartite su quello che hai lanciato nel turno, si'
+        if t not in l2 and not any(_paga([_costo(n)], stap) for n in creature if 0 < len(_costo(n))):       # L8: non la pagano le stappate, ma le terre di adesso, ripartite su quello che hai lanciato nel turno, si'
             spese = [c_ for c_ in (_costo(_nome(g)) for g in magie_t.get(t, [])) if c_]
             if spese and any(len(_costo(n)) <= len(stap) and not _paga([_costo(n)], stap) and _paga(spese + [_costo(n)], tutte_col)
                              for n in lanciabili if _costo(n)):       # le stappate NON la pagano (prima mancava: Sunpearl Kirin, flash, tenuta apposta)
@@ -161,8 +246,93 @@ def per_partita(x):
         vita = (f.get("v") or [None, None])[a]
         in_mano = len((f.get("m") or [[], []])[a])
         l7 = vita is not None and vita >= VITA_CONCEDI and vita > 2 * _forza((f.get("c") or [[], []])[b]) and in_mano >= 1
+    import mana_aperto as MA
+    l9 = [w["t"] for w in MA.finestre_non_att(d, seat) or [] if w["scoperto"]]
+    # i leak del Leak Finder (15 nov 2026)
+    import tempismo as TM
+    l10 = list((TM.per_partita(x) or {}).get("perso") or [])
+    l11 = [w["t"] for w in MA.letali_mancati(d, seat) or []]
+    l12, l13 = mulligan(x)       # qui la riga non ha ancora la mano: valore() li rifa' sulla riga intera
+    l14, l15 = _sequenza(d, seat, mom), _mana_tenuto(d, seat, mom)
     return dict(l1=sorted(set(l1)), l2=sorted(set(l2)), l3=sorted(set(l3)), l4=sorted(set(l4)), l5=sorted(set(l5)), l6=sorted(set(l6)), l7=l7,
-                l8=sorted(set(l8)))
+                l8=sorted(set(l8)), l9=sorted(set(l9)), l10=sorted(set(l10)), l11=sorted(set(l11)), l12=bool(l12), l13=bool(l13), l14=l14, l15=l15)
+
+
+def mulligan(x):
+    """L12 e L13 per formato: (tenuta una 7 che il formato manda in mulligan, rimandata una 7 che il formato tiene). Nel Limited la tabella misurata,
+    nel Constructed la regola a 60 carte (dati_analizzatore.mull_tabella, mull_60)."""
+    if x.get("tipo") == "Constructed":
+        m_ = DA.mull_60(x)
+        return m_ == DA.ORDINE_MULL_60[2], m_ == DA.ORDINE_MULL_60[3]
+    m_ = DA.mull_tabella(x)
+    return m_ == DA.ORDINE_MULL_TAB[2], m_ == DA.ORDINE_MULL_TAB[3]
+
+
+RX_GUARDA = re.compile(r"draws? (?:a|one|two|three|\d+) cards?|\bscry \d|\bsurveil \d", re.I)
+
+
+def _guarda(n):
+    """Una magia che fa pescare, scry o surveil (dal testo, grado C)."""
+    c = _carta(n) or {}
+    return bool(n) and "Land" not in (c.get("tipo") or "") and bool(RX_GUARDA.search(c.get("testo") or ""))
+
+
+def _sequenza(d, seat, mom):
+    """L14: nei tuoi turni, la terra giocata prima di una magia che fa pescare, scry o surveil, che costava al massimo le terre che avevi gia' a fine del
+    tuo turno prima (la potevi lanciare prima della terra). L'ordine e' quello delle azioni del log. -> [turni]."""
+    attivo = {}
+    for m in mom:
+        if m[0] in ("fine", "comb", "spell"):
+            attivo.setdefault(m[1], m[2])
+    terre_fine = {f[0]: f[3] for f in d.get("fine") or [] if f[1] == seat}
+    out = []
+    per_t = {}
+    for t, s_, cosa, g_, _tp in d.get("azioni") or []:
+        if s_ == seat and attivo.get(t) == seat and cosa in ("terra", "magia"):
+            per_t.setdefault(t, []).append((cosa, g_))
+    for t, az in per_t.items():
+        prima = terre_fine.get(t - 2)
+        if not prima:
+            continue
+        visto_terra = False
+        for cosa, g_ in az:
+            if cosa == "terra":
+                visto_terra = True
+            elif visto_terra:
+                n = _nome(g_)
+                c_ = (_carta(n) or {}).get("cmc") if n else None
+                if c_ is not None and c_ <= prima and _guarda(n):
+                    out.append(t)
+                    break
+    return sorted(out)
+
+
+def _mana_tenuto(d, seat, mom):
+    """L15: a fine del suo turno avevi ancora le terre stappate e in mano un istantaneo da fine turno (rimozione, pescata, scry o surveil) o una creatura
+    con flash che pagavano (i colori non contano, grado C), e nel suo turno non hai lanciato niente. -> [turni di Arena del suo turno]."""
+    import variabili_c as VC
+    a = seat - 1
+    lanci = {t for t, s_, _g, _f in d.get("fasi") or [] if s_ == seat}
+    out = []
+    for m in mom:
+        if m[0] != "fine" or m[2] == seat or not isinstance(m[3], dict) or m[1] in lanci:
+            continue
+        f = m[3]
+        stap = sum(1 for c in (f.get("c") or [[], []])[a] if _terra(c[0]) and not c[1])
+        if stap < 1:
+            continue
+        for g in (f.get("m") or [[], []])[a]:
+            n = _nome(g)
+            cc = _carta(n) if n else {}
+            tipo, testo, cmc = cc.get("tipo") or "", cc.get("testo") or "", cc.get("cmc")
+            if not cmc or cmc > stap:
+                continue
+            flash = "Creature" in tipo and "Flash" in testo
+            fine_turno = "Instant" in tipo and "counter target" not in testo.lower() and (_guarda(n) or VC.rimozione(n))
+            if flash or fine_turno:
+                out.append(m[1])
+                break
+    return out
 
 
 def _nome(g):
@@ -265,6 +435,8 @@ def valore(x, k):
     lk = x.get("leak")
     if lk is None:
         return None
+    if k in ("l12", "l13"):     # il mulligan, sulla riga intera (la mano e il tipo ci sono solo li')
+        return "Yes" if mulligan(x)[0 if k == "l12" else 1] else "No"
     v = lk.get(k)
     return "Yes" if v else "No"
 
@@ -318,6 +490,21 @@ def prova():
         DA._MANA["lk8"] = dict(DA._MANA["lk7"], momenti=[["fine", 1, 1, foto([814], c1=[tap(P1), P2, tap(SW)])]])
         l8_ = per_partita(dict(partita="lk8", seat=1, inizia=True))
         casi.append(("L2: la Plains stappata paga Healer's Hawk in mano; negativa L8: tappate giuste", l8_["l2"] == [1] and l8_["l8"] == []))
+        # il mana tenuto per il suo turno (15 nov 2026): due Plains stappate, in mano Healer's Hawk e Raise the Alarm
+        DA._NOMI_GRP[818] = "Raise the Alarm"
+        DA._MANA["lk20"] = dict(DA._MANA["lk7"], momenti=[["fine", 1, 1, foto([814, 818], c1=[P1, P2, tap(SW)])]])
+        casi.append(("negativa L2: con Raise the Alarm in mano e le terre per pagarlo, il mana era tenuto apposta",
+                     per_partita(dict(partita="lk20", seat=1, inizia=True))["l2"] == []))
+        DA._MANA["lk21"] = dict(DA._MANA["lk20"], fasi=[[1, 1, 813, "Phase_Main2"], [2, 1, 818, "Phase_Ending"]])
+        casi.append(("negativa L2: Raise the Alarm lanciato nel suo turno usa le due Plains, Healer's Hawk non ci stava piu'",
+                     per_partita(dict(partita="lk21", seat=1, inizia=True))["l2"] == []))
+        P3 = [811, False, False, None, None, 5]
+        DA._MANA["lk22"] = dict(DA._MANA["lk21"], momenti=[["fine", 1, 1, foto([814, 818], c1=[P1, P2, P3, tap(SW)])]])
+        casi.append(("L2: tre Plains, Raise the Alarm nel suo turno ne usa due, la terza pagava Healer's Hawk",
+                     per_partita(dict(partita="lk22", seat=1, inizia=True))["l2"] == [1]))
+        DA._MANA["lk23"] = dict(DA._MANA["lk8"], attivate=[[2, 1, 811, "Phase_Ending", "Step_End", 2]])
+        casi.append(("negativa L2: un'abilita' attivata nel suo turno, col costo che non si legge, chiude il dubbio a tuo favore",
+                     per_partita(dict(partita="lk23", seat=1, inizia=True))["l2"] == []))
         DA._NOMI_GRP[817] = "Scoured Barrens"
         BAR = [817, True, False, None, None, 4]
         DA._MANA["lk15"] = dict(azioni=[[1, 1, "magia", 813, "C"], [1, 1, "terra", 817, "L"]], fasi=[], ultima=None,
@@ -348,6 +535,26 @@ def prova():
         DA._MANA["lk14"] = dict(DA._MANA["lk13"], momenti=[DA._MANA["lk13"]["momenti"][0], ["fine", 3, 1, foto([], c1=[], c2=[hawk])]])
         casi.append(("negativa L5: se muore solo il tuo non e' uno scambio", per_partita(dict(x13, partita="lk14"))["l5"] == []))
         casi.append(("il filtro dice Yes e No", valore(dict(leak=lk), "l7") == "Yes" and valore(dict(leak=dict(l7=False)), "l7") == "No"))
+        # il Leak Finder (15 nov 2026): L14 la terra prima di Opt (pagabile gia' prima), L15 il mana tenuto con Opt in mano e niente lanciato, L12-L13 il mulligan
+        mio = lambda t, tot: [t, 1, 0, tot]
+        DA._MANA["lk17"] = dict(azioni=[[3, 1, "terra", 811, "L"], [3, 1, "magia", 815, "I"]], fasi=[], fine=[mio(1, 1), mio(3, 2)], ultima=None,
+                                momenti=[["fine", 1, 1, foto([])], ["fine", 3, 1, foto([])]])
+        casi.append(("L14: al tuo turno 3 di Arena la terra e poi Opt, che con la terra di prima pagavi gia'",
+                     per_partita(dict(partita="lk17", seat=1, inizia=True))["l14"] == [3]))
+        DA._MANA["lk18"] = dict(DA._MANA["lk17"], azioni=[[3, 1, "magia", 815, "I"], [3, 1, "terra", 811, "L"]])
+        casi.append(("negativa L14: prima Opt e poi la terra e' la sequenza giusta", per_partita(dict(partita="lk18", seat=1, inizia=True))["l14"] == []))
+        DA._MANA["lk19"] = dict(azioni=[], fasi=[], ultima=None, momenti=[["fine", 2, 2, foto([815], c1=[P1])]])
+        casi.append(("L15: a fine del suo turno una Plains stappata e Opt in mano, e nel suo turno niente lanciato",
+                     per_partita(dict(partita="lk19", seat=1, inizia=False))["l15"] == [2]))
+        DA._MANA["lk20"] = dict(DA._MANA["lk19"], fasi=[[2, 1, 815, "Phase_Ending"]])
+        casi.append(("negativa L15: Opt lanciato alla fine del suo turno", per_partita(dict(partita="lk20", seat=1, inizia=False))["l15"] == []))
+        casi.append(("L12-L13 per formato: nel Constructed una 7 tenuta a 1 terra e' un leak, nel Limited no (1 terra e' pari); rimandare una 7 a 3 terre e' "
+                     "un leak in tutti e due",
+                     valore(dict(leak={}, tipo="Constructed", mulligan=0, terre=1), "l12") == "Yes"
+                     and valore(dict(leak={}, tipo="Limited", mulligan=0, terre=1), "l12") == "No"
+                     and valore(dict(leak={}, tipo="Constructed", mulligan=1, scartate=[3]), "l13") == "Yes"
+                     and valore(dict(leak={}, tipo="Limited", mulligan=1, scartate=[3]), "l13") == "Yes"
+                     and valore(dict(leak={}, tipo="Limited", mulligan=1, scartate=[0]), "l13") == "No"))
         # R10: il tracker
         q_ = lambda i: datetime.datetime(2026, 11, 1) + datetime.timedelta(hours=i)
         rt = [dict(quando=q_(i), vinta=i % 2 == 0, leak=dict(l1=[3] if i < 10 else [], l7=False)) for i in range(60)] + [dict(quando=q_(99), vinta=True, leak=None)]

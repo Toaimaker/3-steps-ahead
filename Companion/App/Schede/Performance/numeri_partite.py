@@ -34,7 +34,10 @@ CATALOGO = (("wr", "Win rate", "with its 95% interval"),
             ("att", "Attack gain · avg", "how much an attack of yours moves the advantage (life + 2 × power)"),
             ("dif", "Defense gain · avg", "the same for your defense, when they attack"),
             ("finisher", "Decided wins · % of wins", "wins with a decisive play of 2+ cards (Finishers)"),
-            ("fortuna", "Lands drawn vs chance · turn 5", "your lands drawn by your turn 5 minus what chance expected (the Luck folder)"))
+            ("fortuna", "Lands drawn vs chance · turn 5", "your lands drawn by your turn 5 minus what chance expected (the Luck folder)"),
+            # il tempo (14 nov 2026, la pagella dell'enciclopedia, capitoli 22-24: «quante vittorie all'ora», «concedere prima rende di piu'?»)
+            ("minuti", "Game length · avg minutes", "from the first to the last message of the game, wins and losses"),
+            ("ora", "Wins per hour", "wins divided by the hours spent in these games"))
 NOMI = {k: n for k, n, _d in CATALOGO}
 MASSIMO = len(CATALOGO)     # tutti (13 nov 2026, Autore: «permetti fino a tutti i valori sulla barra ma ben organizzati»; prima sei)
 
@@ -94,6 +97,14 @@ def valori(r, tutte):
     k5 = DA.contro_il_caso(r)["turni"].get(5)
     out["fortuna"] = (f"{k5['x'] - k5['e']:+.1f}" if k5 else "-", "vuoto" if not k5 else "neutro" if k5["p"] >= 0.05 else ("su" if k5["x"] > k5["e"] else "giu"),
                       f"in {k5['partite']} games · p {k5['p']:.2f}" if k5 else "")
+    mm = [x["minuti"] for x in r if x.get("minuti")]
+    mv = [x["minuti"] for x in vinte if x.get("minuti")]
+    mp = [x["minuti"] for x in perse if x.get("minuti")]
+    media = lambda l: f"{sum(l) / len(l):.1f}" if l else "-"
+    out["minuti"] = (media(mm), "neutro" if mm else "vuoto", f"wins {media(mv)} · losses {media(mp)}")
+    ore = sum(mm) / 60
+    vv = sum(1 for x in r if x["vinta"] and x.get("minuti"))
+    out["ora"] = (f"{vv / ore:.1f}" if ore else "-", "neutro" if ore else "vuoto", f"{vv} wins in {ore:.1f} hours of play")
     dec = [x for x in vinte if x.get("finisher")]
     out["finisher"] = (pc(100 * len(dec) / len(vinte)) if vinte else "-", "neutro", f"{len(dec)} of {len(vinte)} wins")
     return out

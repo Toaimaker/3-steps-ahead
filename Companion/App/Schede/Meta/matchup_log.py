@@ -194,7 +194,8 @@ def record(p, arch_fmt=None):
     return dict(partita=p.get("matchId"), giorno=datetime.date.fromtimestamp((p.get("inizio") or 0) / 1000).isoformat(), formato=fmt, evento=p.get("evento"),
                 mio=mio, suo=suo, punti=punti, colori_suoi=colori_di(sue), carte_viste=len(magie(sue)), vinta=bool(p["vinta"]),
                 inizia=(p.get("inizia") == p.get("seat")) if p.get("inizia") is not None else None, mulligan=max(0, len(mani) - 1), turni=p.get("turni"),
-                rango=rg[0] if rg else None)
+                # il rango del formato giocato (14 nov 2026, la pagella dell'enciclopedia: nel limited prima si scriveva la classe del costruito)
+                rango=(rg[3] if fmt == "limited" and len(rg) > 3 else rg[0]) if rg else None)
 
 
 def records(partite=None):

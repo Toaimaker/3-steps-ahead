@@ -47,10 +47,18 @@ _RIM = {}
 BASI = {"Plains": "W", "Island": "U", "Swamp": "B", "Mountain": "R", "Forest": "G"}
 ORDINE = dict(c2_mano=("Yes", "No"), c2_t3=("Yes", "No"), rim_mano=("0", "1", "2+"), rim_mazzo=("0-4", "5-8", "9+"),
               rim_prima=("By your turn 3", "By your turn 5", "Later", "Never"), dopo=("After a win", "After a loss", "First of the session"),
-              serie_prima=("0", "1", "2", "3+"), **{f"mano_io{n}": ("0", "1-2", "3+") for n in (3, 5, 7)}, **{f"mano_lui{n}": ("0", "1-2", "3+") for n in (3, 5, 7)})
+              serie_prima=("0", "1", "2", "3+"),
+              # il mazzo (14 nov 2026, la pagella dell'enciclopedia: capitoli 1, 20, 23)
+              classe_mazzo=("Mono-color", "Mono-color + splash", "Two colors", "Two colors + splash", "Three colors", "Four+ colors"),
+              # per formato (14 nov 2026, Autore: «i filtri devono adattarsi se sono in constructed o in limited»): le fasce del 40 carte e quelle del 60
+              crea_mazzo=("Under 12", "12-14", "15-17", "18+", "Under 8 of 60", "8-15 of 60", "16-23 of 60", "24+ of 60"),
+              cmc_mazzo=("Under 2.5", "2.5-3", "3-3.5", "3.5+"), due_mazzo=("0-3", "4-6", "7+", "0-5 of 60", "6-9 of 60", "10+ of 60"),
+              rare_mazzo=("0-2", "3-5", "6+", "Under 10 of 60", "10-19 of 60", "20+ of 60"), **{f"mano_io{n}": ("0", "1-2", "3+") for n in (3, 5, 7)}, **{f"mano_lui{n}": ("0", "1-2", "3+") for n in (3, 5, 7)})
 NOMI = dict(c2_mano="Your opening hand · a deck color missing from its lands", c2_t3="A deck color missing on your battlefield at the end of your turn 3",
             rim_mano="Removal in your opening hand", rim_mazzo="Removal in your deck · per 60 cards", rim_prima="Your first removal cast",
             dopo="The game before", versione="Deck version", serie_prima="Losses in a row before this game", terre_mazzo="Lands in your deck",
+            classe_mazzo="Your deck's colors · class (a splash: 3 cards or fewer per 40)", crea_mazzo="Creatures in your deck (of 40 in Limited, of 60 in Constructed)",
+            cmc_mazzo="Average mana value of your spells", due_mazzo="2-mana spells in your deck (of 40 or of 60)", rare_mazzo="Rares and mythics in your deck (of 40 or of 60)",
             **{f"mano_io{n}": f"Cards in your hand at the end of your turn {n}" for n in (3, 5, 7)},
             **{f"mano_lui{n}": f"Cards in the opponent's hand at the end of your turn {n}" for n in (3, 5, 7)})
 
@@ -76,6 +84,47 @@ def _colori_mazzo(lista):
     return out
 
 
+def campi_mazzo(lista):
+    """Le voci del mazzo (14 nov 2026): la classe dei colori come 17Lands (blog.17lands.com/posts/deck-color-classification/: un colore con 4+ carte e'
+    principale, con 3 o meno e' uno splash; una carta a due colori conta per tutti e due), creature, magie da 2 e rare ogni 40 carte, il costo medio."""
+    magie = {n: q for n, q in lista.items() if q and not DA.e_terra(n)}
+    if not magie:
+        return {}
+    tot = sum(lista.values()) or 1
+    per40 = lambda k: k * 40 / tot
+    sessanta = tot >= 55        # il Constructed (60 carte): le sue fasce, per 60 (14 nov 2026)
+    col = {c: sum(q for n, q in magie.items() if c in ((DA._carta(n) or {}).get("colori") or "")) for c in "WUBRG"}
+    princ = [c for c, k in col.items() if per40(k) >= 3.5]          # lo splash in proporzione: 3 carte su 40, 4 su 60
+    spl = [c for c, k in col.items() if 0 < per40(k) < 3.5]
+    np_ = len(princ)
+    classe = ("Four+ colors" if np_ >= 4 else "Three colors" if np_ == 3 else ("Two colors + splash" if spl else "Two colors") if np_ == 2
+              else ("Mono-color + splash" if spl else "Mono-color") if np_ == 1 else None)
+    out = {"classe_mazzo": classe} if classe else {}
+    crea = per40(sum(q for n, q in magie.items() if "Creature" in ((DA._carta(n) or {}).get("tipo") or "").split(" // ")[0]))
+    if sessanta:
+        c60 = crea * 60 / 40
+        out["crea_mazzo"] = "Under 8 of 60" if c60 < 7.5 else "8-15 of 60" if c60 < 15.5 else "16-23 of 60" if c60 < 23.5 else "24+ of 60"
+    else:
+        out["crea_mazzo"] = "Under 12" if crea < 11.5 else "12-14" if crea < 14.5 else "15-17" if crea < 17.5 else "18+"
+    costi = [((DA._carta(n) or {}).get("cmc"), q) for n, q in magie.items()]
+    costi = [(c, q) for c, q in costi if c is not None]
+    if costi:
+        m = sum(c * q for c, q in costi) / sum(q for _c, q in costi)
+        out["cmc_mazzo"] = "Under 2.5" if m < 2.5 else "2.5-3" if m < 3 else "3-3.5" if m < 3.5 else "3.5+"
+        due = per40(sum(q for c, q in costi if c == 2))
+        if sessanta:
+            d60 = due * 60 / 40
+            out["due_mazzo"] = "0-5 of 60" if d60 < 5.5 else "6-9 of 60" if d60 < 9.5 else "10+ of 60"
+        else:
+            out["due_mazzo"] = "0-3" if due < 3.5 else "4-6" if due < 6.5 else "7+"
+    rare = sum(q for n, q in magie.items() if (DA._carta(n) or {}).get("r") in ("R", "M"))
+    if sessanta:
+        out["rare_mazzo"] = "Under 10 of 60" if rare < 10 else "10-19 of 60" if rare < 20 else "20+ of 60"
+    else:
+        out["rare_mazzo"] = "0-2" if rare <= 2 else "3-5" if rare <= 5 else "6+"
+    return out
+
+
 def campi(p, r, lista, tenuta):
     """I campi C2, C3, C7, C9 di una partita (la riga dell'analizzatore li aggiunge)."""
     out = {}
@@ -91,6 +140,7 @@ def campi(p, r, lista, tenuta):
         k60 = k * 60 / max(1, sum(lista.values()))       # ogni 60 carte: con le fasce di un mazzo da 40 ogni mazzo costruito era «6+» (13 nov 2026)
         out["rim_mazzo"] = "0-4" if k60 < 4.5 else "5-8" if k60 < 8.5 else "9+"
         out["terre_mazzo"] = str(sum(q for n, q in lista.items() if DA.e_terra(n)))
+        out.update(campi_mazzo(lista))
     d = DA._MANA.get(r.get("partita")) or {}
     seat, inizia = p.get("seat"), r.get("inizia")
     if seat in (1, 2) and inizia is not None and d:

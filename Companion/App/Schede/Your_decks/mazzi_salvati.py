@@ -34,10 +34,20 @@ FILE = _ACC.lega(globals(), "FILE", "mazzi_salvati.json")     # Log_Arena/mazzi_
 SEZIONI = ("wish", "build")
 BASI = {"Plains", "Island", "Swamp", "Mountain", "Forest", "Wastes", "Snow-Covered Plains", "Snow-Covered Island", "Snow-Covered Swamp",
         "Snow-Covered Mountain", "Snow-Covered Forest", "Snow-Covered Wastes"}
-FORMATI = ("Standard", "Alchemy", "Explorer", "Historic", "Timeless", "Brawl", "Standard Brawl", "Pioneer", "Modern", "Legacy", "Vintage", "Pauper")
+FORMATI = ("Standard", "Alchemy", "Explorer", "Historic", "Timeless", "Brawl", "Standard Brawl", "Commander", "Pioneer", "Modern", "Legacy", "Vintage", "Pauper")
 SCRYFALL = {"Standard": "standard", "Alchemy": "alchemy", "Historic": "historic", "Timeless": "timeless", "Brawl": "brawl", "Standard Brawl": "standardbrawl",
-            "Pioneer": "pioneer", "Modern": "modern", "Legacy": "legacy", "Vintage": "vintage", "Pauper": "pauper", "Explorer": "pioneer"}
-SINGLETON = {"Brawl", "Standard Brawl"}
+            "Pioneer": "pioneer", "Modern": "modern", "Legacy": "legacy", "Vintage": "vintage", "Pauper": "pauper", "Explorer": "pioneer", "Commander": "commander"}
+# i formati col comandante (15 nov 2026, Autore: «costruzione di mazzi brawl e commander nell'editor mazzi»): singleton, la zona Commander, l'identita' di colore.
+# Brawl e Standard Brawl come su Arena (100 e 60 carte); Commander quello di carta (903.5a: 100). Le regole si leggono da Regole/MagicCompRules.txt, 903 e 702.124
+SINGLETON = {"Brawl", "Standard Brawl", "Commander"}
+COMANDANTE = SINGLETON
+DIMENSIONE = {"Brawl": 100, "Standard Brawl": 60, "Commander": 100}       # le carte esatte, comandante compreso
+BRAWL = {"Brawl", "Standard Brawl"}
+
+
+def dimensione(formato):
+    """Le carte del mazzo: esatte nei formati col comandante (comandante compreso), il minimo negli altri (60)."""
+    return DIMENSIONE.get(formato, 60)
 QUALSIASI = re.compile(r"a deck can have any number of cards named", re.I)
 VERSIONE = [0]          # cresce a ogni salvataggio: chi mostra i mazzi sa quando ridisegnare
 _CHIAVE = threading.Lock()
@@ -269,16 +279,110 @@ def legalita(lista, side, formato, comandante=None, compagno=None, arena=None):
             limite = 10 ** 6
         if q > limite:
             problemi.append(f"{q} copies of {n} (max {limite})")
-    minimo = 100 if formato == "Brawl" else 60
+    minimo = dimensione(formato)
     carte = sum(lista.values()) + sum((comandante or {}).values())
     if formato in SINGLETON:
-        if formato == "Brawl" and carte != 100 or formato == "Standard Brawl" and carte != 60:
-            problemi.append(f"{carte} cards ({100 if formato == 'Brawl' else 60} with the commander)")
+        if carte != minimo:
+            problemi.append(f"{carte} cards ({minimo} with the commander)")
+        problemi += problemi_comandante(lista, comandante or {}, formato, arena, compagno=compagno)
     elif carte < minimo:
         problemi.append(f"only {carte} cards (min {minimo})")
     if formato not in SINGLETON and sum(side.values()) > 15:
         problemi.append(f"sideboard of {sum(side.values())} (max 15)")
     return problemi
+
+
+def _info(nome, arena):
+    """(tipo, identita') della carta: da Scryfall (carte.json, VERSIONE_CARTE 2), se no da Arena (il tipo; per l'identita' i colori della carta, che per le terre
+    sono gia' l'identita': un'approssimazione per le sole carte di Arena, dichiarata)."""
+    s = PZ.carta(nome)
+    c = arena.get(nome) or arena.get(nome.split(" // ")[0].strip()) or {}
+    t = (s or {}).get("t") or c.get("tipo") or ""
+    i = (s or {}).get("i") if s and "i" in s else c.get("colori") or ""
+    return t, i
+
+
+def puo_comandare(nome, formato, arena=None):
+    """Puo' essere il comandante da solo? -> (si/no, perche'). Commander (903.3): leggendaria e creatura, Vehicle o Spacecraft, o il testo «can be your commander»
+    (903.3a). Brawl (903.12c): anche un planeswalker. Un Background solo accanto a chi ha «choose a Background» (702.124k)."""
+    arena = _carte_arena() if arena is None else arena
+    t, _i = _info(nome, arena)
+    s = PZ.carta(nome) or {}
+    davanti = t.split(" // ")[0]
+    if "a" in (s.get("k") or ""):
+        return True, "its text says it can be your commander"
+    if "Legendary" not in davanti:
+        return False, f"{nome} is not legendary"
+    if "g" in (s.get("k") or ""):
+        return False, f"{nome} is a Background: it needs a commander with «Choose a Background»"
+    tipi = ["Creature", "Vehicle", "Spacecraft"] + (["Planeswalker"] if formato in BRAWL else [])
+    if any(x in davanti for x in tipi):
+        return True, ""
+    return False, f"{nome} is not a creature" + (" or a planeswalker" if formato in BRAWL else "")
+
+
+def coppia_ok(a, b):
+    """Due comandanti insieme (702.124): tutti e due partner; lo stesso partner—[testo]; partner with l'uno dell'altro; choose a Background e un Background;
+    Doctor's companion e un Time Lord Doctor. Le varianti non si mescolano (702.124f). -> (si/no, perche')."""
+    sa, sb = PZ.carta(a) or {}, PZ.carta(b) or {}
+    ka, kb, pa, pb = sa.get("k") or "", sb.get("k") or "", sa.get("pa") or "", sb.get("pa") or ""
+    if "p" in ka and "p" in kb:
+        return True, "partner"
+    if pa.startswith("text:") and pa == pb:
+        return True, "partner—" + pa[5:]
+    if pa == "with:" + b.lower() and pb == "with:" + a.lower():
+        return True, "partner with"
+    for x, y in ((ka, kb), (kb, ka)):
+        if "c" in x and "g" in y:
+            return True, "choose a Background"
+        if "d" in x and "t" in y:
+            return True, "Doctor's companion"
+    return False, f"{a} and {b} can't be commanders together: they need matching partner abilities"
+
+
+def identita_comandante(comandante, arena=None):
+    """L'identita' di colore del mazzo: quella dei comandanti insieme (903.4, 702.124c), in WUBRG."""
+    arena = _carte_arena() if arena is None else arena
+    tutti = "".join(_info(n, arena)[1] for n in comandante)
+    return "".join(k for k in "WUBRG" if k in tutti)
+
+
+def problemi_comandante(lista, comandante, formato, arena=None, compagno=None):
+    """I problemi dei formati col comandante: nessun comandante, troppi, chi non puo' esserlo, due che non vanno insieme, le carte fuori dalla sua identita'
+    di colore (903.5c; le terre base comprese: Plains e' bianca). Con un comandante incolore nel Brawl le basi di un tipo sono libere (903.12e)."""
+    arena = _carte_arena() if arena is None else arena
+    com = [n for n, q in comandante.items() if q > 0]
+    out = []
+    if not com:
+        return ["no commander: put a legendary creature" + (" or planeswalker" if formato in BRAWL else "") + " in Commander"]
+    if sum(comandante.values()) > 2 or len(com) > 2:
+        out.append(f"{sum(comandante.values())} commanders (max 2, with partner)")
+    elif len(com) == 2:
+        ok, perche = coppia_ok(com[0], com[1])
+        if not ok:
+            out.append(perche)
+        for n in com:       # in coppia un Background va bene (choose a Background); gli altri devono poter comandare
+            if not ok or "g" not in ((PZ.carta(n) or {}).get("k") or ""):
+                si, perche_ = puo_comandare(n, formato, arena)
+                if not si:
+                    out.append(f"not a commander: {perche_}")
+    else:
+        si, perche_ = puo_comandare(com[0], formato, arena)
+        if not si:
+            out.append(f"not a commander: {perche_}")
+    ident = set(identita_comandante(com, arena))
+    fuori = []
+    for n, q in sorted({**lista, **(compagno or {})}.items()):
+        if q <= 0 or (not ident and formato in BRAWL and n in BASI):
+            continue
+        extra = set(_info(n, arena)[1]) - ident
+        if extra:
+            fuori.append(f"{n} ({''.join(k for k in 'WUBRG' if k in extra)})")
+    if fuori:
+        nomi_c = " + ".join(com)
+        out.append(f"outside {nomi_c}'s colors ({''.join(sorted(ident, key='WUBRG'.index)) or 'colorless'}): " + ", ".join(fuori[:8])
+                   + (f" +{len(fuori) - 8} more" if len(fuori) > 8 else ""))
+    return out
 
 
 def mana(lista, arena=None):
@@ -349,6 +453,30 @@ def prova():
     casi.append(("la quinta copia e le poche carte", any("5 copies" in x for x in l1) and any("only 25" in x for x in l1)))
     casi.append(("le carte senza limite", not any("Rat Colony" in x for x in legalita({"Rat Colony": 40, "Swamp": 20}, {}, "Modern", arena=arena))))
     casi.append(("singleton nel Brawl", any("max 1" in x for x in legalita({"Lightning Strike": 2}, {}, "Brawl", arena=arena))))
+    # i formati col comandante (15 nov 2026): le carte di Scryfall vere (carte.json); senza il file le prove saltano dette
+    if (PZ.carta("Atraxa, Praetors' Voice") or {}).get("i"):
+        casi.append(("Commander: 100 carte, singleton, nella lista dei formati", "Commander" in FORMATI and dimensione("Commander") == 100 and "Commander" in SINGLETON))
+        casi.append(("Atraxa comanda; Teferi, Temporal Archmage («can be your commander») anche; Jace, Wielder of Mysteries solo nel Brawl",
+                     puo_comandare("Atraxa, Praetors' Voice", "Commander", arena)[0] and puo_comandare("Teferi, Temporal Archmage", "Commander", arena)[0]
+                     and not puo_comandare("Jace, Wielder of Mysteries", "Commander", arena)[0] and puo_comandare("Jace, Wielder of Mysteries", "Brawl", arena)[0]))
+        casi.append(("negativa: Sol Ring non e' leggendaria, Raised by Giants (Background) non comanda da sola", not puo_comandare("Sol Ring", "Commander", arena)[0]
+                     and not puo_comandare("Raised by Giants", "Commander", arena)[0]))
+        casi.append(("le coppie: partner, partner with fra loro, Background, Doctor's companion",
+                     coppia_ok("Thrasios, Triton Hero", "Tymna the Weaver")[0] and coppia_ok("Pir, Imaginative Rascal", "Toothy, Imaginary Friend")[0]
+                     and coppia_ok("Wilson, Refined Grizzly", "Raised by Giants")[0] and coppia_ok("Clara Oswald", "The Thirteenth Doctor")[0]))
+        casi.append(("negativa: partner con partner with non va (702.124f), due leggendarie qualsiasi nemmeno",
+                     not coppia_ok("Thrasios, Triton Hero", "Toothy, Imaginary Friend")[0] and not coppia_ok("Atraxa, Praetors' Voice", "Kenrith, the Returned King")[0]))
+        pa_ = problemi_comandante({"Lightning Bolt": 1, "Counterspell": 1, "Forest": 10, "Mountain": 3}, {"Thrasios, Triton Hero": 1}, "Commander", arena)
+        casi.append(("fuori dai colori di Thrasios (UG): Lightning Bolt e Mountain, non Counterspell ne' Forest", any("outside" in x and "Lightning Bolt" in x
+                     and "Mountain" in x and "Counterspell" not in x and "Forest (" not in x for x in pa_)))
+        casi.append(("negativa: senza comandante lo dice; con due che non vanno insieme pure", problemi_comandante({}, {}, "Commander", arena)[0].startswith("no commander")
+                     and any("together" in x for x in problemi_comandante({}, {"Atraxa, Praetors' Voice": 1, "Kenrith, the Returned King": 1}, "Commander", arena))))
+        casi.append(("Brawl con un comandante incolore: le basi di un tipo sono libere (903.12e)", not problemi_comandante({"Island": 30}, {"Karn, Living Legacy": 1}, "Brawl", arena)
+                     or not any("outside" in x for x in problemi_comandante({"Island": 30}, {"Karn, Living Legacy": 1}, "Brawl", arena))))
+        lg = legalita({"Counterspell": 1, "Island": 98}, {}, "Commander", comandante={"Thrasios, Triton Hero": 1}, arena=arena)
+        casi.append(("un mazzo Commander legale di 100 carte non ha problemi", lg == []))
+    else:
+        print("(le prove del comandante saltate: manca Dati/scryfall/carte.json nuovo)")
     mm = [dict(nome="A", lista={"Lightning Strike": 4, "Shock": 4, "Mountain": 20}), dict(nome="B", lista={"Duress": 4, "Swamp": 20})]
     v, q = simile({"Lightning Strike": 4, "Shock": 2, "Mountain": 22}, mm)
     casi.append(("il mazzo simile", v["nome"] == "A" and abs(q - 6 / 8) < 1e-9))

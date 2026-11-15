@@ -134,6 +134,7 @@ class Costruttore:
         self.cv_d, self.dentro_d = self.scorre(dx)
         self.formato_collezione()
         self.ridisegna()
+        self.chiedi_comandante()
 
     # ------------------------------------------------------------ le aree che scorrono
     def scorre(self, padre):
@@ -172,8 +173,15 @@ class Costruttore:
         if col is None or not col.fr.winfo_exists():      # una Collection chiusa (le prove ne aprono e chiudono): niente da allineare
             return
         voluto = self.t_fmt.get() if self.t_fmt.get() in PaginaCollezione.FORMATI_COLL else "All"
+        # nei formati col comandante la Collection mostra solo le carte nella sua identita' di colore (15 nov 2026): quelle che il mazzo puo' avere
+        com = self.zone["Commander"] if self.t_fmt.get() in MS.COMANDANTE else {}
+        ident = MS.identita_comandante(com) if com else None
+        cambiata = (PaginaCollezione.IDENTITA, PaginaCollezione.COMANDANTE) != (ident, " + ".join(com))
+        PaginaCollezione.IDENTITA, PaginaCollezione.COMANDANTE = ident, " + ".join(com)
         if col.t_formato.get() != voluto:
             col.t_formato.set(voluto); col.chiedi()
+        elif cambiata:
+            col.chiedi()
 
     # ------------------------------------------------------------ il mazzo
     def blocco(self, padre, nome, chiave, fa, agg=None):
@@ -211,7 +219,7 @@ class Costruttore:
         self.blocco(self.f_colori, "colori", tuple(tinte), colori)
         nome = self.v_nome.get() or "Deck"
         tot = sum(main.values()) + sum(self.zone["Commander"].values())
-        totale = 100 if self.t_fmt.get() == "Brawl" else 60
+        totale = MS.dimensione(self.t_fmt.get())
 
         def testata(fr):
             if voci:
@@ -233,6 +241,9 @@ class Costruttore:
                  (c_resto, "LANDS", "Deck", terre), (c_resto, "SIDEBOARD", "Sideboard", self.zone["Sideboard"])]
         totali = {n: sum(self.zone[k].get(n, 0) for k in self.zone) for z in self.zone.values() for n in z}
         for padre, titolo, zona, carte in parti:
+            if titolo == "COMMANDER" and not carte and self.t_fmt.get() in MS.COMANDANTE:
+                self.blocco(padre, titolo, ("vuoto", self.t_fmt.get() in MS.BRAWL), self.sezione_comandante_vuota)
+                continue
             lands = titolo == "LANDS"
             voci_ = CAP.ordina(list(carte.items()))
             for n, q in voci_:      # la scheda della carta in hover (le copie di tutte le zone): sempre aggiornata, costa poco
@@ -328,22 +339,83 @@ class Costruttore:
         zona = zona or self.t_dove.get()
         z = self.zone[zona]
         self.rapporto_terre = None          # il rapporto della Mana base vale finche' il mazzo non cambia a mano
+        fmt = self.t_fmt.get()
         if d > 0:
             tutte = sum(self.zone[k].get(nome, 0) for k in self.zone)
-            lim = limite(nome, self.t_fmt.get(), self.carte_db)
+            lim = limite(nome, fmt, self.carte_db)
             if tutte >= lim:
-                self.avviso(f"{nome}: max {lim} in {self.t_fmt.get()}")
+                self.avviso(f"{nome}: max {lim} in {fmt}")
+                return False
+            no = self.comandante_no(nome, zona) if fmt in MS.COMANDANTE else None
+            if no:
+                self.avviso(no)
                 return False
             z[nome] = z.get(nome, 0) + 1
+            if zona == "Commander" and fmt in MS.COMANDANTE:        # scelto il comandante: le carte dopo vanno nel mazzo, la Collection nei suoi colori
+                if self.t_dove.get() == "Commander" and not self.manca_partner():
+                    self.t_dove.set("Deck")
+                self.formato_collezione()
         elif nome in z:
             z[nome] -= 1
             if z[nome] <= 0:
                 del z[nome]
+            if zona == "Commander" and fmt in MS.COMANDANTE:
+                self.formato_collezione()
+                if not self.zone["Commander"]:
+                    self.chiedi_comandante()
         self.segna()
         self.ridisegna()
         if d > 0:
             self.avviso(f"+1 {nome}")
         return True
+
+    # ------------------------------------------------------------ il comandante (15 nov 2026, Autore: «costruzione di mazzi brawl e commander nell'editor mazzi»)
+    def comandante_no(self, nome, zona):
+        """Nei formati col comandante: perche' la carta non puo' entrare in quella zona, o None. In Commander: chi non puo' comandare (903.3, 903.12c), un terzo
+        comandante, due che non vanno insieme (702.124). Nel mazzo: una carta fuori dall'identita' del comandante (903.5c)."""
+        fmt, com = self.t_fmt.get(), [n for n in self.zone["Commander"] if n != nome]
+        if zona == "Commander":
+            if len(com) >= 2:
+                return "Two commanders already: remove one first"
+            if com:
+                ok, perche = MS.coppia_ok(com[0], nome)
+                return None if ok else perche + " · remove the commander to change it"
+            si, perche = MS.puo_comandare(nome, fmt, self.carte_db)
+            return None if si else f"{nome} can't be your commander: {perche}"
+        if zona == "Deck" and com:
+            ident = set(MS.identita_comandante(com, self.carte_db))
+            if not ident and fmt in MS.BRAWL and nome in MS.BASI:       # 903.12e: comandante incolore, le basi di un tipo
+                return None
+            fuori = set(MS._info(nome, self.carte_db)[1]) - ident
+            if fuori:
+                return (f"{nome} is outside {' + '.join(com)}'s colors ({''.join(k for k in 'WUBRG' if k in ident) or 'colorless'}): "
+                        f"its identity has {''.join(k for k in 'WUBRG' if k in fuori)}")
+        return None
+
+    def manca_partner(self):
+        """Il comandante scelto chiede il secondo (partner, choose a Background, Doctor's companion) e non c'e' ancora."""
+        com = list(self.zone["Commander"])
+        if len(com) != 1:
+            return False
+        x = PZ.carta(com[0]) or {}
+        return bool(set(x.get("k") or "") & set("pcdg") or x.get("pa"))
+
+    def chiedi_comandante(self):
+        """In un formato col comandante senza comandante: Add to passa a Commander e la riga lo dice."""
+        if self.t_fmt.get() in MS.COMANDANTE and not self.zone["Commander"]:
+            self.t_dove.set("Commander")
+            self.avviso("Pick your commander: Add to is on Commander · a legendary creature" + (" or planeswalker" if self.t_fmt.get() in MS.BRAWL else ""))
+        elif self.t_fmt.get() not in MS.COMANDANTE and self.t_dove.get() == "Commander":
+            self.t_dove.set("Deck")
+
+    def sezione_comandante_vuota(self, fr):
+        """Il posto del comandante, vuoto, nei formati col comandante: dice cosa metterci."""
+        tk, F = self.tk, self.F
+        tk.Label(fr, text="COMMANDER", bg=C["scheda"], fg=C["titolo"], font=F(8, True), anchor="w").pack(fill="x", pady=(4, 2))
+        box = tk.Frame(fr, bg=C["accento"], padx=1, pady=1); box.pack(fill="x", pady=(0, 8))
+        tk.Label(box, text="Pick your commander: a legendary creature" + (" or planeswalker" if self.t_fmt.get() in MS.BRAWL else "")
+                 + "\nDrag it here with Add to on Commander, or double click it in the Collection", bg=C["cap"], fg=C["testo"], font=F(8), anchor="w",
+                 justify="left", padx=8, pady=6).pack(fill="x")
 
     # ------------------------------------------------------------ i dati
     def avviso(self, t):
@@ -558,6 +630,7 @@ class Costruttore:
 
     def cambia_formato(self):
         self.segna()
+        self.chiedi_comandante()
         self.formato_collezione()
         self.ridisegna()
 
@@ -582,7 +655,10 @@ class Costruttore:
         if z["comandante"] and self.t_fmt.get() not in MS.SINGLETON:
             self.t_fmt.set("Brawl")
         self.segna()
+        self.formato_collezione()
         self.ridisegna()
+        if self.t_dove.get() == "Commander" and self.zone["Commander"]:
+            self.t_dove.set("Deck")
         self.avviso(f"Imported {sum(z['lista'].values()) + sum(z['comandante'].values())} cards")
 
     def esporta(self, b=None):
@@ -616,7 +692,11 @@ class Costruttore:
             self.meta[fmt] = meta_mazzi(fmt)[0]
         liste = [m.get("lista") or {} for m in self.meta.get(fmt) or []]
 
+        ident = set(MS.identita_comandante(self.zone["Commander"])) if fmt in MS.COMANDANTE and self.zone["Commander"] else None
+
         def legale(n):
+            if ident is not None and not set(MS._info(n, self.carte_db)[1]) <= ident:      # 903.5c: fuori dall'identita' del comandante
+                return False
             return not [p for p in MS.legalita({n: 1}, {}, fmt) if n in p]
 
         base = {v: k for k, v in TA.BASE_DI.items()}
@@ -626,7 +706,7 @@ class Costruttore:
             return base.get(n) or (PZ.carta(n) or {}).get("p") or (self.carte_db.get(n) or {}).get("colori") or ""
         r = TA.fix(deck, fmt, self.carte_db, legale, prodotti,
                    lambda n: MS.e_terra(n, self.carte_db), lambda n: CAP.info(n)[2] or 0, self.coll, liste,
-                   N=100 if fmt == "Brawl" else 60, copie_max=1 if fmt in MS.SINGLETON else 4)
+                   N=MS.dimensione(fmt), copie_max=1 if fmt in MS.SINGLETON else 4)
         for n, q in r["aggiungi"].items():
             self.zone["Deck"][n] = self.zone["Deck"].get(n, 0) + q
         fix = self.base_fatta
@@ -658,14 +738,18 @@ class Costruttore:
         self.zone = {"Deck": {}, "Sideboard": {}, "Commander": {}}
         self.compagno = {}
         self.segna()
+        self.formato_collezione()       # senza comandante la Collection non filtra piu' per i suoi colori (15 nov 2026)
         self.ridisegna()
+        self.chiedi_comandante()
 
     def svuota_ora(self):
         """Clear dall'esportazione della scheda: il secondo clic di conferma lo chiede gia' il pulsante."""
         self.zone = {"Deck": {}, "Sideboard": {}, "Commander": {}}
         self.compagno = {}
         self.segna()
+        self.formato_collezione()       # senza comandante la Collection non filtra piu' per i suoi colori (15 nov 2026)
         self.ridisegna()
+        self.chiedi_comandante()
 
     def salva(self, b=None):
         if self.m:
@@ -703,6 +787,11 @@ class Costruttore:
         self.lista_m.esci()
         if Costruttore.APERTO is self:
             Costruttore.APERTO = None
+            if PaginaCollezione.IDENTITA is not None:
+                PaginaCollezione.IDENTITA, PaginaCollezione.COMANDANTE = None, ""
+                col = getattr(PaginaCollezione, "ISTANZA", None)
+                if col is not None and col.fr.winfo_exists():
+                    col.chiedi()
         self.w.destroy()
         if poi is not None:
             poi()

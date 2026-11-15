@@ -54,7 +54,10 @@ SIT = [("io_terra", "You missed a land drop (by your 4th turn)"), ("lui_terra", 
        # i combattimenti (13 nov 2026, per le ricerche preimpostate di Spots): dai momenti di mana_aperto, VERSIONE 12
        ("io_blocca", "Opponent attacked and you blocked"), ("io_difende", "You defended more than you attacked"),
        ("io_tutto", "You attacked with everything (2+ creatures could attack)"),
-       ("io_tutto_aperto", "You attacked with everything into 2+ untapped lands")]
+       ("io_tutto_aperto", "You attacked with everything into 2+ untapped lands"),
+       # gli attacchi mancati (14 nov 2026): mana_aperto.finestre_non_att, dalle foto di fine turno
+       ("io_non_att_chiuso", "You had an attacker ready, the opponent was tapped out with no untapped blockers, and you did not attack"),
+       ("io_letale_mancato", "Your board had lethal through their untapped blockers and the opponent survived the turn")]
 _MANA = {}      # {matchId: dato di mana_aperto}, riempito da righe()
 NOME_SIT = dict(SIT)
 _SCHEDE = {}
@@ -214,7 +217,7 @@ def magie_in_mano(tenuta, tipo):
     return str(n) if n < 2 else "2+"
 
 
-TURNI_FILTRO = 5        # i filtri turno per turno: i primi 5 turni di ognuno
+TURNI_FILTRO = 10       # i filtri turno per turno: i primi 10 turni di ognuno (erano 5 fino al 14 nov 2026), poi «dal turno 11» e «qualunque turno»
 NOMI_TIPO = {"C": "Creature", "I": "Instant", "S": "Sorcery", "E": "Enchantment", "A": "Artifact", "P": "Planeswalker", "B": "Battle"}
 ORDINE_TIPI = ("Creature", "Instant", "Sorcery", "Enchantment", "Artifact", "Planeswalker", "Battle", "Nothing")
 
@@ -225,6 +228,9 @@ ORDINE_APERTE = ("No attack", "0 untapped lands", "1 untapped land", "2+ untappe
 ORDINE_PESCATE = ("0 draws", "1 draw", "2 draws", "3+ draws")
 ORDINE_PESCATE_X = ("0 draws", "1 draw", "2+ draws")
 ORDINE_EXTRA = ("No extra draw", "1+ extra in one turn", "2+ extra in one turn", "3+ extra in one turn")
+ORDINE_SCELTA = ("Couldn't attack", "Didn't attack", "Attacked with some", "Attacked with everything")      # = mana_aperto.SCELTE_ATTACCO
+ORDINE_MANA = ("All mana used", "1 mana left", "2+ mana left")      # il mana lasciato nel proprio turno («u»)
+ORDINE_EFF = ("90%+ of your mana", "70-90%", "50-70%", "Under 50%")       # l'efficienza del mana nei primi 5 turni («eff»)
 
 
 def per_turno(match_id, seat, inizia, turni):
@@ -252,9 +258,9 @@ def per_turno(match_id, seat, inizia, turni):
     altro = {"io": "lui", "lui": "io"}
     di_turno = lambda t: primo if t % 2 == 1 else altro[primo]
     out = {}
-    for t in range(1, 2 * TURNI_FILTRO + 1):
-        if not turni or t > turni:
-            break
+    # tutti i turni della partita (14 nov 2026, la pagella dell'enciclopedia: «in qualunque turno», «dal turno 6 in poi»): i filtri del turno N arrivano a
+    # TURNI_FILTRO, e ogni famiglia ha anche «qualunque turno» (A) e «dal turno TURNI_FILTRO+1» (L), fatti dopo da turni_estesi
+    for t in range(1, (turni or 0) + 1):
         chi, n = di_turno(t), (t + 1) // 2
         out[f"{chi}{n}"] = []
         out[f"{altro[chi]}x{n}"] = []
@@ -269,16 +275,15 @@ def per_turno(match_id, seat, inizia, turni):
             pescate[("io" if s_ == seat else "lui", t)] += 1
     if ci_sono:
         extra = {"io": 0, "lui": 0}
-        for t in range(1, 2 * TURNI_FILTRO + 1):
-            if not turni or t > turni:
-                break
+        for t in range(1, (turni or 0) + 1):
             chi, n = di_turno(t), (t + 1) // 2
             mie, sue = pescate[(chi, t)], pescate[(altro[chi], t)]
             out[f"p{chi}{n}"] = ORDINE_PESCATE[min(mie, 3)]
             out[f"p{altro[chi]}x{n}"] = ORDINE_PESCATE_X[min(sue, 2)]
             normale = 0 if (chi == primo and t == 1) else 1        # chi comincia non pesca al suo primo turno (103.8a)
-            extra[chi] = max(extra[chi], mie - normale)
-            extra[altro[chi]] = max(extra[altro[chi]], sue)
+            if n <= TURNI_FILTRO:       # le pescate extra: nei turni dei filtri, come prima
+                extra[chi] = max(extra[chi], mie - normale)
+                extra[altro[chi]] = max(extra[altro[chi]], sue)
         for chi, e in extra.items():
             out[f"pe{chi}"] = tuple(ORDINE_EXTRA[i] for i in range(1, min(e, 3) + 1)) or (ORDINE_EXTRA[0],)
     for t, s_, cosa, g_, tipi in d["azioni"]:
@@ -304,8 +309,134 @@ def per_turno(match_id, seat, inizia, turni):
                 out.pop(f"m{chi}{n}", None)
             else:
                 out[f"m{chi}{n}"] = "0 untapped lands" if ap == 0 else "1 untapped land" if ap == 1 else "2+ untapped lands"
-    return {k: [v] if isinstance(v, str) else list(v) if isinstance(v, tuple) else (sorted(v, key=ordine_lancio) if v else ["Nothing"])
-            for k, v in out.items()}       # le magie del turno: una lista coi tipi ripetuti, in ordine; «Nothing» se niente
+    # il mana lasciato nel proprio turno (14 nov 2026, la pagella dell'enciclopedia, V27 della 1-6): le terre a fine turno meno il valore di mana delle magie
+    # lanciate nel turno; «u{chi}{n}». Grado C: non vede le abilita' pagate, le riduzioni di costo, le fonti che non sono terre
+    spese = collections.Counter()
+    for t, s_, cosa, g_, _tp in d["azioni"]:
+        if cosa == "magia" and di_turno(t) == ("io" if s_ == seat else "lui"):
+            c_ = (_carta(nome_grp(g_) or "") or {}).get("cmc") if g_ not in SENZA_FACCIA else None
+            spese[t] += c_ or 0
+    for t, _att, _stap, tot in d.get("fine") or []:
+        if turni and t > turni:
+            continue
+        resto = max(0, (tot or 0) - spese[t])
+        out[f"u{di_turno(t)}{(t + 1) // 2}"] = ORDINE_MANA[min(resto, 2)]
+    # l'efficienza del mana nei primi 5 turni di ognuno: il mana speso (al massimo le terre) sulle terre, turno per turno («eff{chi}»)
+    for chi_ in ("io", "lui"):
+        tt = [(min(spese[t], tot or 0), tot or 0) for t, _a, _s, tot in d.get("fine") or [] if di_turno(t) == chi_ and (t + 1) // 2 <= 5 and (tot or 0) > 0]
+        if tt:
+            e_ = 100 * sum(a_ for a_, _b in tt) / sum(b_ for _a, b_ in tt)
+            out[f"eff{chi_}"] = ORDINE_EFF[0] if e_ >= 90 else ORDINE_EFF[1] if e_ >= 70 else ORDINE_EFF[2] if e_ >= 50 else ORDINE_EFF[3]
+    import mana_aperto as MA
+    for t, scelta in MA.scelte_attacco(d).items():      # la scelta d'attacco (V3): «q{chi}{n}»
+        if not turni or t <= turni:
+            out[f"q{di_turno(t)}{(t + 1) // 2}"] = scelta
+    out = {k: [v] if isinstance(v, str) else list(v) if isinstance(v, tuple) else (sorted(v, key=ordine_lancio) if v else ["Nothing"])
+           for k, v in out.items()}       # le magie del turno: una lista coi tipi ripetuti, in ordine; «Nothing» se niente
+    return turni_estesi(out)
+
+
+FAMIGLIE_TURNO = ("{c}", "{c}x", "a{c}", "d{c}", "m{c}", "p{c}", "p{c}x", "q{c}", "u{c}")      # u: il mana lasciato      # le famiglie turno per turno di per_turno (q: la scelta d'attacco)
+CAMPI_TURNO = tuple(str(n) for n in range(1, TURNI_FILTRO + 1)) + ("L", "A")           # i turni dei filtri, «dal turno 11» (L) e «qualunque turno» (A)
+
+
+def turni_estesi(out):
+    """Da {famiglia+turno: [voci]} di tutti i turni: i turni oltre TURNI_FILTRO diventano «famigliaL» e tutti i turni «famigliaA», ognuno una lista di turni
+    (una lista di voci per turno); i singoli turni oltre TURNI_FILTRO non restano. passa_turni legge A e L: basta un turno che abbia tutte le voci scelte."""
+    finale = {}
+    for k, v in out.items():
+        m_ = re.fullmatch(r"([a-z]*?(?:io|lui)x?)(\d+)", k)
+        if not m_:
+            finale[k] = v
+            continue
+        fam, n = m_.group(1), int(m_.group(2))
+        if n <= TURNI_FILTRO:
+            finale[k] = v
+        else:
+            finale.setdefault(fam + "L", []).append(v)
+        finale.setdefault(fam + "A", []).append(v)
+    return finale
+
+
+def esteso(k):
+    """La chiave di un filtro turno per turno «in qualunque turno» o «dal turno 11» (t_aioA, t_ioL)?"""
+    return bool(re.fullmatch(r"t_[a-z]*?(io|lui)x?[AL]", k))
+
+
+def turni_di(k, x):
+    """Per una chiave A o L: la lista dei turni, ognuno la sua lista di voci; per un turno solo: [voci]; [] se la partita non ce l'ha."""
+    v = (x.get("per_turno") or {}).get(k[2:])
+    if not v:
+        return []
+    return v if esteso(k) else [v]
+
+
+def episodi(r, filtri):
+    """Quante volte (14 nov 2026, Autore: «quanto performiamo o perdiamo in una determinata azione o situazione e quante volte ci è capitato di essere in
+    quella situazione»): per ogni filtro acceso che si conta a episodi, nelle partite r (gia' filtrate) -> [dict(chiave, nome, volte, partite, occasioni)].
+    volte: i turni (o le finestre) in cui e' successo; partite: in quante; occasioni: i turni in cui poteva succedere (None se non si sa).
+      - turno per turno «in qualunque turno» / «dal turno 11»: i turni con tutte le voci scelte, su tutti i turni di quella famiglia;
+      - un turno solo: la partita conta una volta;
+      - «sit:io_non_att_chiuso»: le finestre con lui scoperto, su tutti i turni con un attaccante pronto e senza attacco;
+      - «sit:io_letale_mancato»: i turni col letale sul tavolo e lui vivo;
+      - i leak: i turni del leak."""
+    import mana_aperto as MA
+    out = []
+    for k, v in filtri.items():
+        if v is None or v == [] or k == "wr_rif":
+            continue
+        volte, part, occ = 0, 0, 0
+        if re.fullmatch(r"t_[a-z]*?(io|lui)x?(\d+|[AL])", k):
+            for x in r:
+                tt = turni_di(k, x)
+                occ += len(tt)
+                voglio = collections.Counter(v if isinstance(v, (list, tuple)) else [v])
+                n_ = sum(1 for t_ in tt if all(collections.Counter(t_)[i] >= q for i, q in voglio.items()))
+                volte += n_
+                part += 1 if n_ else 0
+        elif k in ("sit:io_non_att_chiuso", "sit:io_letale_mancato") and v == "Yes":
+            for x in r:
+                d = _MANA.get(x.get("partita"))
+                if k == "sit:io_non_att_chiuso":
+                    w = MA.finestre_non_att(d, x.get("seat")) or []
+                    n_, occ = sum(1 for z in w if z["scoperto"]), occ + len(w)
+                else:
+                    n_, occ = len(MA.letali_mancati(d, x.get("seat")) or []), None
+                volte += n_
+                part += 1 if n_ else 0
+        elif k in _VP.NOMI and v not in ("0", "No", "Never", "None", None) and k not in ("primo_att_io", "primo_att_lui", "rim_prima_lui", "rim_quando_io"):
+            occ = None
+            for x in r:
+                n_ = _VP.conta(x, k)
+                if n_ is None:      # le voci Yes/No: una volta a partita
+                    n_ = 1 if _VP.valore(x, k) == "Yes" else 0
+                volte += n_
+                part += 1 if n_ else 0
+        elif k in _TM.NOMI and v not in ("0", None):        # il tempismo: i lanci contati
+            occ = 0
+            for x in r:
+                tm = _TM.per_partita(x) or {}
+                n_ = len(tm.get(k[3:]) or [])
+                occ += len(tm.get("nel_mio") or [])
+                volte += n_
+                part += 1 if n_ else 0
+        elif re.fullmatch(r"leak_l\d+", k) and v == "Yes":
+            occ = None
+            for x in r:
+                lk = (x.get("leak") or {}).get(k[5:]) if k not in ("leak_l12", "leak_l13") else (__import__("leak").valore(x, k[5:]) == "Yes")
+                n_ = (len(lk) if isinstance(lk, list) else 1 if lk else 0)
+                volte += n_
+                part += 1 if n_ else 0
+        else:
+            continue
+        out.append(dict(chiave=k, nome=nome_var(k), volte=volte, partite=part, occasioni=occ))
+    return out
+
+
+def passa_turni(k, x, scelte):
+    """Una partita passa un filtro turno per turno se almeno uno dei suoi turni ha tutte le voci scelte (ripetizioni comprese)."""
+    voglio = collections.Counter(scelte if isinstance(scelte, (list, tuple)) else [scelte])
+    return any(all(collections.Counter(t_)[i] >= n for i, n in voglio.items()) for t_ in turni_di(k, x))
 
 
 # le abilita' attivate, carta per carta e quando (13 nov 2026, Autore: «saccare reliquia dopo draw step di Oppo migliora le mie possibilita' di vittoria
@@ -356,7 +487,7 @@ def ordine_lancio(v):
 def multipla(k):
     """Le chiavi a scelta multipla: le giocate turno per turno («t_io2», «t_luix3»). Il filtro e' una lista di voci, e una partita passa se in quel turno ha
     tutte le voci scelte, ripetizioni comprese (una creatura e due istantanei)."""
-    return bool(re.fullmatch(r"t_(io|lui)x?\d+", k))
+    return bool(re.fullmatch(r"t_(io|lui)x?(\d+|[AL])", k))
 
 
 ENTRO = tuple(range(3, 13))         # «la partita finita entro il tuo turno N»
@@ -710,6 +841,9 @@ def riga(p, r):
     c_["cimitero"] = CM.per_partita(dict(r, seat=p.get("seat")))      # cimitero ed esilio (14 nov 2026: «ok fai i filtri per la decisione»)
     import leak as LK
     leak_ = LK.per_partita(dict(r, seat=p.get("seat"), fine=come_finita(p.get("motivo"), r["vinta"]), quando=quando))
+    # la durata in minuti, la stagione e lo step del rango (14 nov 2026, partite_log VERSIONE 5)
+    minuti = round((p["fine"] - p["inizio"]) / 60000, 1) if p.get("fine") and p.get("inizio") and p["fine"] > p["inizio"] else None
+    c_ = dict(c_, minuti=minuti, stagione=p.get("stagione"), rango_step=p.get("rango_step"))
     return dict(r, **c_, seat=p.get("seat"), mazzo_id=p.get("mazzo"), mie_lanciate=mie_l, scartate=scartate, fortuna=fortuna(p, r, lista), deck=lista, leak=leak_, **carte_partita(r, p.get("seat"), tenuta), economiche=econ, crea_mano=crea, crea_in_mano=creature_in_mano(tenuta),
                 suo_mull=suo_mulligan(r.get("partita"), p.get("seat")), crea_prima=prima_creatura(r.get("partita"), p.get("seat"), r.get("inizia")),
                 ist_mano=magie_in_mano(tenuta, "Instant"), str_mano=magie_in_mano(tenuta, "Sorcery"),
@@ -768,6 +902,23 @@ def colpiti_di(info):
     return [x for x in colpiti if x in bers or x in fatti]
 
 
+def _segnalini(v):
+    """I segnalini di una carta in campo come {tipo (int): quanti}: dalla copia su disco le chiavi tornano stringhe."""
+    if not v:
+        return None
+    try:
+        return {int(k): int(q) for k, q in v.items() if q}
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
+def _carta_foto(c):
+    """Una carta in campo di una foto -> (nome, tappata, pedina, forza, costituzione, id, grpId, segnalini). grpId e segnalini dal 14 nov 2026 (le immagini
+    delle pedine, i segnalini ben visibili nel replayer)."""
+    resto = (list(c[3:6]) + [None, None, None])[:3]
+    return (nome_grp(c[0]) or ("Token" if c[2] else f"#{c[0]}"), bool(c[1]), bool(c[2]), *resto, c[0], _segnalini(c[6] if len(c) > 6 else None))
+
+
 def foto_partita(x):
     """Le foto di una partita dal tuo posto (mano_aperto): dict(mano0, turni=[(turno, tuo turno?, foto)], ultima) con le foto girate cosi' che [0] sia il tuo
     lato; None se la partita non ha il log. turni=[(turno, tuo turno?, foto, «fine»|«comb»|«spell», relazioni)]. Una foto: dict(mio=[(nome, tappata, pedina,
@@ -782,7 +933,7 @@ def foto_partita(x):
     def gira(f):
         if not f:
             return None
-        carte = lambda lst: [(nome_grp(c[0]) or ("Token" if c[2] else f"#{c[0]}"), bool(c[1]), bool(c[2]), *(list(c[3:6]) + [None, None, None])[:3]) for c in lst]
+        carte = lambda lst: [_carta_foto(c) for c in lst]
         nomi = lambda lst: [nome_grp(g) or f"#{g}" for g in lst]
         vuoto = [[], []]
         return dict(mio=carte(f["c"][a]), suo=carte(f["c"][b]), mano=nomi(f["m"][a]), n_suo=f["n"][b], vite=(f["v"][a], f["v"][b]),
@@ -798,7 +949,7 @@ def foto_partita(x):
                     continue
                 bers = info.get("bers") or []
                 colpiti = colpiti_di(info)
-                rel = dict(tipo="spell", nome=nome, mio=info.get("chi") == seat, ab=bool(info.get("ab")), bers=[lato(b_) for b_ in bers], colpiti=colpiti,
+                rel = dict(tipo="spell", nome=nome, g=info.get("g"), mio=info.get("chi") == seat, ab=bool(info.get("ab")), bers=[lato(b_) for b_ in bers], colpiti=colpiti,
                            fuori=_fuori(info.get("fuori"), seat))
             elif kind == "comb":
                 rel = dict(tipo="comb", att=[(i, lato(tg)) for i, tg in info.get("att") or []], blocchi=[(i, list(a_)) for i, a_ in info.get("blocchi") or []])
@@ -814,14 +965,27 @@ def gira_foto(f, seat):
     if not f:
         return None
     a, b = seat - 1, 2 - seat
-    carte = lambda lst: [(nome_grp(c[0]) or ("Token" if c[2] else f"#{c[0]}"), bool(c[1]), bool(c[2]), *(list(c[3:6]) + [None, None, None])[:3]) for c in lst]
+    carte = lambda lst: [_carta_foto(c) for c in lst]
     nomi = lambda lst: [nome_grp(g) or f"#{g}" for g in lst]
     vuoto = [[], []]
     return dict(mio=carte(f["c"][a]), suo=carte(f["c"][b]), mano=nomi(f["m"][a]), n_suo=f["n"][b], vite=(f["v"][a], f["v"][b]),
-                cim=(nomi((f.get("g") or vuoto)[a]), nomi((f.get("g") or vuoto)[b])), esi=(nomi((f.get("e") or vuoto)[a]), nomi((f.get("e") or vuoto)[b])))
+                cim=(nomi((f.get("g") or vuoto)[a]), nomi((f.get("g") or vuoto)[b])), esi=(nomi((f.get("e") or vuoto)[a]), nomi((f.get("e") or vuoto)[b])),
+                pila=[(nome_grp(g) or f"#{g}", chi == seat, bool(ab), g, i) for g, chi, ab, i in f.get("p") or []],
+                riv=[(nome_grp(g) or f"#{g}", chi == seat) for g, chi in f.get("r") or []],        # le carte rivelate (il censimento, 14 nov 2026)
+                mes=[s_ == seat for s_ in f.get("s") or []],                                          # chi rimescola il grimorio: True tu
+                # i segni che restano sul tavolo (14 nov 2026): per id, con i nomi delle carte sotto; la velocita' (tua, sua)
+                segni={i_: dict(v_, sotto=[nome_grp(g_) or f"#{g_}" for g_ in v_.get("sotto") or []],
+                                **({"gioca": ((nome_grp(v_["gioca"][0]) or f"#{v_['gioca'][0]}") if v_["gioca"][0] else "Face-down card",
+                                               v_["gioca"][1] == seat, v_["gioca"][2])} if v_.get("gioca") else {}))
+                       for i_, v_ in (f.get("x") or {}).items()},
+                # lo scry (14 nov 2026): le carte guardate, (nome o None se non si vede, tue?, sopra?)
+                scry=[(nome_grp(e_[0]) if e_[0] else None, e_[1] == seat, bool(e_[2]), len(e_) > 3 and bool(e_[3])) for e_ in f.get("sc") or []],
+                mn=[(i_, c_) for i_, c_ in f.get("mn") or []],       # il mana che vola dalle fonti alla magia (id della fonte, colore)
+                mp=(((f.get("mp") or [[], []])[seat - 1]), ((f.get("mp") or [[], []])[2 - seat])),      # il mana in riserva (tuo, suo)
+                vel=((f.get("vel") or {}).get(seat), (f.get("vel") or {}).get(2 if seat == 1 else 1)))
 
 
-VERBI = ("played", "cast", "drew", "gained", "lost", "created", "attacked", "discarded", "sacrificed", "turn", "conceded", "scried")
+VERBI = ("paid", "played", "cast", "drew", "gained", "lost", "created", "attacked", "discarded", "sacrificed", "turn", "conceded", "scried", "revealed", "shuffled", "surveilled", "chose")
 
 
 def azioni_partita(x):
@@ -852,10 +1016,11 @@ def azioni_partita(x):
         if r_ and r_["k"] == "comb":
             rel = dict(tipo="comb", att=[(i, lato(tg)) for i, tg in r_["att"]], blocchi=[(i, list(a_)) for i, a_ in r_["blocchi"]])
         elif r_ and r_["k"] == "spell" and nome_grp(r_["g"]):
-            rel = dict(tipo="spell", nome=nome_grp(r_["g"]), mio=r_["chi"] == seat, ab=r_["ab"], bers=[lato(b_) for b_ in r_["bers"]], colpiti=colpiti_di(r_),
+            rel = dict(tipo="spell", nome=nome_grp(r_["g"]), g=r_["g"], mio=r_["chi"] == seat, ab=r_["ab"], bers=[lato(b_) for b_ in r_["bers"]], colpiti=colpiti_di(r_),
                        fuori=_fuori(r_.get("fuori"), seat))
         nome = f"{'You' if fr['att'] == seat else 'Opponent'} T{(fr['t'] + 1) // 2} · {fr['step'] or '-'}"
-        out.append((nome, gira_foto(fr["foto"], seat), fr["t"], rel, ev, [(lato(b_), q) for b_, q in fr["danni"]]))
+        out.append((nome, gira_foto(fr["foto"], seat), fr["t"], rel, ev, [(lato(d_[0]), d_[1]) for d_ in fr["danni"]],
+                    [(lato(d_[0]), d_[1], d_[2] if len(d_) > 2 else None) for d_ in fr["danni"]]))       # il settimo: chi infligge ogni danno
     return out
 
 
@@ -904,6 +1069,11 @@ def righe(partite=None):
     import variabili_c as VC
     VC.serie(out)       # C6: la partita prima e le sconfitte di fila
     VC.versioni(out)    # C8: le versioni della lista
+    try:                # i pick del draft (15 nov 2026, draft_log.py): ogni partita Limited prende il suo draft
+        import draft_log as DL
+        DL.assegna(out, sys.modules[__name__])
+    except Exception:      # noqa: BLE001 - senza i draft le voci del draft restano vuote
+        pass
     out.sort(key=lambda x: x["quando"])
     _CACHE.update(firma=firma, righe=out)
     return out
@@ -992,30 +1162,149 @@ EXTRA = [("miei_colori", "Your deck's colors", lambda x: x.get("miei_colori")),
          ("pw_mano", "Planeswalkers in your opening hand", lambda x: x.get("pw_mano")),
          ("bat_mano", "Battles in your opening hand", lambda x: x.get("bat_mano"))]
 # turno per turno (13 nov 2026): «t_io3» = cosa hai lanciato nel tuo turno 3, «t_lui1» = cosa ha lanciato l'avversario nel suo turno 1
-EXTRA += [(f"t_{pre}{chi}{suf}{n}", nome.format(n=n), (lambda x, k=f"{pre}{chi}{suf}{n}": ((x.get("per_turno") or {}).get(k) or [None])[0]))
+def turno_nome(n):
+    """Come si legge un campo dei turni: «turn 3», «turn 11+» (L), «any turn» (A)."""
+    return {"A": "any turn", "L": f"turn {TURNI_FILTRO + 1}+"}.get(str(n), f"turn {n}")
+
+
+EXTRA += [(f"t_{pre}{chi}{suf}{n}", nome.format(n=turno_nome(n)), (lambda x, k=f"{pre}{chi}{suf}{n}": ((x.get("per_turno") or {}).get(k) or [None])[0]))
           for chi, tu, lui_ in (("io", "You", "the opponent's"), ("lui", "Opponent", "your"))
-          for pre, suf, nome in (("", "", tu + " · turn {n} cast"), ("", "x", tu + " · " + lui_ + " turn {n} cast"),
-                                 ("a", "", tu + " · turn {n} attack"), ("d", "", tu + " · " + lui_ + " turn {n} defense"),
-                                 ("m", "", tu + " · turn {n} attack · " + ("the opponent's" if chi == "io" else "your") + " untapped lands"),
-                                 ("p", "", tu + " · turn {n} draws"), ("p", "x", tu + " · " + lui_ + " turn {n} draws"))
-          for n in range(1, TURNI_FILTRO + 1)]
+          for pre, suf, nome in (("", "", tu + " · {n} cast"), ("", "x", tu + " · " + lui_ + " {n} cast"),
+                                 ("a", "", tu + " · {n} attack"), ("d", "", tu + " · " + lui_ + " {n} defense"),
+                                 ("m", "", tu + " · {n} attack · " + ("the opponent's" if chi == "io" else "your") + " untapped lands"),
+                                 ("p", "", tu + " · {n} draws"), ("p", "x", tu + " · " + lui_ + " {n} draws"),
+                                 ("q", "", tu + " · {n} · when " + ("you" if chi == "io" else "they") + " could attack"),
+                                 ("u", "", tu + " · {n} · mana left unused"))
+          for n in CAMPI_TURNO]
+EXTRA += [(f"t_eff{chi}", f"{tu} · mana used in the first 5 turns (spent on lands; grade C)", (lambda x, k=f"eff{chi}": ((x.get("per_turno") or {}).get(k) or [None])[0]))
+          for chi, tu in (("io", "You"), ("lui", "Opponent"))]
 EXTRA += [(f"t_pe{chi}", f"{tu} · extra draws in one turn (turns 1-{TURNI_FILTRO})", (lambda x, k=f"pe{chi}": ((x.get("per_turno") or {}).get(k) or [None])[-1]))
           for chi, tu in (("io", "You"), ("lui", "Opponent"))]
 # i filtri situazionali dai replay (13 nov 2026, situazioni_replay) e la prima creatura dell'avversario
 EXTRA += [("s_" + k_, nome_, (lambda x, k=k_: (x.get("situa") or {}).get(k))) for k_, (nome_, _o) in SITUA_NOMI.items()]
 EXTRA += [("senza_lui", "Opponent · no creature cast by", lambda x: (valori_di("senza_lui", x) or [None])[0])]
 # i leak (13 nov 2026, leak.py, voci L1, L4, L7 del censimento): Yes o No per partita; indizi di grado C
-EXTRA += [(f"leak_{k_}", f"Leak · {n_}", (lambda x, k_=k_: (None if x.get("leak") is None else ("Yes" if x["leak"].get(k_) else "No"))))
+EXTRA += [(f"leak_{k_}", f"Leak · {n_}", (lambda x, k_=k_: __import__("leak").valore(x, k_)))
           for k_, n_ in (("l1", "missed a land drop with a land in hand"), ("l2", "unused mana with a castable creature in hand"),
                          ("l3", "creature cast before your attack"), ("l4", "chump block at high life"), ("l5", "unfavourable trade"),
                          ("l6", "instant on their turn while they were tapped out on yours"), ("l7", "conceded with outs"),
-                         ("l8", "lands tapped the wrong way"))]
+                         ("l8", "lands tapped the wrong way"), ("l9", "missed attack into an open board"),
+                         # il Leak Finder (15 nov 2026)
+                         ("l10", "instant cast on your turn that lost value"), ("l11", "missed lethal on board"),
+                         ("l12", "kept a 7 the format says to mulligan"), ("l13", "sent back a 7 the format says to keep"),
+                         ("l14", "land played before a draw or scry spell"), ("l15", "held mana up and never used it"))]
 # cimitero ed esilio (14 nov 2026, cimitero.py): grado C, nessun peso nel costo (misurati: non predicono le vittorie oltre al vantaggio)
 import cimitero as _CM  # noqa: E402
 EXTRA += [(k_, n_, (lambda x, k_=k_: (x.get("cimitero") or {}).get(k_))) for k_, n_ in _CM.NOMI.items()]
 # C2, C3, C6, C7, C9 (13 nov 2026, variabili_c.py)
 import variabili_c as _VC  # noqa: E402
 EXTRA += [(k_, n_, (lambda x, k_=k_: x.get(k_))) for k_, n_ in _VC.NOMI.items()]
+# la probabilita' di vincere nella partita (14 nov 2026, la pagella dell'enciclopedia, capitoli 15 e 22: «partite gia' vinte perse», «rimonte», la forma della
+# partita come le Game Shapes di chess.com): la P di p_foto a ogni fine turno, dal tuo posto (grado C: il modello e' del limited, nel costruito estrapola)
+_PROB = {}
+ORDINE_PROB = {"p_max": ("80%+", "60-80%", "40-60%", "Under 40%"), "p_min": ("Under 20%", "20-40%", "40-60%", "60%+"),
+               "forma": ("Dominated", "Comeback", "Collapse", "Seesaw", "Outclassed", "Close all game"),
+               "svolta": ("For you, on your turn", "For you, on their turn", "For them, on your turn", "For them, on their turn"),
+               "svolta_fase": ("Turns 1-3", "Turns 4-6", "Turns 7+")}
+NOMI_PROB = {"p_max": "Your highest win chance in the game", "p_min": "Your lowest win chance in the game", "forma": "Game shape (win chance over the game)",
+             "svolta": "The biggest swing in win chance", "svolta_fase": "The biggest swing came in your"}
+
+
+def prob_partita(x):
+    """{p_max, p_min, forma, svolta, svolta_fase} di una partita, o {} senza le foto. La P dopo ogni turno (p_foto, letta come all'inizio del turno dopo).
+    La forma: Comeback (vinta da sotto il 20%), Collapse (persa da sopra l'80%), Seesaw (la P passa il 50% tre volte o piu'), Dominated (vinta senza mai
+    scendere sotto il 40%), Outclassed (persa senza mai salire sopra il 40%), Close all game (il resto). La svolta: il salto di P piu' grande fra due fine turno,
+    per chi e nel turno di chi."""
+    k = x.get("partita")
+    d = _MANA.get(k) or {}
+    firma = (k, len(d.get("foto") or []))
+    if firma in _PROB:
+        return _PROB[firma]
+    seat, ps = x.get("seat"), []
+    for t, att, f in d.get("foto") or []:
+        if isinstance(f, dict):
+            p = p_foto(f, seat, att != seat, (t + 2) // 2, x.get("inizia"), x.get("mulligan"))
+            if p is not None:
+                ps.append((t, att, p))
+    out = {}
+    if ps:
+        pp = [p for _t, _a, p in ps]
+        hi, lo = max(pp), min(pp)
+        out["p_max"] = "80%+" if hi >= 80 else "60-80%" if hi >= 60 else "40-60%" if hi >= 40 else "Under 40%"
+        out["p_min"] = "Under 20%" if lo < 20 else "20-40%" if lo < 40 else "40-60%" if lo < 60 else "60%+"
+        passa50 = sum(1 for a_, b_ in zip(pp, pp[1:]) if (a_ - 50) * (b_ - 50) < 0)
+        vinta = x.get("vinta")
+        out["forma"] = ("Comeback" if vinta and lo < 20 else "Collapse" if not vinta and hi >= 80 else "Seesaw" if passa50 >= 3 else
+                        "Dominated" if vinta and lo >= 40 else "Outclassed" if not vinta and hi < 40 else "Close all game")
+        salti = [(b_[2] - a_[2], b_[0], b_[1]) for a_, b_ in zip([(0, None, 50)] + ps, ps)]
+        dp, t, att = max(salti, key=lambda z: abs(z[0]))
+        out["svolta"] = ("For you" if dp > 0 else "For them") + (", on your turn" if att == seat else ", on their turn")
+        n = (t + 1) // 2
+        out["svolta_fase"] = "Turns 1-3" if n <= 3 else "Turns 4-6" if n <= 6 else "Turns 7+"
+    _PROB[firma] = out
+    return out
+
+
+EXTRA += [(k_, n_, (lambda x, k_=k_: prob_partita(x).get(k_))) for k_, n_ in NOMI_PROB.items()]
+# la mano da 7 contro la tabella del mulligan (14 nov 2026, la pagella dell'enciclopedia, D7 e V19: Regole/mulligan.json, misurata sul Premier di 17Lands:
+# con 2-5 terre si tiene, con 1 e' pari, 0 e 6-7 sono mulligan; nel costruito da 60 carte e' un ripiego, grado C)
+ORDINE_MULL_TAB = ("Kept a 7 the table keeps (2-5 lands)", "Kept a 7 with 1 land (even)", "Kept a 7 the table mulligans (0, 6-7 lands)",
+                   "Sent back a 7 the table keeps (2-5 lands)", "Sent back a 7 the table mulligans")
+
+
+def mull_tabella(x):
+    if (x.get("mulligan") or 0) > 0:
+        prima = (x.get("scartate") or [None])[0]
+        if prima is None:
+            return None
+        return ORDINE_MULL_TAB[3] if 2 <= prima <= 5 else ORDINE_MULL_TAB[4]
+    t = x.get("terre")
+    if t is None:
+        return None
+    return ORDINE_MULL_TAB[0] if 2 <= t <= 5 else ORDINE_MULL_TAB[1] if t == 1 else ORDINE_MULL_TAB[2]
+
+
+# il Constructed a 60 carte ha la sua regola (14 nov 2026, Autore: «anche se analizzo constructed i filtri di mulligan lavorano per limited, no, i filtri
+# devono adattarsi se sono in constructed o in limited in maniera differente»). Una tabella misurata come quella di 17Lands per il 60 carte non c'e' (cercata il
+# 14 nov 2026); la regola e' quella di gamertagmythras.com/blog/magic-the-gathering/mtg-mulligan-guide-london-mulligan (letta lo stesso giorno, grado B):
+# 0-1 terre mulligan, 2 si tiene solo con giocate presto, 3-4 il range ideale, 5 si tiene se le magie sono buone, 6-7 mulligan
+ORDINE_MULL_60 = ("Kept a 7 with 3-4 lands (ideal)", "Kept a 7 with 2 or 5 lands (it depends)", "Kept a 7 the rule mulligans (0-1, 6-7 lands)",
+                  "Sent back a 7 with 3-4 lands (the rule keeps)", "Sent back a 7 with 2 or 5 lands (it depends)", "Sent back a 7 the rule mulligans")
+
+
+def mull_60(x):
+    """La mano da 7 contro la regola del Constructed a 60 carte (sopra); None nel Limited o senza i dati."""
+    if x.get("tipo") != "Constructed":
+        return None
+    if (x.get("mulligan") or 0) > 0:
+        prima = (x.get("scartate") or [None])[0]
+        if prima is None:
+            return None
+        return ORDINE_MULL_60[3] if 3 <= prima <= 4 else ORDINE_MULL_60[4] if prima in (2, 5) else ORDINE_MULL_60[5]
+    t = x.get("terre")
+    if t is None:
+        return None
+    return ORDINE_MULL_60[0] if 3 <= t <= 4 else ORDINE_MULL_60[1] if t in (2, 5) else ORDINE_MULL_60[2]
+
+
+EXTRA += [("mull_tabella", "Your 7-card decision against the measured mulligan table (Limited)", lambda x: mull_tabella(x) if x.get("tipo") != "Constructed" else None),
+          ("mull_60", "Your 7-card decision against the 60-card rule (Constructed)", mull_60)]
+# le voci di un formato solo: Advanced filters mostra solo quelle del formato che analizzi
+SOLO_TIPO = {"mull_tabella": "Limited", "mull_60": "Constructed"}
+ORDINE_DURATA = ("Under 5 minutes", "5-10 minutes", "10-20 minutes", "20+ minutes")      # sui log del 14 nov: costruito 5,3 minuti in media, limited 11,5
+EXTRA += [("durata", "Game length in minutes", lambda x: None if not x.get("minuti") else ORDINE_DURATA[0] if x["minuti"] < 5 else ORDINE_DURATA[1]
+           if x["minuti"] < 10 else ORDINE_DURATA[2] if x["minuti"] < 20 else ORDINE_DURATA[3]),
+          ("stagione", "Ranked season", lambda x: None if x.get("stagione") is None else f"Season {x['stagione']}")]
+# i pick del draft (15 nov 2026, «prosegui con i pick del draft»): draft_log.py; solo nel Limited
+import draft_log as _DL  # noqa: E402
+EXTRA += [(k_, n_, (lambda x, k_=k_: x.get(k_))) for k_, n_ in _DL.NOMI.items()]
+SOLO_TIPO.update({k_: "Limited" for k_ in _DL.NOMI})
+# il tempismo degli istantanei e dei flash (14 nov 2026, D2-D3 del censimento, M2-M4): tempismo.py
+import tempismo as _TM  # noqa: E402
+EXTRA += [(k_, n_, (lambda x, k_=k_: _TM.valore(x, k_))) for k_, n_ in _TM.NOMI.items()]
+# le voci di combattimento e di interazione della pagella (14 nov 2026): voci_partita.py
+import voci_partita as _VP  # noqa: E402
+EXTRA += [(k_, n_, (lambda x, k_=k_: _VP.valore(x, k_))) for k_, n_ in _VP.NOMI.items()]
 # C1 (13 nov 2026): le terre pescate contro il caso, entro il tuo turno 3, 5, 7
 EXTRA += [(f"luck{N}", f"Lands drawn by your turn {N} · vs chance", (lambda x, N=N: (((x.get("fortuna") or {}).get("turni") or {}).get(N) or {}).get("classe")))
           for N in TURNI_FORTUNA]
@@ -1035,13 +1324,14 @@ ORDINE_VALORI.update(esito=("Won", "Lost"), miei_colori=VARIANTI, economiche=("0
                      senza_crea=tuple(f"Your turn {n}" for n in SENZA) + ("The whole game",), suo_mull=("0", "1", "2+"),
                      fine_entro=tuple(f"Your turn {n}" for n in ENTRO), ist_mano=("0", "1", "2+"), str_mano=("0", "1", "2+"),
                      art_mano=("0", "1", "2+"), inc_mano=("0", "1", "2+"), pw_mano=("0", "1", "2+"), bat_mano=("0", "1", "2+"),
-                     **{f"t_{pre}{chi}{suf}{n}": o_ for chi in ("io", "lui") for n in range(1, TURNI_FILTRO + 1)
+                     **{f"t_{pre}{chi}{suf}{n}": o_ for chi in ("io", "lui") for n in CAMPI_TURNO
                         for pre, suf, o_ in (("", "", ORDINE_TIPI), ("", "x", ORDINE_TIPI), ("a", "", ORDINE_ATT), ("d", "", ORDINE_DIF),
-                                             ("m", "", ORDINE_APERTE), ("p", "", ORDINE_PESCATE), ("p", "x", ORDINE_PESCATE_X))},
-                     t_peio=ORDINE_EXTRA, t_pelui=ORDINE_EXTRA,
+                                             ("m", "", ORDINE_APERTE), ("p", "", ORDINE_PESCATE), ("p", "x", ORDINE_PESCATE_X),
+                                             ("q", "", ORDINE_SCELTA), ("u", "", ORDINE_MANA))},
+                     t_peio=ORDINE_EXTRA, t_pelui=ORDINE_EXTRA, t_effio=ORDINE_EFF, t_efflui=ORDINE_EFF,
                      **{"s_" + k_: ORDINE_SITUA[o_] for k_, (_n, o_) in SITUA_NOMI.items()},
                      senza_lui=tuple(f"Their turn {n}" for n in SENZA) + ("The whole game",), **{f"luck{N}": FORTUNA for N in TURNI_FORTUNA},
-                     **{f"leak_l{i}": ("Yes", "No") for i in range(1, 9)}, **_VC.ORDINE, **_CM.ORDINE)
+                     **{f"leak_l{i}": ("Yes", "No") for i in range(1, 16)}, **_VC.ORDINE, **_CM.ORDINE, **ORDINE_PROB, **_TM.ORDINE, **_VP.ORDINE, mull_tabella=ORDINE_MULL_TAB, mull_60=ORDINE_MULL_60, durata=ORDINE_DURATA, **_DL.ORDINE)
 
 
 def per_varianti(r):
@@ -1090,6 +1380,8 @@ def valori_di(k, x):
         giorni = (datetime.datetime.now() - x["quando"]).days
         return [n for n, d in DATE if giorni < d]
     if k.startswith("t_"):       # turno per turno: tutti i tipi lanciati in quel turno (una creatura artefatto e' Creature e Artifact)
+        if esteso(k):            # in qualunque turno / dal turno 11: le voci di tutti quei turni, una volta (passa li' guarda turno per turno)
+            return list(dict.fromkeys(v for t_ in turni_di(k, x) for v in t_))
         return list((x.get("per_turno") or {}).get(k[2:]) or [])
     # le soglie (13 nov 2026): una partita sta in ogni «entro il turno N» che la comprende, come le date
     if k == "fine_entro":
@@ -1151,6 +1443,9 @@ def passa(x, filtri):
             continue
         if k == "wr_rif":       # non e' un filtro della singola partita: lo applica filtra, dopo gli altri (finestra_wr)
             continue
+        elif esteso(k):         # qualunque turno / dal turno 11: un turno che abbia tutte le voci scelte
+            if (v or v == 0) and not passa_turni(k, x, v):
+                return False
         elif isinstance(v, (list, tuple)):
             if not v:
                 continue
@@ -1745,7 +2040,7 @@ COPPIE = ("mio", "suo", "colori", "vs", "partenza", "mull", "terre", "lunga", "r
 FDR = 0.05          # gli spot «strong»: i falsi positivi attesi fra loro (Benjamini-Hochberg)
 # le variabili che sono il risultato, non una situazione: negli Spots spiegherebbero da sole il win rate (13 nov 2026, le simulazioni: in testa «Opponent
 # conceded» al 100% e «la tua vita piu' bassa: 0 o meno» allo 0%). Restano filtri; Result non c'era gia'
-FUORI_SPOT = {"fine", "s_vita_io", "s_vita_lui", "leak_l7", "versione"}      # versione: una per mazzo, gli Spots sarebbero rumore; leak_l7 e' sempre una sconfitta (una concessione): spiegherebbe il risultato
+FUORI_SPOT = {"fine", "s_vita_io", "s_vita_lui", "leak_l7", "leak_l9", "versione", "p_max", "p_min", "forma", "svolta"}      # la P della partita: spiega il risultato      # versione: una per mazzo, gli Spots sarebbero rumore; leak_l7 e' sempre una sconfitta (una concessione): spiegherebbe il risultato
 
 
 def spot(r, minimo=15, quanti=8, coppie=True, gia=None):
@@ -2379,6 +2674,24 @@ def prova():
     finally:
         _STORIE.clear()
         _STORIE.update(vecchie)
+    # la mano da 7 contro la tabella del mulligan (14 nov 2026)
+    casi.append(("mull_tabella: tenuta a 3 terre = la tabella tiene; rimandata a 4 terre = la tabella teneva; tenuta a 6 = la tabella fa mulligan",
+                 mull_tabella(dict(mulligan=0, terre=3)) == ORDINE_MULL_TAB[0] and mull_tabella(dict(mulligan=1, scartate=[4], terre=3)) == ORDINE_MULL_TAB[3]
+                 and mull_tabella(dict(mulligan=0, terre=6)) == ORDINE_MULL_TAB[2]))
+    casi.append(("Constructed: la regola a 60 carte; 1 terra tenuta e' un mulligan, 3 terre ideale, 5 terre dipende; negativa: nel Limited None",
+                 mull_60(dict(tipo="Constructed", mulligan=0, terre=1)) == ORDINE_MULL_60[2] and mull_60(dict(tipo="Constructed", mulligan=0, terre=3)) == ORDINE_MULL_60[0]
+                 and mull_60(dict(tipo="Constructed", mulligan=0, terre=5)) == ORDINE_MULL_60[1] and mull_60(dict(tipo="Limited", mulligan=0, terre=3)) is None
+                 and LEGGI["mull_tabella"](dict(tipo="Constructed", mulligan=0, terre=3)) is None))
+    casi.append(("negativa: rimandata a 0 terre non e' un errore (la tabella fa mulligan); 1 terra e' pari; senza dati None",
+                 mull_tabella(dict(mulligan=1, scartate=[0])) == ORDINE_MULL_TAB[4] and mull_tabella(dict(mulligan=0, terre=1)) == ORDINE_MULL_TAB[1]
+                 and mull_tabella(dict(mulligan=0)) is None))
+    # i turni estesi (14 nov 2026): dal turno 11 e «qualunque turno»; un turno che abbia tutte le voci
+    pt = turni_estesi({"io1": ["Creature"], "io11": ["Instant", "Instant"], "aio2": ["No attack"]})
+    xt = dict(per_turno=pt)
+    casi.append(("turni estesi: il turno 11 va in «11+» e in «any», i turni 1-10 restano anche da soli", pt.get("io1") == ["Creature"] and "io11" not in pt
+                 and pt["ioL"] == [["Instant", "Instant"]] and pt["ioA"] == [["Creature"], ["Instant", "Instant"]]))
+    casi.append(("any turn: due istantanei nello stesso turno passano; negativa: una creatura e un istantaneo non stanno nello stesso turno",
+                 passa(xt, {"t_ioA": ["Instant", "Instant"]}) and not passa(xt, {"t_ioA": ["Creature", "Instant"]})))
     for n, ok in casi:
         print(("ok    " if ok else "ROSSO ") + n)
     print(f"{sum(1 for _n, ok in casi if ok)}/{len(casi)}")

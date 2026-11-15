@@ -377,7 +377,17 @@ class PaginaCollezione(Pagina):
         self.t_formato.set("All"); self.t_modo.set(CC.MODI[0]); self.t_copie.set("Any"); self.t_ordine.set("Color")
         self.cerca()
 
-    FORMATI_COLL = ("All", "Standard", "Alchemy", "Explorer", "Historic", "Timeless", "Brawl", "Standard Brawl")
+    FORMATI_COLL = ("All", "Standard", "Alchemy", "Explorer", "Historic", "Timeless", "Brawl", "Standard Brawl", "Commander")
+    # l'identita' di colore del comandante del builder aperto (15 nov 2026, Brawl e Commander nell'editor): la Collection mostra solo le carte che quel mazzo puo'
+    # avere (903.5c); None = nessun filtro. La mette il builder (Costruttore.formato_collezione), non l'utente
+    IDENTITA = None
+    COMANDANTE = ""
+
+    def nell_identita(self, c):
+        """La carta sta nell'identita' del comandante del builder? Da Scryfall (carte.json, «i»), se no i colori della carta su Arena (le terre: gia' l'identita')."""
+        x = PZ.carta(c["nome"].replace(" /// ", " // "))
+        ident = x.get("i") if x and "i" in x else c.get("colori") or ""
+        return set(ident) <= set(self.IDENTITA)
 
     def nel_formato(self, fmt):
         """Le carte del formato: le legali e, dal 10 nov 2026, anche le bandite (in rosso, il filtro Legality le separa). Standard dal pool e dalla ban list (la carta lo sa,
@@ -421,6 +431,8 @@ class PaginaCollezione(Pagina):
         if self.t_formato.get() != "All" and len(leg) == 1:        # un flag solo: solo le legali o solo le bandite
             voluta = "banned" if "B" in leg else "legal"
             carte = [c for c in carte if self.legalita(c) == voluta]
+        if self.IDENTITA is not None:
+            carte = [c for c in carte if self.nell_identita(c)]
         self.trovate = CC.ordina(CC.filtra(carte, self.v_testo.get(), self.sets_on, False, self.s_colori.on, self.t_modo.get(),
                                            self.s_rarita.on, self.s_tipi.on, self.s_costi.on, self.t_copie.get(), self.mostra()), self.t_ordine.get(), self.v_testo.get())
         self.cv.yview_moveto(0)
@@ -447,7 +459,7 @@ class PaginaCollezione(Pagina):
         self.lista.nuova_pagina()
         n = max(1, self.colonne)
         self.cv.configure(scrollregion=(0, 0, self.cv.winfo_width(), (len(self.trovate) + n - 1) // n * self.alto_riga()))
-        self.titolo_carte.configure(text=f"CARDS · {len(self.trovate):,}")
+        self.titolo_carte.configure(text=f"CARDS · {len(self.trovate):,}" + (f" · IN {self.COMANDANTE.upper()}'S COLORS" if self.IDENTITA is not None else ""))
         if not self.trovate:
             self.cv.create_text(self.cv.winfo_width() / 2, 40, text="No cards", fill=C["testo"], font=self.F(9))
         self.vedi()

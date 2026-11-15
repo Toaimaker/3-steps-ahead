@@ -7,7 +7,7 @@ from ambiente import LOGDIR
 
 NOMI_FORMATO = {"TraditionalStandard": "Standard Bo3", "TraditionalExplorer": "Explorer Bo3", "TraditionalHistoric": "Historic Bo3", "TraditionalAlchemy": "Alchemy Bo3",
                 "TraditionalTimeless": "Timeless Bo3", "HistoricBrawl": "Brawl", "StandardBrawl": "Standard Brawl", "DirectGameLimited": "Limited", "": "Other"}
-ORDINE_FORMATI = ("Standard", "Standard Bo3", "Alchemy", "Alchemy Bo3", "Explorer", "Explorer Bo3", "Historic", "Historic Bo3", "Timeless", "Timeless Bo3", "Brawl", "Standard Brawl",
+ORDINE_FORMATI = ("Standard", "Standard Bo3", "Alchemy", "Alchemy Bo3", "Explorer", "Explorer Bo3", "Historic", "Historic Bo3", "Timeless", "Timeless Bo3", "Brawl", "Standard Brawl", "Commander",
                   "Gladiator", "Pioneer", "Modern", "Legacy", "Vintage", "Pauper")
 GRUPPI_FILE = os.path.join(LOGDIR, "mazzi_gruppi.json")
 GRUPPI_CHIUSI = set()

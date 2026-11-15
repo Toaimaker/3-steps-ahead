@@ -24,7 +24,7 @@ import re  # noqa: E402
 
 from ambiente import LOGDIR  # noqa: E402
 
-VERSIONE = 15       # 15 (13 nov 2026, Autore: «Sì, aggiungilo», la Reliquia rotta dopo il suo draw step): «attivate», ogni abilita' attivata (non di mana) di tutti e due, [turno, posto, grpId della carta, fase, step, chi e' di turno]; 14 (i leak L3 e L6): «fasi», la fase di ogni tua e sua magia lanciata ([turno, posto, grpId, fase di Arena]); 2: le foto della partita; 3: cimitero, esilio, forza e costituzione; 4: i momenti del combattimento e delle magie coi bersagli;
+VERSIONE = 19       # 19 (14 nov 2026): anche «surveil», le carte mandate al cimitero col surveil (ZoneTransfer, categoria Surveil; se le tieni sopra Arena non scrive niente); 18 (14 nov 2026, la pagella dell'enciclopedia): nelle azioni anche «scarta» (di chi era la carta), «contrastata» (di chi era la magia) e «scry» ([turno, chi, "scry", carte sopra, "carte sotto"]); 17 (14 nov 2026): la foto della magia in pila col pagamento (ManaPaid arriva nel messaggio dopo il lancio); 16 (14 nov 2026, Autore: «quando a una carta vengono aggiunti segnalini rendiamolo visibilmente piu' chiaro»): il settimo elemento di ogni carta in campo, i segnalini {tipo: quanti} (o None); 15 (13 nov 2026, Autore: «Sì, aggiungilo», la Reliquia rotta dopo il suo draw step): «attivate», ogni abilita' attivata (non di mana) di tutti e due, [turno, posto, grpId della carta, fase, step, chi e' di turno]; 14 (i leak L3 e L6): «fasi», la fase di ogni tua e sua magia lanciata ([turno, posto, grpId, fase di Arena]); 2: le foto della partita; 3: cimitero, esilio, forza e costituzione; 4: i momenti del combattimento e delle magie coi bersagli;
 #                    5: ogni istantaneo e stregoneria in pila (anche senza bersagli) e i permanenti che ha tolto dal campo (i board wipe);
 #                    6: per le partite lette dagli archivi, dove stanno («dove»: archivio, byte di inizio e di fine), per il replay azione per azione;
 #                    7: debug del 12 nov 2026: le cancellazioni, chi e' in campo dalle zone, le vite a 0, l'annullamento, emblemi e inneschi, i riassunti;
@@ -62,6 +62,33 @@ def vite_da(gs, vite):
     for pl in gs.get("players") or []:
         if pl.get("systemSeatNumber") in (1, 2):
             vite[pl["systemSeatNumber"]] = pl.get("lifeTotal", 0)
+
+
+def persistenti_da(gs, pers):
+    """Le annotazioni persistenti di Arena (i segnalini, i bersagli...): {id: annotazione}. Uno stato Full le rimanda tutte; le tolte stanno in
+    diffDeletedPersistentAnnotationIds."""
+    if gs.get("type") == "GameStateType_Full":
+        pers.clear()
+    for a in gs.get("persistentAnnotations") or []:
+        if a.get("id") is not None:
+            pers[a["id"]] = a
+    for x in gs.get("diffDeletedPersistentAnnotationIds") or []:
+        pers.pop(x, None)
+
+
+def segnalini(pers):
+    """I segnalini sui permanenti (14 nov 2026, Autore: «quando a una carta vengono aggiunti segnalini rendiamolo visibilmente piu' chiaro»): Arena li
+    tiene come annotazioni persistenti AnnotationType_Counter (counter_type, count) sull'oggetto. -> {id dell'oggetto: {tipo: quanti}}."""
+    out = {}
+    for a in pers.values():
+        if "AnnotationType_Counter" not in (a.get("type") or []):
+            continue
+        det = {x.get("key"): (x.get("valueInt32") or [None])[0] for x in a.get("details") or []}
+        if det.get("counter_type") is None or not det.get("count"):
+            continue
+        for x in a.get("affectedIds") or []:
+            out.setdefault(x, {})[det["counter_type"]] = det["count"]
+    return out
 
 
 def turno_da(gs, ti):
@@ -108,6 +135,7 @@ def leggi(righe):
     stato Full con prevGameStateId che torna indietro) toglie quello che era stato annotato da quello stato in poi; lo step vecchio nelle fasi principali."""
     obj, zone, ti = {}, {}, {}
     zown, zids, vite = {}, {}, {}
+    pers = {}           # le annotazioni persistenti: i segnalini (VERSIONE 16)
     # ogni cosa annotata porta lo stato del gioco in cui e' nata, cosi' un annullamento la toglie: [(stato, elemento)]
     st = dict(attacchi=[], fine=[], foto=[], momenti=[], mano0=None, pend=None, azioni=[], fasi=[], attivate=[])
     riassunti = 0
@@ -135,6 +163,7 @@ def leggi(righe):
 
     def foto():
         c, m, n, g, e = [[], []], [[], []], [0, 0], [[], []], [[], []]
+        seg = segnalini(pers)
         for zid, tp in zone.items():
             ids = zids.get(zid, [])
             if tp in ("ZoneType_Graveyard", "ZoneType_Exile"):
@@ -152,7 +181,7 @@ def leggi(righe):
                         crea = "CardType_Creature" in (o.get("cardTypes") or [])
                         c[o["controllerSeatId"] - 1].append([o["grpId"], 1 if o.get("isTapped") else 0, 1 if o["type"] == "GameObjectType_Token" else 0,
                                                              valore(o, "power") if crea else None, valore(o, "toughness") if crea else None,
-                                                             o.get("instanceId")])
+                                                             o.get("instanceId"), seg.get(i) or None])
             elif tp == "ZoneType_Hand" and zown.get(zid) in (1, 2):
                 k = zown[zid] - 1
                 n[k] = len(ids)
@@ -209,6 +238,7 @@ def leggi(righe):
                 zown[z.get("zoneId")] = z.get("ownerSeatId")
                 zids[z.get("zoneId")] = z.get("objectInstanceIds") or []     # una zona vuota arriva senza la lista
             vite_da(gs, vite)
+            persistenti_da(gs, pers)
             for o in gs.get("gameObjects") or []:
                 obj[o.get("instanceId")] = o
             for x in cancellati(gs):
@@ -238,6 +268,21 @@ def leggi(righe):
             t, att = ti.get("turnNumber"), ti.get("activePlayer")
             if t is None or att is None:
                 continue
+            # il pagamento arriva nel messaggio dopo il lancio (14 nov 2026, Autore: «vedo che scende prima la creatura e poi il mana per pagarla,
+            # dovrebbe essere l'inverso»): Arena scrive prima la magia che va in pila, poi ManaPaid con le terre tappate. La foto del momento della magia
+            # ancora in pila (la piu' recente) si rifa' col pagamento: le terre tappate stanno col lancio, non con la risoluzione
+            if any("AnnotationType_ManaPaid" in (a.get("type") or []) for a in gs.get("annotations") or []):
+                in_pila_ora = [v for i_, v in mom_di.items() if i_ in pila_ora and v[1][1] == t]
+                if in_pila_ora:
+                    max(in_pila_ora, key=lambda v: v[0])[1][3] = foto()
+            for a in gs.get("annotations") or []:      # anche arrivato insieme alla risoluzione: le sue fonti di mana tappate nella foto della magia
+                if "AnnotationType_ManaPaid" in (a.get("type") or []):
+                    for x in a.get("affectedIds") or []:
+                        if x in mom_di and mom_di[x][1][1] == t:
+                            for lato in mom_di[x][1][3]["c"]:
+                                for c_ in lato:
+                                    if len(c_) > 5 and c_[5] == a.get("affectorId"):
+                                        c_[1] = 1
             campo = ids_di("ZoneType_Battlefield")
             sul = [obj[i] for i in campo if i in obj]
             # le azioni del turno (13 nov 2026, Autore: «filtri avanzati per noi e per oppo ... che tipo di carte giochiamo: es t1 instant oppure T3 play creature
@@ -257,6 +302,14 @@ def leggi(righe):
                     g_ = (grp_vero(o, obj) if o else 0) or 0
                     st["attivate"].append((sid, [t, a["affectorId"], g_, ti.get("phase") or "", ti.get("step") or "", att]))
             for a in gs.get("annotations") or []:
+                if "AnnotationType_Scry" in (a.get("type") or []):     # lo scry (VERSIONE 18): quante carte sopra e quante in fondo
+                    sopra = [d_ for x_ in a.get("details") or [] if x_.get("key") == "topIds" for d_ in x_.get("valueInt32") or []]
+                    sotto = [d_ for x_ in a.get("details") or [] if x_.get("key") == "bottomIds" for d_ in x_.get("valueInt32") or []]
+                    o = obj.get(a.get("affectorId"))
+                    chi = (o.get("controllerSeatId") if o else None) or att
+                    if chi in (1, 2):
+                        st["azioni"].append((sid, [t, chi, "scry", len(sopra), str(len(sotto))]))
+                    continue
                 if "AnnotationType_ZoneTransfer" not in (a.get("type") or []):
                     continue
                 cat = next(((x.get("valueString") or [None])[0] for x in a.get("details") or [] if x.get("key") == "category"), None)
@@ -267,6 +320,13 @@ def leggi(righe):
                         for x in a.get("affectedIds") or []:
                             o = obj.get(x)
                             st["azioni"].append((sid, [t, chi, "pesca", (grp_vero(o, obj) if o else 0) or 0, ""]))
+                    continue
+                if cat in ("Discard", "Countered", "Surveil"):      # scarti e magie contrastate (VERSIONE 18), surveil al cimitero (19): di chi era la carta
+                    for x in a.get("affectedIds") or []:
+                        o = obj.get(x)
+                        chi = (o.get("controllerSeatId") if cat == "Countered" else o.get("ownerSeatId")) if o else None
+                        if chi in (1, 2):
+                            st["azioni"].append((sid, [t, chi, {"Discard": "scarta", "Countered": "contrastata", "Surveil": "surveil"}[cat], grp_vero(o, obj) or 0, ""]))
                     continue
                 if cat not in ("PlayLand", "CastSpell"):
                     continue
@@ -459,12 +519,109 @@ def tutti(ids=None, archivi=True):
     return dati
 
 
+def finestre_non_att(d, seat):
+    """Gli attacchi mancati (14 nov 2026, Autore: «quante volte dovevo attaccare e non l'ho fatto»): per ogni tuo turno senza attacco in cui avevi almeno una
+    creatura in grado di attaccare -> dict(t, scoperto, letale). Dalle foto di fine turno, senza altri dati:
+      in grado = una tua creatura gia' tua a fine del turno dell'altro (niente debolezza da evocazione) e stappata a fine del tuo turno (se non hai attaccato,
+                 una creatura tappata ha usato un'abilita');
+      scoperto = a fine del turno dell'altro lui aveva 0 terre stappate (il campo «fine») E nessuna creatura stappata che potesse bloccare (le sue creature che
+                 hanno attaccato restano tappate nel tuo turno);
+      letale   = la forza delle tue creature in grado arriva alle sue vite.
+    Non vede la mano di lui (trucchi, flash) ne' la tua scelta di tenere la creatura per difendere: e' una finestra in cui attaccare era sicuro, non un errore. None
+    se la partita non ha le foto. Una creatura con rapidita' lanciata nel turno non conta (non e' nella foto del turno prima): il numero e' un minimo di finestre."""
+    if not d or seat not in (1, 2) or not d.get("foto") or not d.get("fine"):
+        return None
+    lui = 2 if seat == 1 else 1
+    foto = {f[0]: f for f in d["foto"] if isinstance(f[2], dict)}
+    fine = {f[0]: f for f in d["fine"]}
+    attaccato = {a[0] for a in d.get("attacchi") or [] if a[1] == seat} | {m[1] for m in d.get("momenti") or [] if m[0] == "comb" and m[2] == seat}
+    out = []
+    for t, f in sorted(foto.items()):
+        if f[1] != seat or t in attaccato or t - 1 not in foto or foto[t - 1][1] != lui or t - 1 not in fine:
+            continue
+        prima, ora = foto[t - 1][2], f[2]
+        miei_prima = {c[5] for c in (prima.get("c") or [[], []])[seat - 1] if len(c) > 5}
+        pronti = [c for c in (ora.get("c") or [[], []])[seat - 1]
+                  if len(c) > 5 and c[3] is not None and not c[1] and c[5] in miei_prima]
+        if not pronti:
+            continue
+        bloccanti = [c for c in (prima.get("c") or [[], []])[lui - 1] if len(c) > 5 and c[3] is not None and not c[1]]
+        vita = (prima.get("v") or [None, None])[lui - 1]
+        scoperto = fine[t - 1][2] == 0 and not bloccanti
+        letale = vita is not None and sum(max(0, c[3] or 0) for c in pronti) >= vita
+        out.append(dict(t=t, scoperto=scoperto, letale=letale))
+    return out
+
+
+SCELTE_ATTACCO = ("Couldn't attack", "Didn't attack", "Attacked with some", "Attacked with everything")
+
+
+def scelte_attacco(d):
+    """La scelta d'attacco di ogni turno, per chi e' di turno (14 nov 2026, la pagella dell'enciclopedia, V3: «quando potevi attaccare»): {turno di Arena:
+    una di SCELTE_ATTACCO}. «Didn't attack»: aveva una creatura pronta (finestre_non_att, dalle foto di fine turno) e non ha attaccato; «Attacked with some» o
+    «with everything»: gli attaccanti contro chi poteva attaccare (il campo «pot» dei combattimenti); «Couldn't attack»: nessuna creatura pronta. Senza le
+    foto del turno prima (il primo turno, una partita letta prima delle foto) il turno senza attacco non c'e'."""
+    out = {}
+    if not d:
+        return out
+    for seat in (1, 2):
+        for w in finestre_non_att(d, seat) or []:
+            out[w["t"]] = SCELTE_ATTACCO[1]
+    foto = {f[0]: f[1] for f in d.get("foto") or [] if isinstance(f[2], dict)}
+    for t, chi in foto.items():
+        if t not in out and t - 1 in foto:
+            out[t] = SCELTE_ATTACCO[0]
+    for m in d.get("momenti") or []:
+        if m[0] == "comb" and m[4] and m[4].get("att"):
+            pot = m[4].get("pot")
+            out[m[1]] = SCELTE_ATTACCO[3] if pot and len(m[4]["att"]) >= pot else SCELTE_ATTACCO[2]
+    return out
+
+
+def letali_mancati(d, seat):
+    """M5, il letale sul tavolo non preso (14 nov 2026, Autore: «quante volte potevo essere letale e non l'ho visto?»): per ogni tuo turno in cui la forza
+    che passa anche se lui blocca con tutti i suoi bloccanti arriva alle sue vite, e lui a fine turno e' ancora vivo -> [dict(t, attaccato, forza, bloccanti,
+    vita)]. Dalle foto di fine turno:
+      le tue creature = quelle in campo a fine del suo turno (si stappano nel tuo) ancora in campo a fine del tuo, o morte attaccando in questo turno;
+      i suoi bloccanti = le sue creature stappate a fine del suo turno (quelle che hanno attaccato restano tappate nel tuo);
+      la forza che passa = la somma della tua forza tolte le b creature piu' forti (b = i suoi bloccanti: ognuno ne ferma una).
+    Non vede volare, minaccia, i suoi flash o una nebbia, le magie dalla tua mano, le creature col difensore: il numero e' un massimo (grado C). None senza le
+    foto. Prima (la bozza del 14 nov) il letale chiedeva anche lui scoperto e senza bloccanti, e sulle 544 partite non trovava nessun caso."""
+    if not d or seat not in (1, 2) or not d.get("foto"):
+        return None
+    lui = 2 if seat == 1 else 1
+    foto = {f[0]: f for f in d["foto"] if isinstance(f[2], dict)}
+    att = {}
+    for m in d.get("momenti") or []:
+        if m[0] == "comb" and m[2] == seat and m[4]:
+            att.setdefault(m[1], set()).update(a[0] for a in m[4].get("att") or [])
+    out = []
+    for t, f in sorted(foto.items()):
+        if f[1] != seat or t - 1 not in foto or foto[t - 1][1] != lui:
+            continue
+        prima, ora = foto[t - 1][2], f[2]
+        vita = (prima.get("v") or [None, None])[lui - 1]
+        vita_dopo = (ora.get("v") or [None, None])[lui - 1]
+        if vita is None or vita <= 0 or (vita_dopo is not None and vita_dopo <= 0):
+            continue
+        ora_ids = {c[5] for c in (ora.get("c") or [[], []])[seat - 1] if len(c) > 5}
+        mie = sorted((max(0, c[3] or 0) for c in (prima.get("c") or [[], []])[seat - 1]
+                      if len(c) > 5 and c[3] is not None and (c[5] in ora_ids or c[5] in att.get(t, ()))), reverse=True)
+        b = sum(1 for c in (prima.get("c") or [[], []])[lui - 1] if len(c) > 5 and c[3] is not None and not c[1])
+        passa = sum(mie[b:])
+        if mie and passa >= vita:
+            out.append(dict(t=t, attaccato=t in att, forza=passa, bloccanti=b, vita=vita))
+    return out
+
+
 def situazioni(d, seat):
     """Le situazioni del mana aperto di una partita, dal tuo posto: {chiave: True, False o None}."""
     chiavi = ("io_att_aperto", "io_att_chiuso", "lui_att_aperto", "io_passa_aperto", "lui_passa_aperto", "io_blocca", "io_difende", "io_tutto",
-              "io_tutto_aperto")
+              "io_tutto_aperto", "io_non_att_chiuso", "io_letale_mancato")
     if not d or seat is None:
         return {k: None for k in chiavi}
+    mancati = finestre_non_att(d, seat)
+    letali = letali_mancati(d, seat)
     mie = [a for a in d["attacchi"] if a[1] == seat]
     sue = [a for a in d["attacchi"] if a[1] != seat]
     fm = [f for f in d["fine"] if f[1] == seat and f[3] >= 3]      # dal momento che hai almeno 3 terre: prima passare con 2 aperte non e' una scelta
@@ -482,7 +639,9 @@ def situazioni(d, seat):
                 io_blocca=any(i.get("blocchi") for i in suoi) if suoi else None,
                 io_difende=(n_s > n_m) if n_s != n_m else None,
                 io_tutto=any(tutto(i) for i in miei) if miei else None,
-                io_tutto_aperto=any(tutto(i) for i in miei_ap) if miei_ap else None)
+                io_tutto_aperto=any(tutto(i) for i in miei_ap) if miei_ap else None,
+                io_non_att_chiuso=None if mancati is None else any(w["scoperto"] for w in mancati),
+                io_letale_mancato=None if letali is None else bool(letali))
 
 
 def prova():
@@ -520,8 +679,21 @@ def prova():
     df = leggi(fz)
     casi.append(("le foto: la mano tenuta al primo turno (la sua solo contata), la board a fine turno con tappata e pedina, le vite",
                  df["mano0"]["m"] == [[100, 200], []] and df["mano0"]["n"] == [2, 3] and df["foto"][0][:2] == [1, 1]
-                 and df["foto"][0][2]["c"] == [[[100, 1, 0, None, None, 3], [900, 0, 1, None, None, 4]], []] and df["foto"][0][2]["m"][0] == [200] and df["foto"][0][2]["v"] == [20, 17]
-                 and df["ultima"][0] == 1))
+                 and df["foto"][0][2]["c"] == [[[100, 1, 0, None, None, 3, None], [900, 0, 1, None, None, 4, None]], []] and df["foto"][0][2]["m"][0] == [200]
+                 and df["foto"][0][2]["v"] == [20, 17] and df["ultima"][0] == 1))
+    # i segnalini (14 nov 2026): l'annotazione persistente AnnotationType_Counter sull'oggetto; tolta (diffDeletedPersistentAnnotationIds) non c'e' piu'
+    seg_ann = lambda id_, chi, tipo, q: dict(id=id_, affectorId=4000 + id_, affectedIds=[chi], type=["AnnotationType_Counter"],
+                                             details=[dict(key="count", valueInt32=[q]), dict(key="counter_type", valueInt32=[tipo])])
+    pers = {}
+    persistenti_da(dict(type="GameStateType_Diff", persistentAnnotations=[seg_ann(70, 3, 1, 2), seg_ann(71, 3, 7, 4), seg_ann(72, 4, 2, 1)]), pers)
+    casi.append(("i segnalini sui permanenti: due +1/+1 e 4 di fedelta' sul 3, un -1/-1 sul 4", segnalini(pers) == {3: {1: 2, 7: 4}, 4: {2: 1}}))
+    persistenti_da(dict(type="GameStateType_Diff", diffDeletedPersistentAnnotationIds=[70, 72]), pers)
+    casi.append(("negativa: i segnalini tolti non ci sono piu', un'altra annotazione persistente non e' un segnalino",
+                 segnalini(pers) == {3: {7: 4}} and segnalini({1: dict(id=1, type=["AnnotationType_TargetSpec"], affectedIds=[3])}) == {}))
+    ult_ = json.loads(fz[-1].split(" ", 1)[1])
+    ult_["greToClientEvent"]["greToClientMessages"][0]["gameStateMessage"]["persistentAnnotations"] = [seg_ann(80, 3, 1, 1)]
+    fz2 = fz[:-1] + [gs(**ult_["greToClientEvent"]["greToClientMessages"][0]["gameStateMessage"])]
+    casi.append(("la foto porta i segnalini della carta in campo (il settimo campo)", leggi(fz2)["foto"][0][2]["c"][0][0] == [100, 1, 0, None, None, 3, {1: 1}]))
     # dagli archivi: un archivio finto con due partite, ritagliate per matchId; guardato una volta sola
     import tempfile
     global LOGDIR
@@ -575,6 +747,37 @@ def prova():
     sn = situazioni(dict(attacchi=[], fine=[], momenti=[cb(1, 1, 3, 3, False)]), 1)
     casi.append(("negativa: un attacco con 1 creatura su 3 contro mana aperto e' No; senza suoi attacchi il blocco non si sa (None)",
                  sn["io_tutto_aperto"] is False and sn["io_tutto"] is False and sn["io_blocca"] is None and sn["io_difende"] is False))
+    # gli attacchi mancati (14 nov 2026): lui (posto 2) fa il turno 1, tu (posto 1) il turno 2
+    def mancato(opp=None, stap=0, nuova=False, attacca=False, forza=2, vita=20, tappata=False, extra=(), vita_dopo=None):
+        mia = [10, 1 if tappata else 0, 0, forza, 2, 71]
+        c1_prima = [] if nuova else [[10, 0, 0, forza, 2, 71]]
+        f1 = dict(c=[c1_prima, [opp] if opp else []], v=[20, vita])         # a fine del turno di lui
+        f2 = dict(c=[[mia] + list(extra), [opp] if opp else []], v=[20, vita if vita_dopo is None else vita_dopo])       # a fine del tuo
+        return dict(attacchi=[[2, 1, stap, 2]] if attacca else [], fine=[[1, 2, stap, 2], [2, 1, 0, 2]], foto=[[1, 2, f1], [2, 1, f2]],
+                    momenti=[["comb", 2, 1, None, dict(att=[[71, 2]], blocchi=[])]] if attacca else [])
+    suo = lambda t: [20, t, 0, 3, 3, 72]
+    s1 = situazioni(mancato(), 1)
+    casi.append(("attacchi mancati: lui 0 terre aperte e campo vuoto, tu hai un 2/2 pronto e passi: conta (e non e' letale a 20 vite)",
+                 s1["io_non_att_chiuso"] is True and s1["io_letale_mancato"] is False))
+    casi.append(("attacchi mancati, negativa: lui ha un 3/3 stappato", situazioni(mancato(opp=suo(0)), 1)["io_non_att_chiuso"] is False))
+    casi.append(("attacchi mancati, una sua creatura tappata (ha attaccato) non blocca: conta", situazioni(mancato(opp=suo(1)), 1)["io_non_att_chiuso"] is True))
+    casi.append(("attacchi mancati, negativa: lui ha 2 terre stappate (e' il caso di «Held back against open mana»)",
+                 situazioni(mancato(stap=2), 1)["io_non_att_chiuso"] is False))
+    casi.append(("attacchi mancati, negativa: la creatura e' appena entrata (debolezza da evocazione)", situazioni(mancato(nuova=True), 1)["io_non_att_chiuso"] is False))
+    casi.append(("attacchi mancati, negativa: la creatura e' tappata a fine turno (ha usato un'abilita')", situazioni(mancato(tappata=True), 1)["io_non_att_chiuso"] is False))
+    casi.append(("negativa: hai attaccato, non e' un attacco mancato", situazioni(mancato(attacca=True), 1)["io_non_att_chiuso"] is False))
+    # M5, il letale sul tavolo non preso: la forza che passa coi suoi bloccanti arriva alle sue vite e lui resta vivo
+    casi.append(("M5: 5 di forza contro 5 vite, nessun bloccante, non attacchi: letale mancato", situazioni(mancato(forza=5, vita=5), 1)["io_letale_mancato"] is True))
+    casi.append(("M5: hai attaccato con 5 contro 5 vite e lui e' ancora a 5 (un trucco, un attacco parziale): conta, attaccato",
+                 (lambda w: w == [dict(t=2, attaccato=True, forza=5, bloccanti=0, vita=5)])(letali_mancati(mancato(forza=5, vita=5, attacca=True), 1))))
+    casi.append(("negativa M5: lui ha un 3/3 stappato, il tuo 5/5 viene bloccato: passa 0", situazioni(mancato(forza=5, vita=5, opp=suo(0)), 1)["io_letale_mancato"] is False))
+    casi.append(("M5: la sua creatura tappata (ha attaccato) non blocca: letale mancato", situazioni(mancato(forza=5, vita=5, opp=suo(1)), 1)["io_letale_mancato"] is True))
+    casi.append(("negativa M5: lui e' morto nel turno (vite 0 a fine turno)", situazioni(mancato(forza=5, vita=5, attacca=True, vita_dopo=0), 1)["io_letale_mancato"] is False))
+    casi.append(("negativa M5: la creatura appena entrata non conta (debolezza da evocazione)", situazioni(mancato(forza=5, vita=5, nuova=True), 1)["io_letale_mancato"] is False))
+    casi.append(("negativa M5: 2 di forza contro 20 vite", situazioni(mancato(), 1)["io_letale_mancato"] is False))
+    casi.append(("attacchi mancati, senza le foto la situazione e' None (non No)", situazioni(dict(attacchi=[], fine=[], momenti=[]), 1)["io_non_att_chiuso"] is None))
+    casi.append(("attacchi mancati, caso dubbio documentato: tieni la creatura a casa contro un suo contrattacco letale e lui e' scoperto = conta lo stesso",
+                 situazioni(mancato(), 1)["io_non_att_chiuso"] is True))
     # le azioni del turno: una terra giocata, una creatura lanciata; una terra messa in campo da un effetto no
     def zt_(i, cat):
         return dict(type=["AnnotationType_ZoneTransfer"], affectedIds=[i], details=[dict(key="category", valueString=[cat])])
@@ -596,6 +799,14 @@ def prova():
              annotations=[zd(60, 31), zd(61, 35), zd(62, 99)])]
     casi.append(("le pescate: la tua col grpId, la sua nascosta col suo posto; una verso una zona che non e' una mano no",
                  leggi(fd)["azioni"] == [[2, 1, "pesca", 300, ""], [2, 2, "pesca", 0, ""]]))
+    # VERSIONE 18: lo scarto (di chi era la carta), la magia contrastata (di chi l'aveva lanciata), lo scry (sopra e in fondo)
+    scry = dict(type=["AnnotationType_Scry"], affectorId=70, details=[dict(key="topIds", valueInt32=[1]), dict(key="bottomIds", valueInt32=[2, 3])])
+    fs_ = [gs(type="GameStateType_Full", zones=[dict(zoneId=31, type="ZoneType_Hand", ownerSeatId=1)], turnInfo=dict(turnNumber=4, activePlayer=1, phase="Phase_Main1")),
+           gs(type="GameStateType_Diff", gameObjects=[dict(instanceId=70, grpId=310, type="GameObjectType_Card", zoneId=31, controllerSeatId=1, ownerSeatId=1),
+                                                     dict(instanceId=71, grpId=311, type="GameObjectType_Card", zoneId=33, controllerSeatId=2, ownerSeatId=2)],
+              annotations=[zt_(70, "Discard"), zt_(71, "Countered"), scry, zt_(72, "Discard"), zt_(71, "Surveil")])]
+    casi.append(("VERSIONE 18: uno scarto tuo, una sua magia contrastata, uno scry con 1 sopra e 2 in fondo; negativa: lo scarto di un oggetto mai visto no",
+                 sorted(map(str, leggi(fs_)["azioni"])) == sorted(map(str, [[4, 1, "scry", 1, "2"], [4, 1, "scarta", 310, ""], [4, 2, "contrastata", 311, ""], [4, 2, "surveil", 311, ""]]))))
     casi.append(("i momenti: il combattimento coi blocchi, la magia col bersaglio, la fine del turno, in ordine",
                  [m_[0] for m_ in dm] == ["comb", "spell", "fine"] and {k: dm[0][4][k] for k in ("att", "blocchi")} == dict(att=[[10, 2]], blocchi=[[20, [10]]])
                  and dm[1][4]["g"] == 555 and dm[1][4]["bers"] == [20]))
@@ -609,6 +820,17 @@ def prova():
     casi.append(("un board wipe: il suo momento in pila, la tavola di prima e i due permanenti tolti", len(mw) == 1 and mw[0][4]["g"] == 777
                  and mw[0][4]["colpiti"] == [10, 20] and len(mw[0][3]["c"][0]) == 1))
     casi.append(("negativa: senza attaccanti niente momento di combattimento", not [m_ for m_ in leggi(fz)["momenti"] if m_[0] == "comb"]))
+    # il pagamento nel messaggio dopo il lancio (14 nov 2026): la foto del momento della magia ha la terra tappata; negativa: senza ManaPaid no
+    terra_ = lambda tap: dict(instanceId=30, grpId=300, type="GameObjectType_Card", zoneId=28, controllerSeatId=2, ownerSeatId=2, cardTypes=["CardType_Land"],
+                              **({"isTapped": True} if tap else {}))
+    fp0 = [gs(type="GameStateType_Full", zones=[dict(zoneId=28, type="ZoneType_Battlefield", objectInstanceIds=[30]), dict(zoneId=27, type="ZoneType_Stack")],
+              turnInfo=dict(turnNumber=6, activePlayer=2, step="Step_Main1"), gameObjects=[terra_(False)]),
+           gs(type="GameStateType_Diff", zones=[dict(zoneId=27, type="ZoneType_Stack", objectInstanceIds=[50])], gameObjects=[sw(50)])]
+    pag_ = gs(type="GameStateType_Diff", gameObjects=[terra_(True)], annotations=[dict(type=["AnnotationType_ManaPaid"], affectorId=30, affectedIds=[50])])
+    nop_ = gs(type="GameStateType_Diff", gameObjects=[terra_(True)])
+    tap_m = lambda righe_: [m_ for m_ in leggi(righe_)["momenti"] if m_[0] == "spell"][0][3]["c"][1][0][1]
+    casi.append(("il pagamento sta col lancio: nel momento della magia la terra e' tappata; negativa: senza ManaPaid resta com'era al lancio",
+                 tap_m(fp0 + [pag_]) == 1 and tap_m(fp0 + [nop_]) == 0))
     # Settle the Wreckage (13 nov 2026): il bersaglio e' il giocatore 1; la magia esilia la creatura 10 (affectorId, col cambio d'id), la 20 muore per altro
     def settle(affettore, costo=False):
         es = dict(type=["AnnotationType_ZoneTransfer"], affectedIds=[11], details=[dict(key="zone_src", valueInt32=[28]), dict(key="category", valueString=["Exile"])])

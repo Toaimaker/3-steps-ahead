@@ -17,14 +17,25 @@ if _casa not in sys.path:
 import percorsi  # noqa: E402,F401
 import piattaforma  # noqa: E402
 
-from tema import CI as C  # noqa: E402
+from tema import CYBER  # noqa: E402
 from widget import ROSSO_P, VERDE_P, pulsante_solido  # noqa: E402
 
-FONDO = "#0a0d12"           # il corpo: piu' scuro del foglio, cosi' il menu si stacca
-TESTA = "#121722"           # la testata
-RIGA_SU = "#18202c"         # la riga sotto il mouse
-NEON = C["accento"]         # #24baff
-NEON_TENUE = "#6fb6ff"      # le sezioni
+# i neon sci-fi (15 nov 2026, Autore: «impostiamo delle tonalità colori in linea con lo stile per menu e linee, roba tipo sci fi cyber punk»): bordo e barre in
+# ciano, sezioni in magenta, fondi blu notte (tema.CYBER). Fino a quel giorno azzurro dell'app (#24baff) e fondi grigio-blu
+FONDO = CYBER["fondo"]      # il corpo: piu' scuro del foglio, cosi' il menu si stacca
+TESTA = CYBER["testa"]      # la testata
+RIGA_SU = CYBER["riga"]     # la riga sotto il mouse
+NEON = CYBER["ciano"]       # il bordo, la barra della testata e delle righe
+NEON_TENUE = CYBER["sezione"]       # le sezioni
+NEON_2 = CYBER["magenta"]   # il tratto magenta sotto la testata
+# i testi: solo bianco e grigi chiari, in ordine di importanza (15 nov 2026, Autore: «nei menu e sotto menu del board editor tieni i colori dei testi bianchi
+# e grigi chiari in ordine di importanza»). I neon restano sui bordi, sulle barre e sui fili, mai sui testi; una voce che toglie (rossa) ha la barra rossa,
+# il testo bianco
+T_TITOLO = "#ffffff"        # la testata, le voci, i nomi
+T_SEZIONE = "#dde3ec"       # i nomi delle sezioni e dei campi
+T_RIGA = "#b9c2cf"          # la riga sotto una voce, i conti a destra
+T_PIEDE = "#9ba5b4"         # il piede, la ✕
+T_SPENTO = "#7a8494"        # una voce spenta
 AZZURRO_P = ("#0f86cc", "#2ba3ea", "#0b5f94")
 GRIGIO_P = ("#2a2a32", "#383842", "#1f1f25")
 COLORI_P = dict(primario=AZZURRO_P, salva=VERDE_P, pericolo=ROSSO_P, secondario=GRIGIO_P)
@@ -45,14 +56,17 @@ class Menu:
         testa = tk.Frame(self.dentro, bg=TESTA)
         testa.pack(fill="x")
         tk.Frame(testa, bg=self.colore, width=3).pack(side="left", fill="y")
-        self.l_titolo = tk.Label(testa, text=titolo.upper(), bg=TESTA, fg="#ffffff", font=F(9, True), anchor="w")
+        self.l_titolo = tk.Label(testa, text=titolo.upper(), bg=TESTA, fg=T_TITOLO, font=F(9, True), anchor="w")
         self.l_titolo.pack(side="left", padx=(10, 24), pady=8)
-        x = self.x = tk.Label(testa, text="✕", bg=TESTA, fg=C["muto"], font=F(9, True), cursor="hand2", padx=10)
+        x = self.x = tk.Label(testa, text="✕", bg=TESTA, fg=T_PIEDE, font=F(9, True), cursor="hand2", padx=10)
         x.pack(side="right")
         x.bind("<Enter>", lambda e: x.configure(fg="#ffffff"))
-        x.bind("<Leave>", lambda e: x.configure(fg=C["muto"]))
+        x.bind("<Leave>", lambda e: x.configure(fg=T_PIEDE))
         x.bind("<Button-1>", lambda e: self.chiudi())
-        tk.Frame(self.dentro, bg=C["filo"], height=1).pack(fill="x")
+        # sotto la testata il tratto magenta che continua nel filo blu: un neon a due tubi
+        filo = tk.Frame(self.dentro, bg=FONDO, height=2); filo.pack(fill="x")
+        tk.Frame(filo, bg=NEON_2, height=2, width=46).pack(side="left")
+        tk.Frame(filo, bg=CYBER["filo"], height=1).pack(side="left", fill="x", expand=True)
         self.corpo = tk.Frame(self.dentro, bg=FONDO)
         self.corpo.pack(fill="both", expand=True, pady=(4, 6))
         if larga:
@@ -71,8 +85,8 @@ class Menu:
         tk = self.tk
         r = tk.Frame(self.corpo, bg=FONDO)
         r.pack(fill="x", padx=12, pady=(10, 3))
-        tk.Label(r, text=nome.upper(), bg=FONDO, fg=NEON_TENUE, font=self.F(7, True)).pack(side="left")
-        tk.Frame(r, bg=C["filo"], height=1).pack(side="left", fill="x", expand=True, padx=(8, 0), pady=(2, 0))
+        tk.Label(r, text=nome.upper(), bg=FONDO, fg=T_SEZIONE, font=self.F(7, True)).pack(side="left")
+        tk.Frame(r, bg=CYBER["filo"], height=1).pack(side="left", fill="x", expand=True, padx=(8, 0), pady=(2, 0))
         return r
 
     def voce(self, titolo, riga, fa, colore=None, spenta=False, chiudi=True, destra=None):
@@ -85,13 +99,13 @@ class Menu:
         barra.pack(side="left", fill="y")
         testi = tk.Frame(r, bg=FONDO)
         testi.pack(side="left", fill="x", expand=True, padx=(8, 6), pady=4)
-        a = tk.Label(testi, text=titolo, bg=FONDO, fg=C["muto"] if spenta else (colore or "#ffffff"), font=F(9, True), anchor="w")
+        a = tk.Label(testi, text=titolo, bg=FONDO, fg=T_SPENTO if spenta else T_TITOLO, font=F(9, True), anchor="w")
         a.pack(fill="x")
-        b = tk.Label(testi, text=riga, bg=FONDO, fg=C["muto"] if spenta else C["grigio"], font=F(7), anchor="w", justify="left")
+        b = tk.Label(testi, text=riga, bg=FONDO, fg=T_SPENTO if spenta else T_RIGA, font=F(7), anchor="w", justify="left")
         b.pack(fill="x")
         tutti = [r, testi, a, b]
         if destra:
-            d = tk.Label(r, text=destra, bg=FONDO, fg=C["grigio"], font=F(8, True))
+            d = tk.Label(r, text=destra, bg=FONDO, fg=T_RIGA, font=F(8, True))
             d.pack(side="right", padx=(0, 6))
             tutti.append(d)
         self.voci[titolo] = fa
@@ -121,15 +135,15 @@ class Menu:
 
     def etichetta(self, padre, testo):
         """Il nome di un campo, in maiuscolo grigio."""
-        lb = self.tk.Label(padre, text=testo.upper(), bg=FONDO, fg=C["muto"], font=self.F(7, True), anchor="w")
+        lb = self.tk.Label(padre, text=testo.upper(), bg=FONDO, fg=T_SEZIONE, font=self.F(7, True), anchor="w")
         lb.pack(fill="x", pady=(4, 2))
         return lb
 
     def campo(self, padre, var, larga=28, righe=None):
         """Una casella di testo (righe: un Text su piu' righe) col bordo che si accende di azzurro quando ci scrivi. -> la casella."""
         tk = self.tk
-        kw = dict(bg=TESTA, fg="#ffffff", insertbackground="#ffffff", relief="flat", font=self.F(10), highlightthickness=1,
-                  highlightbackground=C["filo"], highlightcolor=NEON)
+        kw = dict(bg=TESTA, fg=T_TITOLO, insertbackground=T_TITOLO, relief="flat", font=self.F(10), highlightthickness=1,
+                  highlightbackground=CYBER["filo"], highlightcolor=NEON)
         if righe:
             e = tk.Text(padre, width=larga, height=righe, wrap="word", padx=8, pady=6, **kw)
         else:
@@ -139,8 +153,8 @@ class Menu:
 
     def lista(self, padre, righe=8, larga=40):
         """Una lista (Listbox) nello stile: fondo scuro, riga scelta azzurra, niente bordi. -> la lista."""
-        lb = self.tk.Listbox(padre, bg=TESTA, fg=C["testo"], selectbackground=NEON, selectforeground="#ffffff", relief="flat", bd=0, highlightthickness=1,
-                             highlightbackground=C["filo"], highlightcolor=C["filo"], font=self.F(10), activestyle="none", height=righe, width=larga)
+        lb = self.tk.Listbox(padre, bg=TESTA, fg=T_TITOLO, selectbackground=NEON, selectforeground="#ffffff", relief="flat", bd=0, highlightthickness=1,
+                             highlightbackground=CYBER["filo"], highlightcolor=CYBER["filo"], font=self.F(10), activestyle="none", height=righe, width=larga)
         lb.pack(fill="x", pady=(6, 0))
         return lb
 
@@ -161,8 +175,8 @@ class Menu:
     def piede(self, testo):
         """La riga d'aiuto in fondo, piccola e grigia, sopra un filo."""
         tk = self.tk
-        tk.Frame(self.corpo, bg=C["filo2"], height=1).pack(fill="x", padx=12, pady=(10, 0))
-        tk.Label(self.corpo, text=testo, bg=FONDO, fg=C["muto"], font=self.F(7), anchor="w", justify="left", wraplength=330).pack(fill="x", padx=12, pady=(6, 2))
+        tk.Frame(self.corpo, bg=CYBER["filo"], height=1).pack(fill="x", padx=12, pady=(10, 0))
+        tk.Label(self.corpo, text=testo, bg=FONDO, fg=T_PIEDE, font=self.F(7), anchor="w", justify="left", wraplength=330).pack(fill="x", padx=12, pady=(6, 2))
 
     def posa(self, sotto=None, xy=None, fuoco=None):
         """La mette sotto il widget sotto (allineata a sinistra), o in xy (coordinate dello schermo), o accanto al puntatore; dentro lo schermo; sopra la sua
@@ -213,6 +227,12 @@ def prova():
     voce.event_generate("<Button-1>"); root.update()
     casi.append(("la voce chiude la finestrella e fa la sua azione", fatto == ["sel"] and not m.p.winfo_exists()))
     casi.append(("Save nei colori verdi, Delete in quelli rossi", "Save" in bb and "Delete" in bb))
+    m5 = Menu(tk, F, root, "Testi"); m5.sezione("Uno"); m5.voce("Via", "toglie", lambda: None, colore="#d9534f"); m5.voce("Spenta", "x", lambda: None, spenta=True)
+    m5.piede("piede"); m5.posa(xy=(-2800, 10)); root.update()
+    fg5 = {w.cget("fg").lower() for w in _tutti(m5.p) if isinstance(w, tk.Label) and w.cget("text")}
+    casi.append(("i testi solo bianco e grigi chiari (anche la voce rossa: rossa e' la barra)", fg5 <= {T_TITOLO, T_SEZIONE, T_RIGA, T_PIEDE, T_SPENTO}
+                 and all(int(c[1:3], 16) >= 0x70 and abs(int(c[1:3], 16) - int(c[5:7], 16)) <= 0x20 for c in fg5)))
+    m5.distruggi()
     m2 = Menu(tk, F, root, "Line"); m2.posa(xy=(-2800, 10)); root.update()
     m2.p.event_generate("<Escape>"); root.update()
     casi.append(("Esc la chiude", not m2.p.winfo_exists()))

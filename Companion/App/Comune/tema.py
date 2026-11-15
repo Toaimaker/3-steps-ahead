@@ -34,6 +34,10 @@ CI.update(fondo="#090b0f", scheda="#10141b", cap="#161b25", testa="#0d1016", fil
 RD = dict(p0="#0e1117", p1="#131720", p2="#181d28", p3="#1e2431", campo="#0b0e14", luce="#20262f", ombra="#050608",
           filo="#1d222b", filo2="#2a303b", riga="#121620", riga2="#0f131a", oro="#e9b949", vinto="#3ccf8e", perso="#ff5d63",
           acc2="#1a6fd6", glow="#2f9bff")
+# i neon del Board (15 nov 2026, Autore: «impostiamo delle tonalità colori in linea con lo stile per menu e linee, roba tipo sci fi cyber punk per tabelle
+# gruppi e linee»): ciano e magenta come coppia principale, poi i neon delle linee e dei gruppi; fondi blu notte piu' scuri di quelli dell'app
+CYBER = dict(ciano="#00e5ff", magenta="#ff2fd2", viola="#a35bff", acido="#b8ff3c", ambra="#ffb52e", laser="#ff3d5a", rosa="#ff7ac8", cromo="#c3d3e6",
+             fondo="#070910", testa="#0d1120", riga="#141a2e", filo="#1f2a44", sezione="#ff6fdc")
 # i colori del tier del mazzo (S A B C D, rating_mazzi.tier): li usano la finestra grande e quella dei mazzi
 COL_TIER = {"S": CI["arancio"], "A": CI["verde"], "B": CI["azzurro"], "C": CI["grigio"], "D": CI["rosso"], "?": CI["muto"]}
 VINTA, PERSA = CI["azzurro"], CI["rosso"]   # il grafico delle vinte e delle perse (vedi sopra: controllati per i daltonici)

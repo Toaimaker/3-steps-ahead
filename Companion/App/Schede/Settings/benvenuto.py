@@ -230,7 +230,7 @@ class Benvenuto:
         c.create_text(32, 176, text="You're ready", anchor="w", fill=C["titolo"], font=FN(22))
         c.create_text(32, 206, text="How to get the most out of the app:", anchor="w", fill=C["testo"], font=F(10))
         righe = (("Keep the app open while you play.", "Arena overwrites its log at every start: the app saves each finished game within 30 s."),
-                 ("Everything fills in by itself.", "Meta, Your decks, Performance, Resources and Collection read your games, no import needed."),
+                 ("Everything fills in by itself.", "Meta, Your decks, Leak Finder, Resources and Collection read your games, no import needed."),
                  ("Limited: open the Drafter tab.", "It follows your picks, your deck and your games on its own."),
                  ("Close the app in sanctioned competitive events", "(Arena Championship and its qualifiers): outside help is not allowed there."),
                  ("Settings and Help are always there.", "Settings changes these choices, Help explains every tab; bottom right, the version button."))

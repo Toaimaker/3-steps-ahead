@@ -38,6 +38,18 @@ SALTA = {"token", "double_faced_token", "art_series", "emblem", "planar", "schem
 AGENTE = "MagicArenaCompanion/1.0"
 
 _CACHE, _INFO, _CHIAVE = None, None, threading.Lock()
+VERSIONE_CARTE = 2      # carte.json: 2 dal 15 nov 2026 (identita' di colore e segni da comandante); una versione diversa si rifa' dal bulk sul disco
+
+
+def versione_carte():
+    try:
+        with open(CARTE, encoding="utf-8") as g:
+            testa = g.read(200)
+        import re as _re
+        m = _re.search(r'"v":(\d+)', testa)
+        return int(m.group(1)) if m else 1
+    except OSError:
+        return None
 
 
 def _numero(x):
@@ -49,6 +61,34 @@ def _numero(x):
 
 def _minimo(a, b):
     return b if a is None else a if b is None else min(a, b)
+
+
+def segni_comandante(d):
+    """I segni da comandante di una carta di Scryfall, letti dalle righe del testo Oracle (le regole: Regole/MagicCompRules.txt 903.3a, 702.124):
+    -> (segni, partner) con segni in lettere: «a» il testo dice che puo' essere il tuo comandante (903.3a), «p» partner (702.124h), «c» choose a Background
+    (702.124k), «g» e' un Background leggendario, «d» Doctor's companion (702.124m), «t» e' un Time Lord Doctor senza altri tipi di creatura; partner: «with:<nome>»
+    per partner with (702.124j), «text:<testo>» per partner—[testo] e Friends forever (702.124i), se no "". Le varianti non si mescolano (702.124f)."""
+    facce = d.get("card_faces") or [d]
+    righe = [r.strip().lower() for x in facce for r in (x.get("oracle_text") or "").splitlines()]
+    righe = [r.split(" (")[0].strip() for r in righe]
+    tipo = d.get("type_line") or ""
+    s, partner = "", ""
+    s += "a" if any("can be your commander" in r for r in righe) else ""
+    for r in righe:
+        if r == "partner":
+            s += "p"
+        elif r.startswith("partner with "):
+            partner = "with:" + r[len("partner with "):].strip()
+        elif r.startswith("partner—"):
+            partner = "text:" + r.split("—", 1)[1].strip()
+        elif r == "friends forever":
+            partner = "text:friends forever"
+    s += "c" if "choose a background" in righe else ""
+    sotto = tipo.split(" — ")[-1] if " — " in tipo else ""
+    s += "g" if "Legendary" in tipo and "Enchantment" in tipo and sotto.split() == ["Background"] else ""
+    s += "d" if "doctor's companion" in righe else ""
+    s += "t" if "Legendary" in tipo and "Creature" in tipo and sotto.strip() == "Time Lord Doctor" else ""
+    return s, partner
 
 
 def costruisci(f=None):
@@ -67,7 +107,9 @@ def costruisci(f=None):
                                        t=d.get("type_line") or " // ".join(x.get("type_line", "") for x in facce),
                                        p="".join(k for k in "WUBRGC" if k in (d.get("produced_mana") or [])),
                                        l=" ".join(k for k in FORMATI if leg.get(k) == "legal"), r=" ".join(k for k in FORMATI if leg.get(k) == "restricted"),
-                                       b=" ".join(k for k in FORMATI if leg.get(k) == "banned"))      # dove e' bandita (10 nov 2026: le bandite in rosso nella Collection)
+                                       b=" ".join(k for k in FORMATI if leg.get(k) == "banned"),      # dove e' bandita (10 nov 2026: le bandite in rosso nella Collection)
+                                       # Brawl e Commander nell'editor (15 nov 2026): l'identita' di colore (903.4) e i segni da comandante (903.3, 702.124)
+                                       i="".join(k for k in "WUBRG" if k in (d.get("color_identity") or [])), **{k_: v_ for k_, v_ in zip(("k", "pa"), segni_comandante(d)) if v_})
             if d.get("layout") in SALTA or "paper" not in (d.get("games") or []) and "mtgo" not in (d.get("games") or []):
                 continue
             p = d.get("prices") or {}
@@ -90,7 +132,7 @@ def scrivi(f=None):
     global _CACHE, _INFO
     d = costruisci(f)
     info = d.pop("info")
-    for dest, dati in ((PREZZI, d), (CARTE, dict(data=d["data"], carte=info))):
+    for dest, dati in ((PREZZI, d), (CARTE, dict(data=d["data"], v=VERSIONE_CARTE, carte=info))):
         tmp = dest + ".tmp"
         with open(tmp, "w", encoding="utf-8") as g:
             json.dump(dati, g, ensure_ascii=False, separators=(",", ":"))
@@ -139,7 +181,8 @@ def aggiorna():
             scarica()
             return True
         f = sorted(glob.glob(os.path.join(CARTELLA, "*.jsonl.gz")))[-1]
-        if not os.path.exists(PREZZI) or not os.path.exists(CARTE) or os.path.getmtime(PREZZI) < os.path.getmtime(f):
+        if (not os.path.exists(PREZZI) or not os.path.exists(CARTE) or os.path.getmtime(PREZZI) < os.path.getmtime(f)
+                or versione_carte() != VERSIONE_CARTE):
             scrivi(f)
             return True
     except Exception:
@@ -181,6 +224,7 @@ def prezzo(nome):
     c = tutti()["carte"]
     if nome.startswith("A-"):
         return None
+    nome = nome.replace(" /// ", " // ")      # Arena scrive le split con tre barre, Scryfall con due (15 nov 2026)
     return c.get(nome) or c.get(nome.split(" // ")[0].strip())
 
 
@@ -202,6 +246,7 @@ def carta(nome):
             for n, v in list(_INFO.items()):
                 if " // " in n:
                     _INFO.setdefault(n.split(" // ")[0], v)
+    nome = nome.replace(" /// ", " // ")
     return _INFO.get(nome) or _INFO.get(nome.split(" // ")[0].strip())
 
 
