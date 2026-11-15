@@ -50,6 +50,36 @@ SPLIT = 0.56                            # nella fila dietro: le terre fino al 56
 # la riserva di mana (15 nov 2026, Autore: «costruiamolo invece in basso a sx poco sotto l'area your lands cosi' vediamo il mana accumulato e poi
 # speso»): una vaschetta sotto le tue terre (la sua sopra le sue), dove arrivano i simboli dalle terre e da dove partono verso la magia
 POOL_W, POOL_TESTO = 236, 64            # larga; lo spazio della scritta MANA a sinistra, poi i simboli
+POOL_MAX_SOLI = 6                       # oltre, i simboli uguali si impilano col numero (15 nov 2026)
+SCUDO_W, SCUDO_H = 34, 41               # gli scudi degli emblemi sotto il cerchio delle vite (15 nov 2026)
+# i colori degli scudi: il colore della carta (W U B R G), oro se multicolore, grigio se incolore
+COLORI_SCUDO = dict(W=(236, 226, 186), U=(52, 132, 226), B=(64, 56, 72), R=(214, 58, 46), G=(36, 150, 84), M=(214, 170, 60), C=(150, 156, 168))
+_PARADIGMI = None
+
+
+def paradigmi():
+    """{nome della carta: i suoi colori} delle carte con Paradigm, dal pool dello Standard (15 nov 2026, Autore: «cerca tutti i paradigm e crea i loro
+    scudi»). Paradigm (SOS): dopo la prima risoluzione la carta resta in esilio e a ogni tua prima fase principale puoi lanciarne una copia gratis; quindi
+    una carta con Paradigm nell'esilio del suo proprietario e' un Paradigm attivo (grado C: un esilio da un altro effetto non si distingue). I set nuovi
+    con la parola entrano da soli dopo aggiorna_standard.py."""
+    global _PARADIGMI
+    if _PARADIGMI is None:
+        _PARADIGMI = {}
+        try:
+            import json
+            with open(os.path.join(percorsi.ROOT, "Regole", "standard_carte.json"), encoding="utf-8") as fh:
+                for c_ in json.load(fh):
+                    if "Paradigm" in (c_.get("oracle") or ""):
+                        _PARADIGMI[c_["name"]] = c_.get("colors") or ""
+                        _PARADIGMI[c_["name"].split(" // ")[0]] = c_.get("colors") or ""
+        except (OSError, ValueError):
+            pass
+    return _PARADIGMI
+
+
+def colore_scudo(colori):
+    colori = [c_ for c_ in (colori or "") if c_ in "WUBRG"]
+    return COLORI_SCUDO["M" if len(colori) > 1 else (colori[0] if colori else "C")]
 
 
 def disposizione(mano=True):
@@ -631,6 +661,91 @@ class Tappeto:
         if n > 1 and passo * (n - 1) > xb - xa:
             passo = (xb - xa) / (n - 1)
         return [(xa + k * passo, (y0 + y1) / 2) for k in range(n)], lato
+
+    def posti_pool_gruppi(self, chi, colori):
+        """Come posti_pool, per una lista di colori (15 nov 2026, Autore: «se in mana pool accumuliamo piu' di 6 palline contemporaneamente comincia a
+        impilare le simili con numero di quantita'»): fino a POOL_MAX_SOLI un posto per simbolo; oltre, un posto per colore, nell'ordine in cui arrivano.
+        -> ([(x, y) per simbolo], lato, [indice del posto per simbolo])."""
+        colori = list(colori)
+        if len(colori) <= POOL_MAX_SOLI:
+            posti, lato = self.posti_pool(chi, len(colori))
+            return posti, lato, list(range(len(colori)))
+        ordine = []
+        for c_ in colori:
+            if c_ not in ordine:
+                ordine.append(c_)
+        posti, lato = self.posti_pool(chi, len(ordine))
+        idx = [ordine.index(c_) for c_ in colori]
+        return [posti[i] for i in idx], lato, idx
+
+    def scudo_carta(self, nome, colore, acceso):
+        """Lo scudo araldico con dentro l'arte della carta (15 nov 2026, Autore: «gli emblem falli piu' larghi con il disegno della loro carta dentro e
+        niente testo, si illuminano quando si attivano e basta»): bordo nel colore della carta; acceso, l'alone del colore e il bordo bianco. -> immagine
+        (con l'alone attorno, il centro dello scudo al centro dell'immagine)."""
+        w, h = round(self.K(SCUDO_W)), round(self.K(SCUDO_H))
+        chiave = ("scudo", nome, w, colore, acceso)
+        if chiave in _FACCE:
+            return _FACCE[chiave]
+        k = 4
+        W, H = w * k, h * k
+        pts = [(0, H * 0.10), (W / 2, 0), (W, H * 0.10), (W, H * 0.56), (W / 2, H), (0, H * 0.56)]
+        mask = Image.new("L", (W, H), 0)
+        ImageDraw.Draw(mask).polygon(pts, fill=255)
+        carta = faccia(nome, round(W * 1.28))          # l'arte: il riquadro dell'illustrazione della carta, allargato fino a riempire lo scudo
+        cw, ch = carta.size
+        arte = carta.crop((round(cw * 0.09), round(ch * 0.11), round(cw * 0.91), round(ch * 0.55)))
+        sc_ = max(W / arte.width, H / arte.height)
+        arte = arte.resize((max(W, round(arte.width * sc_)), max(H, round(arte.height * sc_))), Image.LANCZOS)
+        arte = arte.crop(((arte.width - W) // 2, (arte.height - H) // 2, (arte.width - W) // 2 + W, (arte.height - H) // 2 + H))
+        sc = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        sc.paste(arte, (0, 0), mask)
+        dd = ImageDraw.Draw(sc)
+        bordo = (255, 255, 255, 255) if acceso else colore + (255,)
+        dd.line(pts + [pts[0]], fill=bordo, width=max(2, round(W * (0.075 if acceso else 0.06))), joint="curve")
+        if not acceso:        # spento appena velato: acceso ha tutta la luce
+            vel = Image.new("RGBA", (W, H), (0, 0, 0, 70))
+            vel.putalpha(ImageChops.multiply(vel.getchannel("A"), mask))
+            sc = Image.alpha_composite(sc, vel)
+        sc = sc.resize((w, h), Image.LANCZOS)
+        m = round(self.K(10))
+        out = Image.new("RGBA", (w + 2 * m, h + 2 * m), (0, 0, 0, 0))
+        if acceso:
+            alone = Image.new("RGBA", out.size, colore + (0,))
+            ma = Image.new("L", out.size, 0)
+            ma.paste(mask.resize((w, h), Image.LANCZOS), (m, m))
+            alone.putalpha(ma.filter(ImageFilter.GaussianBlur(self.K(5))).point(lambda v: min(255, v * 2)))
+            out.alpha_composite(alone)
+        else:
+            o_, p_ = ombra_sprite(w, h, self.K(4), 120)
+            out.alpha_composite(o_, (m - p_, m - p_ + round(self.K(2))))
+        out.alpha_composite(sc, (m, m))
+        if len(_FACCE) > 4000:
+            _FACCE.clear()
+        _FACCE[chiave] = out
+        return out
+
+    def scudi(self, tela, chiave, voci, accesi=(), scatole=None):
+        """Gli scudi degli emblemi di un giocatore, in fila sotto il suo cerchio delle vite (15 nov 2026, Autore: «semplicemente appoggiati in fila»):
+        un Paradigm attivo (la carta nell'esilio del suo proprietario) nel colore della carta, un emblema vero col bordo viola; acceso quando la sua
+        abilita' e' in pila. voci: [(«paradigm»|«emblem», nome, colori)]; in hover la carta."""
+        if not voci:
+            return
+        x, y = self.L["VITA"][chiave]
+        cx, cy = self.X(x), self.Y(y)
+        w, h = self.K(SCUDO_W), self.K(SCUDO_H)
+        passo = w + self.K(4)
+        largo = self.K(110)
+        if len(voci) > 1 and passo * (len(voci) - 1) > largo - w:
+            passo = (largo - w) / (len(voci) - 1)
+        x0 = cx - (passo * (len(voci) - 1)) / 2
+        yc = cy + self.K(42) + self.K(8) + h / 2
+        for k_, (tipo, nome, colori) in enumerate(voci):
+            col = colore_scudo(colori) if tipo == "paradigm" else VIOLA
+            im = self.scudo_carta(nome, col, nome in accesi)
+            xs = x0 + k_ * passo
+            tela.alpha_composite(im, (max(0, round(xs - im.width / 2)), max(0, round(yc - im.height / 2))))
+            if scatole is not None:
+                scatole.append((xs - w / 2, yc - h / 2, xs + w / 2, yc + h / 2, nome))
 
     def dietro(self, chi):
         """I riquadri della fila dietro di chi, nelle coordinate del progetto: {«terre»|«mano»|«altri»: (x0, y0, x1, y1)}."""
@@ -1227,9 +1342,21 @@ class Tappeto:
         self.pila_zona(tela, d, "esi_mio", esi[0], BLU, scatole=scatole, zone=zone)
         vel_ = f.get("vel") or (None, None)
         emb_ = f.get("emblemi") or ((), ())
-        self.giocatore(tela, d, "vita_suo", "OPPONENT", ARANCIO, vite[1], f.get("n_suo", 0), "?", False, pos, vel_[1], emb_[1], scatole)
+        self.giocatore(tela, d, "vita_suo", "OPPONENT", ARANCIO, vite[1], f.get("n_suo", 0), "?", False, pos, vel_[1], (), scatole)
         self.giocatore(tela, d, "vita_mio", "YOU", BLU, vite[0], len(f.get("mano") or []), grimorio if grimorio is not None else "?", True, pos, vel_[0],
-                       emb_[0], scatole)
+                       (), scatole)
+        # gli scudi sotto il cerchio delle vite: i Paradigm attivi (le carte con Paradigm nell'esilio del proprietario) e gli emblemi veri (15 nov 2026)
+        par_ = paradigmi()
+        for k_t, chi_t in ((0, "mio"), (1, "suo")):
+            voci_t, visti_t = [], set()
+            for n_t in esi[k_t]:
+                n_t = n_t[0] if isinstance(n_t, (tuple, list)) else n_t
+                if n_t in par_ and n_t not in visti_t:
+                    visti_t.add(n_t)
+                    voci_t.append(("paradigm", n_t, par_[n_t]))
+            voci_t += [("emblem", n_e, "") for n_e in emb_[k_t]]
+            accesi_t = {q[0] for q in (f.get("pila") or [])} | ({rel.get("nome")} if rel and rel.get("tipo") == "spell" else set())
+            self.scudi(tela, "vita_" + chi_t, voci_t, accesi_t, scatole)
         # la pila: la magia o l'abilita' di questo momento
         pila_box, pila_rel = None, None
         # la pila intera della foto (14 nov 2026, Autore: «ora le carte si rispondono in maniera corretta impilandosi ma l'area pila sparisce»): la cima
@@ -1601,6 +1728,24 @@ def prova():
     # oltre 6 creature due file (14 nov 2026: «se ci sono piu' di 6 creature in campo si crea una seconda fila e tutto si riduce un po'»)
     righe_y = lambda n: {round(s_[1]) for s_ in t.disegna(dict(vuota, mio=[(f"Bear {i}", False, False, 2, 2, i) for i in range(n)]))[1]}
     casi.append(("7 creature: due file; negativa: 6 creature una fila", len(righe_y(7)) == 2 and len(righe_y(6)) == 1))
+    # la vaschetta del mana oltre 6 simboli (15 nov 2026): i colori uguali nello stesso posto; negativa: fino a 6 un posto per simbolo
+    p8, _l8, i8 = t.posti_pool_gruppi("mio", list("RRRRRRGG"))
+    p6, _l6, i6 = t.posti_pool_gruppi("mio", list("RRRRRR"))
+    casi.append(("pool: 8 simboli R R R R R R G G in due posti; negativa: 6 R in sei posti",
+                 sorted(set(i8)) == [0, 1] and len({p_ for p_ in p8}) == 2 and i6 == list(range(6)) and len(set(p6)) == 6))
+    # la targa EMBLEMS: lo scudo del Paradigm attivo nell'esilio del proprietario; negativa: un'altra carta in esilio non lo fa
+    par_ = paradigmi()
+    casi.append(("i cinque Paradigm di SOS letti dallo Standard", {"Restoration Seminar", "Germination Practicum"} <= set(par_) and len(par_) >= 5))
+    _im, sc_p, _z = t.disegna(dict(vuota, esi=(["Restoration Seminar"], [])))
+    _im, sc_n, _z = t.disegna(dict(vuota, esi=(["Shock"], [])))
+    vx, vy = t.X(t.L["VITA"]["vita_mio"][0]), t.Y(t.L["VITA"]["vita_mio"][1])
+    sotto = lambda sc, n: [s_ for s_ in sc if s_[4] == n and s_[1] > vy + t.K(42) and abs((s_[0] + s_[2]) / 2 - vx) < t.K(60)]
+    casi.append(("Restoration Seminar in esilio: lo scudo sotto il tuo cerchio delle vite; negativa: Shock in esilio no",
+                 bool(sotto(sc_p, "Restoration Seminar")) and not sotto(sc_n, "Shock")))
+    vis_ = lambda im: im.getchannel("A").point(lambda v: 255 if v > 40 else 0).histogram()[255]
+    spento, acceso = t.scudo_carta("Restoration Seminar", COLORI_SCUDO["W"], False), t.scudo_carta("Restoration Seminar", COLORI_SCUDO["W"], True)
+    casi.append(("lo scudo acceso ha l'alone (piu' pixel visibili) dello spento",
+                 vis_(acceso) > vis_(spento)))
     for n, v in casi:
         print(("OK   " if v else "ROSSO") + " " + n)
     print(f"{sum(v for _n, v in casi)}/{len(casi)}")

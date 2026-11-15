@@ -263,7 +263,10 @@ AVANZATI = {
                       ("CARDS · DISCARDS, SCRY AND SURVEIL", ("scarti_lui", "scry_lui", "scry_giu_lui", "surveil_lui")),
                       ("GRAVEYARD AND EXILE · FROM THE CARD TEXT", ("rian_lui", "esil_lui", "odio_lui")))))}
 VALORI_FISSI = {"mull": ("0", "1", "2+"), "partenza": ("Play", "Draw"), "esito": ("Won", "Lost")}      # le tendine con le voci fisse
-SEZIONI_FILTRI = (("formato", "evento", "wr_rif", "deck"), ("partenza", "mull", "terre", "esito"), ("suo", "colori"), ("lunga", "rango"), ("data", "fascia", "sessione"))
+# le tendine dell'avversario (Opponent, Opp. colors) non ci sono piu' (15 nov 2026, Autore: «rivedi in smart filters i filtri per oppo perche' sono
+# ridondanti col pulsante by deck»): l'avversario si sceglie in By deck (vs colors, la variante esatta del suo mazzo); la fase resta, col suo + dei filtri in
+# piu' (chi attacca per primo, il mana aperto...), e il suo mazzo resta in Split by, Group by, Spots e Matchups
+SEZIONI_FILTRI = (("formato", "evento", "wr_rif", "deck"), ("partenza", "mull", "terre", "esito"), (), ("lunga", "rango"), ("data", "fascia", "sessione"))
 
 
 def _cartella(x0, x1, top, H, sl=6, r=5):
@@ -480,23 +483,16 @@ class PaginaPerformance:
         tk.Label(rs, text="SMART FILTERS", bg=C["scheda"], fg=C["grigio"], font=F(8, True)).pack(side="left")
         # la colonna scorre: con la rotella sopra qualunque sua parte, e con la barra sottile a destra (fino al 12 nov la rotella andava solo sul fondo vuoto e
         # le ultime tendine e le situazioni salvate restavano tagliate in fondo: Autore, «la finestra degli smart filters e' tagliata sul fondo»)
+        # la barra a destra non c'e' piu' (15 nov 2026, Autore: «togli la barra di scorrimento dalla destra di smart filters»): resta la rotella
         riga_sx = tk.Frame(sx, bg=C["scheda"]); riga_sx.pack(fill="both", expand=True)
-        barra = tk.Canvas(riga_sx, width=6, bg=C["traccia"], highlightthickness=0, cursor="hand2"); barra.pack(side="right", fill="y", padx=(0, 4), pady=4)
-
-        def segna(a, b_):
-            barra.delete("all"); a, b_ = float(a), float(b_)
-            if b_ - a < 0.999:
-                H_ = barra.winfo_height(); barra.create_rectangle(0, H_ * a, 6, H_ * b_, fill=C["grigio"], width=0)
-        self.cv_sx = tk.Canvas(riga_sx, bg=C["scheda"], highlightthickness=0, bd=0, width=280, yscrollcommand=segna); self.cv_sx.pack(side="left", fill="both", expand=True)
-        barra.bind("<Button-1>", lambda e: self.cv_sx.yview_moveto(e.y / max(barra.winfo_height(), 1)))
-        barra.bind("<B1-Motion>", lambda e: self.cv_sx.yview_moveto(e.y / max(barra.winfo_height(), 1)))
+        self.cv_sx = tk.Canvas(riga_sx, bg=C["scheda"], highlightthickness=0, bd=0, width=280); self.cv_sx.pack(side="left", fill="both", expand=True)
         self.col_sx = tk.Frame(self.cv_sx, bg=C["scheda"])
         self.cv_sx.create_window(0, 0, window=self.col_sx, anchor="nw")
         self.col_sx.bind("<Configure>", lambda e: self.cv_sx.configure(scrollregion=(0, 0, 0, self.col_sx.winfo_reqheight() + 16)))
 
         def rotella(e):
             w = str(e.widget)
-            if (w.startswith(str(self.cv_sx)) or w.startswith(str(barra))) and self.col_sx.winfo_reqheight() > self.cv_sx.winfo_height():
+            if w.startswith(str(self.cv_sx)) and self.col_sx.winfo_reqheight() > self.cv_sx.winfo_height():
                 self.cv_sx.yview_scroll(-2 if e.delta > 0 else 2, "units")
         self.cv_sx.bind_all("<MouseWheel>", rotella, add="+")
         # una riga per filtro, il nome a sinistra e il campo a destra (12 nov 2026, Autore: «impaginiamo meglio, holdem manager tiene tutto non tagliato e
@@ -3172,16 +3168,23 @@ class PaginaPerformance:
         self._stack_box = tp.box(tp.L["STACK"])
         # la riserva di mana di ognuno nella sua vaschetta (15 nov 2026, Autore: «costruiamolo invece in basso a sx poco sotto l'area your lands»): il mana
         # che resta a galla (players.manaPool di Arena); quello del pagamento ci arriva volando dalle terre (anima_board)
-        self._pool_n = {}
+        self._pool_n, self._pool_col, self._pool_badge = {}, {}, {}
         for chi_p, k_p in (("mio", 0), ("suo", 1)):
             mp_p = list((f.get("mp") or ([], []))[k_p] or [])
             self._pool_n[chi_p] = len(mp_p)
+            self._pool_col[chi_p] = list(mp_p)
             if mp_p and f"pool_{chi_p}" in tp.L["ZONE"]:
-                posti_p, lato_p = tp.posti_pool(chi_p, len(mp_p))
-                for (x_p, y_p), col_p in zip(posti_p, mp_p):
+                # oltre 6 simboli i colori uguali stanno nello stesso posto col numero (15 nov 2026)
+                posti_p, lato_p, idx_p = tp.posti_pool_gruppi(chi_p, mp_p)
+                conta_p = {}
+                for (x_p, y_p), col_p, i_p in zip(posti_p, mp_p, idx_p):
                     img_p = self.immagine_mana(col_p, lato_p)
                     if img_p is not None:
                         c.create_image(round(x_p), round(y_p), image=img_p, tags="pool")
+                    conta_p[i_p] = (conta_p.get(i_p, (0,))[0] + 1, x_p, y_p, lato_p)
+                for i_p, (n_p, x_p, y_p, lato_p) in conta_p.items():
+                    if n_p > 1:
+                        self._pool_badge[(chi_p, i_p)] = self.badge_mana(c, x_p, y_p, lato_p, n_p, "pool")
         self._mano_suo_box = ((info.get("mani") or {}).get("suo")      # col tavolo ingrandito la sua mano sta in mezzo alla sua fila dietro
                               or (tp.X(tp.L["MANO"][0]) - tp.K(46), -tp.K(120), tp.X(tp.L["MANO"][0]) + tp.K(46), tp.K(20)))
         if DT.PEDINE_ATTESA:        # un'immagine di pedina in arrivo: quando c'e', la tavola si ridisegna (senza animazione)
@@ -4029,14 +4032,21 @@ class PaginaPerformance:
             da_terre = [(self._pos_id.get(id_m), col_m) for id_m, col_m in f["mn"] if self._pos_id.get(id_m)]
             if da_terre and dest_p and f"pool_{chi_m}" in tp_m.L["ZONE"]:
                 gia_ = getattr(self, "_pool_n", {}).get(chi_m, 0)
-                posti_m, lato_m = tp_m.posti_pool(chi_m, gia_ + len(da_terre))
+                tutti_c = list((getattr(self, "_pool_col", None) or {}).get(chi_m) or [])[:gia_]
+                tutti_c += ["?"] * (gia_ - len(tutti_c)) + [col_m for _b, col_m in da_terre]
+                posti_m, lato_m, idx_m = tp_m.posti_pool_gruppi(chi_m, tutti_c)
                 nella_ = []        # i simboli arrivati nella vaschetta: li spende l'azione dopo
-                for (b_m, col_m), (xp_, yp_) in zip(da_terre, posti_m[gia_:]):
+                badge_ = []        # i numeri dei simboli impilati: se ne vanno con loro
+                conta_m = {}       # quanti simboli ha gia' ogni posto (la riserva di prima); ogni arrivo fa salire il numero del suo
+                for i_m in idx_m[:gia_]:
+                    conta_m[i_m] = conta_m.get(i_m, 0) + 1
+                for (b_m, col_m), (xp_, yp_), i_m in zip(da_terre, posti_m[gia_:], idx_m[gia_:]):
                     img_m = self.immagine_mana(col_m, lato_m)
                     if img_m is not None:
-                        voli.append(dict(tipo="mana", fase=5.1, img=img_m, x0=centro(b_m)[0], y0=b_m[1] - 6, x1=xp_, y1=yp_, resta=nella_))
+                        voli.append(dict(tipo="mana", fase=5.1, img=img_m, x0=centro(b_m)[0], y0=b_m[1] - 6, x1=xp_, y1=yp_, resta=nella_,
+                                         posto=(chi_m, i_m), conta=conta_m, lato=lato_m, badge=badge_))
                 if nella_ is not None and any(v_.get("resta") is nella_ for v_ in voli):
-                    voli.append(dict(tipo="spendi", fase=5.15, its=nella_, x1=centro(dest_p)[0], y1=centro(dest_p)[1]))
+                    voli.append(dict(tipo="spendi", fase=5.15, its=nella_, x1=centro(dest_p)[0], y1=centro(dest_p)[1], badge=badge_))
         if guardate:        # S1 (14 nov 2026, scelto da Autore fra tre disegni: «Scry 1»): le carte guardate a ventaglio sopra il mazzo, TOP o BOTTOM
             mio_s = guardate[0][1]
             r_l = zc.get("lib_mio" if mio_s else "lib_suo")
@@ -4243,6 +4253,9 @@ class PaginaPerformance:
                 mischia(0)
                 return
             if t_ == "spendi":       # la vaschetta si svuota: un simbolo alla volta va sulla carta che si paga e si spegne
+                for it_b in a__.get("badge") or []:     # i numeri dei simboli impilati se ne vanno con loro
+                    c.delete(it_b)
+
                 def spendi(k):
                     if k >= len(a__["its"]):
                         return avanti(j + 1)
@@ -4287,6 +4300,18 @@ class PaginaPerformance:
                             a__["resta"].append(g_m)
                         else:
                             c.delete(g_m)
+                        if a__.get("posto") is not None:      # oltre 6 simboli: nel posto c'era gia' lo stesso colore e il numero sale
+                            cnt_, i_b = a__["conta"], a__["posto"][1]
+                            cnt_[i_b] = cnt_.get(i_b, 0) + 1
+                            if cnt_[i_b] > 1:
+                                pb_ = getattr(self, "_pool_badge", None)
+                                if pb_ is None:
+                                    pb_ = self._pool_badge = {}
+                                for it_b in pb_.pop(a__["posto"], None) or []:
+                                    c.delete(it_b)
+                                nuovo_b = self.badge_mana(c, a__["x1"], a__["y1"], a__["lato"], cnt_[i_b], "anim")
+                                pb_[a__["posto"]] = nuovo_b
+                                a__["badge"].extend(nuovo_b)
                         avanti(j + 1)
                 volo_m(0)
                 return
@@ -4887,6 +4912,15 @@ class PaginaPerformance:
             return list(reversed(out)) if nuova else out
         except Exception:      # noqa: BLE001 - niente immagini: niente giro
             return None
+
+    def badge_mana(self, c, x, y, lato, n, tag):
+        """Il numero dei simboli di mana uguali impilati nella vaschetta: un tondo scuro col bordo bianco e «N», in basso a destra del simbolo (15 nov
+        2026). -> gli id degli elementi."""
+        r_ = max(7, lato * 0.30)
+        bx, by = x + lato * 0.40, y + lato * 0.32
+        o_ = c.create_oval(bx - r_, by - r_, bx + r_, by + r_, fill="#0b0e14", outline="#ffffff", width=1, tags=tag)
+        t_ = c.create_text(bx, by, text=str(n), fill="#ffffff", font=self.F(7 if n < 10 else 6, True), tags=tag)
+        return [o_, t_]
 
     def danni_board(self, c, danni, fonti=None):
         """I danni dell'azione: un tondo rosso col «-N» sulla carta o sul cuore colpito (la carta morta non c'e' piu': lo dice il racconto). fonti, fuori dal

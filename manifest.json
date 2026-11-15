@@ -1,6 +1,6 @@
 {
- "version": "0.1.117",
+ "version": "0.1.118",
  "date": "2026-11-15",
- "notes": "Leak Finder: every leak now looks ahead to the opponent's turn before calling a play a mistake, synergies counted in more leaks (L2, L9, L11, L15), false leaks removed after a game-by-game review; Replayer: auras and equipment shown under the card that carries them; match records: Historic Brawl, Standard Brawl, Jump In and Sparky games now sorted correctly",
+ "notes": "Replayer: emblems and active Paradigms shown as shields with the card art under the life total, lighting up when they trigger; the mana pool stacks matching symbols with a count beyond six",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }
