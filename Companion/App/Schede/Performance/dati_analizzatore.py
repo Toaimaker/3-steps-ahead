@@ -35,7 +35,7 @@ FASCE = (("Night (0-6)", 0, 6), ("Morning (6-12)", 6, 12), ("Afternoon (12-18)",
 LUNGHE = (("Turns 1-5", 1, 5), ("Turns 6-8", 6, 8), ("Turns 9-11", 9, 11), ("Turns 12+", 12, 999))
 DATE = (("Last 7 days", 7), ("Last 30 days", 30), ("Last 90 days", 90))
 NOMI_FMT = {"standard": "Standard", "alchemy": "Alchemy", "explorer": "Explorer", "historic": "Historic", "timeless": "Timeless", "brawl": "Brawl",
-            "standard_brawl": "Standard Brawl", "precon": "Dual Color Precons", "limited": "Limited"}
+            "standard_brawl": "Standard Brawl", "precon": "Dual Color Precons", "jumpin": "Jump In", "limited": "Limited"}
 
 
 # ------------------------------------------------------------------ le situazioni dentro la partita (12 nov 2026, Autore: «una finestra di filtri da flaggare
@@ -969,12 +969,20 @@ def gira_foto(f, seat):
     nomi = lambda lst: [nome_grp(g) or f"#{g}" for g in lst]
     vuoto = [[], []]
     return dict(mio=carte(f["c"][a]), suo=carte(f["c"][b]), mano=nomi(f["m"][a]), n_suo=f["n"][b], vite=(f["v"][a], f["v"][b]),
+                # le tue carte della mano mostrate all'avversario (15 nov 2026; le sue che Arena manda stanno fuori dalla lista della sua mano: residui)
+                mostrate=nomi((f.get("mv") or [[], []])[a]),
+                emblemi=(nomi((f.get("em") or [[], []])[a]), nomi((f.get("em") or [[], []])[b])),
+                opzioni=dict(f.get("op") or {}),        # come e' stata lanciata la magia in pila: {id: [KICKED, X = 3...]}      # gli emblemi (tuoi, suoi), col nome della carta
+                # la carta in cima al grimorio che si conosce (tua, sua): (nome, pubblica) o None (15 nov 2026)
+                cima=tuple((nome_grp(c_[0]) or f"#{c_[0]}", bool(c_[1])) if c_ else None for c_ in ((f.get("cm") or [None, None])[a], (f.get("cm") or [None, None])[b])),
                 cim=(nomi((f.get("g") or vuoto)[a]), nomi((f.get("g") or vuoto)[b])), esi=(nomi((f.get("e") or vuoto)[a]), nomi((f.get("e") or vuoto)[b])),
                 pila=[(nome_grp(g) or f"#{g}", chi == seat, bool(ab), g, i) for g, chi, ab, i in f.get("p") or []],
                 riv=[(nome_grp(g) or f"#{g}", chi == seat) for g, chi in f.get("r") or []],        # le carte rivelate (il censimento, 14 nov 2026)
                 mes=[s_ == seat for s_ in f.get("s") or []],                                          # chi rimescola il grimorio: True tu
                 # i segni che restano sul tavolo (14 nov 2026): per id, con i nomi delle carte sotto; la velocita' (tua, sua)
                 segni={i_: dict(v_, sotto=[nome_grp(g_) or f"#{g_}" for g_ in v_.get("sotto") or []],
+                                porta=[(a_, nome_grp(g_) or f"#{g_}") for a_, g_ in v_.get("porta") or []],
+                                **({"copia_di": nome_grp(v_["copia_di"]) or f"#{v_['copia_di']}"} if v_.get("copia_di") else {}),
                                 **({"gioca": ((nome_grp(v_["gioca"][0]) or f"#{v_['gioca'][0]}") if v_["gioca"][0] else "Face-down card",
                                                v_["gioca"][1] == seat, v_["gioca"][2])} if v_.get("gioca") else {}))
                        for i_, v_ in (f.get("x") or {}).items()},
@@ -1017,7 +1025,7 @@ def azioni_partita(x):
             rel = dict(tipo="comb", att=[(i, lato(tg)) for i, tg in r_["att"]], blocchi=[(i, list(a_)) for i, a_ in r_["blocchi"]])
         elif r_ and r_["k"] == "spell" and nome_grp(r_["g"]):
             rel = dict(tipo="spell", nome=nome_grp(r_["g"]), g=r_["g"], mio=r_["chi"] == seat, ab=r_["ab"], bers=[lato(b_) for b_ in r_["bers"]], colpiti=colpiti_di(r_),
-                       fuori=_fuori(r_.get("fuori"), seat))
+                       fuori=_fuori(r_.get("fuori"), seat), da=list(r_.get("da") or []))       # chi ha fatto scattare l'abilita' (15 nov 2026)
         nome = f"{'You' if fr['att'] == seat else 'Opponent'} T{(fr['t'] + 1) // 2} · {fr['step'] or '-'}"
         out.append((nome, gira_foto(fr["foto"], seat), fr["t"], rel, ev, [(lato(d_[0]), d_[1]) for d_ in fr["danni"]],
                     [(lato(d_[0]), d_[1], d_[2] if len(d_) > 2 else None) for d_ in fr["danni"]]))       # il settimo: chi infligge ogni danno

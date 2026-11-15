@@ -113,6 +113,38 @@ _FONT = {}
 _ICONE_AB = {}
 
 
+STATO_COLORI = {"no": (196, 44, 56, 245), "si": (15, 134, 204, 245), "off": (84, 88, 98, 245), "liv": (176, 132, 30, 245), "col": (52, 58, 70, 245)}
+_ICONE_ST = {}
+
+
+def icona_stato(genere, lato):
+    """Il segno dello stato della carta, bianco, disegnato a 4x (15 nov 2026): divieto = cerchio barrato, permesso = freccia, esausta = cerchio vuoto
+    col trattino, livello = due chevron in su."""
+    k = (genere, lato)
+    if k not in _ICONE_ST:
+        L = lato * 4
+        im = Image.new("RGBA", (L, L), (255, 255, 255, 0))
+        d = ImageDraw.Draw(im)
+        w = max(4, L // 8)
+        b = (255, 255, 255, 255)
+        if genere == "no":
+            d.ellipse((w // 2, w // 2, L - w // 2, L - w // 2), outline=b, width=w)
+            d.line((L * 0.24, L * 0.76, L * 0.76, L * 0.24), fill=b, width=w)
+        elif genere == "si":
+            d.line((L * 0.14, L * 0.5, L * 0.8, L * 0.5), fill=b, width=w)
+            d.polygon([(L * 0.92, L * 0.5), (L * 0.56, L * 0.18), (L * 0.56, L * 0.82)], fill=b)
+        elif genere == "col":       # il colore cambiato: una goccia di colore piena
+            d.ellipse((L * 0.16, L * 0.16, L * 0.84, L * 0.84), fill=b)
+        elif genere == "off":
+            d.ellipse((w // 2, w // 2, L - w // 2, L - w // 2), outline=b, width=w)
+            d.line((L * 0.3, L * 0.5, L * 0.7, L * 0.5), fill=b, width=w)
+        else:
+            for y_ in (0.62, 0.32):
+                d.line([(L * 0.18, L * (y_ + 0.2)), (L * 0.5, L * y_), (L * 0.82, L * (y_ + 0.2))], fill=b, width=w, joint="curve")
+        _ICONE_ST[k] = im.resize((lato, lato), Image.LANCZOS)
+    return _ICONE_ST[k]
+
+
 def icona_abilita(nome, lato):
     """Il simbolo di una parola chiave (15 nov 2026, Autore: «accanto ai testi che mettiamo sulle carte come life link e trample possiamo inserire i
     loghi originali?»): gli svg delle abilita' del font Mana di Andrew Gioia (github.com/andrewgioia/mana, simboli di Wizards of the Coast; font OFL), in
@@ -375,6 +407,70 @@ def dall_esilio(im):
     d2.rounded_rectangle(((w - tw) / 2 - 5, 3, (w + tw) / 2 + 5, 3 + bh), radius=bh // 2, fill=ORO_G + (250,), outline=(255, 255, 255, 230))
     bb = d2.textbbox((0, 0), "PLAYABLE", font=f)
     d2.text(((w - tw) / 2 - bb[0], 3 + (bh - (bb[3] - bb[1])) / 2 - bb[1]), "PLAYABLE", font=f, fill=(58, 37, 0))
+    return out
+
+
+_TRIANGOLI = {}
+
+
+def icona_triangolo(lato, su):
+    """Il triangolo scuro a 4x, in su (in cima) o in giu' (in fondo): il font non ha i segni (15 nov 2026)."""
+    k = (lato, su)
+    if k not in _TRIANGOLI:
+        L = lato * 4
+        im = Image.new("RGBA", (L, L), (0, 0, 0, 0))
+        d = ImageDraw.Draw(im)
+        pt = [(L * 0.5, L * 0.12), (L * 0.95, L * 0.88), (L * 0.05, L * 0.88)] if su else [(L * 0.05, L * 0.12), (L * 0.95, L * 0.12), (L * 0.5, L * 0.88)]
+        d.polygon(pt, fill=(58, 37, 0, 255))
+        _TRIANGOLI[k] = im.resize((lato, lato), Image.LANCZOS)
+    return _TRIANGOLI[k]
+
+
+_OCCHI = {}
+
+
+def icona_occhio(lato, aperto):
+    """L'occhio bianco a 4x: aperto (lo vedono tutti e due) o chiuso, una palpebra (lo sai solo tu). 15 nov 2026."""
+    k = (lato, aperto)
+    if k not in _OCCHI:
+        L = lato * 4
+        im = Image.new("RGBA", (L, L), (255, 255, 255, 0))
+        d = ImageDraw.Draw(im)
+        w = max(3, L // 10)
+        b = (255, 255, 255, 255)
+        if aperto:
+            d.chord((L * 0.04, L * 0.18, L * 0.96, L * 0.82), 200, 340, outline=b, width=w)
+            d.chord((L * 0.04, L * 0.18, L * 0.96, L * 0.82), 20, 160, outline=b, width=w)
+            d.ellipse((L * 0.34, L * 0.34, L * 0.66, L * 0.66), fill=b)
+        else:
+            d.arc((L * 0.04, L * 0.05, L * 0.96, L * 0.75), 20, 160, fill=b, width=w)
+            for x_ in (0.22, 0.5, 0.78):
+                d.line((L * x_, L * 0.68, L * (x_ + (x_ - 0.5) * 0.3), L * 0.88), fill=b, width=max(2, w * 2 // 3))
+        _OCCHI[k] = im.resize((lato, lato), Image.LANCZOS)
+    return _OCCHI[k]
+
+
+def mostrata(im):
+    """La carta della tua mano che l'avversario ha visto (15 nov 2026): il bordo azzurro e, in fondo, la pillola con l'occhio e SHOWN."""
+    k = 3
+    w, h = im.size
+    out = im.copy()
+    st = Image.new("RGBA", (w * k, h * k), (0, 0, 0, 0))
+    d = ImageDraw.Draw(st)
+    d.rounded_rectangle((k, k, w * k - k, h * k - k), radius=max(4, w // 12) * k, outline=(47, 155, 255, 255), width=max(3, w // 30) * k)
+    bh = max(12, w // 6) * k
+    y0 = int(h * 0.13) * k       # sotto la barra del nome, a sinistra: nel ventaglio la carta accanto copre la destra
+    f = font(max(8, w // 9) * k, "Bold")
+    tw = d.textlength("SHOWN", font=f)
+    occ = bh * 0.9
+    x0 = 6 * k
+    d.rounded_rectangle((x0, y0, x0 + tw + occ + 16 * k, y0 + bh), radius=bh // 2, fill=(15, 70, 140, 245), outline=(255, 255, 255, 230), width=k)
+    ex, ey, er = x0 + 8 * k + occ / 2, y0 + bh / 2, occ / 2
+    d.ellipse((ex - er, ey - er * 0.55, ex + er, ey + er * 0.55), outline=(255, 255, 255, 255), width=max(2, k * 2))
+    d.ellipse((ex - er * 0.28, ey - er * 0.28, ex + er * 0.28, ey + er * 0.28), fill=(255, 255, 255, 255))
+    bb = d.textbbox((0, 0), "SHOWN", font=f)
+    d.text((ex + er + 4 * k - bb[0], ey - (bb[3] - bb[1]) / 2 - bb[1]), "SHOWN", font=f, fill=(255, 255, 255, 255))
+    out.alpha_composite(st.resize((w, h), Image.LANCZOS))
     return out
 
 
@@ -674,6 +770,12 @@ class Tappeto:
                 sg = (getattr(self, "_segni", {}) or {}).get(id_) or sg
             # A1 (14 nov 2026, scelto da Autore fra tre disegni): le carte che questa ha esiliato «sotto di se'», sfalsate dietro di lei
             dietro = []
+            # le aure e gli equipaggiamenti che porta: dietro di lei, sfalsati in alto, col nome a vista (15 nov 2026)
+            porta_ = [n_p for i_p, n_p in (sg.get("porta") or []) if i_p not in (getattr(self, "_porta_nuove", None) or set())][:4]
+            for k_, n_p in enumerate(reversed(porta_)):
+                im_p = faccia(n_p, w, False)
+                livello = len(porta_) - k_
+                dietro.append((im_p, self.K(5) * livello, -self.K(22) * livello))
             for k_, n_s in enumerate((sg.get("sotto") or [])[:3]):
                 im_s = faccia(n_s, w, g[1])
                 off = self.K(9) * (len(sg["sotto"][:3]) - k_)
@@ -702,6 +804,20 @@ class Tappeto:
                              icona=icona_abilita(kw_, max(8, round(self.K(12)))))
             for k_, de_ in enumerate((sg.get("des") or [])[:2]):    # D3: la pillola viola col nome (preparata, porta sbloccata, complottata...)
                 self.pillola(ds, cx + ww / 2, cy + hh * 0.78 - k_ * self.K(22), de_, fkw, fondo=(122, 79, 208, 245), bordo=(255, 255, 255, 230))
+            # la copia (15 nov 2026, il censimento: CopiedObject): la carta mostra cio' che copia, e in fondo la pillola azzurra col nome dell'originale
+            if sg.get("copia_di") and sg["copia_di"] != g[0]:
+                n_or = sg["copia_di"] if len(sg["copia_di"]) <= 16 else sg["copia_di"][:15] + "."
+                self.pillola(ds, cx + ww / 2, cy + hh * 0.60, "COPY · " + n_or.upper(), font(max(7, self.K(8.5)), "Bold"),
+                             fondo=(15, 134, 204, 245), bordo=(255, 255, 255, 230), pad=5)
+            # lo stato della carta (15 nov 2026): divieti rossi col cerchio barrato, permessi blu con la freccia, l'abilita' esausta grigia, il livello della
+            # Classe oro; in testa alla carta, sotto la scelta fatta, al massimo due e «+N»
+            st_ = sg.get("st") or []
+            fst = font(max(7, self.K(9)), "Bold")
+            y_st = cy + max(self.K(18), hh * 0.19) + (self.K(24) if sg.get("ch") else 0)      # sotto la barra del nome, che resta leggibile
+            for k_, (tx_st, ge_st) in enumerate(st_[:2]):
+                tx_ = tx_st + (f" +{len(st_) - 2}" if k_ == 1 and len(st_) > 2 else "")
+                self.pillola(ds, cx + ww / 2, y_st + k_ * self.K(20), tx_, fst, fondo=STATO_COLORI.get(ge_st, STATO_COLORI["off"]),
+                             bordo=(255, 255, 255, 230), pad=5, icona=icona_stato(ge_st, max(7, round(self.K(10)))))
             # W2 (14 nov 2026, scelto da Autore fra tre disegni): la parola d'abilita' come anello nell'angolo in alto a destra, pieno quanto il conto
             # sulla soglia (5/7), verde quando e' attiva; sotto, piccolo, il suo nome
             for k_, (n_aw, v_aw, s_aw) in enumerate((sg.get("aw") or [])[:1]):
@@ -919,7 +1035,7 @@ class Tappeto:
             dp.text(((x1 - x0) / 2 - tw / 2, (y1 - y0) - self.K(18)), piede, font=fs, fill=VIOLA + (230,))
         return pan, x0, y0
 
-    def pila_zona(self, tela, d, chiave, carte, colore, n=None, retro=False, scatole=None, zone=None):
+    def pila_zona(self, tela, d, chiave, carte, colore, n=None, retro=False, scatole=None, zone=None, cima=None, messa=None):
         x0, y0, x1, y1 = self.box(self.L["ZONE"][chiave])
         tit = {"lib": "LIBRARY", "cim": "GRAVEYARD", "esi": "EXILE"}[chiave[:3]]
         q = n if n is not None else len(carte)
@@ -940,6 +1056,22 @@ class Tappeto:
                 for i in range(strati, 0, -1):
                     tela.alpha_composite(b, (round(cx - w / 2 + self.K(i * 1.2)), round(yc + self.K(i * 1.2))))
                 tela.alpha_composite(b, (round(cx - w / 2), round(yc)))
+                if cima:        # la carta in cima che si conosce: scoperta sul mazzo; l'occhio aperto se la conosce anche l'altro (15 nov 2026)
+                    n_c, pub_c = cima
+                    im_c = faccia(n_c, w)
+                    self.metti(tela, im_c, cx - w / 2, yc, raggio=8)
+                    self.liscio(d, "rr", (cx - w / 2 - 2, yc - 2, cx + w / 2 + 2, yc + h + 2), outline=colore + (255,), width=max(2.0, self.K(2.5)),
+                                radius=self.K(6))
+                    fk = font(max(8, self.K(9)), "Bold")
+                    self.pillola(d, cx, yc + h - self.K(12), "BOTH SEE IT" if pub_c else "ONLY YOU KNOW" if chiave == "lib_mio" else "KNOWN", fk,
+                                 fondo=(15, 70, 140, 245) if pub_c else (12, 14, 18, 235), bordo=(255, 255, 255, 230), pad=5,
+                                 icona=icona_occhio(max(8, round(self.K(13))), pub_c))
+                    if scatole is not None:
+                        scatole.append((cx - w / 2, yc, cx + w / 2, yc + h, n_c))
+                if messa:       # la carta messa nel grimorio in questo passo: dove e' finita, in testa al mazzo (15 nov 2026)
+                    self.pillola(d, cx, yc + self.K(14), {"top": "ON TOP", "bottom": "ON THE BOTTOM"}.get(messa, "INTO THE LIBRARY"),
+                                 font(max(8, self.K(9)), "Bold"), fondo=ORO_G + (245,), bordo=(255, 255, 255, 230), colore=(58, 37, 0), pad=5,
+                                 icona=icona_triangolo(max(7, round(self.K(9))), messa != "bottom") if messa in ("top", "bottom") else None)
         elif carte:
             if len(carte) > 1:
                 dietro = ruotata(faccia(carte[1], w), 4, ("pila", carte[1], w))
@@ -963,7 +1095,7 @@ class Tappeto:
         if zone is not None:
             zone[chiave] = ((x0, y0, x1, y1), list(carte))
 
-    def giocatore(self, tela, d, chiave, chi, colore, vite, mano, grimorio, sopra, pos, vel=None):
+    def giocatore(self, tela, d, chiave, chi, colore, vite, mano, grimorio, sopra, pos, vel=None, emblemi=(), scatole=None):
         """Il cerchio delle vite nell'angolo accanto al suo grimorio; nell'altro angolo il nome, e sotto le carte in mano e nel grimorio (14 nov 2026: le vite
         a destra, in ordine)."""
         x, y = self.L["VITA"][chiave]
@@ -996,6 +1128,14 @@ class Tappeto:
         if vel:         # V3 (14 nov 2026, scelto da Autore): la velocita' di Aetherdrift (Start your engines!), la pillola arancio sotto i conti
             self.pillola(d, xn, yn + self.K(62), f"SPEED {vel}" + (" · MAX" if vel >= 4 else ""), font(max(9, self.K(10.5)), "Bold"),
                          fondo=(224, 160, 48, 250), bordo=(255, 255, 255, 230), colore=(58, 37, 0))
+        # gli emblemi del giocatore (15 nov 2026, il censimento: «gli emblemi non sono sul tavolo»): la pillola viola col nome della carta che l'ha creato,
+        # sotto i conti; nella zona Command di Arena, che il tavolo non ha
+        for k_, n_e0 in enumerate(list(emblemi)[:3]):
+            n_e = n_e0 if len(n_e0) <= 16 else n_e0[:15] + "."
+            bx_e = self.pillola(d, xn, yn + self.K(62) + (self.K(24) if vel else 0) + k_ * self.K(22), "EMBLEM · " + n_e.upper(),
+                         font(max(8, self.K(9)), "Bold"), fondo=(122, 79, 208, 245), bordo=(255, 255, 255, 230), pad=5)
+            if scatole is not None:     # in hover la carta che l'ha creato
+                scatole.append(tuple(bx_e) + (n_e0,))
 
     def icona(self, d, k, x, y):
         g = (150, 156, 168, 255)
@@ -1035,12 +1175,20 @@ class Tappeto:
         conta = lambda lst: {n: sum(1 for c in lst if c[0] == n) for n in {c[0] for c in lst}}
         vite = f.get("vite") or (None, None)
         cim, esi = f.get("cim") or ([], []), f.get("esi") or ([], [])
+        # le aure e gli equipaggiamenti attaccati non stanno fra gli altri permanenti: stanno dietro la carta che li porta, sfalsati in alto (come in
+        # Arena; 15 nov 2026), e chi li cerca (frecce, voli) li trova sul riquadro di quella carta
+        segni_tutti = f.get("segni") or {}
+        in_campo = {c[5] for lato in ("mio", "suo") for c in f[lato] if len(c) > 5}
+        attaccati = {i_: v_["su"] for i_, v_ in segni_tutti.items() if v_.get("su") in in_campo and i_ in in_campo}
+        # quelle attaccate in questo passo: la carta che le porta si disegna senza, l'aura ci arriva volando (anima_board) e resta dietro di lei
+        segni_prima = (prima or {}).get("segni") or {}
+        self._porta_nuove = {i_ for i_, h_ in attaccati.items() if (segni_prima.get(i_) or {}).get("su") != h_} if prima is not None else set()
         for chi, col in (("suo", ARANCIO), ("mio", BLU)):
             in_comb = set()
             if rel and rel.get("tipo") == "comb":
                 in_comb = {a_[0] for a_ in rel.get("att") or []} | {b_[0] for b_ in rel.get("blocchi") or []}
             segni_ = f.get("segni") or {}
-            gg = gruppi(f[chi], in_comb, segni_)      # chi combatte sta da solo; le pedine uguali anche nei segni stanno insieme
+            gg = gruppi([c for c in f[chi] if not (len(c) > 5 and c[5] in attaccati)], in_comb, segni_)      # chi combatte sta da solo; le pedine uguali anche nei segni stanno insieme
             self._segni = segni_
             seg_prima = {c[5]: (c[7] if len(c) > 7 else None) for c in prima[chi] if len(c) > 5} if prima is not None else None
             nuove = {}
@@ -1066,15 +1214,22 @@ class Tappeto:
                 if k_ in ("terre", "altri"):
                     self.fila(tela, d, terre if k_ == "terre" else altri, self.box((bx0 + 10, by0 + 18, bx1 - 10, by1 - 6)), WM[k_], col, nuove, scatole, pos, chi,
                               seg_prima)
-        self.pila_zona(tela, d, "lib_suo", [], ARANCIO, n="?", retro=True)
+        for i_, host_ in attaccati.items():         # l'aura si trova sul riquadro della carta che la porta
+            if host_ in pos:
+                pos[i_] = pos[host_]
+        cima_ = f.get("cima") or (None, None)
+        messa_ = f.get("messa") or {}
+        self.pila_zona(tela, d, "lib_suo", [], ARANCIO, n="?", retro=True, cima=cima_[1], scatole=scatole, messa=messa_.get("suo"))
         self.pila_zona(tela, d, "cim_suo", cim[1], ARANCIO, scatole=scatole, zone=zone)
         self.pila_zona(tela, d, "esi_suo", esi[1], ARANCIO, scatole=scatole, zone=zone)
-        self.pila_zona(tela, d, "lib_mio", [], BLU, n=grimorio if grimorio is not None else "?", retro=True)
+        self.pila_zona(tela, d, "lib_mio", [], BLU, n=grimorio if grimorio is not None else "?", retro=True, cima=cima_[0], scatole=scatole, messa=messa_.get("mio"))
         self.pila_zona(tela, d, "cim_mio", cim[0], BLU, scatole=scatole, zone=zone)
         self.pila_zona(tela, d, "esi_mio", esi[0], BLU, scatole=scatole, zone=zone)
         vel_ = f.get("vel") or (None, None)
-        self.giocatore(tela, d, "vita_suo", "OPPONENT", ARANCIO, vite[1], f.get("n_suo", 0), "?", False, pos, vel_[1])
-        self.giocatore(tela, d, "vita_mio", "YOU", BLU, vite[0], len(f.get("mano") or []), grimorio if grimorio is not None else "?", True, pos, vel_[0])
+        emb_ = f.get("emblemi") or ((), ())
+        self.giocatore(tela, d, "vita_suo", "OPPONENT", ARANCIO, vite[1], f.get("n_suo", 0), "?", False, pos, vel_[1], emb_[1], scatole)
+        self.giocatore(tela, d, "vita_mio", "YOU", BLU, vite[0], len(f.get("mano") or []), grimorio if grimorio is not None else "?", True, pos, vel_[0],
+                       emb_[0], scatole)
         # la pila: la magia o l'abilita' di questo momento
         pila_box, pila_rel = None, None
         # la pila intera della foto (14 nov 2026, Autore: «ora le carte si rispondono in maniera corretta impilandosi ma l'area pila sparisce»): la cima
@@ -1120,32 +1275,47 @@ class Tappeto:
         self._esilio_mano = dict(mio=list(esi_mie), suo=list(esi_sue))
         if self.mano:
             wm = int(self.K(158))
-            mie = [((n, wm), faccia(n, wm)) for n in mano]
+            # la carta che hai mostrato all'avversario (15 nov 2026, il censimento: InstanceRevealedToOpponent): l'occhio e SHOWN in fondo alla carta
+            mostrate_ = list(f.get("mostrate") or [])
+            mie = []
+            for n in mano:
+                if n in mostrate_:
+                    mostrate_.remove(n)
+                    mie.append(((n, wm, "shown"), mostrata(faccia(n, wm))))
+                else:
+                    mie.append(((n, wm), faccia(n, wm)))
             self.ventaglio(tela, mie, cxm, self.H + wm * RAPP / 2 - self.K(130), wm, 6, 0.30, False, scatole, self.K(760), "mano")
             wr = int(self.K(92))
             self.ventaglio(tela, [(("dorso", wr), dorso(wr))] * n_suo, cxm, -wr * RAPP / 2 + self.K(100), wr, 6, 0.42, True, [], self.K(560), "mano_suo")
             larga_mano = min(len(mano) * wm * 0.7, self.K(760))
             larga_suo = min(n_suo * wr * 0.58, self.K(560))
             y_mia, y_sua = self.H - self.K(50), self.K(50)
-            we = int(self.K(84))
+            we = int(self.K(104))       # piu' grandi (15 nov 2026, Autore: «le famose carte esiliate dorate in mano non le vedo mai»; erano 84)
             he = round(we * RAPP)
             if esi_mie:         # a destra del tuo ventaglio
                 x0e = cxm + max(larga_mano, wm) / 2 + self.K(30)
                 x1e = min(x0e + len(esi_mie) * (we + self.K(8)), self.X(self.L["ZONE"]["cim_mio"][0]) - self.K(16))
                 self.riga_mano(tela, [dall_esilio(faccia(n, we)) for n in esi_mie], esi_mie, (x0e, self.H - he - self.K(16), x1e, self.H - self.K(16)),
-                               scatole, "esi_mano")
+                               scatole, "esi_mano_mio")
                 self.pillola(d, (x0e + x1e) / 2, self.H - he - self.K(30), f"PLAYABLE · {len(esi_mie)}", fl, fondo=(44, 32, 6, 230), bordo=ORO_G + (220,),
                              colore=ORO_G)
             if esi_sue:         # a sinistra del suo
                 x1e = cxm - max(larga_suo, wr) / 2 - self.K(30)
                 x0e = max(x1e - len(esi_sue) * (we + self.K(8)), self.X(self.L["XB0"]) + self.K(8))
                 imgs_ = [dall_esilio(dorso(we) if n == FACCIA_GIU else faccia(n, we)) for n in esi_sue]
-                self.riga_mano(tela, imgs_, [None if n == FACCIA_GIU else n for n in esi_sue], (x0e, self.K(16), x1e, self.K(16) + he), scatole, "esi_mano")
+                self.riga_mano(tela, imgs_, [None if n == FACCIA_GIU else n for n in esi_sue], (x0e, self.K(16), x1e, self.K(16) + he), scatole, "esi_mano_suo")
                 self.pillola(d, (x0e + x1e) / 2, self.K(16) + he + self.K(14), f"PLAYABLE · {len(esi_sue)}", fl, fondo=(44, 32, 6, 230),
                              bordo=ORO_G + (220,), colore=ORO_G)
         else:
             w9 = int(self.K(90))
-            for chi, carte_, nomi_, col_ in (("mio", [faccia(n, w9) for n in mano] + [dall_esilio(faccia(n, w9)) for n in esi_mie], mano + esi_mie, BLU),
+            mostrate_, mie9 = list(f.get("mostrate") or []), []
+            for n in mano:
+                if n in mostrate_:
+                    mostrate_.remove(n)
+                    mie9.append(mostrata(faccia(n, w9)))
+                else:
+                    mie9.append(faccia(n, w9))
+            for chi, carte_, nomi_, col_ in (("mio", mie9 + [dall_esilio(faccia(n, w9)) for n in esi_mie], mano + esi_mie, BLU),
                                              ("suo", [dorso(w9)] * n_suo + [dall_esilio(dorso(w9) if n == FACCIA_GIU else faccia(n, w9)) for n in esi_sue],
                                               [None] * n_suo + [None if n == FACCIA_GIU else n for n in esi_sue], ARANCIO)):
                 bx0, by0, bx1, by1 = self.box(self.dietro(chi)["mano"])
@@ -1178,6 +1348,16 @@ class Tappeto:
             tw = dp.textlength(et, font=fs)
             dp.text(((x1 - x0) / 2 - tw / 2, (y1 - y0) - self.K(18)), et, font=fs, fill=VIOLA + (230,))
             im = faccia(pila_rel["nome"], round(pila_box[2] - pila_box[0]), pedina=pila_rel.get("g"))      # una pedina in pila (un potere di Jace): la sua immagine
+            # come e' stata lanciata (15 nov 2026): KICKED, X = 3, ALT. COST, EXTRA COST, pillole oro in fondo alla carta in cima
+            id_cima = pila_f[0][4] if pila_f and pila_f[0][0] == pila_rel["nome"] and len(pila_f[0]) > 4 else None
+            op_ = list((f.get("opzioni") or {}).get(id_cima) or [])
+            op_ += [t_s for t_s, _g in (((f.get("segni") or {}).get(id_cima) or {}).get("st") or [])]       # lo stato della magia (UNCOUNTERABLE)
+            if op_:
+                im = im.copy()
+                di = ImageDraw.Draw(im)
+                for k_, t_op in enumerate(op_[:2]):
+                    self.pillola(di, im.width / 2, im.height * 0.56 - k_ * self.K(24), t_op, font(max(9, self.K(11)), "Bold"), fondo=ORO_G + (250,),
+                                 bordo=(255, 255, 255, 235), colore=(58, 37, 0), pad=6)
             o, p_ = ombra_sprite(im.width, im.height, self.K(12), 190)
             strati = [(o, pila_box[0] - x0 - p_, pila_box[1] - y0 - p_ + self.K(6)), (pan, 0, 0)]
             fsb = font(max(8, self.K(8)), "Bold")
@@ -1203,7 +1383,8 @@ class Tappeto:
             fuori = [s_ for s_ in scatole if not any(s_[:4] in (tuple(q["box"]), tuple(q.get("vis") or q["box"])) for q in pz)]
             return tela.convert("RGB"), pz, dict(vite={k: pos[k] for k in ("vita_mio", "vita_suo")}, pile=zone, pila=pila_box, scatole=fuori,
                                                  pila_sotto=dict(self._pila_sotto),
-                                                 etichette=self._etichette, grimori=self._grimori, carte_pile=self._carte_pile,
+                                                 etichette=self._etichette, grimori=self._grimori, carte_pile=self._carte_pile, attaccati=attaccati,
+                                                 attaccati_nuovi={i_: attaccati[i_] for i_ in self._porta_nuove},
                                                  mani=self._mani)
         # le frecce: chi blocca chi, chi attacca chi, cosa bersaglia la magia in pila; i permanenti tolti; i danni
         self.frecce(tela, rel, pila_box, pos, zone)

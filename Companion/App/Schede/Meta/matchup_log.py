@@ -56,14 +56,20 @@ _ARCH = {}
 
 def formato(evento):
     """Il formato di un evento di Arena, o None se la partita non conta (Sparky)."""
+    # i difetti del 15 nov 2026 (gli eventi letti dai log veri): «Play_Brawl_Historic» finiva in Historic (historic si guardava prima di brawl), lo Standard
+    # Brawl non usciva mai, «SparkyStarterDeckDuel» (contro Sparky) e «Jump_In_2024» e «WelcomeDeckDuels_<SET>» finivano nello Standard
     e = evento or ""
-    if e.startswith("AIBotMatch"):
+    if e.startswith("AIBotMatch") or "Sparky" in e:
         return None
     if re.search(r"Draft|Sealed|Cube", e):
         return "limited"
-    if e.startswith("DualColorPrecons") or "Precon" in e:
+    if e.startswith("DualColorPrecons") or "Precon" in e or "WelcomeDeck" in e or "StarterDeck" in e:
         return "precon"
-    for k in ("historic", "explorer", "alchemy", "timeless", "brawl"):
+    if re.search(r"Jump_?In", e, re.I):
+        return "jumpin"
+    if "brawl" in e.lower():       # su Arena «Brawl» e' il Brawl storico (Play_Brawl_Historic); senza «Historic» e' lo Standard Brawl
+        return "brawl" if "historic" in e.lower() else "standard_brawl"
+    for k in ("historic", "explorer", "alchemy", "timeless"):
         if k in e.lower():
             return k
     return "standard"       # Ladder, Play, Traditional_Ladder, Constructed_Event_...
@@ -182,7 +188,7 @@ def record(p, arch_fmt=None):
     import condividi
     sue = list((condividi.nomi(p.get("sue") or []) or {}).keys())
     mazzo = list((condividi.nomi(p.get("carte") or []) or {}).keys())
-    if fmt in ("limited", "precon"):
+    if fmt in ("limited", "precon", "jumpin"):
         suo = nome_colori(colori_di(sue)) if magie(sue) else "Unknown"
         mio = (nome_mazzo(p.get("nome_mazzo")) if fmt == "precon" else None) or nome_colori(colori_di(mazzo))
         punti = 0.0
@@ -310,6 +316,11 @@ def prova():
     casi.append(("i formati: Ladder e Play Standard, Sparky fuori, draft limited, precon a parte",
                  formato("Ladder") == formato("Play") == formato("Constructed_Event_2026") == "standard" and formato("AIBotMatch_Rebalanced") is None
                  and formato("QuickDraft_FRA_20261008") == "limited" and formato("DualColorPrecons") == "precon" and formato("Historic_Ladder") == "historic"))
+    # i difetti del 15 nov 2026, coi nomi veri degli eventi dei log
+    casi.append(("il Brawl storico e' Brawl, non Historic; lo Standard Brawl esce; Sparky non conta; Jump In e i mazzi di benvenuto non sono Standard",
+                 formato("Play_Brawl_Historic") == "brawl" and formato("Play_Brawl") == "standard_brawl" and formato("SparkyStarterDeckDuel") is None
+                 and formato("Jump_In_2024") == "jumpin" and formato("WelcomeDeckDuels_HOB_20260811") == "precon"
+                 and formato("Historic_Play") == "historic" and formato("Timeless_Play") == "timeless"))
     recs = [dict(partita=str(i), giorno="2026-11-1%d" % (i % 3), formato="standard", evento="Ladder", mio="UW Bouncer", suo="Mono-White Auras" if i < 6 else "Izzet Prowess",
                  punti=2.0, colori_suoi="W", carte_viste=3, vinta=i in (0, 1, 2, 6), inizia=(i % 2 == 0), mulligan=1 if i == 3 else 0, turni=8 + i, rango="Gold")
             for i in range(8)]

@@ -69,18 +69,22 @@ SPIEGA = {"l1": "At the end of one of your turns you still had a land in your ha
           "l7": f"You conceded with {VITA_CONCEDI} or more life, more than twice the power they had on the battlefield, and at least one card in your hand.",
           "l8": "At the end of your turn your untapped lands were enough to cast a card in your hand, but they made the wrong colors. If you had tapped "
                 "different lands for the spells you cast, the right colors would have stayed open.",
-          "l9": "One of your creatures could attack, the opponent had every land tapped and no untapped creature to block, and you didn't attack.",
+          "l9": "One of your creatures could attack, the opponent had every land tapped and no untapped creature to block, and you didn't attack. "
+                "Not counted: a creature with 0 power, defender or an aura that stops it attacking; keeping blockers home when their creatures "
+                "could kill you next turn; a creature you kept back that blocked or used its ability on their turn.",
           "l10": "You cast an instant or a flash creature during your own main phase when it could have waited for their turn, and at the end of your turn "
                  "you still had a spell in hand that the same mana would have cast (or the flash creature died before it ever attacked).",
           "l11": "Your creatures had enough power to kill the opponent that turn, even after their untapped creatures blocked your biggest ones, and they "
-                 "were still alive at the end of your turn.",
+                 "were still alive at the end of your turn. Not counted: creatures that stayed tapped (they didn't untap or used an ability), one "
+                 "stopped by an aura, and a turn where the opponent answered with an instant or a flash creature (a Settle the Wreckage, a trick).",
           "l12": "You kept your 7 cards, but the numbers say that hand should go back: in Limited no lands or 6-7 lands (17Lands data), in Constructed "
                  "0-1 or 6-7 lands (the usual rule for 60-card decks).",
           "l13": "You sent back your 7 cards, but the numbers say that hand was a keep: 2-5 lands in Limited, 3-4 lands in Constructed.",
           "l14": "On your turn you played your land first and then cast a spell that draws, scries or surveils, even though you could already pay for "
                  "that spell before playing the land.",
-          "l15": "At the end of the opponent's turn you still had untapped lands and an instant or a flash creature you could pay for, and you cast nothing "
-                 "during their turn."}
+          "l15": "At the end of the opponent's turn you still had untapped lands and an instant or a flash creature you could pay for (colors "
+                 "included), and you cast nothing during their turn. Not counted: a removal spell when they had nothing to remove, a combat spell "
+                 "(Settle the Wreckage) when they didn't attack, mana you used for an activated ability."}
 PERCHE = {"l1": "Every land you don't play is mana you lose for the rest of the game: from the next turn you are one land behind on everything you want to cast.",
           "l2": "A creature not cast this turn is a turn of attacking and blocking you never get back, and the mana you didn't use is simply gone.",
           "l3": "That creature can't attack this turn anyway. Casting it first shows your opponent what you had and that your mana is spent, so they block "
@@ -184,7 +188,10 @@ def per_partita(x):
     for m in mom:
         if m[0] == "fine" and m[2] == seat and isinstance(m[3], dict):
             mano = (m[3].get("m") or [[], []])[a]
-            if m[1] not in terre and any(_terra(g) for g in mano):
+            # guardare avanti (la regola del 15 nov 2026): la terra tenuta in mano e usata nel suo turno (landcycling, channel: un'abilita' della carta
+            # dalla mano) era tenuta apposta
+            usate_dopo = {a_[2] for a_ in d.get("attivate") or [] if a_[0] == m[1] + 1 and a_[1] == seat}
+            if m[1] not in terre and any(_terra(g) and g not in usate_dopo for g in mano):
                 l1.append(m[1])
     for dec in _blocchi(x, d, seat):
         l4.append(dec)
@@ -212,6 +219,10 @@ def per_partita(x):
             tutte_col.append(_colori_terra(c[0]))
         lanciabili = [n for n in mano if not DA.e_terra(n) and "Instant" not in (_carta(n).get("tipo") or "") and _costo(n) is not None]
         creature = [n for n in lanciabili if "Creature" in (_carta(n).get("tipo") or "") and "Flash" not in (_carta(n).get("testo") or "")]
+        # le sinergie (15 nov 2026): una creatura la cui entrata vuole una sua creatura come bersaglio, e lui non ne ha, si tiene apposta
+        suoi_crea = [c for c in (f.get("c") or [[], []])[b] if len(c) > 3 and c[3] is not None and not _terra(c[0])]
+        if not suoi_crea:
+            creature = [n for n in creature if not aspetta_bersaglio(n)]
         # il mana tenuto per il suo turno (15 nov 2026, Autore: «quel mana poteva essere utile per giocare una spell nel turno avversario, come
         # sistemiamo questo dilemma?»): se nel suo turno dopo hai lanciato qualcosa, quel mana si toglie e il leak c'e' solo se la creatura ci stava lo
         # stesso; un'abilita' attivata nel suo turno (costo che non si legge) chiude il dubbio a tuo favore; se non hai lanciato niente ma in mano avevi un
@@ -226,7 +237,11 @@ def per_partita(x):
             l2.append(t)
         if t not in l2 and not any(_paga([_costo(n)], stap) for n in creature if 0 < len(_costo(n))):       # L8: non la pagano le stappate, ma le terre di adesso, ripartite su quello che hai lanciato nel turno, si'
             spese = [c_ for c_ in (_costo(_nome(g)) for g in magie_t.get(t, [])) if c_]
-            if spese and any(len(_costo(n)) <= len(stap) and not _paga([_costo(n)], stap) and _paga(spese + [_costo(n)], tutte_col)
+            # guardare avanti (15 nov 2026, la regola di Autore: «il leak finder deve guardare sempre avanti dal mio fino al turno avversario per
+            # valutare se è un vero leak o una decisione strategica»): se nel suo turno quelle terre stappate hanno pagato una tua magia o un'abilita',
+            # le avevi lasciate stappate apposta
+            apposta = abil_suo or (spese_suo and _paga(spese_suo, stap))
+            if spese and not apposta and any(len(_costo(n)) <= len(stap) and not _paga([_costo(n)], stap) and _paga(spese + [_costo(n)], tutte_col)
                              for n in lanciabili if _costo(n)):       # le stappate NON la pagano (prima mancava: Sunpearl Kirin, flash, tenuta apposta)
                 l8.append(t)
     attaccato = {m[1] for m in mom if m[0] == "comb" and m[2] == seat}
@@ -259,7 +274,31 @@ def per_partita(x):
         in_mano = len((f.get("m") or [[], []])[a])
         l7 = vita is not None and vita >= VITA_CONCEDI and vita > 2 * _forza((f.get("c") or [[], []])[b]) and in_mano >= 1
     import mana_aperto as MA
-    l9 = [w["t"] for w in MA.finestre_non_att(d, seat) or [] if w["scoperto"]]
+    # le sinergie (15 nov 2026): le creature che non possono attaccare non contano (difensore, «can't attack»: in mana_aperto.non_attacca), e una
+    # creatura tenuta stappata per la sua abilita', usata poi nel turno di lui, non e' un attacco mancato
+    usate = {}
+    for a_ in d.get("attivate") or []:
+        if a_[1] == seat:
+            usate.setdefault(a_[0], set()).add(a_[2])
+    # guardare avanti (la regola del 15 nov 2026): la creatura tenuta a casa che nel suo turno dopo ha bloccato faceva da difesa, una scelta
+    bloccanti_dopo = {}
+    for m_ in mom:
+        if m_[0] == "comb" and m_[2] != seat and m_[4]:
+            bloccanti_dopo.setdefault(m_[1], set()).update(b_[0] for b_ in m_[4].get("blocchi") or [])
+    l9 = []
+    for w in MA.finestre_non_att(d, seat) or []:
+        if not w["scoperto"]:
+            continue
+        # la rilettura del 15 nov 2026: a vita bassa, contro un suo campo che nel turno dopo ti uccide (la forza delle sue creature arriva alle tue
+        # vite), tenere i bloccanti a casa e' difesa, non un attacco mancato (a 4 vite contro un Mossborn Hydra 10/12)
+        f_ = fine_mie.get(w["t"]) or {}
+        mia_vita = (f_.get("v") or [None, None])[a]
+        if mia_vita is not None and _forza((f_.get("c") or [[], []])[b]) >= mia_vita:
+            continue
+        ids_ = w.get("pronti_id") or [None] * len(w.get("pronti") or [None])
+        if any(g not in usate.get(w["t"] + 1, ()) and i_ not in bloccanti_dopo.get(w["t"] + 1, ())
+               for g, i_ in zip(w.get("pronti") or [None], ids_)):
+            l9.append(w["t"])
     # i leak del Leak Finder (15 nov 2026)
     import tempismo as TM
     l10 = list((TM.per_partita(x) or {}).get("perso") or [])
@@ -313,6 +352,15 @@ def _righe(n):
 
 def _entrata(r_):
     return bool(re.search(r"\bwhen [^,.]{0,60}\benters?\b", r_, re.I))
+
+
+_RX_BERS_SUO = re.compile(r"\bwhen [^,.]{0,60}\benters?\b[^.]*target (?:creature|nonland permanent|permanent|artifact or creature)[^.]*"
+                          r"(?:an opponent controls|you don't control)", re.I)
+
+
+def aspetta_bersaglio(n):
+    """L2: la creatura entra per togliere o colpire una sua creatura o un suo permanente: senza bersagli si tiene apposta."""
+    return any(_RX_BERS_SUO.search(r_) for r_ in _righe(n))
 
 
 def aiuta_attacco(n, t, seat, d, mom):
@@ -418,22 +466,36 @@ def _mana_tenuto(d, seat, mom):
     import variabili_c as VC
     a = seat - 1
     lanci = {t for t, s_, _g, _f in d.get("fasi") or [] if s_ == seat}
+    # le sinergie (15 nov 2026): il mana usato per un'abilita' attivata nel suo turno non e' mana tenuto e mai usato
+    lanci |= {a_[0] for a_ in d.get("attivate") or [] if a_[1] == seat}
     out = []
+    attacco_suo = {m[1] for m in mom if m[0] == "comb" and m[2] != seat}
     for m in mom:
         if m[0] != "fine" or m[2] == seat or not isinstance(m[3], dict) or m[1] in lanci:
             continue
         f = m[3]
-        stap = sum(1 for c in (f.get("c") or [[], []])[a] if _terra(c[0]) and not c[1])
-        if stap < 1:
+        stap = [_colori_terra(c[0]) for c in (f.get("c") or [[], []])[a] if _terra(c[0]) and not c[1]]
+        if not stap:
             continue
+        # la rilettura del 15 nov 2026: i colori contano (le terre stappate devono pagare la carta); una rimozione senza un bersaglio (lui senza
+        # creature ne' planeswalker: Burst Lightning tenuta al suo turno 2) non e' mana sprecato; una magia che vive solo nel suo combattimento
+        # (Settle the Wreckage, «attacking creatures») conta solo se lui ha attaccato
+        suoi = [c for c in (f.get("c") or [[], []])[1 - a] if not _terra(c[0]) and (len(c) > 3 and c[3] is not None
+                                                                                  or "Planeswalker" in (_carta(_nome(c[0])).get("tipo") or ""))]
         for g in (f.get("m") or [[], []])[a]:
             n = _nome(g)
             cc = _carta(n) if n else {}
             tipo, testo, cmc = cc.get("tipo") or "", cc.get("testo") or "", cc.get("cmc")
-            if not cmc or cmc > stap:
+            if not cmc or not _costo(n) or not _paga([_costo(n)], stap):
                 continue
             flash = "Creature" in tipo and "Flash" in testo
-            fine_turno = "Instant" in tipo and "counter target" not in testo.lower() and (_guarda(n) or VC.rimozione(n))
+            rim = VC.rimozione(n)
+            combattimento = bool(re.search(r"attacking|blocking|blocked", testo, re.I))
+            if rim and not suoi and not _guarda(n):
+                continue
+            if combattimento and m[1] not in attacco_suo:
+                continue
+            fine_turno = "Instant" in tipo and "counter target" not in testo.lower() and (_guarda(n) or rim)
             if flash or fine_turno:
                 out.append(m[1])
                 break
@@ -765,11 +827,50 @@ def prova():
                      per_partita(dict(partita="lk17", seat=1, inizia=True))["l14"] == [3]))
         DA._MANA["lk18"] = dict(DA._MANA["lk17"], azioni=[[3, 1, "magia", 815, "I"], [3, 1, "terra", 811, "L"]])
         casi.append(("negativa L14: prima Opt e poi la terra e' la sequenza giusta", per_partita(dict(partita="lk18", seat=1, inizia=True))["l14"] == []))
-        DA._MANA["lk19"] = dict(azioni=[], fasi=[], ultima=None, momenti=[["fine", 2, 2, foto([815], c1=[P1])]])
-        casi.append(("L15: a fine del suo turno una Plains stappata e Opt in mano, e nel suo turno niente lanciato",
+        DA._NOMI_GRP[801] = "Island"
+        ISL = [801, False, False, None, None, 1]
+        DA._MANA["lk19"] = dict(azioni=[], fasi=[], ultima=None, momenti=[["fine", 2, 2, foto([815], c1=[ISL])]])
+        casi.append(("L15: a fine del suo turno un'Island stappata e Opt in mano, e nel suo turno niente lanciato",
                      per_partita(dict(partita="lk19", seat=1, inizia=False))["l15"] == [2]))
+        # la rilettura del 15 nov 2026: i colori contano; una rimozione senza bersagli e una magia da combattimento senza il suo attacco non sono L15
+        DA._MANA["lk36"] = dict(DA._MANA["lk19"], momenti=[["fine", 2, 2, foto([815], c1=[P1])]])
+        DA._NOMI_GRP[835] = "Shock"
+        DA._NOMI_GRP[836] = "Settle the Wreckage"
+        DA._NOMI_GRP[837] = "Mountain"
+        MT = [837, False, False, None, None, 1]
+        DA._MANA["lk38"] = dict(DA._MANA["lk19"], momenti=[["fine", 2, 2, foto([835], c1=[MT])]])
+        DA._MANA["lk39"] = dict(DA._MANA["lk19"], momenti=[["fine", 2, 2, foto([835], c1=[MT], c2=[[816, False, False, 4, 4, 9]])]])
+        P4 = [P1, [811, False, False, None, None, 2], [811, False, False, None, None, 3], [811, False, False, None, None, 4]]
+        DA._MANA["lk40"] = dict(DA._MANA["lk19"], momenti=[["fine", 2, 2, foto([836], c1=P4)]])
+        casi.append(("rilettura L15: Opt con la sola Plains non si paga; Shock senza sue creature si tiene; Settle the Wreckage senza il suo attacco "
+                     "si tiene; negativa: Shock con una sua creatura in campo e la Mountain stappata e' mana tenuto e mai usato",
+                     per_partita(dict(partita="lk36", seat=1, inizia=False))["l15"] == []
+                     and per_partita(dict(partita="lk38", seat=1, inizia=False))["l15"] == []
+                     and per_partita(dict(partita="lk40", seat=1, inizia=False))["l15"] == []
+                     and per_partita(dict(partita="lk39", seat=1, inizia=False))["l15"] == [2]))
+        # la rilettura del 15 nov 2026, L9: lui (posto 2) al turno 1 attacca e resta coi suoi tappati e 0 terre aperte; tu (posto 1) al turno 2 tieni a
+        # casa il tuo 2/2. A 20 vite contro il suo 3/3 e' un attacco mancato; a 3 vite contro lo stesso 3/3 e' difesa
+        def l9_(mia_vita):
+            mia, sua = [810, False, False, 2, 2, 71], [811, True, False, 3, 3, 72]
+            f1 = dict(c=[[mia], [sua]], v=[20, 20], m=[[], []])
+            f2 = dict(c=[[mia], [sua]], v=[mia_vita, 20], m=[[], []])
+            return dict(azioni=[], fasi=[], ultima=None, attacchi=[], fine=[[1, 2, 0, 2], [2, 1, 0, 2]], foto=[[1, 2, f1], [2, 1, f2]],
+                        momenti=[["fine", 1, 2, f1], ["fine", 2, 1, f2]])
+        DA._NOMI_GRP[810] = "Grizzly Bears"
+        DA._MANA["lk41"], DA._MANA["lk42"] = l9_(20), l9_(3)
+        casi.append(("rilettura L9: a 3 vite contro il suo 3/3 tenere il bloccante a casa e' difesa; negativa: a 20 vite e' un attacco mancato",
+                     per_partita(dict(partita="lk42", seat=1, inizia=False))["l9"] == []
+                     and per_partita(dict(partita="lk41", seat=1, inizia=False))["l9"] == [2]))
         DA._MANA["lk20"] = dict(DA._MANA["lk19"], fasi=[[2, 1, 815, "Phase_Ending"]])
         casi.append(("negativa L15: Opt lanciato alla fine del suo turno", per_partita(dict(partita="lk20", seat=1, inizia=False))["l15"] == []))
+        # guardare avanti fino al suo turno (15 nov 2026, la regola di Autore): un'abilita' attivata nel suo turno ha usato quel mana (L15); la Swamp
+        # lasciata stappata ha pagato una tua magia nel suo turno (L8)
+        DA._MANA["lk34"] = dict(DA._MANA["lk19"], attivate=[[2, 1, 811, "Phase_Ending", "Step_End", 2]])
+        casi.append(("guardare avanti L15: un'abilita' attivata nel suo turno non e' mana mai usato", per_partita(dict(partita="lk34", seat=1, inizia=False))["l15"] == []))
+        DA._NOMI_GRP[834] = "Cut Down"
+        DA._MANA["lk35"] = dict(DA._MANA["lk7"], fasi=[[1, 1, 813, "Phase_Main2"], [2, 1, 834, "Phase_Ending"]])
+        casi.append(("guardare avanti L8: la Swamp stappata ha pagato Cut Down nel suo turno, le avevi lasciate apposta; positivo: lk7 resta L8",
+                     per_partita(dict(partita="lk35", seat=1, inizia=True))["l8"] == [] and l7_["l8"] == [1]))
         casi.append(("L12-L13 per formato: nel Constructed una 7 tenuta a 1 terra e' un leak, nel Limited no (1 terra e' pari); rimandare una 7 a 3 terre e' "
                      "un leak in tutti e due",
                      valore(dict(leak={}, tipo="Constructed", mulligan=0, terre=1), "l12") == "Yes"

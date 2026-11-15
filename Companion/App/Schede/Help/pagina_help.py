@@ -155,7 +155,10 @@ SEZIONI = (
                 "dying, a card that triggers when a creature enters) is not «cast before attacking»; an instant before combat that taps a blocker or "
                 "triggers prowess is not «for no reason»; in a trade, tokens count for their body, a creature that already gave its value entering "
                 "counts for its body only, one that leaves something when it dies counts less, and their trick in that combat cancels the trade; "
-                "a block that saves your planeswalker, or made by a token, is not a chump block. Clues from the replay, not verdicts: the replay can't "
+                "a block that saves your planeswalker, or made by a token, is not a chump block. Every leak of a turn looks ahead to the opponent's "
+                "next turn before calling it a leak: mana or untapped lands you used on their turn (a spell, an ability), a creature you held back "
+                "that then blocked or used its ability, a land you kept and cycled are decisions, not leaks; creatures with defender or that can't "
+                "attack don't count for a missed attack or lethal, nor does lethal their card stopped. Clues from the replay, not verdicts: the replay can't "
                 "see your hand or your plan"),
       ("Your draft (Limited)", "Advanced filters › You › Draft, from the picks in your logs, Limited only: the pick you settled on your two colors, your "
                 "first-pack picks in your deck's colors, the cards of your colors that wheeled in the first pack (a signal that they were open), your first "

@@ -519,6 +519,47 @@ def tutti(ids=None, archivi=True):
     return dati
 
 
+def _testo(g):
+    """Il testo della carta di un grpId (dal leak finder, che lo legge dal database); "" se non si sa."""
+    try:
+        import leak as LK
+        n = LK._nome(g)
+        return (LK._carta(n).get("testo") or "") if n else ""
+    except Exception:
+        return ""
+
+
+def non_attacca(g):
+    """La creatura non puo' attaccare (15 nov 2026, le sinergie del leak finder): difensore o «can't attack» nel testo (grado C: Surveillance Phantasm
+    attacca solo dopo un tuo surveil, qui conta come se non potesse)."""
+    t = _testo(g)
+    return bool(re.search(r"\bDefender\b|can't attack\b", t))
+
+
+def blocca_attacchi(g):
+    """Un suo permanente che ferma o tassa i tuoi attacchi («creatures can't attack you», «can't attack you unless»): il letale sul tavolo non e' tuo."""
+    return bool(re.search(r"can't attack you|attack you unless|creatures can't attack", _testo(g), re.I))
+
+
+def aura_ferma(g):
+    """Un'aura che ferma la creatura incantata («enchanted creature can't attack», Pacifism, Petrify): la rilettura del 15 nov 2026 ha trovato Unstoppable
+    Slasher sotto Pacifism contato come attaccante. Le foto non dicono a chi e' attaccata: si toglie la creatura piu' forte (grado C)."""
+    return bool(re.search(r"enchanted (?:creature|artifact or creature|permanent)[^.]*can't attack", _testo(g), re.I))
+
+
+def _ferme(lato):
+    return sum(1 for c in lato if aura_ferma(c[0]))
+
+
+def _istantaneo_o_flash(g):
+    try:
+        import leak as LK
+        c = LK._carta(LK._nome(g)) if LK._nome(g) else {}
+    except Exception:
+        return False
+    return "Instant" in (c.get("tipo") or "") or "Flash" in (c.get("testo") or "")
+
+
 def finestre_non_att(d, seat):
     """Gli attacchi mancati (14 nov 2026, Autore: «quante volte dovevo attaccare e non l'ho fatto»): per ogni tuo turno senza attacco in cui avevi almeno una
     creatura in grado di attaccare -> dict(t, scoperto, letale). Dalle foto di fine turno, senza altri dati:
@@ -541,15 +582,19 @@ def finestre_non_att(d, seat):
             continue
         prima, ora = foto[t - 1][2], f[2]
         miei_prima = {c[5] for c in (prima.get("c") or [[], []])[seat - 1] if len(c) > 5}
+        # la rilettura del 15 nov 2026: una creatura a forza 0 non e' un attacco mancato; un'aura «can't attack» (sua o tua) ne ferma una, la piu' forte
         pronti = [c for c in (ora.get("c") or [[], []])[seat - 1]
-                  if len(c) > 5 and c[3] is not None and not c[1] and c[5] in miei_prima]
+                  if len(c) > 5 and c[3] is not None and c[3] > 0 and not c[1] and c[5] in miei_prima and not non_attacca(c[0])]
+        k = _ferme((ora.get("c") or [[], []])[0] + (ora.get("c") or [[], []])[1])
+        if k:
+            pronti = sorted(pronti, key=lambda c: -(c[3] or 0))[k:]
         if not pronti:
             continue
         bloccanti = [c for c in (prima.get("c") or [[], []])[lui - 1] if len(c) > 5 and c[3] is not None and not c[1]]
         vita = (prima.get("v") or [None, None])[lui - 1]
         scoperto = fine[t - 1][2] == 0 and not bloccanti
         letale = vita is not None and sum(max(0, c[3] or 0) for c in pronti) >= vita
-        out.append(dict(t=t, scoperto=scoperto, letale=letale))
+        out.append(dict(t=t, scoperto=scoperto, letale=letale, pronti=[c[0] for c in pronti], pronti_id=[c[5] for c in pronti]))
     return out
 
 
@@ -604,11 +649,22 @@ def letali_mancati(d, seat):
         vita_dopo = (ora.get("v") or [None, None])[lui - 1]
         if vita is None or vita <= 0 or (vita_dopo is not None and vita_dopo <= 0):
             continue
+        # la rilettura del 15 nov 2026: una creatura tappata a fine del tuo turno che non ha attaccato non si e' stappata (la tiene giu' una sua carta)
+        # o ha usato un'abilita': non conta; un'aura «can't attack» ne ferma una, la piu' forte
         ora_ids = {c[5] for c in (ora.get("c") or [[], []])[seat - 1] if len(c) > 5}
+        tappate_ferme = {c[5] for c in (ora.get("c") or [[], []])[seat - 1] if len(c) > 5 and c[1] and c[5] not in att.get(t, ())}
         mie = sorted((max(0, c[3] or 0) for c in (prima.get("c") or [[], []])[seat - 1]
-                      if len(c) > 5 and c[3] is not None and (c[5] in ora_ids or c[5] in att.get(t, ()))), reverse=True)
+                      if len(c) > 5 and c[3] is not None and (c[5] in ora_ids or c[5] in att.get(t, ())) and not non_attacca(c[0])
+                      and c[5] not in tappate_ferme), reverse=True)
+        mie = mie[_ferme((ora.get("c") or [[], []])[0] + (ora.get("c") or [[], []])[1]):]
         b = sum(1 for c in (prima.get("c") or [[], []])[lui - 1] if len(c) > 5 and c[3] is not None and not c[1])
         passa = sum(mie[b:])
+        if any(blocca_attacchi(c[0]) for c in (prima.get("c") or [[], []])[lui - 1]):
+            continue
+        # guardare dentro il turno (la regola del 15 nov 2026): un suo istantaneo o una sua creatura con flash lanciati nel tuo turno (Settle the
+        # Wreckage, un trucco, un bloccante a sorpresa) hanno fermato il letale: non e' un letale che non hai visto
+        if any(s_ == lui and t_ == t and _istantaneo_o_flash(g_) for t_, s_, g_, _f in d.get("fasi") or []):
+            continue
         if mie and passa >= vita:
             out.append(dict(t=t, attaccato=t in att, forza=passa, bloccanti=b, vita=vita))
     return out
@@ -775,6 +831,24 @@ def prova():
     casi.append(("negativa M5: lui e' morto nel turno (vite 0 a fine turno)", situazioni(mancato(forza=5, vita=5, attacca=True, vita_dopo=0), 1)["io_letale_mancato"] is False))
     casi.append(("negativa M5: la creatura appena entrata non conta (debolezza da evocazione)", situazioni(mancato(forza=5, vita=5, nuova=True), 1)["io_letale_mancato"] is False))
     casi.append(("negativa M5: 2 di forza contro 20 vite", situazioni(mancato(), 1)["io_letale_mancato"] is False))
+    # la rilettura del 15 nov 2026: chi non si stappa, il suo istantaneo nel tuo turno, l'aura che ferma, la forza 0
+    import leak as LK_
+    LK_.DA._NOMI_GRP.update({940: "Pacifism", 941: "Settle the Wreckage"})
+    try:
+        casi.append(("rilettura M5: la creatura tappata a fine del tuo turno che non ha attaccato (non si e' stappata) non conta",
+                     situazioni(mancato(forza=5, vita=5, tappata=True), 1)["io_letale_mancato"] is False))
+        m_ = mancato(forza=5, vita=5, attacca=True)
+        m_["fasi"] = [[2, 2, 941, "Phase_Combat"]]
+        casi.append(("rilettura M5: il suo Settle the Wreckage nel tuo combattimento ha fermato il letale: non conta; negativa: senza resta",
+                     letali_mancati(m_, 1) == [] and letali_mancati(mancato(forza=5, vita=5, attacca=True), 1) != []))
+        aura = [940, 0, 0, None, None, 80]
+        casi.append(("rilettura: un Pacifism in campo ferma la tua creatura: niente letale ne' attacco mancato; negativa: senza l'aura si'",
+                     situazioni(mancato(forza=5, vita=5, extra=[aura]), 1)["io_letale_mancato"] is False
+                     and situazioni(mancato(extra=[aura]), 1)["io_non_att_chiuso"] is False))
+        casi.append(("rilettura: una creatura a forza 0 non e' un attacco mancato", situazioni(mancato(forza=0), 1)["io_non_att_chiuso"] is False))
+    finally:
+        for k_ in (940, 941):
+            LK_.DA._NOMI_GRP.pop(k_, None)
     casi.append(("attacchi mancati, senza le foto la situazione e' None (non No)", situazioni(dict(attacchi=[], fine=[], momenti=[]), 1)["io_non_att_chiuso"] is None))
     casi.append(("attacchi mancati, caso dubbio documentato: tieni la creatura a casa contro un suo contrattacco letale e lui e' scoperto = conta lo stesso",
                  situazioni(mancato(), 1)["io_non_att_chiuso"] is True))

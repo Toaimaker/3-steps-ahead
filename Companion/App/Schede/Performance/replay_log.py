@@ -31,11 +31,11 @@ VISIBILI = {"AnnotationType_ZoneTransfer", "AnnotationType_DamageDealt", "Annota
             "AnnotationType_CounterRemoved", "AnnotationType_Scry", "AnnotationType_AttachmentCreated", "AnnotationType_PowerToughnessModCreated",
             # dal censimento del 14 nov 2026: le carte rivelate, il grimorio rimescolato, la carta che cambia controllore
             "AnnotationType_RevealedCardCreated", "AnnotationType_Shuffle", "AnnotationType_ControllerChanged", "AnnotationType_ChoiceResult",
-            "AnnotationType_AbilityInstanceCreated"}
+            "AnnotationType_AbilityInstanceCreated", "AnnotationType_CardRevealed"}
 CATEGORIE = {"PlayLand": "played", "CastSpell": "cast", "Resolve": "resolved", "Draw": "drew", "Discard": "discarded", "Destroy": "destroyed",
              "Sacrifice": "sacrificed", "SBA_Damage": "died", "SBA_ZeroToughness": "died", "SBA_Deathtouch": "died", "SBA_UnattachedAura": "fell off",
              "SBA_LegendRule": "left (legend rule)", "Exile": "exiled", "Countered": "countered", "Return": "returned to hand", "Put": "put onto the battlefield",
-             "Mill": "milled", "Surveil": "surveiled", "Bounce": "returned to hand",
+             "Mill": "milled", "Surveil": "surveilled", "Separate": "put into a pile", "Bounce": "returned to hand",
              # dal debug del 12 nov 2026 (categorie che i log hanno e il replay saltava): il planeswalker senza fedelta', il warp, la carta a faccia in giu'
              "SBA_ZeroLoyalty": "died (no loyalty left)", "Warp": "exiled (warp)", "ManifestLike": "put onto the battlefield face down"}
 
@@ -182,6 +182,23 @@ def nome_parola(n):
     return t[:1].upper() + t[1:].lower() if t else ""
 
 
+# Il tipo di Qualification di Arena -> (scritta sulla carta, genere): «no» un divieto (rosso), «si» un permesso (blu). Letti il 15 nov 2026 sulle ultime 300
+# partite col testo dell'abilita' che li da' (testi_arena.abilita del «grpid»): 21 «doesn't untap», 30 «can't attack or block», 31 «can't block», 32 «can't be
+# blocked», 39 «can't be blocked by more than one creature», 49 «can attack as though it didn't have defender», 11 «activated abilities ... can't be
+# activated», 10 «this spell can't be countered». Gli altri (costi ridotti, effetti su tutto il tavolo, 47 giocabile, 40 menace) non sono uno stato della carta.
+STATI_QUAL = {21: ("NO UNTAP", "no"), 30: ("NO ATTACK/BLOCK", "no"), 31: ("CAN'T BLOCK", "no"), 32: ("UNBLOCKABLE", "si"), 39: ("1 BLOCKER MAX", "si"),
+              49: ("CAN ATTACK", "si"), 11: ("ABILITIES OFF", "no"), 10: ("UNCOUNTERABLE", "si")}
+
+
+def metti_stato(x, i, st):
+    """Lo stato (scritta, genere) sulla carta i, una volta sola; il livello di una Classe sostituisce quello di prima."""
+    lst = x.setdefault(i, {}).setdefault("st", [])
+    if st[1] == "liv":
+        lst[:] = [e_ for e_ in lst if e_[1] != "liv"]
+    if list(st) not in lst and len(lst) < 5:
+        lst.append(list(st))
+
+
 def segni(pers, obj, ricordo, tutti, zona=lambda o: None, scelte=None):
     """I segni che restano sul tavolo (14 nov 2026, il censimento: «poi i segni che restano sul tavolo»), dalle annotazioni persistenti di Arena:
     {id: dict(tmp=1 se se ne va a fine turno, sotto=[grpId delle carte sotto di lei], kw=[parole chiave date], des=[designazioni])}, e la velocita'
@@ -193,6 +210,17 @@ def segni(pers, obj, ricordo, tutti, zona=lambda o: None, scelte=None):
         ty = a.get("type") or []
         det = {d_.get("key"): d_.get("valueInt32") or d_.get("valueString") or [] for d_ in a.get("details") or []}
         aff = a.get("affectedIds") or []
+        if "AnnotationType_ModifiedColor" in ty and det.get("color"):
+            # il colore cambiato (15 nov 2026, il censimento): le terre Restless che diventano creature, Witness Protection; i colori di Arena 1-5 = WUBRG
+            col_ = " · ".join({1: "WHITE", 2: "BLUE", 3: "BLACK", 4: "RED", 5: "GREEN"}.get(c_, "?") for c_ in det["color"][:3])
+            for i in aff:
+                if i not in (1, 2):
+                    metti_stato(x, i, ("NOW " + col_, "col"))
+        if "AnnotationType_ModifiedType" in ty:
+            for i in aff:       # la terra diventata creatura (le terre Restless, earthbend di TLA): resta una terra ma attacca e blocca
+                ct_ = (obj.get(i) or {}).get("cardTypes") or []
+                if i not in (1, 2) and "CardType_Creature" in ct_ and "CardType_Land" in ct_:
+                    metti_stato(x, i, ("NOW A CREATURE", "si"))
         if "AnnotationType_TemporaryPermanent" in ty:
             for i in aff:
                 x.setdefault(i, {})["tmp"] = 1
@@ -216,6 +244,14 @@ def segni(pers, obj, ricordo, tutti, zona=lambda o: None, scelte=None):
                     lst = x.setdefault(i, {}).setdefault("ab", [])
                     if g_ not in lst and len(lst) < 4:
                         lst.append(g_)
+        elif "AnnotationType_Attachment" in ty and a.get("affectorId") and aff:
+            # l'aura o l'equipaggiamento attaccato (15 nov 2026, Autore: «quando una carta riceve un incantesimo aura o indossa un artefatto, non dovremmo
+            # vedere quelle carte al di sotto di chi l'ha ricevuta?»): Arena lo scrive come annotazione persistente, l'aura (affector) sulla carta (affected)
+            x.setdefault(a["affectorId"], {})["su"] = aff[0]
+            o = obj.get(a["affectorId"]) or ricordo.get(a["affectorId"]) or {}
+            lst = x.setdefault(aff[0], {}).setdefault("porta", [])
+            if not any(e_[0] == a["affectorId"] for e_ in lst) and len(lst) < 6:
+                lst.append([a["affectorId"], MA.grp_vero(o, tutti) if o.get("grpId") else 0])
         elif "AnnotationType_AbilityWordActive" in ty and det.get("AbilityWordName"):
             # la parola d'abilita' attiva (14 nov 2026, il censimento: 3.860 volte nei log): il nome e, se Arena li scrive, il conto e la soglia
             n_aw = nome_parola(det["AbilityWordName"][0])
@@ -238,6 +274,44 @@ def segni(pers, obj, ricordo, tutti, zona=lambda o: None, scelte=None):
                 chi_g = fonte_.get("controllerSeatId") if fonte_.get("controllerSeatId") in (1, 2) else o.get("ownerSeatId")
                 if z_ in ("ZoneType_Exile", "ZoneType_Graveyard") and chi_g in (1, 2):      # senza grpId: a faccia in giu' (il suo foretell)
                     x.setdefault(i, {})["gioca"] = [MA.grp_vero(o, tutti) if o.get("grpId") else 0, chi_g, "esi" if z_ == "ZoneType_Exile" else "cim"]
+        elif "AnnotationType_Qualification" in ty and (det.get("QualificationType") or [None])[0] in STATI_QUAL:
+            # lo stato della carta (15 nov 2026, il censimento: 1.048 passi coi divieti e i permessi che non si vedevano): non si stappa, non puo' bloccare,
+            # non bloccabile... il tipo lo dice Arena, l'abilita' che lo da' e' «grpid» (letti sulle partite vere col testo del database di Arena)
+            for i in aff:
+                if i not in (1, 2):
+                    metti_stato(x, i, STATI_QUAL[det["QualificationType"][0]])
+        elif ("AnnotationType_CrewedThisTurn" in ty or "AnnotationType_SaddledThisTurn" in ty) and a.get("affectorId"):
+            # equipaggiato o sellato in questo turno (15 nov 2026, il censimento): il veicolo o la cavalcatura (affector) e chi l'ha fatto (affected)
+            cr_ = "AnnotationType_CrewedThisTurn" in ty
+            if a["affectorId"] not in (1, 2):
+                metti_stato(x, a["affectorId"], ("CREWED" if cr_ else "SADDLED", "si"))
+            for i in aff:
+                if i not in (1, 2) and i != a["affectorId"]:
+                    metti_stato(x, i, ("CREWING" if cr_ else "SADDLING", "off"))
+        elif "AnnotationType_CopiedObject" in ty:
+            for i in aff:       # la carta originale sotto la copia: la pillola COPY OF
+                o = obj.get(i) or ricordo.get(i) or {}
+                if i not in (1, 2) and o.get("grpId"):
+                    x.setdefault(i, {})["copia_di"] = MA.grp_vero(o, tutti)
+        elif "AnnotationType_AbilityExhausted" in ty and not (det.get("UsesRemaining") or [1])[0]:
+            # l'abilita' gia' usata: exhaust (una volta per partita) o «only once each turn» (Exemplar of Light), dal testo dell'abilita'
+            try:
+                import testi_arena as TA
+                t_ab = (TA.abilita((det.get("AbilityGrpId") or [0])[0]) or "").lower()
+            except Exception:      # noqa: BLE001 - senza database: la scritta generica
+                t_ab = ""
+            st_ab = ("EXHAUSTED", "off") if "exhaust" in t_ab else ("USED THIS TURN", "off")
+            for i in aff:
+                if i not in (1, 2):
+                    metti_stato(x, i, st_ab)
+        elif "AnnotationType_RemoveAbility" in ty and any("all" in (v_ or []) for v_ in det.values() if isinstance(v_, list)):
+            for i in aff:       # «loses all abilities», data da un'altra carta (la carta su se stessa e' il suo modo di cambiare tipo: Multiversal Passage)
+                if i not in (1, 2) and i != a.get("affectorId"):
+                    metti_stato(x, i, ("NO ABILITIES", "no"))
+        elif "AnnotationType_ClassLevel" in ty and det.get("Level"):
+            for i in aff:       # il livello raggiunto da una Classe
+                if i not in (1, 2):
+                    metti_stato(x, i, (f"LEVEL {det['Level'][0]}", "liv"))
         elif "AnnotationType_Designation" in ty:
             dt = (det.get("DesignationType") or [None])[0]
             for i in aff:
@@ -275,6 +349,13 @@ def azioni(righe, nome=lambda g: None):
             return obj.get(k) or ricordo.get(k) or d
     tutti = _Tutti()
 
+    def scattata_da(ab_id, o_ab):
+        """Chi ha fatto scattare l'abilita' in pila (15 nov 2026, il censimento: TriggeringObject, 5.345 volte): gli oggetti dell'annotazione persistente,
+        tolta la fonte dell'abilita' (la sua freccia c'e' gia': «Ability of X»)."""
+        fonte = (o_ab or {}).get("parentId")
+        return [i for a_ in pers.values() if "AnnotationType_TriggeringObject" in (a_.get("type") or []) and a_.get("affectorId") == ab_id
+                for i in a_.get("affectedIds") or [] if i != fonte and i not in (1, 2)][:4]
+
     def ogg(i):
         """L'oggetto di un id: com'e' adesso, se no com'era (anche sotto l'id di prima)."""
         seen = set()
@@ -306,6 +387,15 @@ def azioni(righe, nome=lambda g: None):
     def foto():
         c, m, n, g, e = [[], []], [[], []], [0, 0], [[], []], [[], []]
         seg = MA.segnalini(pers)
+        # la carta che e' una copia (15 nov 2026, il censimento: CopiedObject): Arena lascia il grpId dell'originale e scrive in copyFromGrpid cosa copia;
+        # in campo si vede cio' che copia (la carta originale sta nei segni, «copia_di»)
+        copie = {}
+        for a_ in pers.values():
+            if "AnnotationType_CopiedObject" in (a_.get("type") or []):
+                g_c = next((d_.get("valueInt32") or [None])[0] for d_ in a_.get("details") or [] if d_.get("key") == "copyFromGrpid")                     if any(d_.get("key") == "copyFromGrpid" for d_ in a_.get("details") or []) else None
+                if g_c:
+                    for i in a_.get("affectedIds") or []:
+                        copie[i] = g_c
         for zid, tp in zone.items():
             ids = zids.get(zid, [])
             if tp in ("ZoneType_Graveyard", "ZoneType_Exile"):
@@ -321,7 +411,7 @@ def azioni(righe, nome=lambda g: None):
                     o = obj.get(i)
                     if o and o.get("grpId") and o.get("type") in ("GameObjectType_Card", "GameObjectType_Token") and o.get("controllerSeatId") in (1, 2):
                         crea = "CardType_Creature" in (o.get("cardTypes") or [])
-                        c[o["controllerSeatId"] - 1].append([o["grpId"], 1 if o.get("isTapped") else 0, 1 if o["type"] == "GameObjectType_Token" else 0,
+                        c[o["controllerSeatId"] - 1].append([copie.get(i, o["grpId"]), 1 if o.get("isTapped") else 0, 1 if o["type"] == "GameObjectType_Token" else 0,
                                                              valore(o, "power") if crea else None, valore(o, "toughness") if crea else None, i, seg.get(i) or None])
             elif tp == "ZoneType_Hand" and zown.get(zid) in (1, 2):
                 k = zown[zid] - 1
@@ -334,8 +424,77 @@ def azioni(righe, nome=lambda g: None):
                     o = obj.get(i)
                     if o and o.get("controllerSeatId") in (1, 2):
                         pl.append([MA.grp_vero(o, tutti), o["controllerSeatId"], 1 if o.get("type") == "GameObjectType_Ability" else 0, i])
+        pl_ids = {e_[3] for e_ in pl}
         x, vel = segni(pers, obj, ricordo, tutti, lambda o: zone.get(o.get("zoneId")), scelte_carte)
+        # le copie senza CopiedObject (le pedine copia, le magie copiate) e le carte a faccia in giu' in campo (15 nov 2026, le meta' del censimento: Arena
+        # le segna sull'oggetto, isCopy e isFacedown; a faccia in giu' il proprietario ne vede il nome, l'altro un dorso)
+        for lato_c in c:
+            for e_c in lato_c:
+                o_c = obj.get(e_c[5]) or {}
+                if o_c.get("isCopy") and not (x.get(e_c[5]) or {}).get("copia_di"):
+                    metti_stato(x, e_c[5], ("COPY", "si"))
+                if o_c.get("isFacedown"):
+                    metti_stato(x, e_c[5], ("FACE DOWN", "off"))
         out = dict(c=c, m=m, n=n, v=[vite.get(1), vite.get(2)], g=g, e=e, p=pl)
+        # come e' stata lanciata la magia in pila (15 nov 2026, il censimento: CastingTimeOption, 479 volte): kicker, il valore di X, il costo alternativo o
+        # aggiuntivo; {id in pila: [scritte]}
+        op = {}
+        for a_ in pers.values():
+            if "AnnotationType_CastingTimeOption" in (a_.get("type") or []):
+                d_ = {e_.get("key"): e_.get("valueInt32") or e_.get("valueString") or [] for e_ in a_.get("details") or []}
+                t_ = (d_.get("type") or [None])[0]
+                sc_ = {3: "KICKED", 5: "EXTRA COST", 11: "EXTRA COST"}.get(t_)
+                if t_ == 2 and d_.get("value"):
+                    sc_ = f"X = {d_['value'][0]}"
+                elif t_ == 13 and d_.get("alternateCostGrpId"):
+                    # il costo alternativo dal testo della sua abilita' (letti sui log: 149 gratis, flashback, plot, la vita); senza testo niente scritta
+                    try:
+                        import testi_arena as TA
+                        t_alt = (TA.abilita(d_["alternateCostGrpId"][0]) or "").lower()
+                    except Exception:      # noqa: BLE001 - senza database niente scritta
+                        t_alt = ""
+                    sc_ = ("FREE" if "without paying" in t_alt else "FLASHBACK" if t_alt.startswith("flashback") else "FROM PLOT" if t_alt.startswith("plot")
+                           else "PAID WITH LIFE" if t_alt.startswith("pay life") else None)
+                for i in a_.get("affectedIds") or []:
+                    if sc_ and i in pl_ids and sc_ not in op.setdefault(i, []):
+                        op[i].append(sc_)
+        for e_p in pl:      # la magia copiata in pila (una copia di Twinned Vision, di un'abilita'): COPY sulla carta in cima
+            if (obj.get(e_p[3]) or {}).get("isCopy") and "COPY" not in op.setdefault(e_p[3], []):
+                op[e_p[3]].insert(0, "COPY")
+        op = {k_: v_ for k_, v_ in op.items() if v_}
+        if op:
+            out["op"] = op
+        # gli emblemi (15 nov 2026): gli oggetti Emblem della zona Command, col grpId della carta che li ha creati, per posto
+        em = [[], []]
+        for zid, tp in zone.items():
+            if tp == "ZoneType_Command":
+                for i in zids.get(zid) or []:
+                    o_e = obj.get(i) or {}
+                    if o_e.get("type") == "GameObjectType_Emblem" and o_e.get("controllerSeatId") in (1, 2) and o_e.get("objectSourceGrpId"):
+                        em[o_e["controllerSeatId"] - 1].append(o_e["objectSourceGrpId"])
+        if em[0] or em[1]:
+            out["em"] = em
+        # la carta in cima al grimorio che si conosce (15 nov 2026, Autore: «quando effettuiamo azioni che ci permettono di conoscere la prossima pescata
+        # ... dovrebbe restare visibile la carta in testa al mazzo / se poi la conosce anche l'avversario, allora dovrebbe avere il logo dell'occhio aperto»):
+        # Arena la manda col grpId (privata: la conosce solo il proprietario; pubblica: tutti e due), per posto [grpId, 1 se pubblica] o None
+        cm = [None, None]
+        for zid, tp in zone.items():
+            if tp == "ZoneType_Library" and zown.get(zid) in (1, 2):
+                ids_l = zids.get(zid) or []
+                o_l = obj.get(ids_l[0]) if ids_l else None
+                if o_l and o_l.get("grpId"):
+                    cm[zown[zid] - 1] = [MA.grp_vero(o_l, tutti), 1 if o_l.get("visibility") == "Visibility_Public" else 0]
+        if cm[0] or cm[1]:
+            out["cm"] = cm
+        # le carte della mano mostrate all'altro giocatore (15 nov 2026, il censimento: InstanceRevealedToOpponent, 698 volte): i grpId per posto
+        mostrate = {i for a_ in pers.values() if "AnnotationType_InstanceRevealedToOpponent" in (a_.get("type") or []) for i in a_.get("affectedIds") or []}
+        if mostrate:
+            mv = [[], []]
+            for zid, tp in zone.items():
+                if tp == "ZoneType_Hand" and zown.get(zid) in (1, 2):
+                    mv[zown[zid] - 1] += [obj[i]["grpId"] for i in zids.get(zid, []) if i in mostrate and i in obj and obj[i].get("grpId")]
+            if mv[0] or mv[1]:
+                out["mv"] = mv
         if riserva.get(1) or riserva.get(2):      # il mana in riserva (fluttua): [[colori del posto 1], [del posto 2]]
             out["mp"] = [list(riserva.get(1) or []), list(riserva.get(2) or [])]
         if x:
@@ -496,6 +655,7 @@ def azioni(righe, nome=lambda g: None):
             colpiti_vita, perdite = set(), []          # chi ha preso danno; le vite perse senza danno (Perforating Artist: «perde 3 vite a meno che…»)
             effetti_abilita = []                       # (abilita', bersagli): un'abilita' che fa effetto adesso, senza essere mai stata in pila in un passo
             rivelate, mescola = [], []                 # [grpId, proprietario] delle carte rivelate; i giocatori che rimescolano il grimorio (il censimento)
+            anns_msg = gs.get("annotations") or []
             guardate = []                              # lo scry: [grpId o 0 se non si vede, chi, 1 sopra / 0 sotto], nell'ordine in cui restano
             if sv_ora:                                 # il surveil: [grpId, chi, 1 sopra / 0 al cimitero, 1]
                 guardate = sv_ora
@@ -529,11 +689,24 @@ def azioni(righe, nome=lambda g: None):
                             dest = _dettaglio(a, "zone_dest")
                             ev.append((zown.get(dest) or chi_(x), "drew " + (n_(x) if ogg(x).get("grpId") else "a card")))
                         else:
+                            if cat == "Separate":       # le carte divise in mucchi (Bilbo's Gambit): dove va il mucchio lo dice la zona d'arrivo (15 nov 2026)
+                                verbo = {"ZoneType_Hand": "put into hand from a pile", "ZoneType_Graveyard": "put into the graveyard from a pile"}.get(
+                                    zone.get(_dettaglio(a, "zone_dest")), verbo)
                             if cat in ("Return", "Put", "Bounce"):     # dove va lo dice la zona d'arrivo (Teacher's Pest torna dal cimitero in campo, non in mano)
                                 verbo = {"ZoneType_Hand": "returned to hand", "ZoneType_Battlefield": "returned to the battlefield" if cat == "Return"
                                          else "put onto the battlefield", "ZoneType_Library": "put into the library", "ZoneType_Graveyard": "put into the graveyard",
                                          "ZoneType_Exile": "exiled"}.get(zone.get(_dettaglio(a, "zone_dest")), verbo)
-                            ev.append((chi_(x), f"{verbo} {n_(x)}" if cat in ("PlayLand", "CastSpell", "Discard", "Sacrifice") else f"{n_(x)} {verbo}"))
+                            chi_x = chi_(x)
+                            dz_ = _dettaglio(a, "zone_dest")
+                            if zone.get(dz_) == "ZoneType_Library" and x in (zids.get(dz_) or []):
+                                # dove finisce nel grimorio (15 nov 2026, i gruppi del censimento: «sopra o sotto non si distingue»): Arena non lo scrive
+                                # nell'annotazione, ma la lista del grimorio va dalla cima al fondo; il proprietario del grimorio e' chi lo dice
+                                ids_d = zids[dz_]
+                                k_d = ids_d.index(x)
+                                verbo = ("put on top of the library" if k_d == 0 else "put on the bottom of the library" if k_d == len(ids_d) - 1
+                                         else f"put into the library, {k_d + 1}{'nd' if k_d == 1 else 'rd' if k_d == 2 else 'th'} from the top")
+                                chi_x = zown.get(dz_) or chi_x
+                            ev.append((chi_x, f"{verbo} {n_(x)}" if cat in ("PlayLand", "CastSpell", "Discard", "Sacrifice") else f"{n_(x)} {verbo}"))
                 elif "AnnotationType_DamageDealt" in tipi:
                     q = _dettaglio(a, "damage") or 0
                     for x in aff:
@@ -583,6 +756,12 @@ def azioni(righe, nome=lambda g: None):
                     for x in aff:
                         o_r = ogg(x)
                         if o_r.get("grpId") and o_r.get("ownerSeatId") in (1, 2):
+                            ev.append((o_r["ownerSeatId"], f"revealed {n_(x)}"))
+                            rivelate.append([MA.grp_vero(o_r, tutti), o_r["ownerSeatId"]])
+                elif "AnnotationType_CardRevealed" in tipi:      # la carta mostrata senza la copia rivelata (15 nov 2026): la stessa animazione, una volta
+                    for x in aff:
+                        o_r = ogg(x)
+                        if o_r.get("grpId") and o_r.get("ownerSeatId") in (1, 2) and [MA.grp_vero(o_r, tutti), o_r["ownerSeatId"]] not in rivelate                                 and not any("AnnotationType_RevealedCardCreated" in (a2.get("type") or []) for a2 in anns_msg):
                             ev.append((o_r["ownerSeatId"], f"revealed {n_(x)}"))
                             rivelate.append([MA.grp_vero(o_r, tutti), o_r["ownerSeatId"]])
                 elif "AnnotationType_Shuffle" in tipi:
@@ -659,6 +838,8 @@ def azioni(righe, nome=lambda g: None):
                 o = ogg(cima)
                 rel = dict(k="spell", g=MA.grp_vero(o, tutti), chi=o.get("controllerSeatId"), ab=o.get("type") == "GameObjectType_Ability",
                            bers=list(bersagli.get(cima, [])), colpiti=[], fuori=MA.fuori_campo(bersagli.get(cima, []), zone, zids, zown, tutti))
+                if scattata_da(cima, o):
+                    rel["da"] = scattata_da(cima, o)
                 if cima in in_pila:
                     in_pila[cima]["rels"].append(rel)
             for x, q, src in perdite:
@@ -675,7 +856,7 @@ def azioni(righe, nome=lambda g: None):
                 f_ab["p"] = [[MA.grp_vero(o_ab, tutti), o_ab.get("controllerSeatId"), 1, ab_id]]
                 frames.append(dict(t=t, step=passo, att=att, foto=f_ab, ev=[(o_ab.get("controllerSeatId"), f"Ability of {n_(ab_id)} on the stack")],
                                    danni=[], rel=dict(k="spell", g=MA.grp_vero(o_ab, tutti), chi=o_ab.get("controllerSeatId"), ab=True, bers=list(bers_ab),
-                                                      colpiti=[], fuori=[], fatti=[]),
+                                                      colpiti=[], fuori=[], fatti=[], **({"da": scattata_da(ab_id, o_ab)} if scattata_da(ab_id, o_ab) else {})),
                                    _s=sid, _att=False, _cima=None))
             if solo_att and frames and frames[-1].get("_att") and frames[-1]["t"] == t and frames[-1]["step"] == passo:     # attaccanti scelti uno alla volta: resta l'ultima scelta
                 frames.pop()
@@ -970,6 +1151,117 @@ def prova():
                  rs.get("bers") == [2] and rs.get("colpiti") == [9, 11] and rs.get("fatti") == [9] and DA_.colpiti_di(rs) == [9]))
     casi.append(("negativa: senza l'affectorId nessuna creatura e' della magia", DA_.colpiti_di(settle(None)) == []))
     casi.append(("la partita concessa con la magia ancora in pila (Arena non la toglie): la creatura esiliata resta colpita", DA_.colpiti_di(settle(4, True)) == [9]))
+    # lo stato della carta (15 nov 2026): divieti, permessi, abilita' tolte, livello; le negative: la carta che toglie le abilita' a se stessa
+    # (Multiversal Passage), la Qualification che non e' uno stato (costo ridotto, tipo 1), l'abilita' con usi rimasti
+    q_ = lambda t, i: dict(type=["AnnotationType_Qualification"], affectedIds=[i], details=[dict(key="QualificationType", valueInt32=[t])])
+    pers_st = {1: q_(21, 50), 2: q_(31, 50), 3: q_(32, 51), 4: q_(1, 52),
+               5: dict(type=["AnnotationType_RemoveAbility", "AnnotationType_LayeredEffect"], affectorId=60, affectedIds=[53], details=[dict(key="53", valueString=["all"])]),
+               6: dict(type=["AnnotationType_RemoveAbility", "AnnotationType_ModifiedType"], affectorId=54, affectedIds=[54], details=[dict(key="54", valueString=["all"])]),
+               7: dict(type=["AnnotationType_ClassLevel"], affectorId=55, affectedIds=[55], details=[dict(key="Level", valueInt32=[2])]),
+               8: dict(type=["AnnotationType_ClassLevel"], affectorId=55, affectedIds=[55], details=[dict(key="Level", valueInt32=[3])]),
+               9: dict(type=["AnnotationType_AbilityExhausted"], affectedIds=[56], details=[dict(key="UsesRemaining", valueInt32=[1])])}
+    xs_, _v = segni(pers_st, {}, {}, {})
+    st_ = {i: [tuple(e_) for e_ in v_.get("st") or []] for i, v_ in xs_.items()}
+    casi.append(("lo stato: NO UNTAP e CAN'T BLOCK sulla stessa carta, UNBLOCKABLE, NO ABILITIES data da un'altra, il livello piu' alto della Classe",
+                 st_.get(50) == [("NO UNTAP", "no"), ("CAN'T BLOCK", "no")] and st_.get(51) == [("UNBLOCKABLE", "si")]
+                 and st_.get(53) == [("NO ABILITIES", "no")] and st_.get(55) == [("LEVEL 3", "liv")]))
+    casi.append(("negativa: niente stato per il costo ridotto, la carta che cambia tipo da se', l'abilita' con usi rimasti",
+                 not st_.get(52) and not st_.get(54) and not st_.get(56)))
+    # la carta della mano mostrata all'avversario (15 nov 2026): solo quella col segno, non l'altra in mano
+    fr_mv = azioni([gs(type="GameStateType_Full", zones=[dict(zoneId=31, type="ZoneType_Hand", ownerSeatId=1, objectInstanceIds=[1, 2])],
+                       players=[dict(systemSeatNumber=1, lifeTotal=20), dict(systemSeatNumber=2, lifeTotal=20)],
+                       turnInfo=dict(turnNumber=2, activePlayer=1, step="Step_Upkeep"), gameObjects=[carta(1, 100, 31, 1), carta(2, 200, 31, 1)],
+                       annotations=[dict(type=["AnnotationType_NewTurnStarted"], affectedIds=[1])],
+                       persistentAnnotations=[dict(id=77, type=["AnnotationType_InstanceRevealedToOpponent"], affectorId=1, affectedIds=[1])])], nomi.get)
+    casi.append(("la carta della tua mano mostrata a lui: nella foto c'e' lei sola (negativa: l'altra carta in mano no)",
+                 bool(fr_mv) and fr_mv[-1]["foto"].get("mv") == [[100], []]))
+    # la cima del grimorio che si conosce (15 nov 2026): la tua, privata, col nome; la sua, pubblica; negative: la carta senza nome in cima e quella
+    # conosciuta ma non in cima (in fondo dopo uno scry) non sono la cima
+    fr_cm = azioni([gs(type="GameStateType_Full", zones=[dict(zoneId=32, type="ZoneType_Library", ownerSeatId=1, objectInstanceIds=[5, 6]),
+                                                          dict(zoneId=36, type="ZoneType_Library", ownerSeatId=2, objectInstanceIds=[7, 8]),
+                                                          dict(zoneId=37, type="ZoneType_Library", ownerSeatId=3, objectInstanceIds=[])],
+                       players=[dict(systemSeatNumber=1, lifeTotal=20), dict(systemSeatNumber=2, lifeTotal=20)],
+                       turnInfo=dict(turnNumber=2, activePlayer=1, step="Step_Upkeep"),
+                       gameObjects=[carta(5, 100, 32, 1, visibility="Visibility_Private"), dict(instanceId=6, zoneId=32, type="GameObjectType_Card"),
+                                    carta(7, 200, 36, 2, visibility="Visibility_Public")],
+                       annotations=[dict(type=["AnnotationType_NewTurnStarted"], affectedIds=[1])])], nomi.get)
+    fr_cm2 = azioni([gs(type="GameStateType_Full", zones=[dict(zoneId=32, type="ZoneType_Library", ownerSeatId=1, objectInstanceIds=[6, 5])],
+                        players=[dict(systemSeatNumber=1, lifeTotal=20), dict(systemSeatNumber=2, lifeTotal=20)],
+                        turnInfo=dict(turnNumber=2, activePlayer=1, step="Step_Upkeep"),
+                        gameObjects=[carta(5, 100, 32, 1, visibility="Visibility_Private"), dict(instanceId=6, zoneId=32, type="GameObjectType_Card")],
+                        annotations=[dict(type=["AnnotationType_NewTurnStarted"], affectedIds=[1])])], nomi.get)
+    # dove finisce la carta messa nel grimorio (15 nov 2026): in cima, in fondo, a meta'; negativa: rimessa in mano non dice il grimorio
+    def messa_(lista, dest_tipo="ZoneType_Library"):
+        r_ = azioni([gs(type="GameStateType_Full", zones=[dict(zoneId=32, type=dest_tipo, ownerSeatId=1, objectInstanceIds=lista)],
+                        players=[dict(systemSeatNumber=1, lifeTotal=20), dict(systemSeatNumber=2, lifeTotal=20)],
+                        turnInfo=dict(turnNumber=3, activePlayer=1, step="Step_Main1"), gameObjects=[carta(5, 100, 32, 1)],
+                        annotations=[dict(type=["AnnotationType_ZoneTransfer"], affectedIds=[5],
+                                          details=[dict(key="category", valueString=["Put"]), dict(key="zone_dest", valueInt32=[32])])])], nomi.get)
+        return " ".join(tx for f_ in r_ for _c, tx in f_["ev"])
+    # copie e legami (15 nov 2026): l'abilita' scattata per un'altra carta (negativa: la fonte non e' la causa), la copia mostra cio' che copia, crew
+    righe_cl = [gs(type="GameStateType_Full", zones=[dict(zoneId=28, type="ZoneType_Battlefield", objectInstanceIds=[10, 11, 12, 13]),
+                                                      dict(zoneId=27, type="ZoneType_Stack", objectInstanceIds=[20])],
+                   players=[dict(systemSeatNumber=1, lifeTotal=20), dict(systemSeatNumber=2, lifeTotal=20)],
+                   turnInfo=dict(turnNumber=3, activePlayer=1, step="Step_Main1"),
+                   gameObjects=[carta(10, 100, 28, 1), carta(11, 200, 28, 1), carta(12, 900, 28, 1), carta(13, 100, 28, 1),
+                                dict(instanceId=20, grpId=555, type="GameObjectType_Ability", zoneId=27, controllerSeatId=1, ownerSeatId=1, parentId=10)],
+                   annotations=[dict(type=["AnnotationType_NewTurnStarted"], affectedIds=[1])],
+                   persistentAnnotations=[dict(id=81, type=["AnnotationType_TriggeringObject"], affectorId=20, affectedIds=[11, 10]),
+                                          dict(id=82, type=["AnnotationType_CopiedObject", "AnnotationType_LayeredEffect"], affectorId=12, affectedIds=[12],
+                                               details=[dict(key="copyFromGrpid", valueInt32=[200])]),
+                                          dict(id=83, type=["AnnotationType_CrewedThisTurn"], affectorId=13, affectedIds=[10])])]
+    f_cl = azioni(righe_cl, nomi.get)[-1]
+    camp_ = {e_[5]: e_[0] for e_ in f_cl["foto"]["c"][0]}
+    x_cl = f_cl["foto"].get("x") or {}
+    casi.append(("l'abilita' in pila scattata per un'altra carta: da [11] (negativa: la sua fonte, 10, no)", (f_cl["rel"] or {}).get("da") == [11]))
+    casi.append(("la copia mostra cio' che copia, con l'originale nei segni (negativa: la carta che non copia resta lei)",
+                 camp_.get(12) == 200 and x_cl.get(12, {}).get("copia_di") == 900 and camp_.get(11) == 200 and camp_.get(10) == 100))
+    # gli emblemi (15 nov 2026): l'emblema della zona Command col nome della sua carta; negativa: un altro oggetto della zona no
+    f_em = azioni([gs(type="GameStateType_Full", zones=[dict(zoneId=40, type="ZoneType_Command", objectInstanceIds=[30, 31])],
+                      players=[dict(systemSeatNumber=1, lifeTotal=20), dict(systemSeatNumber=2, lifeTotal=20)],
+                      turnInfo=dict(turnNumber=3, activePlayer=1, step="Step_Main1"),
+                      gameObjects=[dict(instanceId=30, grpId=2, type="GameObjectType_Emblem", zoneId=40, controllerSeatId=2, ownerSeatId=2, objectSourceGrpId=900),
+                                   dict(instanceId=31, grpId=5, type="GameObjectType_Ability", zoneId=40, controllerSeatId=1, ownerSeatId=1, objectSourceGrpId=100)],
+                      annotations=[dict(type=["AnnotationType_NewTurnStarted"], affectedIds=[1])])], nomi.get)
+    casi.append(("l'emblema suo col nome della carta che l'ha creato; negativa: un'abilita' nella stessa zona no",
+                 bool(f_em) and f_em[-1]["foto"].get("em") == [[], [900]]))
+    # le carte che cambiano (15 nov 2026): colore e tipo nella stessa annotazione (una terra Restless); negativa: ModifiedType su una creatura non terra
+    ann_cm = {1: dict(type=["AnnotationType_ModifiedType", "AnnotationType_ModifiedColor", "AnnotationType_LayeredEffect"], affectorId=60, affectedIds=[60],
+                      details=[dict(key="color", valueInt32=[1, 3])]),
+              2: dict(type=["AnnotationType_ModifiedType"], affectedIds=[61])}
+    obj_cm = {60: dict(cardTypes=["CardType_Land", "CardType_Creature"]), 61: dict(cardTypes=["CardType_Creature"])}
+    x_cm, _v = segni(ann_cm, obj_cm, {}, {})
+    casi.append(("colore e tipo insieme sulla terra animata: NOW WHITE · BLACK e NOW A CREATURE; negativa: la creatura che non e' terra niente",
+                 [tuple(e_) for e_ in x_cm.get(60, {}).get("st", [])] == [("NOW WHITE · BLACK", "col"), ("NOW A CREATURE", "si")] and not x_cm.get(61)))
+    # come e' stata lanciata la magia in pila (15 nov 2026): kicker e X; negativa: la stessa annotazione su una carta in campo non scrive niente
+    cto_ = lambda i, t, **k: dict(id=90 + i + t, type=["AnnotationType_CastingTimeOption"], affectedIds=[i],
+                                  details=[dict(key="type", valueInt32=[t])] + [dict(key=k_, valueInt32=[v_]) for k_, v_ in k.items()])
+    f_op = azioni([gs(type="GameStateType_Full", zones=[dict(zoneId=27, type="ZoneType_Stack", objectInstanceIds=[21]),
+                                                         dict(zoneId=28, type="ZoneType_Battlefield", objectInstanceIds=[22])],
+                      players=[dict(systemSeatNumber=1, lifeTotal=20), dict(systemSeatNumber=2, lifeTotal=20)],
+                      turnInfo=dict(turnNumber=3, activePlayer=1, step="Step_Main1"),
+                      gameObjects=[carta(21, 200, 27, 1, cardTypes=["CardType_Instant"]), carta(22, 100, 28, 1)],
+                      annotations=[dict(type=["AnnotationType_NewTurnStarted"], affectedIds=[1])],
+                      persistentAnnotations=[cto_(21, 3), cto_(21, 2, value=3), cto_(22, 3)])], nomi.get)
+    f_cp = azioni([gs(type="GameStateType_Full", zones=[dict(zoneId=27, type="ZoneType_Stack", objectInstanceIds=[23]),
+                                                         dict(zoneId=28, type="ZoneType_Battlefield", objectInstanceIds=[24, 25, 26])],
+                      players=[dict(systemSeatNumber=1, lifeTotal=20), dict(systemSeatNumber=2, lifeTotal=20)],
+                      turnInfo=dict(turnNumber=3, activePlayer=1, step="Step_Main1"),
+                      gameObjects=[carta(23, 200, 27, 1, cardTypes=["CardType_Instant"], isCopy=True), carta(24, 100, 28, 1, isCopy=True),
+                                   carta(25, 900, 28, 1, isFacedown=True), carta(26, 100, 28, 1)],
+                      annotations=[dict(type=["AnnotationType_NewTurnStarted"], affectedIds=[1])])], nomi.get)
+    x_cp = (f_cp[-1]["foto"].get("x") or {}) if f_cp else {}
+    casi.append(("la magia copiata in pila COPY, la pedina copia COPY, la carta a faccia in giu' FACE DOWN; negativa: la carta normale niente",
+                 bool(f_cp) and f_cp[-1]["foto"].get("op") == {23: ["COPY"]} and ["COPY", "si"] in x_cp.get(24, {}).get("st", [])
+                 and ["FACE DOWN", "off"] in x_cp.get(25, {}).get("st", []) and not x_cp.get(26)))
+    casi.append(("la magia in pila col kicker e X = 3; negativa: la carta in campo niente", bool(f_op) and f_op[-1]["foto"].get("op") == {21: ["KICKED", "X = 3"]}))
+    casi.append(("crew: CREWED sul veicolo, CREWING su chi lo equipaggia", ["CREWED", "si"] in x_cl.get(13, {}).get("st", [])
+                 and ["CREWING", "off"] in x_cl.get(10, {}).get("st", [])))
+    casi.append(("la carta messa nel grimorio: in cima, in fondo, terza dalla cima; negativa: messa in mano non dice il grimorio",
+                 "on top of the library" in messa_([5, 6, 7, 8]) and "on the bottom of the library" in messa_([6, 7, 8, 5])
+                 and "3rd from the top" in messa_([6, 7, 5, 8]) and "library" not in messa_([5, 6], "ZoneType_Hand")))
+    casi.append(("la cima conosciuta: la tua privata, la sua pubblica; negativa: la carta conosciuta che non e' in cima no",
+                 bool(fr_cm) and fr_cm[-1]["foto"].get("cm") == [[100, 0], [200, 1]] and bool(fr_cm2) and "cm" not in fr_cm2[-1]["foto"]))
     vecchia = MA.CARTELLA
     MA.CARTELLA = tempfile.mkdtemp()
     try:

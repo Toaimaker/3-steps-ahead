@@ -14,12 +14,12 @@
       "forza e costituzione nei pallini (blu o rossi rispetto allo stampato)"
     ],
     "cerca": [
-      "parte",
-      "la carta vola dal grimorio alla mano o al campo; il grimorio che si rimescola non si vede"
+      "si",
+      "la carta vola dal grimorio alla mano o al campo, poi i tre dorsi che si mischiano (Shuffle)"
     ],
     "cima_o_fondo": [
-      "parte",
-      "la carta vola verso il grimorio; sopra o sotto non si distingue"
+      "si",
+      "la carta vola verso il grimorio e sul mazzo la pillola oro ON TOP o ON THE BOTTOM col triangolo; il racconto dice dove (15 nov 2026, dalla lista del grimorio)"
     ],
     "contrasta": [
       "si",
@@ -27,11 +27,11 @@
     ],
     "contrasta_salvo": [
       "parte",
-      "come contrasta; la scelta di pagare non si vede"
+      "come contrasta (la freccia viola dentro la pila, TARGET, RESOLVES ON THE STACK); la scelta di pagare e' una richiesta all'altro giocatore che il log non scrive"
     ],
     "copia_magia": [
-      "parte",
-      "la copia compare in pila; il legame con l'originale no"
+      "si",
+      "la copia in pila porta la pillola COPY (isCopy dell'oggetto, 15 nov 2026)"
     ],
     "copia_pedina": [
       "si",
@@ -42,8 +42,8 @@
       "un'abilita' data fino a fine turno: se e' una parola chiave la pillola verde (C2), se no il testo corto sulla carta (A2), finche' Arena la tiene (15 nov 2026)"
     ],
     "dai_flashback": [
-      "no",
-      "niente segna che una carta del cimitero si puo' rilanciare"
+      "si",
+      "Arena scrive il permesso «puoi giocarla» (Qualification 47) anche per le carte giocabili dal cimitero: stanno nella fila PLAYABLE accanto alla mano e ci volano dal cimitero"
     ],
     "dai_mana": [
       "si",
@@ -59,7 +59,7 @@
     ],
     "dal_fuori": [
       "parte",
-      "la carta compare; da dove viene (fuori dalla partita) no"
+      "la carta compare; da dove viene no: nelle partite registrate (al 15 nov 2026) nessuna carta e' mai arrivata da fuori partita (sideboard o Command)"
     ],
     "dalla_mano_in_campo": [
       "si",
@@ -74,16 +74,16 @@
       "la goccia sul planeswalker, la fedelta' nel pallino"
     ],
     "danno_forza": [
-      "parte",
-      "la goccia su chi lo prende; la spada di chi infligge solo nei duelli"
+      "si",
+      "la goccia su chi lo prende e la spada col numero su chi lo infligge, anche fuori dal combattimento se e' sul tavolo (15 nov 2026)"
     ],
     "diventa_copia": [
-      "no",
-      "la carta cambia immagine di colpo"
+      "si",
+      "la carta mostra cio' che copia con la pillola COPY · originale (CopiedObject, 15 nov 2026)"
     ],
     "diventa_tipo": [
-      "parte",
-      "la carta scivola nella sua fila nuova (un veicolo con equipaggio, una terra che diventa creatura); il perche' no"
+      "si",
+      "la carta scivola nella sua fila nuova; la terra diventata creatura ha la pillola NOW A CREATURE"
     ],
     "distruggi": [
       "si",
@@ -94,12 +94,12 @@
       "come distruggi; da 3 permanenti in su il racconto dice board wipe"
     ],
     "emblema": [
-      "no",
-      "gli emblemi non sono sul tavolo"
+      "si",
+      "la pillola viola EMBLEM · carta sotto i conti del giocatore, in hover la carta che l'ha creato (oggetti Emblem della zona Command, 15 nov 2026)"
     ],
     "empower_jace": [
-      "parte",
-      "la pedina Jace e i suoi segnalini; il potenziamento in se' no"
+      "si",
+      "la pedina Jace e i suoi segnalini di fedelta' (pallino blu); il potenziamento e' la carta che entra o cresce"
     ],
     "esilia": [
       "si",
@@ -111,15 +111,15 @@
     ],
     "esilia_e_cerca": [
       "parte",
-      "le carte volano; la ricerca no"
+      "le carte volano; la ricerca no; le carte guardate non si vedono perche' Arena non le manda con una richiesta che dica quali sono (letto il 15 nov 2026 sulle ultime 150 partite: solo GroupReq di surveil, scry e mulligan)"
     ],
     "esilia_e_lancia_copie": [
-      "parte",
-      "le carte volano e le copie vanno in pila; il legame no"
+      "si",
+      "le carte volano in esilio, le copie vanno in pila con COPY e in campo restano con COPY (Improvisation Capstone)"
     ],
     "esilia_finche": [
       "parte",
-      "la carta va in esilio; che torni quando la fonte lascia il campo no"
+      "la carta va in esilio, e quando Arena la mette sotto la fonte (DisplayCardUnderCard) sta dietro di lei; il ritorno quando la fonte lascia il campo e' un volo normale"
     ],
     "esilia_scelta_da_te": [
       "si",
@@ -131,7 +131,7 @@
     ],
     "esilia_tranne_fondo": [
       "parte",
-      "le carte volano"
+      "le carte volano; le carte guardate non si vedono perche' Arena non le manda con una richiesta che dica quali sono (letto il 15 nov 2026 sulle ultime 150 partite: solo GroupReq di surveil, scry e mulligan)"
     ],
     "fedelta_rapida": [
       "si",
@@ -147,23 +147,23 @@
     ],
     "guarda_cima_prendi": [
       "parte",
-      "la carta presa vola in mano; le carte guardate no"
+      "la carta presa vola in mano; le carte guardate no; le carte guardate non si vedono perche' Arena non le manda con una richiesta che dica quali sono (letto il 15 nov 2026 sulle ultime 150 partite: solo GroupReq di surveil, scry e mulligan)"
     ],
     "in_fondo": [
-      "parte",
-      "la carta vola verso il grimorio"
+      "si",
+      "vola verso il grimorio, ON THE BOTTOM sul mazzo"
     ],
     "in_grimorio": [
-      "parte",
-      "la carta vola verso il grimorio"
+      "si",
+      "vola verso il grimorio; ON TOP, ON THE BOTTOM o «Nth from the top» nel racconto"
     ],
     "lancia_esiliata": [
       "si",
       "le carte giocabili (dall'esilio e dal cimitero) come le dice Arena, in oro con PLAYABLE accanto alla mano di chi puo' giocarle (E1, 14 nov 2026)"
     ],
     "lotta": [
-      "parte",
-      "le gocce su tutte e due; il duello animato solo nel combattimento"
+      "si",
+      "le due creature si affrontano in un duello come nel combattimento (velo, si vengono incontro, gocce e spade dai danni veri), 15 nov 2026"
     ],
     "macina": [
       "si",
@@ -174,28 +174,32 @@
       "come aggiungi_mana"
     ],
     "mescola_nel_grimorio": [
-      "parte",
-      "la carta vola verso il grimorio; il rimescolare no"
+      "si",
+      "la carta vola verso il grimorio, poi i tre dorsi che si mischiano (Shuffle)"
     ],
     "moltiplica_fc": [
       "si",
       "forza e costituzione nei pallini"
     ],
+    "attacca_con_difensore": [
+      "si",
+      "il difensore che attacca si tappa e va in combattimento con la sua freccia, come ogni attaccante; il permesso in se' non ha un segno"
+    ],
     "non_blocca": [
-      "no",
-      "il divieto di bloccare non si vede"
+      "si",
+      "la pillola rossa CAN'T BLOCK (o NO ATTACK/BLOCK) col cerchio barrato sulla carta, finche' vale (Qualification 31 e 30, 15 nov 2026)"
     ],
     "non_bloccabile": [
-      "no",
-      "il non poter essere bloccata non si vede"
+      "si",
+      "la pillola blu UNBLOCKABLE con la freccia sulla carta (Qualification 32; 39 «1 BLOCKER MAX»)"
     ],
     "paga": [
       "nonserve",
       "un costo: si vedono le terre che si tappano"
     ],
     "paga_vite": [
-      "parte",
-      "la vita scende; il pagare non ha un segno suo"
+      "si",
+      "la goccia rossa col -N accanto al cerchio della vita (la vita persa senza danno)"
     ],
     "parola_scelta": [
       "si",
@@ -231,7 +235,7 @@
     ],
     "prendi_tra_macinate": [
       "parte",
-      "le carte volano"
+      "le carte volano; le carte guardate non si vedono perche' Arena non le manda con una richiesta che dica quali sono (letto il 15 nov 2026 sulle ultime 150 partite: solo GroupReq di surveil, scry e mulligan)"
     ],
     "prepara": [
       "si",
@@ -242,12 +246,12 @@
       "i segnalini nuovi accendono la carta d'oro"
     ],
     "prossima_incontrastabile": [
-      "no",
-      "non si vede"
+      "si",
+      "la pillola UNCOUNTERABLE sulla magia in pila (Qualification 10)"
     ],
     "riflessa": [
-      "parte",
-      "l'abilita' riflessa va in pila se il log la scrive"
+      "si",
+      "l'abilita' riflessa va in pila quando scatta, con la freccia azzurra da chi la fa scattare se e' un'altra carta"
     ],
     "rimbalza": [
       "si",
@@ -259,11 +263,11 @@
     ],
     "riprendi_sorvegliata": [
       "parte",
-      "le carte volano"
+      "le carte volano; le carte guardate non si vedono perche' Arena non le manda con una richiesta che dica quali sono (letto il 15 nov 2026 sulle ultime 150 partite: solo GroupReq di surveil, scry e mulligan)"
     ],
     "ritardata": [
-      "parte",
-      "l'abilita' ritardata va in pila quando scatta"
+      "si",
+      "l'abilita' ritardata va in pila quando scatta, col nome della carta (i grpId finti 2 e 5 risalgono alla carta)"
     ],
     "ritorna": [
       "si",
@@ -282,8 +286,8 @@
       "le carte volano, una alla volta"
     ],
     "rivela_fino": [
-      "no",
-      "le carte rivelate non si vedono (il log le scrive: RevealedCardCreated)"
+      "si",
+      "le carte rivelate escono dal grimorio, si mostrano grandi al centro con REVEALED e tornano (RevealedCardCreated, l'azione «rivela»)"
     ],
     "ruota_scelta": [
       "si",
@@ -350,8 +354,8 @@
       "un permesso"
     ],
     "togli_abilita": [
-      "no",
-      "le abilita' tolte non si vedono"
+      "si",
+      "la pillola rossa NO ABILITIES sulla carta (RemoveAbility «all» data da un'altra carta)"
     ],
     "togli_segnalini": [
       "si",
@@ -362,8 +366,8 @@
       "come togli_segnalini"
     ],
     "trama": [
-      "parte",
-      "la carta va in esilio e sta nella fila FROM EXILE"
+      "si",
+      "la carta va in esilio con la pillola PLOTTED e sta nella fila PLAYABLE; lanciata, FROM PLOT o FREE sulla carta in pila"
     ],
     "vinci": [
       "si",
@@ -374,8 +378,8 @@
       "DFT: la pillola arancio SPEED N accanto al giocatore, MAX a 4 (V3)"
     ],
     "sella": [
-      "parte",
-      "DFT, sellare: le creature che sellano si tappano (girano una alla volta); il legame con la cavalcatura non si vede"
+      "si",
+      "DFT: le creature che sellano si tappano, SADDLED sulla cavalcatura e SADDLING su chi la sella"
     ],
     "blight": [
       "si",
@@ -391,7 +395,7 @@
     ],
     "recruit": [
       "parte",
-      "HOB, reclutare: la carta presa dal grimorio arriva in mano col volo; le carte guardate e rimesse sotto non si vedono"
+      "HOB, reclutare: la carta presa dal grimorio arriva in mano col volo; le carte guardate e rimesse sotto non si vedono; le carte guardate non si vedono perche' Arena non le manda con una richiesta che dica quali sono (letto il 15 nov 2026 sulle ultime 150 partite: solo GroupReq di surveil, scry e mulligan)"
     ],
     "endure": [
       "si",
@@ -406,24 +410,24 @@
       "TDM, il sacrificio delle carte ricordate: volano al cimitero una alla volta"
     ],
     "firebending": [
-      "parte",
-      "TLA, dominare il fuoco: il mana aggiunto sta nella vaschetta MANA POOL quando Arena lo scrive nella riserva (15 nov 2026; non visto su una partita TLA)"
+      "si",
+      "TLA: il mana aggiunto vola nella vaschetta MANA POOL e ci resta finche' si spende"
     ],
     "earthbend": [
-      "parte",
-      "TLA, dominare la terra: la terra diventa creatura coi segnalini (pallini blu), ma resta nella fila delle terre senza un gesto che lo dica"
+      "si",
+      "TLA, dominare la terra: la terra diventa creatura coi segnalini (pallini blu) e la pillola NOW A CREATURE"
     ],
     "earthbend_ritorna": [
       "si",
       "TLA, la terra piegata che muore torna in campo tappata: vola dal cimitero al campo"
     ],
     "airbend": [
-      "parte",
-      "TLA, dominare l'aria: la carta vola in esilio; la fila FROM EXILE la prende solo se il testo lo dice (grado C), il costo {2} non si vede"
+      "si",
+      "TLA: la carta vola in esilio; se Arena la dice giocabile sta nella fila PLAYABLE (il permesso 47, non piu' il testo)"
     ],
     "livello_classe": [
-      "no",
-      "TMT, il livello della classe (ClassLevel): il replayer non mostra il livello raggiunto"
+      "si",
+      "TMT, la pillola oro LEVEL N sulla Classe (ClassLevel)"
     ],
     "station_carica": [
       "si",
@@ -470,8 +474,8 @@
       "lo scarto vola dalla mano al cimitero"
     ],
     "scopri": [
-      "parte",
-      "le carte esiliate dalla cima volano nell'esilio e quella lanciata va in pila; che il lancio sia gratis lo dice solo il racconto"
+      "si",
+      "le carte esiliate dalla cima volano nell'esilio e quella lanciata va in pila con FREE (CastingTimeOption, costo alternativo 149)"
     ]
   },
   "annotazioni": {
@@ -492,8 +496,8 @@
       "i voli fra le zone (vedi le categorie)"
     ],
     "AnnotationType_UserActionTaken": [
-      "parte",
-      "le abilita' attivate: in Performance (filtri), nel replayer solo se vanno in pila"
+      "si",
+      "le abilita' attivate vanno in pila col nome della carta; quelle di mana fanno volare il simbolo nella vaschetta MANA POOL; in Leak Finder anche i filtri"
     ],
     "AnnotationType_ObjectIdChanged": [
       "nonserve",
@@ -528,16 +532,16 @@
       "il turno nuovo, l'ombra che passa"
     ],
     "AnnotationType_TriggeringObject": [
-      "parte",
-      "chi ha fatto scattare un innesco: non c'e' una freccia"
+      "si",
+      "la freccia azzurra dalla carta che fa scattare l'innesco all'abilita' in pila (la fonte stessa no; chi e' gia' uscito dal campo no), 15 nov 2026"
     ],
     "AnnotationType_DamageDealt": [
       "si",
       "goccia su chi riceve, spada su chi infligge"
     ],
     "AnnotationType_LayeredEffectCreated": [
-      "parte",
-      "l'effetto si vede nei pallini di forza e costituzione"
+      "si",
+      "l'effetto si vede nei pallini di forza e costituzione (blu se piu' alti, rossi se piu' bassi) e nelle pillole delle abilita' date"
     ],
     "AnnotationType_Counter": [
       "si",
@@ -576,16 +580,16 @@
       "i pallini di forza e costituzione"
     ],
     "AnnotationType_LayeredEffectDestroyed": [
-      "parte",
-      "i pallini tornano"
+      "si",
+      "i pallini tornano come stampati"
     ],
     "AnnotationType_ModifiedToughness": [
       "si",
       "il pallino della costituzione"
     ],
     "AnnotationType_LayeredEffect": [
-      "parte",
-      "come LayeredEffectCreated"
+      "si",
+      "l'effetto si vede nei pallini di forza e costituzione (blu se piu' alti, rossi se piu' bassi) e nelle pillole delle abilita' date"
     ],
     "AnnotationType_TemporaryPermanent": [
       "si",
@@ -604,8 +608,8 @@
       "contabilita'"
     ],
     "AnnotationType_Qualification": [
-      "parte",
-      "«puoi giocare questa carta» (tipo 47) e' la fila PLAYABLE; gli altri permessi e divieti (non bloccabile, non blocca, non si stappa...) non si vedono"
+      "si",
+      "47 la fila PLAYABLE; i divieti e i permessi sulla carta, pillole rosse e blu: NO UNTAP, CAN'T BLOCK, NO ATTACK/BLOCK, UNBLOCKABLE, 1 BLOCKER MAX, CAN ATTACK, ABILITIES OFF (15 nov 2026); i costi ridotti e gli effetti su tutto il tavolo no"
     ],
     "AnnotationType_AddAbility": [
       "si",
@@ -628,16 +632,16 @@
       "SubCategory 11: il surveil dell'avversario, che Arena non ti chiede (15 nov 2026); gli altri interni"
     ],
     "AnnotationType_ObjectsSelected": [
-      "no",
-      "le carte scelte (cerca, scegli) non si vedono"
+      "nonserve",
+      "quasi sempre senza le carte (affectedIds 0, solo il giocatore che sceglie: 138 su 141 nelle ultime 150 partite); quello che si sceglie si vede quando si sposta"
     ],
     "AnnotationType_RevealedCardDeleted": [
       "nonserve",
       "la carta rivelata sparisce"
     ],
     "AnnotationType_InstanceRevealedToOpponent": [
-      "no",
-      "la carta della mano mostrata all'avversario non si vede"
+      "si",
+      "la tua carta della mano che l'avversario ha visto: bordo azzurro e la pillola con l'occhio SHOWN (15 nov 2026); Arena la scrive solo per le tue carte"
     ],
     "AnnotationType_DisplayCardUnderCard": [
       "si",
@@ -652,16 +656,16 @@
       "contabilita'"
     ],
     "AnnotationType_CastingTimeOption": [
-      "parte",
-      "kicker, modi, costi alternativi: solo nel racconto"
+      "si",
+      "sulla carta in pila le pillole oro KICKED, X = N, EXTRA COST, FREE, FLASHBACK, FROM PLOT, PAID WITH LIFE (il costo alternativo dal testo della sua abilita'; senza testo niente scritta), 15 nov 2026"
     ],
     "AnnotationType_ShouldntPlay": [
       "nonserve",
       "un suggerimento di Arena"
     ],
     "AnnotationType_Designation": [
-      "parte",
-      "PREPARED, DOOR UNLOCKED, PLOTTED, SOLVED, SUSPECTED, HARNESSED sulla carta (D3); la velocita' SPEED N accanto al giocatore (V3); il tipo 23 sulle terre no"
+      "si",
+      "PREPARED, DOOR UNLOCKED, PLOTTED, SOLVED, SUSPECTED, HARNESSED sulla carta (pillola viola) e la velocita' SPEED N accanto al giocatore; perso, la pillola se ne va; il tipo 23 sulle terre base Arena non dice cos'e'"
     ],
     "AnnotationType_Shuffle": [
       "si",
@@ -672,24 +676,24 @@
       "interno"
     ],
     "AnnotationType_AbilityExhausted": [
-      "no",
-      "l'abilita' esausta (exhaust) non e' segnata"
+      "si",
+      "la pillola grigia EXHAUSTED (exhaust) o USED THIS TURN (una volta per turno) sulla carta"
     ],
     "AnnotationType_Scry": [
       "si",
       "il ventaglio S1 con TOP e BOTTOM (14 nov 2026)"
     ],
     "AnnotationType_GainDesignation": [
-      "parte",
-      "come Designation"
+      "si",
+      "PREPARED, DOOR UNLOCKED, PLOTTED, SOLVED, SUSPECTED, HARNESSED sulla carta (pillola viola) e la velocita' SPEED N accanto al giocatore; perso, la pillola se ne va; il tipo 23 sulle terre base Arena non dice cos'e'"
     ],
     "AnnotationType_DelayedTriggerAffectees": [
       "nonserve",
       "interno"
     ],
     "AnnotationType_Attachment": [
-      "parte",
-      "l'aura e l'equipaggiamento stanno fra gli altri permanenti, non accanto a chi incantano"
+      "si",
+      "l'aura e l'equipaggiamento stanno dietro la carta che li porta, sfalsati in alto col nome a vista; attaccati nel passo volano su di lei (15 nov 2026)"
     ],
     "AnnotationType_ReplacementEffect": [
       "nonserve",
@@ -700,16 +704,16 @@
       "la scelta (tipo, colore, nome, modalita') in un fumetto bianco in testa alla carta, finche' resta in campo (C1, 14 nov 2026)"
     ],
     "AnnotationType_ModifiedType": [
-      "parte",
-      "la carta cambia fila se diventa creatura"
+      "si",
+      "la carta cambia fila se diventa creatura; la terra diventata creatura ha la pillola NOW A CREATURE"
     ],
     "AnnotationType_AttachmentCreated": [
-      "parte",
-      "solo nel racconto («attached to»)"
+      "si",
+      "il volo dell'aura sulla carta che la porta, e nel racconto «attached to» (15 nov 2026)"
     ],
     "AnnotationType_FaceDown": [
-      "parte",
-      "la carta a faccia in giu' e' un dorso; cosa sia per chi la possiede no"
+      "si",
+      "in campo a faccia in giu' la pillola grigia FACE DOWN (isFacedown); il proprietario ne vede il nome, l'altro un dorso"
     ],
     "AnnotationType_PredictedDirectDamage": [
       "nonserve",
@@ -720,12 +724,12 @@
       "interno"
     ],
     "AnnotationType_RemoveAbility": [
-      "no",
-      "le abilita' tolte non si vedono"
+      "si",
+      "la pillola rossa NO ABILITIES sulla carta; la carta che cambia tipo da se' (Multiversal Passage) no"
     ],
     "AnnotationType_LoseDesignation": [
-      "parte",
-      "come Designation: la pillola se ne va"
+      "si",
+      "PREPARED, DOOR UNLOCKED, PLOTTED, SOLVED, SUSPECTED, HARNESSED sulla carta (pillola viola) e la velocita' SPEED N accanto al giocatore; perso, la pillola se ne va; il tipo 23 sulle terre base Arena non dice cos'e'"
     ],
     "AnnotationType_LossOfGame": [
       "si",
@@ -736,32 +740,32 @@
       "interno"
     ],
     "AnnotationType_ModifiedName": [
-      "no",
-      "il nome cambiato non si vede"
+      "nonserve",
+      "nei log sono le Room: il nome della porta aperta, che ha gia' la pillola DOOR UNLOCKED"
     ],
     "AnnotationType_TextChange": [
-      "no",
-      "il testo cambiato non si vede"
+      "nonserve",
+      "come ModifiedName: la porta aperta di una Room (DOOR UNLOCKED)"
     ],
     "AnnotationType_ModifiedCost": [
       "nonserve",
       "si vedono le terre che pagano"
     ],
     "AnnotationType_CardRevealed": [
-      "parte",
-      "nel racconto; la carta grande al centro c'e' quando Arena crea la carta rivelata (RevealedCardCreated)"
+      "si",
+      "la carta mostrata esce grande al centro con REVEALED come le rivelate, una volta sola anche quando Arena crea la copia rivelata"
     ],
     "AnnotationType_MiscContinuousEffect": [
-      "no",
-      "effetti continui vari"
+      "nonserve",
+      "effetti su tutta la partita (fasi in piu', carte massime in mano), non di una carta"
     ],
     "AnnotationType_ClassLevel": [
-      "no",
-      "il livello di una Classe non si vede"
+      "si",
+      "la pillola oro LEVEL N sulla Classe"
     ],
     "AnnotationType_ModifiedColor": [
-      "no",
-      "il colore cambiato non si vede"
+      "si",
+      "la pillola NOW WHITE · BLACK (il colore nuovo) sulla carta, 15 nov 2026"
     ],
     "AnnotationType_ReplacementEffectApplied": [
       "nonserve",
@@ -780,24 +784,24 @@
       "la carta che cambia lato scorre da un campo all'altro (14 nov 2026)"
     ],
     "AnnotationType_CopiedObject": [
-      "parte",
-      "la copia compare; il legame no"
+      "si",
+      "la carta in campo mostra cio' che copia (copyFromGrpid) con la pillola azzurra COPY · originale; diventandolo si gira come una carta a due facce"
     ],
     "AnnotationType_ReferencedObjects": [
       "nonserve",
       "interno"
     ],
     "AnnotationType_SaddledThisTurn": [
-      "no",
-      "sellato (saddle) non si vede"
+      "si",
+      "SADDLED sulla cavalcatura, SADDLING su chi l'ha sellata (pillole di stato)"
     ],
     "AnnotationType_GroupedIds": [
       "nonserve",
       "interno"
     ],
     "AnnotationType_CrewedThisTurn": [
-      "parte",
-      "il veicolo passa fra le creature; chi l'ha equipaggiato no"
+      "si",
+      "CREWED sul veicolo, CREWING su chi l'ha equipaggiato (pillole di stato)"
     ],
     "AnnotationType_UseOrCostsManaCost": [
       "nonserve",
@@ -890,28 +894,28 @@
       "in esilio (warp), poi FROM EXILE"
     ],
     "ManifestLike": [
-      "parte",
-      "in campo a faccia in giu' (un dorso)"
+      "si",
+      "in campo a faccia in giu' con la pillola FACE DOWN"
     ],
     "Bounce": [
       "si",
       "in mano"
     ],
     "nil": [
-      "parte",
-      "lo spostamento si vede, il motivo no"
+      "nonserve",
+      "lo spostamento si vede; Arena non scrive il motivo"
     ],
     "Separate": [
-      "no",
-      "la carta divisa (split) non e' trattata a parte"
+      "si",
+      "le carte divise in mucchi volano dal grimorio alla mano o al cimitero; il racconto dice «put into hand from a pile» o «into the graveyard from a pile» (15 nov 2026)"
     ],
     "SBA_IllegalAttachment": [
-      "parte",
-      "l'equipaggiamento cade: si vede che resta, non il distacco"
+      "si",
+      "l'aura o l'equipaggiamento che cade parte da sotto la carta che lo portava e va al cimitero (o resta in campo, l'equipaggiamento)"
     ],
     "Copy": [
-      "parte",
-      "la copia compare"
+      "si",
+      "la copia compare con la pillola COPY"
     ]
   },
   "parole_viste": [

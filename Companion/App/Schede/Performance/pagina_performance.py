@@ -3003,7 +3003,7 @@ class PaginaPerformance:
         t_passo = b["passi"][b["i"]][2]
         consigli = [(None, "THE COMPANION SAID")] + [("spalla", s_) for s_ in b["spalla"].get(t_passo, [])] if b["spalla"].get(t_passo) else []
         if b.get("modo") == "azioni":
-            self.danni_board(c, b["passi"][b["i"]][5])
+            self.danni_board(c, b["passi"][b["i"]][5], b["passi"][b["i"]][6] if len(b["passi"][b["i"]]) > 6 and "Damage" not in b["passi"][b["i"]][0] else None)
             self.guadagno_board(c, prima, f, b["passi"][b["i"]][5])
             alza_icone(c)
             righe_r = [(m_, "▸ " + t_) for m_, t_ in b["passi"][b["i"]][4]]       # quest'azione, in testa, poi la spalla, poi il resto del turno
@@ -3094,6 +3094,17 @@ class PaginaPerformance:
             grim = None
         mio = nome.startswith("You") or nome == "Opening hand"
         titolo = "Opening hand · the hand you kept" if nome == "Opening hand" else nome
+        # la carta messa nel grimorio in questo passo: in cima o in fondo, la pillola sul mazzo (15 nov 2026, il gruppo del grimorio)
+        messa = {}
+        try:
+            for mio_e, tx_e in (b["passi"][b["i"]][4] if b.get("modo") == "azioni" else []):
+                for chiave_e, parola in (("top", "put on top of the library"), ("bottom", "put on the bottom of the library"), ("mid", "from the top")):
+                    if parola in tx_e:
+                        messa["mio" if mio_e else "suo"] = chiave_e
+        except Exception:      # noqa: BLE001 - senza il passo niente pillola
+            messa = {}
+        if messa:
+            f = dict(f, messa=messa)
         base, pezzi, info = tp.disegna(f, prima, rel, None, grim, titolo, mio, pezzi=True)
         self._base_prima, self._base_ora = getattr(self, "_base_ora", None), base       # il fondo del passo prima: le vite com'erano (anima_board)
         self._img_tappeto = ImageTk.PhotoImage(base)
@@ -3103,6 +3114,7 @@ class PaginaPerformance:
         self._gruppi_ora, self._gruppo_item = {}, {}
         self._pila_img_prima, self._pila_img_ora = getattr(self, "_pila_img_ora", None), None       # la pila del passo prima (anima_board)
         self._img_pezzi, mani = [], []
+        giocabili = {}
         self._mano_suo_items = []
         self._pila_item = None
         self._pezzo_id = {}
@@ -3125,6 +3137,8 @@ class PaginaPerformance:
                 self._pezzo_id[q["ids"][0]] = (it, q["box"], q["tap"], q["nome"])
             if q["zkey"] in ("mio", "suo", "mano"):
                 self._box_zona.append((q["zkey"], q["nome"], bx, q["tap"], it, q["ped"]))
+            elif q["zkey"].startswith("esi_mano_"):      # la fila PLAYABLE accanto alla mano: la carta che diventa giocabile ci vola (anima_board)
+                giocabili.setdefault(q["zkey"][9:], []).append((q["nome"], bx, it))
             for id_ in q["ids"]:
                 self._pos_id[id_] = bx
             if q["nuova"]:      # anche le pedine: scorrono dalla carta in pila che le crea (14 nov 2026)
@@ -3134,6 +3148,14 @@ class PaginaPerformance:
             if q["nome"]:
                 (mani if q["zkey"] == "mano" else self._box_carte).append(tuple(q.get("vis") or bx) + (q["nome"],))
         self._box_carte += list(reversed(mani))     # nella mano a ventaglio la carta di destra sta sopra: il passaggio del mouse la trova prima
+        for i_a, h_a in (info.get("attaccati") or {}).items():      # l'aura attaccata sta sul riquadro della carta che la porta (frecce, voli)
+            if h_a in self._pos_id:
+                self._pos_id[i_a] = self._pos_id[h_a]
+        # le aure attaccate in questo passo: volano sulla carta che le porta e restano dietro di lei (anima_board), col nome e la carta che le porta
+        nomi_att = {i_: n_ for v_ in (f.get("segni") or {}).values() for i_, n_ in v_.get("porta") or []}
+        self._attaccate_nuove = [(nomi_att.get(i_a), h_a) for i_a, h_a in (info.get("attaccati_nuovi") or {}).items() if nomi_att.get(i_a)]
+        self._tappeto_k = tp.k
+        self._giocabili = giocabili
         if prima is not None:       # le carte arrivate in mano dal passo prima: la pescata le fa volare dal grimorio (anima_board)
             in_piu = {}
             for n_ in f.get("mano") or []:
@@ -3513,6 +3535,50 @@ class PaginaPerformance:
             if da:
                 fase_ = (1 if ped else 2 if pila_prima and da is pila_prima[0] else 3) if zkey in lati else 4
                 mosse.append((n, tap, da, box, it_, zkey in lati, fase_))
+        # l'aura o l'equipaggiamento attaccato in questo passo (15 nov 2026, Autore: «quando una carta riceve un incantesimo aura o indossa un artefatto,
+        # non dovremmo vedere quelle carte al di sotto di chi l'ha ricevuta?»): dalla pila (o dalla mano) vola sulla carta che lo porta, si posa dietro di lei
+        # sfalsato in alto col nome a vista e ci resta; la carta che lo porta e' disegnata senza finche' non arriva
+        k_t = getattr(self, "_tappeto_k", 1) or 1
+        for n_a, h_a in getattr(self, "_attaccate_nuove", []) or []:
+            pz_h = (getattr(self, "_pezzo_id", {}) or {}).get(h_a)
+            hb = self._pos_id.get(h_a)
+            if not hb or not pz_h:
+                continue
+            dest = (hb[0] + 5 * k_t, hb[1] - 22 * k_t, hb[2] + 5 * k_t, hb[3] - 22 * k_t)
+            if pila_prima and pila_prima[1] == n_a:
+                da_a, fase_a = pila_prima[0], 2
+            else:
+                da_a, fase_a = (da_mano(n_a) or getattr(self, "_stack_box", None)), 3
+            if da_a:
+                mosse.append((n_a, False, da_a, dest, None, True, fase_a, "attacca", pz_h[0]))
+        # la carta che diventa giocabile da fuori della mano (15 nov 2026, Autore: «le famose carte esiliate dorate in mano non le vedo mai»): dalla pila
+        # dell'esilio o del cimitero vola nella fila PLAYABLE accanto alla mano di chi puo' giocarla, dopo che e' arrivata in esilio; prima compariva li' e basta
+        def gioc(f_):
+            c_ = Counter()
+            for v_ in ((f_ or {}).get("segni") or {}).values():
+                if v_.get("gioca"):
+                    c_[tuple(v_["gioca"])] += 1
+            return c_
+        if "segni" in f and prima is not None:
+            import disegno_tappeto as DT_
+            nuove_g = gioc(f) - gioc(prima)
+            usati_g = set()
+            esi_f = f.get("esi") or ([], [])
+            cim_f = f.get("cim") or ([], [])
+            for (n_g, mio_g, z_g), q_g in nuove_g.items():
+                lato_g = "mio" if mio_g else "suo"
+                for _ in range(q_g):
+                    dove_g = next(((j_, b_, it_) for j_, (n2, b_, it_) in enumerate((getattr(self, "_giocabili", {}) or {}).get(lato_g, []))
+                                   if (n2 or DT_.FACCIA_GIU) == n_g and (lato_g, j_) not in usati_g), None)
+                    if dove_g is None:
+                        continue
+                    usati_g.add((lato_g, dove_g[0]))
+                    pile_ = esi_f if z_g == "esi" else cim_f
+                    # dalla pila dove sta la carta: la sua, se no quella di chi puo' giocarla (le sue a faccia in giu' sono nel suo esilio)
+                    lato_z = "mio" if n_g in pile_[0] else "suo" if n_g in pile_[1] else lato_g
+                    da_g = zc.get(f"{z_g}_{lato_z}")
+                    if da_g:
+                        mosse.append(("dorso" if n_g == DT_.FACCIA_GIU else n_g, False, da_g, dove_g[1], dove_g[2], False, 4.5))
         # partenze dal campo: per nome, dalle carte delle due foto, non dai riquadri (14 nov 2026, Autore: «a volte delle terre tornano nel mazzo dopo
         # essere state stappate e non si sa perche'»): le terre uguali stanno in gruppi col xN, una terra che si stappa cambia gruppo, e contarle per
         # riquadro la faceva uscire dal campo e volare nel grimorio
@@ -3529,6 +3595,13 @@ class PaginaPerformance:
                 if id_c is None or id_c in ids_ora or id_c in cambi:
                     continue
                 bx_ = (prima_pz_.get(id_c) or (None, None))[1]
+                su_ = ((prima.get("segni") or {}).get(id_c) or {}).get("su")
+                if bx_ is None and su_ is not None and (prima_pz_.get(su_) or (None, None))[1] is not None:
+                    # l'aura o l'equipaggiamento che cade (15 nov 2026, la caccia ai glitch: Unflinching Courage volava dal grimorio): parte da sotto la carta
+                    # che la portava, dove stava disegnata
+                    hb_ = prima_pz_[su_][1]; k_t = getattr(self, "_tappeto_k", 1) or 1
+                    partenze.append((lato, c_[0], (hb_[0] + 5 * k_t, hb_[1] - 22 * k_t, hb_[2] + 5 * k_t, hb_[3] - 22 * k_t), False, None, False))
+                    continue
                 z_ = next((z for z in campo_prima if z[0] == lato and bx_ is not None and tuple(round(v) for v in z[2]) == tuple(round(v) for v in bx_)
                            and id(z) not in usati_box), None)
                 if z_ is not None:
@@ -3652,6 +3725,13 @@ class PaginaPerformance:
         rel_ = passo_[3] if passo_ else None
         if danni_ and passo_ and "Damage" in passo_[0]:
             rel_ = self.combattimento_dichiarato(b_) or rel_
+        elif danni_ and passo_ and len(passo_) > 6:
+            # la lotta (15 nov 2026, il censimento: «le gocce su tutte e due; il duello animato solo nel combattimento»): fuori dal combattimento due creature
+            # che si fanno danno a vicenda si affrontano come in un duello, una verso l'altra
+            fonti_l = {(t_, s_) for t_, _q, s_ in passo_[6] or [] if isinstance(t_, int) and isinstance(s_, int) and t_ != s_}
+            lotta_ = next(((s_, t_) for t_, s_ in sorted(fonti_l) if (s_, t_) in fonti_l), None)
+            if lotta_:
+                rel_ = dict(tipo="comb", att=[(lotta_[0], lotta_[1])], blocchi=[(lotta_[1], [lotta_[0]])])
         if not mosse and not girate and not spinte_nuove and not (danni_ and rel_ and rel_.get("tipo") == "comb") \
                 and not (cambi or girate_faccia or guadagni or rivelate or mescole or guardate or f.get("mn")):
             return
@@ -3750,7 +3830,8 @@ class PaginaPerformance:
                 continue
             uscito = id_di_box.get(tuple(round(v) for v in da)) if fase_ == 0.5 else None      # chi lascia il campo: le sue frecce e i suoi danni vanno via con lui
             voli.append(dict(tipo="vola", fase=5 + fase_, img=img, x0=x0 + dx, y0=y0 + dy, x1=x1 + dx, y1=y1 + dy, it=it_, fermo=fermo_, n=n, nasce=nasce,
-                             vecchio=vecchio_it, uscito=uscito))
+                             vecchio=vecchio_it, uscito=uscito, tiene=m__[8] if len(m__) > 8 and m__[7] == "attacca" else None,
+                             tiene_img=self.immagine_pezzo(n, int(max(30, a_[2] - a_[0])), False) if len(m__) > 8 and m__[7] == "attacca" else None))
         # le carte rimaste in campo che nel passo nuovo stanno altrove (chi e' morto o uscito lascia un buco, uno nuovo fa spazio): restano dov'erano e
         # scivolano al posto nuovo solo dopo che chi va via e' arrivato (14 nov 2026, Autore: «quando una creatura muore e diventa grigia sul campo, la
         # creatura accanto le passa subito sotto per occuparne il posto senza aspettare che l'animazione di viaggio a cimitero o esilio si concluda»)
@@ -4377,7 +4458,14 @@ class PaginaPerformance:
                 if u_t < 1.0:
                     self._anim_after.append(self.fin_board.after(FOTOGRAMMA, lambda: quadro(k + 1)))
                 else:       # arrivata: la carta vera al suo posto, poi la prossima
-                    c.delete(g_)
+                    if a__.get("tiene") is not None and c.coords(a__["tiene"]):     # l'aura resta dietro la carta che la porta, fino al passo dopo
+                        if a__.get("tiene_img") is not None:       # grande come la carta che la porta (dalla pila arriva grande)
+                            c.itemconfigure(g_, image=a__["tiene_img"])
+                        c.dtag(g_, "anim")
+                        c.addtag_withtag("aura_posata", g_)
+                        c.tag_lower(g_, a__["tiene"])
+                    else:
+                        c.delete(g_)
                     if a__.get("uscito") is not None:      # uscita dal campo: i suoi «-N» e le frecce verso di lei non indicano piu' un posto vuoto (14 nov 2026,
                         self.via_con_lui(c, a__["uscito"])     # Autore: «segnalini e frecce restano visibili anche dopo che la creatura e' morta»)
                     if a__.get("vecchio") is not None:     # il gruppo col numero nuovo
@@ -4800,8 +4888,19 @@ class PaginaPerformance:
         except Exception:      # noqa: BLE001 - niente immagini: niente giro
             return None
 
-    def danni_board(self, c, danni):
-        """I danni dell'azione: un tondo rosso col «-N» sulla carta o sul cuore colpito (la carta morta non c'e' piu': lo dice il racconto)."""
+    def danni_board(self, c, danni, fonti=None):
+        """I danni dell'azione: un tondo rosso col «-N» sulla carta o sul cuore colpito (la carta morta non c'e' piu': lo dice il racconto). fonti, fuori dal
+        combattimento: [(bersaglio, quanto, chi infligge)]; la spada col numero su chi infligge se e' sul tavolo (15 nov 2026, il censimento: «la spada di chi
+        infligge solo nei duelli»), non nella lotta (la disegna il duello)."""
+        if fonti:
+            coppie_ = {(t_, s_) for t_, _q, s_ in fonti}
+            inflitti_ = {}
+            for t_, q_, s_ in fonti:
+                if s_ is not None and q_ and (s_, t_) not in coppie_ and self._pos_id.get(s_):
+                    inflitti_[s_] = inflitti_.get(s_, 0) + q_
+            for s_, q_ in inflitti_.items():
+                bs = self._pos_id[s_]
+                c.create_image(bs[0] + SPADA_DX, bs[3] + SPADA_DY, image=self.icona_danno("spada", q_), tags=("danni", f"sp_{s_}"))
         F = self.F
         prima_pz = getattr(self, "_prima_pezzi", {}) or {}
         n_colpo = {}
@@ -4862,6 +4961,9 @@ class PaginaPerformance:
                     frecce.append((pila_box, self._pila_sotto[tg], "#b58cff", ("spell", rel.get("nome"), tg)))
                 elif (rel.get("fuori") or {}).get(tg, (None,))[0] in pile:       # un bersaglio nel cimitero o in esilio: la freccia va alla sua pila
                     frecce.append((pila_box, pile[rel["fuori"][tg][0]], "#b58cff", ("spell", rel.get("nome"), tg)))
+            for k_ in rel.get("da") or []:      # chi l'ha fatta scattare: la freccia azzurra dalla causa all'abilita' in pila (15 nov 2026, TriggeringObject)
+                if self._pos_id.get(k_):        # solo da una carta che c'e' (chi e' morto e ha fatto scattare «when it dies» non e' piu' li')
+                    frecce.insert(0, (self._pos_id[k_], pila_box, "#5fd4ff", ("trig", rel.get("nome"), k_)))
             for k_ in rel.get("colpiti") or []:      # cio' che la magia ha tolto dal campo (un board wipe: tutto quello che spazza)
                 if k_ not in rel["bers"] and dove(k_):
                     frecce.append((pila_box, dove(k_), "#ff5d5d", ("tolto", rel.get("nome"), k_)))
