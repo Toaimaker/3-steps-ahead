@@ -311,6 +311,23 @@ def occhio(lato, colore, barrato=False):
     return _icona(("occhio", lato, colore, barrato), fa)
 
 
+def spot_filtro(lato, fondo, segno, becco=True):
+    """Il segno degli spot dei filtri nel replayer (15 nov 2026, Autore: «imbutino bianco sul quadratino blu», poi «C» fra tre proposte): il quadratino
+    smussato col colore dell'accento e l'imbuto bianco dentro; becco: il beccuccio in cima che punta al passo della timeline (alto lato * 0,3)."""
+    def fa():
+        bh = round(lato * 0.3) if becco else 0
+        d = Disegno(lato, lato + bh)
+        k = lato / 18
+        if becco:
+            d.poligono([(lato / 2 - 3.6 * k, bh + 0.6), (lato / 2 + 3.6 * k, bh + 0.6), (lato / 2, 0)], riempi=fondo)
+        d.rett(0, bh, lato, bh + lato, riempi=fondo, raggio=3.5 * k)
+        cx, y = lato / 2, bh + 3.5 * k
+        d.poligono([(cx - 5.5 * k, y), (cx + 5.5 * k, y), (cx + 1.4 * k, y + 5.5 * k), (cx + 1.4 * k, y + 11 * k), (cx - 1.4 * k, y + 11 * k),
+                    (cx - 1.4 * k, y + 5.5 * k)], riempi=segno)
+        return d
+    return _icona(("spot_filtro", lato, fondo, segno, becco), fa)
+
+
 def clona(lato, testo, fondo, bordo):
     """Clona (12 nov 2026, Autore: «in deck builder crea sia sulla deck cover che dentro la possibilita' di clonare il mazzo»): sul quadrato scuro come il
     cestino, due schede sovrapposte, quella davanti col +."""

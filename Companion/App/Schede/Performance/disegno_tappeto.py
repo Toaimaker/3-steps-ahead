@@ -16,6 +16,7 @@ mette il fondo come immagine e ogni carta come oggetto della tela (_tappeto_dise
     py -I -X utf8 Companion/App/Schede/Performance/disegno_tappeto.py --prova
 """
 import math, os, sys
+from collections import Counter
 
 _casa = os.path.dirname(os.path.abspath(__file__))
 while not os.path.isfile(os.path.join(_casa, "percorsi.py")):
@@ -75,6 +76,53 @@ def paradigmi():
         except (OSError, ValueError):
             pass
     return _PARADIGMI
+
+
+_FINCHE = None
+
+
+def finche():
+    """I nomi delle carte che esiliano «finche' questa lascia il campo» (610.3), dal pool dello Standard (15 nov 2026, il censimento: «esilia_finche»):
+    Seam Rip, Deep-Cavern Bat, Sheltered by Ghosts, Banishing Light... Arena mette la carta esiliata sotto la fonte (DisplayCardUnderCard, 196 esili su
+    196 nelle ultime 400 partite); la fonte che ne tiene una porta la catena. Grado C dal testo."""
+    global _FINCHE
+    if _FINCHE is None:
+        _FINCHE = set()
+        try:
+            import json, re
+            rx = re.compile(r"until (?:~|this|it|that|.{0,40}?) leaves the battlefield", re.I)
+            with open(os.path.join(percorsi.ROOT, "Regole", "standard_carte.json"), encoding="utf-8") as fh:
+                for c_ in json.load(fh):
+                    if rx.search(c_.get("oracle") or ""):
+                        _FINCHE.add(c_["name"])
+                        _FINCHE.add(c_["name"].split(" // ")[0])
+        except (OSError, ValueError):
+            pass
+    return _FINCHE
+
+
+_CATENE = {}
+
+
+def icona_catena(px):
+    """La catena della fonte che tiene una carta in esilio «finche'» (15 nov 2026): due anelli viola intrecciati su un tondo scuro col bordo bianco,
+    disegnati a 4x. -> immagine px x px."""
+    if px in _CATENE:
+        return _CATENE[px]
+    k = 4
+    W = px * k
+    im = Image.new("RGBA", (W, W), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    d.ellipse((k, k, W - k, W - k), fill=(22, 18, 38, 240), outline=(255, 255, 255, 230), width=max(2, round(W * 0.06)))
+    lw = max(3, round(W * 0.10))
+    a, b = W * 0.30, W * 0.18          # gli anelli: ovali inclinati, uno sopra l'altro sfalsato
+    for cx_, cy_ in ((W * 0.40, W * 0.40), (W * 0.60, W * 0.60)):
+        anello = Image.new("RGBA", (W, W), (0, 0, 0, 0))
+        ImageDraw.Draw(anello).ellipse((cx_ - a, cy_ - b, cx_ + a, cy_ + b), outline=(196, 160, 255, 255), width=lw)
+        im.alpha_composite(anello.rotate(45, center=(cx_, cy_), resample=Image.BICUBIC))
+    im = im.resize((px, px), Image.LANCZOS)
+    _CATENE[px] = im
+    return im
 
 
 def colore_scudo(colori):
@@ -631,6 +679,31 @@ class Tappeto:
         logo_carte(dm, cxm + self.K(1), cym, self.K(54), self.K(1.5), fondo=(22, 24, 30))
         med.putalpha(med.getchannel("A").point(lambda v: int(v * 0.4)))
         t.alpha_composite(med)
+        # il marchio in basso a destra (15 nov 2026, Autore: «nel tappetino del replayer in basso a destra mettiamo il logo e il nome del prodotto»): le
+        # tre carte del logo e 3 STEPS AHEAD, come stampati sul feltro, discreti
+        mar = Image.new("RGBA", (L, A), (0, 0, 0, 0))
+        dmr = ImageDraw.Draw(mar)
+        # e sotto l'indirizzo del sito (stesso giorno: «e sotto ancora l'indirizzo internet»; Distribuzione/config.json: github_utente e github_repo)
+        fmr = font(max(10 * self.sup, self.K(14)), "Bold")
+        fur = font(max(8 * self.sup, self.K(10)))
+        testo_mr, url_mr = "3 STEPS AHEAD", "toaimaker.github.io/3-steps-ahead"
+        bb_mr = dmr.textbbox((0, 0), testo_mr, font=fmr)
+        bb_ur = dmr.textbbox((0, 0), url_mr, font=fur)
+        larga_mr = max(bb_mr[2] - bb_mr[0], bb_ur[2] - bb_ur[0])
+        lato_mr = self.K(36)
+        y_c = A - self.K(36)
+        x_t = L - self.K(34) - larga_mr
+        lib_ = self.box(self.L["ZONE"]["lib_mio"])
+        if lib_[3] > y_c - self.K(22) and lib_[2] > x_t - lato_mr - self.K(10):
+            # col tavolo ingrandito il grimorio arriva fino in fondo: il marchio va sotto l'area dei tuoi artefatti e incantesimi, al centro (stesso giorno,
+            # Autore: «nella versione zoomata il marchio spostalo sotto area ench e artifacts»)
+            ax0, _ay0, ax1, _ay1 = self.box(self.dietro("mio")["altri"])
+            x_t = (ax0 + ax1) / 2 - (larga_mr - lato_mr - self.K(8)) / 2
+        logo_carte(dmr, x_t - self.K(8) - lato_mr / 2, y_c, lato_mr, self.K(1.6), fondo=(16, 20, 28))
+        dmr.text((x_t - bb_mr[0], y_c - self.K(3) - bb_mr[3]), testo_mr, font=fmr, fill=(200, 215, 230, 255))
+        dmr.text((x_t - bb_ur[0], y_c + self.K(3) - bb_ur[1]), url_mr, font=fur, fill=(150, 185, 215, 255))
+        mar.putalpha(mar.getchannel("A").point(lambda v: int(v * 0.55)))
+        t.alpha_composite(mar)
         d = ImageDraw.Draw(t)
         # le zone stampate
         Z = self.L["ZONE"]
@@ -880,9 +953,10 @@ class Tappeto:
             y = y0 + (alta - h) / 2 + (h - hh)
             im = faccia(g[0], w, g[1], pedina=g[7] if g[2] else None)
             o, p = ombra_sprite(im.width, im.height, self.K(10), 150)
-            sg = {}
+            sg, sid = {}, None
             for id_ in g[6]:
-                sg = (getattr(self, "_segni", {}) or {}).get(id_) or sg
+                if (getattr(self, "_segni", {}) or {}).get(id_):
+                    sg, sid = self._segni[id_], id_
             # A1 (14 nov 2026, scelto da Autore fra tre disegni): le carte che questa ha esiliato «sotto di se'», sfalsate dietro di lei
             dietro = []
             # le aure e gli equipaggiamenti che porta: dietro di lei, sfalsati in alto, col nome a vista (15 nov 2026)
@@ -891,9 +965,24 @@ class Tappeto:
                 im_p = faccia(n_p, w, False)
                 livello = len(porta_) - k_
                 dietro.append((im_p, self.K(5) * livello, -self.K(22) * livello))
-            for k_, n_s in enumerate((sg.get("sotto") or [])[:3]):
+            # la carta esiliata sotto di lei in questo passo non c'e' ancora: ci arriva volando (anima_board) e resta li' (15 nov 2026, «esilia finche'»)
+            # anche le carte sotto le aure che porta (Sheltered by Ghosts esilia finche' resta in campo): l'aura sta dietro di lei, le sue carte pure
+            segni_d = getattr(self, "_segni", {}) or {}
+            fonti_s = [sid] + [i_p for i_p, _n in (sg.get("porta") or [])]
+            nuove_s = Counter(n_ for i_f in fonti_s for n_ in ((getattr(self, "_sotto_nuove", None) or {}).get(i_f) or []))
+            tutte_s = [n_ for i_f in fonti_s for n_ in ((segni_d.get(i_f) or {}).get("sotto") or [])]
+            catena_ = any((segni_d.get(i_f) or {}).get("sotto") and n_f in finche()
+                          for i_f, n_f in [(sid, g[0])] + [(i_p, n_p) for i_p, n_p in (sg.get("porta") or [])])
+            sotto_ = []
+            for n_s in reversed(tutte_s):
+                if nuove_s[n_s] > 0:
+                    nuove_s[n_s] -= 1
+                    continue
+                sotto_.append(n_s)
+            sotto_ = list(reversed(sotto_))[:3]
+            for k_, n_s in enumerate(sotto_):
                 im_s = faccia(n_s, w, g[1])
-                off = self.K(9) * (len(sg["sotto"][:3]) - k_)
+                off = self.K(9) * (len(sotto_) - k_)
                 dietro.append((ImageEnhance.Brightness(im_s).enhance(0.72) if im_s.mode == "RGBA" else im_s, off, off))
             sp, (ox, oy) = self.componi([(o, -p, -p + self.K(6))] + dietro + [(im, 0, 0), (Image.new("RGBA", (ww + 8, hh + 8)), -4, -4)])
             ds = ImageDraw.Draw(sp)
@@ -913,6 +1002,11 @@ class Tappeto:
                 self.liscio(ds, "rr", (cx - 4, cy - 4, cx + ww + 4, cy + hh + 4), outline=GIALLO + (255,), width=max(2.5, self.K(3.5)), radius=self.K(7))
             if sg.get("tmp"):        # B1: la clessidra in alto a sinistra, se ne va a fine turno
                 self.clessidra(ds, cx + self.K(14), cy + self.K(14), self.K(13))
+            if catena_:
+                # la catena (15 nov 2026, il censimento: «esilia finche'»): questa carta tiene in esilio quella sotto di lei finche' resta in campo; in basso
+                # al centro, sul bordo verso la carta che sporge
+                ic_ = icona_catena(max(12, round(self.K(24))))
+                sp.alpha_composite(ic_, (round(cx + ww / 2 - ic_.width / 2), round(cy + hh - ic_.height * 0.75)))
             fkw = font(max(8, self.K(10.5)), "Bold")
             for k_, kw_ in enumerate((sg.get("kw") or [])[:4]):     # C2: le parole chiave date da altre carte, pillole verdi sul bordo sinistro
                 self.pillola(ds, cx + self.K(30), cy + hh * 0.66 - k_ * self.K(22), "+" + kw_.title(), fkw, fondo=(30, 138, 79, 240), bordo=(255, 255, 255, 230),
@@ -1298,6 +1392,13 @@ class Tappeto:
         # quelle attaccate in questo passo: la carta che le porta si disegna senza, l'aura ci arriva volando (anima_board) e resta dietro di lei
         segni_prima = (prima or {}).get("segni") or {}
         self._porta_nuove = {i_ for i_, h_ in attaccati.items() if (segni_prima.get(i_) or {}).get("su") != h_} if prima is not None else set()
+        # le carte esiliate sotto una fonte in questo passo (15 nov 2026, «esilia finche'»): la fonte si disegna senza, la carta ci arriva volando
+        self._sotto_nuove = {}
+        if prima is not None:
+            for i_, v_ in segni_tutti.items():
+                d_ = Counter(v_.get("sotto") or []) - Counter((segni_prima.get(i_) or {}).get("sotto") or [])
+                if d_:
+                    self._sotto_nuove[i_] = list(d_.elements())
         for chi, col in (("suo", ARANCIO), ("mio", BLU)):
             in_comb = set()
             if rel and rel.get("tipo") == "comb":
@@ -1512,6 +1613,7 @@ class Tappeto:
                                                  pila_sotto=dict(self._pila_sotto),
                                                  etichette=self._etichette, grimori=self._grimori, carte_pile=self._carte_pile, attaccati=attaccati,
                                                  attaccati_nuovi={i_: attaccati[i_] for i_ in self._porta_nuove},
+                                                 sotto_nuovi=dict(self._sotto_nuove),
                                                  mani=self._mani)
         # le frecce: chi blocca chi, chi attacca chi, cosa bersaglia la magia in pila; i permanenti tolti; i danni
         self.frecce(tela, rel, pila_box, pos, zone)
@@ -1746,6 +1848,23 @@ def prova():
     spento, acceso = t.scudo_carta("Restoration Seminar", COLORI_SCUDO["W"], False), t.scudo_carta("Restoration Seminar", COLORI_SCUDO["W"], True)
     casi.append(("lo scudo acceso ha l'alone (piu' pixel visibili) dello spento",
                  vis_(acceso) > vis_(spento)))
+    # «esilia finche'» (15 nov 2026, il censimento): le fonti lette dal testo, la carta nuova sotto la fonte non c'e' finche' non arriva, la catena viola
+    fi_ = finche()
+    casi.append(("esilia finche': Seam Rip, Deep-Cavern Bat, Banishing Light fra le fonti; negativa: Shock no",
+                 {"Seam Rip", "Deep-Cavern Bat", "Banishing Light"} <= fi_ and "Shock" not in fi_))
+    f_s = dict(vuota, suo=[("Seam Rip", False, False, None, None, 900)], esi=([], ["Bear"]), segni={900: dict(sotto=["Bear"])})
+    f_0 = dict(vuota, suo=[("Seam Rip", False, False, None, None, 900)])
+    casi.append(("la carta esiliata sotto la fonte in questo passo e' «nuova» (ci arriva volando); negativa: gia' sotto nel passo prima, no",
+                 t.disegna(f_s, prima=f_0, pezzi=True)[2].get("sotto_nuovi") == {900: ["Bear"]}
+                 and not t.disegna(f_s, prima=f_s, pezzi=True)[2].get("sotto_nuovi")))
+    global _FINCHE
+    con_ = t.disegna(f_s)[0]
+    vero_, _FINCHE = _FINCHE, set()          # la stessa carta, letta come non «finche'»: niente catena
+    senza_ = t.disegna(f_s)[0]
+    _FINCHE = vero_
+    diff_ = ImageChops.difference(con_.convert("RGB"), senza_.convert("RGB")).convert("L").point(lambda v: 255 if v > 30 else 0).histogram()[255]
+    casi.append(("la fonte che tiene una carta «finche'» porta la catena; negativa: la stessa carta non letta come «finche'», niente", diff_ > 60))
+    casi.append(("la catena: un'immagine tonda della misura chiesta", icona_catena(24).size == (24, 24)))
     for n, v in casi:
         print(("OK   " if v else "ROSSO") + " " + n)
     print(f"{sum(v for _n, v in casi)}/{len(casi)}")

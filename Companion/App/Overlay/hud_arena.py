@@ -814,8 +814,9 @@ def una_sola():
     """La nuova chiude la vecchia."""
     try:
         vecchio = int(open(PIDFILE).read().strip())
-        if vecchio != os.getpid() and _vivo(vecchio):
-            h = ctypes.windll.kernel32.OpenProcess(0x0001, False, vecchio)     # PROCESS_TERMINATE
+        import piattaforma
+        if vecchio != os.getpid() and _vivo(vecchio) and piattaforma.e_python_nostro(vecchio):     # mai un'altra app che ha preso lo stesso numero
+            h =ctypes.windll.kernel32.OpenProcess(0x0001, False, vecchio)     # PROCESS_TERMINATE
             if h:
                 ctypes.windll.kernel32.TerminateProcess(h, 0)
                 ctypes.windll.kernel32.CloseHandle(h)

@@ -8,7 +8,7 @@ Ogni cosa che puo' succedere in una partita, dalle istruzioni del motore e da qu
 
 ## Le istruzioni del motore
 
-si: 106  ·  parte: 9  ·  no: 0  ·  nonserve: 4
+si: 107  ·  parte: 8  ·  no: 0  ·  nonserve: 4
 
 | Voce | Stato | Come lo mostra, o cosa manca | Dove |
 | :- | :- | :- | :- |
@@ -47,6 +47,7 @@ si: 106  ·  parte: 9  ·  no: 0  ·  nonserve: 4
 | esilia | si | la freccia, poi la carta vola in esilio | Motore_Partita/effetti.py |
 | esilia_cima | si | la carta vola dal grimorio all'esilio; se e' giocabile (impulse) sta in oro con PLAYABLE accanto alla mano | Motore_Partita/effetti.py |
 | esilia_e_lancia_copie | si | le carte volano in esilio, le copie vanno in pila con COPY e in campo restano con COPY (Improvisation Capstone) | Motore_Partita/effetti.py |
+| esilia_finche | si | la carta esiliata vola sotto la sua fonte (DisplayCardUnderCard, 196 esili su 196 nelle ultime 400 partite; con un'aura, dietro la carta che la porta) e ci resta; la fonte porta la catena viola; quando la fonte se ne va la carta torna da sotto di lei, in campo o in mano (15 nov 2026) | Motore_Partita/effetti.py |
 | esilia_fino_non_terra | si | le carte esiliate dalla cima del grimorio volano una alla volta nell'esilio | Motore_Partita/effetti.py |
 | esilia_scelta_da_te | si | come esilia | Motore_Partita/effetti.py |
 | esilia_se_muore | si | la carta va in esilio invece che al cimitero | Motore_Partita/effetti.py |
@@ -121,7 +122,6 @@ si: 106  ·  parte: 9  ·  no: 0  ·  nonserve: 4
 | contrasta_salvo | parte | come contrasta (la freccia viola dentro la pila, TARGET, RESOLVES ON THE STACK); la scelta di pagare e' una richiesta all'altro giocatore che il log non scrive | Motore_Partita/effetti.py |
 | dal_fuori | parte | la carta compare; da dove viene no: nelle partite registrate (al 15 nov 2026) nessuna carta e' mai arrivata da fuori partita (sideboard o Command) | Motore_Partita/effetti.py |
 | esilia_e_cerca | parte | le carte volano; la ricerca no; le carte guardate non si vedono perche' Arena non le manda con una richiesta che dica quali sono (letto il 15 nov 2026 sulle ultime 150 partite: solo GroupReq di surveil, scry e mulligan) | Motore_Partita/effetti.py |
-| esilia_finche | parte | la carta va in esilio, e quando Arena la mette sotto la fonte (DisplayCardUnderCard) sta dietro di lei; il ritorno quando la fonte lascia il campo e' un volo normale | Motore_Partita/effetti.py |
 | esilia_tranne_fondo | parte | le carte volano; le carte guardate non si vedono perche' Arena non le manda con una richiesta che dica quali sono (letto il 15 nov 2026 sulle ultime 150 partite: solo GroupReq di surveil, scry e mulligan) | Motore_Partita/effetti.py |
 | guarda_cima_prendi | parte | la carta presa vola in mano; le carte guardate no; le carte guardate non si vedono perche' Arena non le manda con una richiesta che dica quali sono (letto il 15 nov 2026 sulle ultime 150 partite: solo GroupReq di surveil, scry e mulligan) | Motore_Partita/effetti.py |
 | prendi_tra_macinate | parte | le carte volano; le carte guardate non si vedono perche' Arena non le manda con una richiesta che dica quali sono (letto il 15 nov 2026 sulle ultime 150 partite: solo GroupReq di surveil, scry e mulligan) | Motore_Partita/effetti.py |

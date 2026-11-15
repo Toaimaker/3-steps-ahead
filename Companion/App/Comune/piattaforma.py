@@ -53,6 +53,17 @@ def arena_aperta():
         return False
 
 
+def mtgo_aperto():
+    """Magic Online e' aperto? Su Windows tasklist (MTGO.exe); MTGO esiste solo su Windows, quindi altrove no."""
+    if not WINDOWS:
+        return False
+    try:
+        r = subprocess.run(["tasklist", "/FI", "IMAGENAME eq MTGO.exe", "/NH"], capture_output=True, creationflags=NO_FINESTRA)
+        return b"mtgo.exe" in r.stdout.lower()
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def blocca(f):
     """Il lucchetto esclusivo, senza aspettare, sul file aperto f: True se e' nostro, False se ce l'ha gia' un altro processo."""
     try:
@@ -113,6 +124,37 @@ def _nice():
 def sottofondo(console=False):
     """Priorita' bassa, senza console se console e' False: flag("sotto", "muto")."""
     return flag("sotto") if console else flag("sotto", "muto")
+
+
+def e_python_nostro(pid):
+    """Il processo pid e' un Python (python.exe o pythonw.exe)? Serve prima di chiudere un processo da un file di pid: se il programma e' morto da
+    solo e Windows ha dato il suo numero a un'altra app (il browser, Arena), chiuderlo sarebbe sbagliato. Windows: nome dell'eseguibile con
+    QueryFullProcessImageNameW; altrove no (non si chiude niente). Nel dubbio False."""
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return False
+    if not WINDOWS:
+        return False
+    try:
+        import ctypes
+        k = ctypes.WinDLL("kernel32", use_last_error=True)       # una copia sua: pyglet mette gli argtypes su quella condivisa
+        k.OpenProcess.restype = ctypes.c_void_p
+        h = k.OpenProcess(0x1000, False, pid)                    # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return False
+        try:
+            buf = ctypes.create_unicode_buffer(1024)
+            n = ctypes.c_uint(1024)
+            k.QueryFullProcessImageNameW.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_wchar_p, ctypes.POINTER(ctypes.c_uint)]
+            if not k.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(n)):
+                return False
+            return os.path.basename(buf.value).lower() in ("python.exe", "pythonw.exe")
+        finally:
+            k.CloseHandle.argtypes = [ctypes.c_void_p]
+            k.CloseHandle(h)
+    except Exception:       # noqa: BLE001
+        return False
 
 
 def processo_vivo(pid):
@@ -349,6 +391,11 @@ def prova():
     if WINDOWS:
         casi.append(("Windows: la rotella come sempre, int(-delta/120)", [scatti(d) for d in (120, -120, 240, -360, 0)] == [-1, 1, -2, 3, 0]))
     casi.append(("negativa: su Windows la cartella non e' quella del Mac", not WINDOWS or "Library" not in cartella_arena()))
+    if WINDOWS:
+        casi.append(("e_python_nostro: questo processo e' un Python", e_python_nostro(os.getpid())))
+        casi.append(("negativa: un processo di sistema (pid 4) non e' un Python nostro", not e_python_nostro(4)))
+        casi.append(("negativa: un pid che non c'e' non e' un Python nostro", not e_python_nostro(99999999)))
+        casi.append(("negativa: un valore non numerico non cade", not e_python_nostro("x")))
     for nome, ok in casi:
         print(("  ok    " if ok else "  ROSSO ") + nome)
     n = sum(1 for _, ok in casi if ok)

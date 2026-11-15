@@ -233,7 +233,7 @@ ORDINE_MANA = ("All mana used", "1 mana left", "2+ mana left")      # il mana la
 ORDINE_EFF = ("90%+ of your mana", "70-90%", "50-70%", "Under 50%")       # l'efficienza del mana nei primi 5 turni («eff»)
 
 
-def per_turno(match_id, seat, inizia, turni):
+def per_turno(match_id, seat, inizia, turni, grezzo=False):
     """Turno per turno, per te («io») e per l'avversario («lui»), nei primi TURNI_FILTRO turni di ognuno (13 nov 2026, Autore: «bisogna estrarre dai
     replay delle azioni che possono essere trasformate in filtri», poi «ci mancano le giocate nel turno avversario, le sue nei nostri turni, le fasi di attacco
     di entrambi e di difesa di entrambi»):
@@ -333,7 +333,7 @@ def per_turno(match_id, seat, inizia, turni):
             out[f"q{di_turno(t)}{(t + 1) // 2}"] = scelta
     out = {k: [v] if isinstance(v, str) else list(v) if isinstance(v, tuple) else (sorted(v, key=ordine_lancio) if v else ["Nothing"])
            for k, v in out.items()}       # le magie del turno: una lista coi tipi ripetuti, in ordine; «Nothing» se niente
-    return turni_estesi(out)
+    return out if grezzo else turni_estesi(out)      # grezzo: un turno per chiave, anche oltre TURNI_FILTRO (spot_filtri)
 
 
 FAMIGLIE_TURNO = ("{c}", "{c}x", "a{c}", "d{c}", "m{c}", "p{c}", "p{c}x", "q{c}", "u{c}")      # u: il mana lasciato      # le famiglie turno per turno di per_turno (q: la scelta d'attacco)
@@ -430,6 +430,97 @@ def episodi(r, filtri):
         else:
             continue
         out.append(dict(chiave=k, nome=nome_var(k), volte=volte, partite=part, occasioni=occ))
+    return out
+
+
+# gli spot dei filtri nel replayer (15 nov 2026, Autore: «quando setto i filtri, i replay in this situation si aprano sulla posizione indicata dal filtro di
+# ricerca? magari creando un logo sul replay dedicato che indica la situazione da filtro attivo», poi «Sì, costruiscilo»): dove, in una partita, e' vero ogni
+# filtro acceso che ha un momento. I filtri di tutta la partita (formato, rango, data, risultato, mulligan, colori...) non ne hanno e restano fuori.
+# Il dove: «magia» la prima magia (non abilita') di chi l'ha lanciata in quel turno, «comb» il combattimento, «inizio» il primo passo del turno, «fine» l'ultimo,
+# «mano» la mano tenuta, «ultimo» l'ultimo passo della partita.
+DOVE_FAMIGLIA = {"": "magia", "a": "comb", "d": "comb", "m": "comb", "q": "comb", "p": "inizio", "u": "fine"}
+
+
+def _voce_filtro(v):
+    return " + ".join(str(z) for z in v) if isinstance(v, (list, tuple)) else str(v)
+
+
+def _fase_lancio(x, t, posto, voglio):
+    """(fase di Arena, grpId) della prima magia di un tipo voluto lanciata nel turno t da chi sta al posto (le azioni e le «fasi» di mana_aperto): serve al
+    replayer per uno spot di magia senza bersagli, che non ha un passo «spell» suo (15 nov 2026): la carta nella pila, se no la fase. None se non si sa."""
+    d = _MANA.get(x.get("partita")) or {}
+    nomi = {v: k for k, v in NOMI_TIPO.items()}
+    lettere = {nomi[v] for v in voglio if v in nomi}
+    fasi = {(t_, s_, g_): f_ for t_, s_, g_, f_ in d.get("fasi") or []}
+    for t_, s_, cosa, g_, tipi in d.get("azioni") or []:
+        if cosa == "magia" and t_ == t and s_ == posto and (not lettere or lettere & set(tipi or "")) and (t_, s_, g_) in fasi:
+            return fasi[(t_, s_, g_)], g_
+    return None
+
+
+def spot_filtri(x, filtri):
+    """Gli spot dei filtri accesi nella partita x -> [dict(chiave, nome, voce, t, dove, mio)] in ordine di turno; [] se nessun filtro acceso ha un momento.
+    t e' il turno di Arena (i due giocatori contati insieme), mio dice di chi e' la magia per «magia»."""
+    import mana_aperto as MA
+    out = []
+    seat, inizia = x.get("seat"), x.get("inizia")
+    grezzo = None
+    for k, v in (filtri or {}).items():
+        if v is None or v == [] or k == "wr_rif":
+            continue
+        nome, voce = nome_var(k), _voce_filtro(v)
+
+        def aggiungi(t, dove, mio=None, k=k, nome=nome, voce=voce, fase=None):
+            fg = fase or (None, None)
+            out.append(dict(chiave=k, nome=nome, voce=voce, t=t, dove=dove, mio=mio, fase=fg[0], g=fg[1]))
+        m_ = re.fullmatch(r"t_([a-z]*?)(io|lui)(x?)(\d+|[AL])", k)
+        if m_:
+            fam, chi, ics, quale = m_.groups()
+            if inizia is None or seat not in (1, 2):
+                continue
+            if grezzo is None:
+                fn_ = (_MANA.get(x.get("partita")) or {}).get("fine") or []
+                tt_ = x.get("turni") or max([0] + [z[0] for z in fn_])
+                grezzo = per_turno(x.get("partita"), seat, inizia, tt_, grezzo=True) or {}
+            voglio = collections.Counter(v if isinstance(v, (list, tuple)) else [v])
+            primo = "io" if inizia else "lui"
+            altro = {"io": "lui", "lui": "io"}
+            for kg, voci in grezzo.items():
+                mg = re.fullmatch(r"([a-z]*?)(io|lui)(x?)(\d+)", kg)
+                if not mg or mg.group(1) != fam or mg.group(2) != chi or mg.group(3) != ics:
+                    continue
+                n = int(mg.group(4))
+                if (quale.isdigit() and n != int(quale)) or (quale == "L" and n <= TURNI_FILTRO):
+                    continue
+                if not all(collections.Counter(voci)[i] >= q for i, q in voglio.items()):
+                    continue
+                padrone = altro[chi] if (ics or fam == "d") else chi        # di chi e' il turno: il suo, o quello dell'altro («x»; la difesa e' nel suo attacco)
+                t = 2 * n - 1 if padrone == primo else 2 * n
+                aggiungi(t, DOVE_FAMIGLIA.get(fam, "inizio"), chi == "io", fase=_fase_lancio(x, t, seat if chi == "io" else 3 - seat, voglio) if fam == "" else None)
+        elif re.fullmatch(r"leak_l\d+", k) and v == "Yes":
+            l_ = k[5:]
+            if l_ in ("l12", "l13"):
+                if __import__("leak").valore(x, l_) == "Yes":
+                    aggiungi(0, "mano")
+            elif l_ == "l7":
+                if (x.get("leak") or {}).get("l7"):
+                    aggiungi(10 ** 6, "ultimo")
+            else:
+                for t in (x.get("leak") or {}).get(l_) or []:
+                    aggiungi(t, "comb" if l_ in ("l4", "l5") else "fine")
+        elif k in ("sit:io_non_att_chiuso", "sit:io_letale_mancato") and v == "Yes":
+            d = _MANA.get(x.get("partita"))
+            if k == "sit:io_non_att_chiuso":
+                for z in MA.finestre_non_att(d, seat) or []:
+                    if z.get("scoperto"):
+                        aggiungi(z["t"], "fine")
+            else:
+                for z in MA.letali_mancati(d, seat) or []:
+                    aggiungi(z["t"], "comb")
+        elif k in _TM.NOMI and v not in ("0", None):
+            for t in (_TM.per_partita(x) or {}).get(k[3:]) or []:
+                aggiungi(t, "magia", True)
+    out.sort(key=lambda z: z["t"])
     return out
 
 
@@ -989,6 +1080,9 @@ def gira_foto(f, seat):
                 # lo scry (14 nov 2026): le carte guardate, (nome o None se non si vede, tue?, sopra?)
                 scry=[(nome_grp(e_[0]) if e_[0] else None, e_[1] == seat, bool(e_[2]), len(e_) > 3 and bool(e_[3])) for e_ in f.get("sc") or []],
                 mn=[(i_, c_) for i_, c_ in f.get("mn") or []],       # il mana che vola dalle fonti alla magia (id della fonte, colore)
+                mnd=f.get("mnd"),        # dove va il mana speso, se non e' una magia dalla mano: il permanente che attiva l'abilita' o che si paga
+                pc=list(f.get("pc") or []), pd=dict(f.get("pd") or {}),       # le copie in pila; da quale creatura parte la copia preparata
+                pz={k_: [z_, z_o == seat] for k_, (z_, z_o) in (f.get("pz") or {}).items()},      # da quale pila e' lanciata (tua?)
                 mp=(((f.get("mp") or [[], []])[seat - 1]), ((f.get("mp") or [[], []])[2 - seat])),      # il mana in riserva (tuo, suo)
                 vel=((f.get("vel") or {}).get(seat), (f.get("vel") or {}).get(2 if seat == 1 else 1)))
 

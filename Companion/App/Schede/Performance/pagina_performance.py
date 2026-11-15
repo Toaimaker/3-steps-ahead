@@ -18,6 +18,7 @@ import os
 import threading
 import time
 
+import blocco_partita
 import dati_analizzatore as DA
 import decisioni as DEC
 import numeri_partite as NP
@@ -95,6 +96,7 @@ ALTO_TAB, LARGA_TAB = 34, 132                   # le cartelle
 LARGA_DECK = 1000                               # la finestra By deck
 ALTO_PARTITA = 30                               # una riga della tabella delle partite (30 dal redesign del 14 nov 2026; era 24)
 ALTO_CTRL = 158                                 # la barra del replayer della board: il grafico della partita sopra, i comandi sotto
+SEGNO_FILTRO = C["accento"]                       # il segno degli spot dei filtri nel replayer (15 nov 2026; «C»: imbuto bianco sul quadratino blu)
 ALTO_GRAF = 92                                  # il grafico della partita nella barra
 COLPO = 0.82               # il tragitto di chi colpisce nel passo del danno: fino all'82% della strada verso il bersaglio, poi indietro (14 nov 2026)
 PASSI_SPINTA, PASSI_COLPO = 18, 26
@@ -341,6 +343,7 @@ class PaginaPerformance:
     def __init__(self, tk, padre, F, mana):
         self.tk, self.F = tk, F
         self.fr = tk.Frame(padre, bg=C["fondo"])
+        self.blocco = blocco_partita.attacca(self)     # app pubblica: chiusa con Arena o MTGO aperti (15 nov 2026)
         self.limited, self.standard = _Ricevitore(self), _Ricevitore(self)
         self.tipo = "Constructed"
         self.filtri = {}
@@ -1756,7 +1759,7 @@ class PaginaPerformance:
             # il replay parte sempre dall'inizio, la mano tenuta (12 nov 2026, Autore: «i replay partono tutti dalla fine e mai dall'inizio»); R15: le
             # partite della tabella, nel suo ordine, sono la playlist
             self.playlist = dict(partite=list(getattr(c, "_partite", []) or [x_]), nome="games in this situation")
-            self.apri_board(x_, "inizio")
+            self.apri_board(x_, "filtro")       # sullo spot dei filtri, se ne hanno uno (15 nov 2026)
 
     def passi_board(self, fo):
         """I momenti di una partita da guardare: la mano tenuta, la fine di ogni turno, l'ultimo stato (se e' dopo l'ultima fine di turno).
@@ -1859,7 +1862,8 @@ class PaginaPerformance:
             self.b_modi = {}
             # i salti e il segnalibro (12 nov 2026, «Sì, prosegui» sui salti e i segnalibri): il clic va avanti, col Maiuscolo indietro; tasti C, S, O, B
             self.b_salti = {}
-            for k_, n_ in (("chiave", "Key ›"), ("comb", "Combat ›"), ("spell", "Spell ›"), ("tappato", "Opp. tapped out ›"), ("leak", "Leak ›")):
+            for k_, n_ in (("chiave", "Key ›"), ("comb", "Combat ›"), ("spell", "Spell ›"), ("tappato", "Opp. tapped out ›"), ("leak", "Leak ›"),
+                         ("filtro", "Filter ›")):
                 b_ = pulsante_solido(tk, F, testa_b, n_, False, lambda k_=k_: self.salta(k_), alto=26, bg=C["cap"], colori=GRIGI)
                 b_.configure(width=150 if k_ == "tappato" else 96); b_.pack(side="left", padx=(0, 6), pady=8)
                 b_.bind("<Shift-Button-1>", lambda e, k_=k_: (self.salta(k_, -1), "break")[1])
@@ -1888,7 +1892,7 @@ class PaginaPerformance:
                 self.b_gioco[d_] = b_
             f.bind("<n>", lambda e: self.gioco_playlist(1))
             f.bind("<p>", lambda e: self.gioco_playlist(-1))
-            for tasto, k_ in (("c", "comb"), ("s", "spell"), ("o", "tappato"), ("l", "leak"), ("k", "chiave")):
+            for tasto, k_ in (("c", "comb"), ("s", "spell"), ("o", "tappato"), ("l", "leak"), ("k", "chiave"), ("f", "filtro")):
                 f.bind(f"<{tasto}>", lambda e, k_=k_: self.salta(k_))
                 f.bind(f"<{tasto.upper()}>", lambda e, k_=k_: self.salta(k_, -1))
             f.bind("<b>", lambda e: self.segna_board())
@@ -1968,6 +1972,10 @@ class PaginaPerformance:
             self.cambia_modo_board("azioni", ridisegna=False)
             if dove != "fine":      # in Every action dalla prima azione
                 self._board["i"] = 0
+        if dove == "filtro":        # sullo spot dei filtri accesi, se ne hanno uno (15 nov 2026); se no dall'inizio
+            i_f = self.primo_spot(self._board)
+            if i_f is not None:
+                self._board["i"] = i_f
         for k_, b_ in self.b_modi.items():
             b_.metti({"azioni": "Every action", "momenti": "Moments"}[k_], k_ == self._board["modo"])
         esito = "won" if x_["vinta"] else "lost"
@@ -2175,6 +2183,9 @@ class PaginaPerformance:
             if s_.get("partita") == b["x"].get("partita") and s_.get("modo") == b.get("modo", "momenti") and 0 <= s_.get("i", -1) < n:
                 xs_ = pos(s_["i"])
                 c.create_polygon(xs_ - 5, cy - 20, xs_ + 5, cy - 20, xs_ + 5, cy - 9, xs_, cy - 13, xs_ - 5, cy - 9, fill="#ffd23f", outline="")
+        im_f = DG.spot_filtro(12, SEGNO_FILTRO, "#ffffff")
+        for i_f in self.filtro_passi(b):        # gli spot dei filtri accesi (15 nov 2026): il quadratino blu con l'imbuto bianco, col beccuccio verso il passo,
+            c.create_image(pos(i_f), cy + 15, image=im_f, anchor="n", tags=("spot_filtro",))       # sotto i triangolini dei leak
         c.create_text(t0 - 10, sy(m[0]["vite"][0]) if m else 20, text="LIFE", anchor="e", fill=grigio, font=F(6, True))
         c.create_text(t0 - 10, (f0 + f1) / 2, text="POWER", anchor="e", fill=grigio, font=F(6, True))
         if m:
@@ -2282,6 +2293,8 @@ class PaginaPerformance:
             ok = lambda i: bool(ps[i][3]) and ps[i][3]["tipo"] == "spell"
         elif k == "leak":
             ok = lambda i: i in self.leak_passi(b)
+        elif k == "filtro":
+            ok = lambda i: i in self.filtro_passi(b)
         elif k == "chiave":
             ok = lambda i: i in self.chiave_passi(b)
         else:
@@ -2355,7 +2368,8 @@ class PaginaPerformance:
             b2 = getattr(self, "_board", None)
             if b2 and b2.get("x") is ps[j]:
                 if vai:
-                    self.vai_board(0)
+                    i_f = self.primo_spot(b2)
+                    self.vai_board(0 if i_f is None else i_f)
                 return ps[j]
             j += d
         return None
@@ -2438,6 +2452,65 @@ class PaginaPerformance:
                         metti(cand[-1] if cand else None, k)
         b["_leak_k"], b["_leak_i"] = k_, out
         return out
+
+    def filtro_passi(self, b):
+        """Gli spot dei filtri accesi sui passi del replayer (15 nov 2026, Autore: «quando setto i filtri, i replay in this situation si aprano sulla
+        posizione indicata dal filtro di ricerca? magari creando un logo sul replay dedicato che indica la situazione da filtro attivo»): {indice: [(chiave,
+        testo)]}. DA.spot_filtri dice il turno di Arena e il dove; qui il passo: la magia di quel giocatore, il combattimento, il primo o l'ultimo passo del
+        turno, la mano, l'ultimo passo. I filtri di tutta la partita non hanno un momento e non segnano niente."""
+        k_ = (id(b["passi"]), tuple(sorted((k, repr(v)) for k, v in self.filtri.items() if v is not None)))
+        if b.get("_filtro_k") == k_:
+            return b["_filtro_i"]
+        ps, out = b["passi"], {}
+        for z in DA.spot_filtri(b["x"], self.filtri):
+            i = self.indice_spot(ps, z)
+            if i is not None:
+                v_ = out.setdefault(i, [])
+                if z["chiave"] not in [c_ for c_, _t in v_]:
+                    v_.append((z["chiave"], f"{z['nome']}: {z['voce']}"))
+        b["_filtro_k"], b["_filtro_i"] = k_, out
+        return out
+
+    FASI_PASSO = {"Phase_Main1": ("Main1",), "Phase_Main2": ("Main2",), "Phase_Ending": ("End",), "Phase_Beginning": ("Upkeep", "Draw"),
+                  "Phase_Combat": ("BeginCombat", "DeclareAttack", "DeclareBlock", "Damage", "EndCombat")}
+
+    @staticmethod
+    def indice_spot(ps, z):
+        """Il passo di uno spot (DA.spot_filtri) nei passi del replayer, o None se quel turno non c'e'."""
+        if not ps:
+            return None
+        if z["dove"] == "mano":
+            return 0
+        if z["dove"] == "ultimo":
+            return len(ps) - 1
+        cand = [i for i, p_ in enumerate(ps) if p_[2] == z["t"]]
+        if not cand:
+            return None
+        if z["dove"] == "comb":
+            return next((i for i in cand if p_is_comb(ps[i])), cand[-1])
+        if z["dove"] == "magia":
+            i_m = next((i for i in cand if len(ps[i]) > 3 and isinstance(ps[i][3], dict) and ps[i][3].get("tipo") == "spell" and not ps[i][3].get("ab")
+                        and (z["mio"] is None or bool(ps[i][3].get("mio")) == z["mio"])), None)
+            if i_m is not None:
+                return i_m
+            # una magia senza bersagli non ha un passo «spell»: il primo passo con la carta nella pila (Every action; voci (nome, mio, abilita', grpId,
+            # id)), se no il primo passo della fase in cui e' stata lanciata (le «fasi» di mana_aperto)
+            if z.get("g"):
+                i_p = next((i for i in cand if isinstance(ps[i][1], dict) and any(len(v_) > 3 and v_[3] == z["g"] and not v_[2]
+                                                                                   for v_ in ps[i][1].get("pila") or [])), None)
+                if i_p is not None:
+                    return i_p
+            parole = PaginaPerformance.FASI_PASSO.get(z.get("fase") or "", ())
+            return next((i for i in cand if any(w_ in ps[i][0] for w_ in parole)), cand[0])
+        return cand[-1] if z["dove"] == "fine" else cand[0]
+
+    def primo_spot(self, b):
+        """Dove aprire il replayer coi filtri accesi: il primo passo in cui sono veri tutti i filtri che hanno un momento, se no il primo spot; None senza."""
+        fi = self.filtro_passi(b)
+        if not fi:
+            return None
+        tutte = {c_ for v_ in fi.values() for c_, _t in v_}
+        return next((i for i in sorted(fi) if {c_ for c_, _t in fi[i]} == tutte), min(fi))
 
     def segna_board(self):
         """Segna lo spot di adesso (o lo toglie): finisce nella cartella My filters, sotto i tuoi filtri, e si riapre da li'."""
@@ -2955,6 +3028,10 @@ class PaginaPerformance:
             i_k = cc.create_text(x0_r + 14, y, text=f"◆ KEY MOMENT · {abs(sk_):.0f} points of advantage to {'you' if sk_ > 0 else 'the opponent'}", anchor="nw",
                                  fill="#2f9bff" if sk_ > 0 else "#f0ad4e", font=F(8, True), width=larga_r - 28)
             y = (cc.bbox(i_k) or (0, 0, 0, y + 14))[3] + 6
+        for _c, nf_ in self.filtro_passi(b).get(b["i"], []):     # i filtri accesi veri in questo momento (15 nov 2026)
+            cc.create_image(x0_r + 14, y + 1, image=DG.spot_filtro(12, SEGNO_FILTRO, "#ffffff", becco=False), anchor="nw")
+            i_fl = cc.create_text(x0_r + 32, y, text=f"YOUR FILTER · {nf_}", anchor="nw", fill=SEGNO_FILTRO, font=F(8, True), width=larga_r - 46)
+            y = (cc.bbox(i_fl) or (0, 0, 0, y + 14))[3] + 6
         for nl_ in self.leak_passi(b).get(b["i"], []):       # i leak di questo momento (leak.py): un indizio, non una sentenza
             i_l = cc.create_text(x0_r + 14, y, text=f"▲ LEAK · {nl_}", anchor="nw", fill="#ff5d5d", font=F(8, True), width=larga_r - 28)
             y = (cc.bbox(i_l) or (0, 0, 0, y + 14))[3] + 6
@@ -3138,7 +3215,7 @@ class PaginaPerformance:
             for id_ in q["ids"]:
                 self._pos_id[id_] = bx
             if q["nuova"]:      # anche le pedine: scorrono dalla carta in pila che le crea (14 nov 2026)
-                self._nuove.append((q["zkey"], q["nome"], bx, q["tap"], it, q["ped"]))
+                self._nuove.append((q["zkey"], q["nome"], bx, q["tap"], it, q["ped"], tuple(q["ids"])))
             if q["ped"] and q.get("grp"):
                 self._pedine_nomi[q["nome"]] = q["grp"]
             if q["nome"]:
@@ -3150,6 +3227,8 @@ class PaginaPerformance:
         # le aure attaccate in questo passo: volano sulla carta che le porta e restano dietro di lei (anima_board), col nome e la carta che le porta
         nomi_att = {i_: n_ for v_ in (f.get("segni") or {}).values() for i_, n_ in v_.get("porta") or []}
         self._attaccate_nuove = [(nomi_att.get(i_a), h_a) for i_a, h_a in (info.get("attaccati_nuovi") or {}).items() if nomi_att.get(i_a)]
+        # le carte esiliate sotto una fonte in questo passo (15 nov 2026, «esilia finche'»): volano sotto la fonte invece che sulla pila dell'esilio
+        self._sotto_nuove = [(n_s, h_s) for h_s, ns_ in (info.get("sotto_nuovi") or {}).items() for n_s in ns_]
         self._tappeto_k = tp.k
         self._giocabili = giocabili
         if prima is not None:       # le carte arrivate in mano dal passo prima: la pescata le fa volare dal grimorio (anima_board)
@@ -3456,7 +3535,17 @@ class PaginaPerformance:
         usate = set()
         pila_prima = getattr(self, "_pila_prima", None)
         pila_ora = getattr(self, "_pila_ora", None)
-        dalla_pila = bool(pila_prima) and not (pila_ora and pila_ora[1] == pila_prima[1])      # la magia di prima non e' piu' in pila: si e' risolta
+        # la pila si confronta per id di Arena, non per nome (15 nov 2026, il controllo delle animazioni della pila): la Room in pila si chiama come la meta'
+        # lanciata («Unholy Annex») e in mano col nome intero, Mockingbird si risolve ed entra col nome di quello che copia; l'id resta lo stesso
+        ids_p0 = [q[4] for q in (prima.get("pila") or []) if len(q) > 4]
+        ids_p1 = [q[4] for q in (f.get("pila") or []) if len(q) > 4]
+        id_prima, id_ora = (ids_p0 or [None])[0], (ids_p1 or [None])[0]
+        # le due meta' della Room: «Ritual Chamber» lanciata e' la carta «Unholy Annex // Ritual Chamber» (la faccia dietro, 15 nov 2026)
+        stessa = lambda a, b: bool(a) and bool(b) and (a == b or a in b.split(" // ") or b in a.split(" // "))
+        if pila_prima and id_prima is not None:
+            dalla_pila = id_prima not in ids_p1         # la magia di prima non e' piu' in pila: si e' risolta (o e' stata contrastata, rimandata)
+        else:
+            dalla_pila = bool(pila_prima) and not (pila_ora and pila_ora[1] == pila_prima[1])
 
         # le magie andate in pila in questo turno e non ancora risolte al passo prima: una che arriva nel cimitero viene dalla pila, anche se non era in
         # cima (la magia contrastata sta sotto la contromagia)
@@ -3487,6 +3576,36 @@ class PaginaPerformance:
                 usate.add(id(z))
                 return z[2]
             return None
+        # «esilia finche'» (15 nov 2026, il censimento): la carta esiliata sotto la sua fonte ci arriva volando e ci resta (sotto_di); quando la fonte se ne
+        # va, o la lascia, la carta torna da sotto di lei, dove stava disegnata, non dalla pila dell'esilio (da_sotto)
+        k_ts = getattr(self, "_tappeto_k", 1) or 1
+        sposta_ = lambda b_: (b_[0] + 9 * k_ts, b_[1] + 9 * k_ts, b_[2] + 9 * k_ts, b_[3] + 9 * k_ts)
+        sotto_att = list(getattr(self, "_sotto_nuove", []) or [])
+
+        def sotto_di(n_):
+            for j_, (n2, h2) in enumerate(sotto_att):
+                pz_ = (getattr(self, "_pezzo_id", {}) or {}).get(h2)
+                if not pz_:     # la fonte e' un'aura: sta dietro la carta che la porta, e la carta esiliata con lei
+                    pz_ = (getattr(self, "_pezzo_id", {}) or {}).get(((f.get("segni") or {}).get(h2) or {}).get("su"))
+                if n2 == n_ and pz_:
+                    sotto_att.pop(j_)
+                    return sposta_(pz_[1]), pz_[0]
+            return None
+        prima_pz0 = getattr(self, "_prima_pezzi", {}) or {}
+        seg_o0 = f.get("segni") or {}
+        liberate = []
+        for i_, v_ in ((prima or {}).get("segni") or {}).items():
+            d_ = Counter(v_.get("sotto") or []) - Counter((seg_o0.get(i_) or {}).get("sotto") or [])
+            bx_ = (prima_pz0.get(i_) or prima_pz0.get(v_.get("su")) or (None, None))[1]     # un'aura: dalla carta che la portava
+            if d_ and bx_ is not None:
+                liberate += [(n_, sposta_(bx_)) for n_ in d_.elements()]
+
+        def da_sotto(n_):
+            for j_, (n2, b2) in enumerate(liberate):
+                if n2 == n_:
+                    liberate.pop(j_)
+                    return b2
+            return None
         for z in self._nuove:        # arrivi
             zkey, n, box, tap, it_ = z[:5]
             ped = z[5] if len(z) > 5 else False
@@ -3501,14 +3620,14 @@ class PaginaPerformance:
                 i = lati.index(zkey)
                 if ped:
                     da = pila_prima[0] if pila_prima else getattr(self, "_stack_box", None)
-                elif pila_prima and pila_prima[1] == n:       # dalla pila al campo: la magia risolta
+                elif pila_prima and (stessa(pila_prima[1], n) or (id_prima is not None and id_prima in (z[6] if len(z) > 6 else ()))):       # dalla pila al campo: la magia risolta
                     da = pila_prima[0]
                 elif cim_meno[i][n] > 0:        # dal cimitero (una rianimazione)
                     cim_meno[i][n] -= 1
                     da = zc.get(f"cim_{zkey}")
                 elif esi_meno[i][n] > 0:        # dall'esilio (un ritorno, una carta giocata dall'esilio)
                     esi_meno[i][n] -= 1
-                    da = zc.get(f"esi_{zkey}")
+                    da = da_sotto(n) or zc.get(f"esi_{zkey}")
                 elif zkey == "mio":
                     da = da_mano(n)
                     if da:
@@ -3520,7 +3639,7 @@ class PaginaPerformance:
             elif zkey == "mano":        # in mano: dal cimitero, dall'esilio, se no la pescata dal grimorio (14 nov 2026: «l'animazione di pescata»)
                 if any(z_[0] == "mio" and z_[1] == n for z_ in prima_zone) and not any(c_[0] == n for c_ in f["mio"]):
                     da = None           # tornata in mano dal campo: scivola con le partenze
-                elif dalla_pila and pila_prima[1] == n:        # la magia rimandata in mano dalla pila
+                elif dalla_pila and stessa(pila_prima[1], n):        # la magia rimandata in mano dalla pila
                     da, dalla_pila = pila_prima[0], False
                 elif in_pila_turno[n] > 0:          # stava in pila sotto un'altra: rimandata in mano (14 nov 2026: «torna in mano dal mazzo e non dalla pila»)
                     in_pila_turno[n] -= 1
@@ -3530,7 +3649,7 @@ class PaginaPerformance:
                     da = zc.get("cim_mio")
                 elif esi_meno[0][n] > 0:
                     esi_meno[0][n] -= 1
-                    da = zc.get("esi_mio")
+                    da = da_sotto(n) or zc.get("esi_mio")
                 elif any(tx_ == f"{n} returned to hand" for _m, tx_ in eventi_passo):      # tornata in mano da un cimitero che la foto non aveva
                     da = zc.get("cim_mio")
                 else:
@@ -3632,10 +3751,16 @@ class PaginaPerformance:
                 muore = True
             elif esi_piu[i][z[1]] > 0:
                 esi_piu[i][z[1]] -= 1
+                s_ = sotto_di(z[1])
+                if s_:      # esiliata «finche'»: va sotto la sua fonte e ci resta
+                    mosse.append((z[1], z[3], z[2], s_[0], None, False, 0.5, "attacca", s_[1]))
+                    continue
                 dove = zc.get(f"esi_{z[0]}")
             elif i == 0 and mano_piu[z[1]] > 0:
                 dove = next((zz[2] for zz in self._box_zona if zz[0] == "mano" and zz[1] == z[1]), None)
-            elif i == 1 and suo_mano[1] > suo_mano[0]:
+            elif i == 1 and not ped and suo_mano[1] - suo_mano[0] - suo_torna[0] > 0:
+                # una pedina non torna mai in mano, e non tornano piu' carte di quante la sua mano ne guadagna (15 nov 2026: due Insetti morti volavano
+                # nella sua mano perche' nello stesso passo riprendeva Dredger's Insight)
                 dove = getattr(self, "_mano_suo_box", None)
                 suo_torna[0] += 1
             elif not ped:
@@ -3658,7 +3783,7 @@ class PaginaPerformance:
                 for n, q in piu.items():
                     for _ in range(q):
                         da = None
-                        if dalla_pila and pila_prima[1] == n:
+                        if dalla_pila and stessa(pila_prima[1], n):
                             da, dalla_pila = pila_prima[0], False
                         elif in_pila_turno[n] > 0:      # stava in pila sotto un'altra (contrastata: 14 nov 2026, «dalla pila se vengono counterate e' come
                             in_pila_turno[n] -= 1       # se andassero dal mazzo al cimitero»): parte dalla pila
@@ -3679,10 +3804,26 @@ class PaginaPerformance:
                             da = da_mano(n)
                         elif i == 1 and suo_mano[1] < suo_mano[0]:
                             da = getattr(self, "_mano_suo_box", None)
+                        if da is None and dalla_pila and pila_prima and not (len(pila_prima) > 3 and pila_prima[3]):
+                            # la magia uscita dalla pila col nome dell'altra meta' (15 nov 2026: Flameshape, la magia di Gandalf, va in esilio come
+                            # Gandalf): una carta arrivata senza altra spiegazione mentre una magia lascia la pila e' lei
+                            da, dalla_pila = pila_prima[0], False
                         if da is None:
                             da = zc.get(f"lib_{lato}")
+                        s_ = sotto_di(n) if k_z.startswith("esi") else None
+                        if da and s_:      # esiliata «finche'» dalla mano o dalla pila (Deep-Cavern Bat): sotto la sua fonte
+                            mosse.append((n, False, da, s_[0], None, False, 2 if da is (pila_prima or (None,))[0] else 3, "attacca", s_[1]))
+                            continue
                         if da and zc.get(k_z):
                             mosse.append((n, False, da, zc[k_z], None, False, 2 if da is (pila_prima or (None,))[0] else 3))
+        # la sua carta che torna in mano da sotto la fonte che se ne va (15 nov 2026, «esilia finche'»: muore il Deep-Cavern Bat e la carta torna nella sua
+        # mano): vola da sotto la fonte nella sua mano; non e' una pescata, quindi non parte un dorso dal suo grimorio
+        for n_l, b_l in list(liberate):
+            if suo_mano[1] - suo_mano[0] - suo_torna[0] > 0 and esi_meno[1][n_l] > 0 and getattr(self, "_mano_suo_box", None):
+                esi_meno[1][n_l] -= 1
+                liberate.remove((n_l, b_l))
+                suo_torna[0] += 1
+                mosse.append((n_l, False, b_l, self._mano_suo_box, None, False, 3))
         # la sua pescata (14 nov 2026, Autore: «non si vede l'animazione di pescata di oppo»): un dorso dal suo grimorio alla sua mano per ogni carta in
         # piu' che non e' tornata dal campo
         # (14 nov 2026, Autore: «quando l'avversario pesca la carta gli diventa trasparente invece di inserirsi fisicamente nel suo mazzo»): la carta nuova
@@ -3695,17 +3836,34 @@ class PaginaPerformance:
                     mosse.append(("dorso", False, zc["lib_suo"], bx_n, it_n, False, 4))
                 else:
                     mosse.append(("dorso", False, zc["lib_suo"], self._mano_suo_box, None, False, 4))
-        if pila_ora and not (pila_prima and pila_prima[1] == pila_ora[1]):       # una magia appena lanciata: dalla mano alla pila
+        if dalla_pila and pila_prima and not (len(pila_prima) > 3 and pila_prima[3]) and id_prima not in (prima.get("pc") or [])                 and not any(m_[2] is pila_prima[0] for m_ in mosse) and any("library" in tx_ for _m, tx_ in eventi_passo):
+            # la magia che dalla pila va nel grimorio (15 nov 2026: Exude Toxin, l'Omen di Scavenger Regent, «put on top of the library»)
+            dest_l = zc.get("lib_mio" if pila_prima[2] else "lib_suo")
+            if dest_l:
+                mosse.append((pila_prima[1], False, pila_prima[0], dest_l, None, False, 2))
+        if pila_ora and not (pila_prima and (id_ora == id_prima if id_ora is not None and id_prima is not None else pila_prima[1] == pila_ora[1])):       # una magia appena lanciata: dalla mano alla pila
             it_p = getattr(self, "_pila_item", None)        # la carta in pila resta nascosta finche' quella che vola non arriva
             # solo una magia vera, uscita davvero dalla mano (14 nov 2026, Autore: «a volte vanno nella pila carte che poi non vengono giocate, confonde»):
             # l'abilita' di un permanente (Meticulous Archive) con una carta dallo stesso nome in mano faceva volare quella carta, che restava in mano
             abil_ = len(pila_ora) > 3 and pila_ora[3]
-            if abil_:
+            src_prep = (f.get("pd") or {}).get(id_ora)
+            z_l = (f.get("pz") or {}).get(id_ora)
+            if src_prep is not None and self._pos_id.get(src_prep):       # la copia preparata: dalla creatura che la prepara (15 nov 2026)
+                # con l'immagine della carta in pila (la faccia preparata non ha un'immagine col suo nome: il volo si perdeva)
+                mosse.append((pila_ora[1], False, self._pos_id[src_prep], pila_ora[0], it_p, it_p is not None, 2.5))
+            elif z_l and zc.get(f"{z_l[0]}_{'mio' if z_l[1] else 'suo'}"):
+                # lanciata dal cimitero, dall'esilio o dal grimorio (flashback, l'esilio che si gioca, Gandalf): vola da quella pila (15 nov 2026)
+                mosse.append((pila_ora[1], False, zc[f"{z_l[0]}_{'mio' if z_l[1] else 'suo'}"], pila_ora[0], it_p, False, 2.5))
+            elif abil_:
                 pass
             elif len(pila_ora) < 3 or pila_ora[2]:
-                da = next((z[2] for z in mano_prima if z[1] == pila_ora[1] and id(z) not in usate), None) if mano_meno[pila_ora[1]] > 0 else None
-                if da:
-                    mosse.append((pila_ora[1], False, da, pila_ora[0], it_p, False, 2.5))
+                k_m = next((k_ for k_, q_ in mano_meno.items() if q_ > 0 and stessa(k_, pila_ora[1])), None)      # la Room in mano col nome intero
+                if k_m is None and sum(mano_meno.values()) == 1:
+                    # la meta' magia di una carta con un altro nome in mano (Exude Toxin di Scavenger Regent, 15 nov 2026): e' l'unica uscita dalla mano
+                    k_m = next(k_ for k_, q_ in mano_meno.items() if q_ > 0)
+                da = next((z[2] for z in mano_prima if z[1] == k_m and id(z) not in usate), None) if k_m else None
+                if da:      # vola col nome che ha in mano: l'immagine della Room c'e' col nome intero, non con quello della meta'
+                    mosse.append((k_m, False, da, pila_ora[0], it_p, False, 2.5))
             elif suo_mano[1] < suo_mano[0] and getattr(self, "_mano_suo_box", None):
                 # la sua: un dorso dalla sua mano alla pila, e li' si rivela (14 nov 2026, Autore: «anche all'oppo devono scorrere le carte per esempio dalla
                 # mano alla pila e li' rivelarsi»)
@@ -3735,6 +3893,11 @@ class PaginaPerformance:
             lotta_ = next(((s_, t_) for t_, s_ in sorted(fonti_l) if (s_, t_) in fonti_l), None)
             if lotta_:
                 rel_ = dict(tipo="comb", att=[(lotta_[0], lotta_[1])], blocchi=[(lotta_[1], [lotta_[0]])])
+        if passo_ and "Damage" not in passo_[0] and rel_ is passo_[3] and (rel_ or {}).get("tipo") == "comb":
+            # niente duelli fuori dal passo del danno (15 nov 2026, Autore: «errori gravissimi nei combattimenti, che vengono svolti in maniera doppia»):
+            # l'innesco che fa perdere vita mentre si dichiarano gli attaccanti (Sanguine Syphoner) faceva duellare tutti gli attaccanti col giocatore,
+            # e poi di nuovo al danno vero
+            rel_ = None
         if not mosse and not girate and not spinte_nuove and not (danni_ and rel_ and rel_.get("tipo") == "comb") \
                 and not (cambi or girate_faccia or guadagni or rivelate or mescole or guardate or f.get("mn")):
             return
@@ -3819,6 +3982,12 @@ class PaginaPerformance:
             nasce = len(m__) <= 7 and fase_ == 1 and pezzo        # la pedina: nasce dalla pila
             resta_ = fase_ == 2 or muore or not (dal_grimorio and n != "dorso" or nasce)
             fermo_ = c.create_image(x0 + dx, y0 + dy, image=img, tags="anim") if resta_ else None
+            if not muore and fermo_ is not None and fase_ == 0.5 and "Damage" in ((passo_ or [""])[0] or ""):
+                # chi lascia il campo nel passo del danno senza morire (15 nov 2026: Overlord of the Mistmoors ucciso dal Demone va in esilio): il suo duello
+                # combatte con la carta ferma al suo posto, come chi muore; senza, il duello spariva
+                id_x = id_di_box.get(tuple(round(v) for v in da))
+                if id_x is not None and id_x not in fantasmi:
+                    fantasmi[id_x] = fermo_
             if muore and fermo_ is not None:
                 if id_m is not None:
                     fantasmi[id_m] = fermo_
@@ -3884,8 +4053,14 @@ class PaginaPerformance:
             colpi_vita = {k_v: [q_ for b_, q_ in (passo_[5] or []) if b_ == k_v and q_] for k_v in ("vita_mio", "vita_suo")}
             n_vita = {"vita_mio": 0, "vita_suo": 0}
             self._vita_corsa = {"vita_mio": (prima.get("vite") or (None, None))[0], "vita_suo": (prima.get("vite") or (None, None))[1]}
+            # duella solo chi in questo passo fa o riceve danno (15 nov 2026: col primo colpo di Lyra Dawnbringer duellavano tutti gli attaccanti, e poi
+            # di nuovo nel passo del danno normale); senza chi infligge il danno (i Moments) come prima
+            fonti_c = passo_[6] if len(passo_) > 6 else []
+            coinvolti_ = ({t_ for t_, q_, s_ in fonti_c or [] if q_} | {s_ for t_, q_, s_ in fonti_c or [] if q_})                 if fonti_c and any(len(d_) > 2 and d_[2] is not None for d_ in fonti_c) else None
             for a_id, tg in rel_.get("att") or []:
                 bls = [b_id for b_id, aa in rel_.get("blocchi") or [] if a_id in aa]
+                if coinvolti_ is not None and a_id not in coinvolti_ and not any(b_ in coinvolti_ for b_ in bls):
+                    continue
                 it_a = item_(a_id)
                 if it_a is None or not c.coords(it_a):        # coords, non bbox: un oggetto nascosto (che si gira dopo) non ha riquadro
                     continue
@@ -4026,6 +4201,8 @@ class PaginaPerformance:
             n_paga = next((tx_.split("paid mana for ", 1)[1] for _m, tx_ in eventi_passo if "paid mana for " in tx_), None)
             mio_p = any(m_ and "paid mana for " in tx_ for m_, tx_ in eventi_passo)
             dest_p = next((z_[2] for z_ in self._box_zona if z_[0] == "mano" and z_[1] == n_paga), None) if mio_p else getattr(self, "_mano_suo_box", None)
+            if f.get("mnd") is not None and self._pos_id.get(f["mnd"]):     # l'abilita' o il permanente pagato: il mana va su di lui (15 nov 2026)
+                dest_p = self._pos_id[f["mnd"]]
             if dest_p is None:
                 dest_p = getattr(self, "_stack_box", None)
             chi_m = "mio" if mio_p else "suo"
@@ -4823,16 +5000,25 @@ class PaginaPerformance:
         if "Damage" not in passo_[0]:
             return None
         dich_ = None            # nel turno, la dichiarazione con piu' bloccanti (i blocchi si dichiarano uno alla volta; il passo del danno puo' averne meno)
+        # e gli attaccanti di tutto il combattimento (15 nov 2026, il verificatore del combattimento: chi muore nello stesso messaggio del danno, Sun-Blessed
+        # Healer bloccato o Felidar Savior col primo colpo del Nighthawk, non e' piu' fra gli attaccanti del passo, e il suo duello spariva); ci si ferma
+        # fuori dalla fase di combattimento, cosi' un secondo combattimento nello stesso turno (Fear of Missing Out) resta a parte
+        att_tutti = {}
         for q_ in range(i_, -1, -1):
             pq_ = b["passi"][q_]
-            if pq_[2] != passo_[2]:
+            if pq_[2] != passo_[2] or not any(k_ in pq_[0] for k_ in ("Attack", "Block", "Damage", "BeginCombat")):
                 break
             r_ = pq_[3]
             if r_ and r_.get("tipo") == "comb" and r_.get("att"):
+                for a_ in r_["att"]:
+                    k_a = a_[0] if isinstance(a_, (list, tuple)) else a_
+                    att_tutti.setdefault(k_a, a_)
                 if dich_ is None or len(r_.get("blocchi") or []) > len(dich_.get("blocchi") or []):
                     dich_ = r_
         if not dich_:
             return None
+        if len(att_tutti) > len(dich_["att"]):
+            dich_ = dict(dich_, att=list(att_tutti.values()))
         # un blocco vale solo se il danno lo conferma (14 nov 2026, la partita del 7 ottobre: «Mindseeker Oculus blocked Human Soldier» era una scelta che
         # l'avversario ha poi tolto; il danno e' andato a Jace): il bloccante o l'attaccante bloccato prendono danno in un passo del danno del turno
         return self.blocchi_veri(b, dich_, passo_[2])

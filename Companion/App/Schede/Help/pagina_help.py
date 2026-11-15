@@ -61,7 +61,8 @@ SEZIONI = (
       ("Closed session", "closes the draft by hand: two clicks")]),
     ("performance", "Leak Finder", "A leak finder for your games, from your Arena logs: it finds the mistakes that cost you games (the leaks), says how "
      "often you make each one, how much it costs, how to fix it, and opens the replay on the spot; with the filters you can build any situation and see "
-     "how much you win or lose in it. It adapts to the format: Limited and Constructed have their own rules where they differ (the mulligan).",
+     "how much you win or lose in it. It adapts to the format: Limited and Constructed have their own rules where they differ (the mulligan). It is an analysis tool for after your games, not an advisor during them: while Arena or "
+     "Magic Online is open the tab stays closed, and it comes back when you close the game.",
      [("Constructed · Limited", "which games"), ("+ more", "on each phase of the game, its extra filters: the 1-2 mana spells and creatures in your opening hand and "
                                              "the first turns (missed land drops, curve, first creature); the fight (who attacked first, spells on the other turn, targeted, "
                                              "attacks into untapped lands, passing with lands up); how it ended (who conceded) and creatures lost; the day of the week and "
@@ -112,7 +113,7 @@ SEZIONI = (
                                   "the cards that just arrived marked NEW, power and toughness, what happened in that moment, the chart of the game (life and power) and the turning point (★); on the left your deck card "
                                   "by card with the copies left in your library and the chance to draw each next, on the right the opponent's cards seen up to "
                                   "that moment (not their whole deck) with Copy as list; diamonds over the timeline and «Key ›» (key K) for the key moments, where "
-                                  "the advantage swings most (blue to you, orange to the opponent; «Keys» picks yours, theirs or both); red marks under the timeline and «Leak ›» (key L) for the leaks a coach looks for "
+                                  "the advantage swings most (blue to you, orange to the opponent; «Keys» picks yours, theirs or both); with filters on, a game opened from the table starts on the first spot where they are true, marked by a white funnel on a blue square under the timeline, «Filter ›» (key F) and «YOUR FILTER» in the story (filters that cover the whole game, like format or rank, have no spot); red marks under the timeline and «Leak ›» (key L) for the leaks a coach looks for "
                                   "(a missed land drop with a land in hand, unused mana with a castable creature in hand, a creature cast before "
                                   "your attack, a chump block at high life, an unfavourable trade, an instant on their turn while they were tapped out on "
                                   "yours, a concession with outs, lands tapped the wrong way: clues, not verdicts, also as filters in Advanced filters › "

@@ -325,7 +325,7 @@ def segni(pers, obj, ricordo, tutti, zona=lambda o: None, scelte=None):
     return x, vel
 
 
-def azioni(righe, nome=lambda g: None):
+def azioni(righe, nome=lambda g: None, interni=False):
     """Le righe del log di una partita -> [dict(t, step, att, foto, ev=[(posto o None, testo)], danni=[(bersaglio, quanto)], rel)]: una foto a ogni azione che
     si vede. nome(grpId) da' il nome di una carta (per i testi); le foto portano i grpId come quelle di mana_aperto.
     Debug del 12 nov 2026 (Autore: «riguarda in maniera approfondita come il replayer legge i log e le azioni, debugga tutto»): le cancellazioni da
@@ -342,6 +342,9 @@ def azioni(righe, nome=lambda g: None):
     scelte_carte, riserva, sorv = {}, {}, None      # la scelta fatta per carta (il censimento); il mana in riserva per posto; il surveil in attesa
     sorv_suo = {}                                   # il surveil che non chiede niente a te (il suo): per abilita', chi, quante, quelle al cimitero
     riassunto, finita, veleno = False, False, {}
+    annunciate = set()      # le abilita' gia' raccontate «on the stack» (15 nov 2026, il verificatore della pila)
+    da_preparata = {}       # {id in pila: id della creatura}: la copia preparata lanciata dalla creatura che perde PREPARED (15 nov 2026)
+    da_zona = {}            # {id in pila: [zona, posto del proprietario]}: la magia lanciata fuori dalla mano (cimitero, esilio, grimorio; 15 nov 2026)
 
     class _Tutti:       # gli oggetti di adesso e quelli ricordati, per trovare il padre di un'abilita'
         @staticmethod
@@ -436,6 +439,16 @@ def azioni(righe, nome=lambda g: None):
                 if o_c.get("isFacedown"):
                     metti_stato(x, e_c[5], ("FACE DOWN", "off"))
         out = dict(c=c, m=m, n=n, v=[vite.get(1), vite.get(2)], g=g, e=e, p=pl)
+        # le copie in pila (707.10: risolte smettono di esistere, non vanno in nessuna zona) e da dove parte la copia preparata
+        copie_p = [e_[3] for e_ in pl if (obj.get(e_[3]) or {}).get("isCopy")]
+        if copie_p:
+            out["pc"] = copie_p
+        pd_ = {e_[3]: da_preparata[e_[3]] for e_ in pl if e_[3] in da_preparata}
+        if pd_:
+            out["pd"] = pd_
+        pz_ = {e_[3]: da_zona[e_[3]] for e_ in pl if e_[3] in da_zona}
+        if pz_:
+            out["pz"] = pz_
         # come e' stata lanciata la magia in pila (15 nov 2026, il censimento: CastingTimeOption, 479 volte): kicker, il valore di X, il costo alternativo o
         # aggiuntivo; {id in pila: [scritte]}
         op = {}
@@ -511,13 +524,22 @@ def azioni(righe, nome=lambda g: None):
                 out.setdefault(a.get("affectorId"), []).append(COLORI_MANA.get(_dettaglio(a, "color"), "C"))
         return out
 
-    def paga(fonti):
+    def dest_mana(x):
+        """Dove va il mana speso per x, se non e' una magia dalla mano: il permanente che attiva l'abilita', o il permanente in campo che si paga."""
+        o_c = ogg(x) if x is not None else {}
+        if o_c.get("type") == "GameObjectType_Ability":
+            return o_c.get("parentId") or o_c.get("objectSourceId")
+        if x in ids_di("ZoneType_Battlefield"):
+            return x
+        return None
+
+    def paga(fonti, pagato=None):
         """Il passo del pagamento prima del lancio (14 nov 2026, Autore: «abbiamo ancora il problema della spell prima del mana»): la foto del passo
         prima, con le fonti di mana tappate e la carta ancora in mano; poi il lancio la porta in pila. Una volta per lancio."""
         if not fonti or len(frames) < 2 or frames[-1].get("_pagato"):
             return
         lancio = frames[-1]
-        cima = lancio.get("_cima")
+        cima = pagato if pagato is not None else lancio.get("_cima")
         f2 = copy.deepcopy(frames[-2]["foto"])
         f2.pop("r", None), f2.pop("s", None), f2.pop("sc", None), f2.pop("mn", None)
         for lato in f2["c"]:
@@ -526,6 +548,10 @@ def azioni(righe, nome=lambda g: None):
                     c_[1] = 1
         lancio["_pagato"] = True
         f2["mn"] = [[i_, col_] for i_, cols_ in (fonti.items() if isinstance(fonti, dict) else []) for col_ in cols_]      # il mana che vola alla magia
+        # dove va il mana speso (15 nov 2026, il verificatore del mana): l'abilita' attivata sul permanente che la attiva, il pagamento sul permanente in campo
+        # (la porta della Room che si apre) su di lui; la magia lanciata resta com'era (dalla mano alla pila)
+        if dest_mana(cima) is not None:
+            f2["mnd"] = dest_mana(cima)
         # se in pila c'era gia' una magia (lui risponde alla tua), mentre paga resta a vista (14 nov 2026, Autore: «se gioco una carta e oppo si tappa
         # per giocare la sua, la mia pila sparisce e riappare solo con la giocata di oppo»)
         sotto, rel_s = frames[-2].get("_cima"), None
@@ -534,7 +560,7 @@ def azioni(righe, nome=lambda g: None):
             if sotto in in_pila:
                 in_pila[sotto]["rels"].append(rel_s)
         frames.insert(len(frames) - 1, dict(t=lancio["t"], step=lancio["step"], att=lancio["att"], foto=f2, ev=[(chi_(cima), f"paid mana for {n_(cima)}")],
-                                            danni=[], rel=rel_s, _s=lancio["_s"], _att=False, _cima=sotto if rel_s else None, _pagato=True))
+                                            danni=[], rel=rel_s, _s=lancio["_s"], _att=False, _cima=sotto if rel_s else None, _pagato=True, _pag=cima, _pag_s=sid))
 
     for r in righe:
         if r.startswith(MA.RIASSUNTO):
@@ -785,10 +811,64 @@ def azioni(righe, nome=lambda g: None):
                     for x in aff:
                         if x in pila_ora:
                             ev.append((chi_(x) or chi_(a.get("affectorId")), f"ability of {n_(a.get('affectorId'))} on the stack"))
+                            annunciate.add(x)
+            # gli inneschi che scattano insieme (15 nov 2026, il verificatore della pila: 88 abilita' su 1.145 oggetti in 40 partite mai mostrate in pila;
+            # Unholy Annex, Unstoppable Slasher, Haliya...): Arena li crea nella zona Pending e li mette in pila nel messaggio dopo, senza annotazioni, e
+            # il replayer non ne faceva un passo; ora ogni abilita' che arriva in pila senza essere stata raccontata e' un'azione sua, prima di risolversi
+            # e lo stesso per le magie che entrano in pila senza essere lanciate dal giocatore: la copia di una magia (ZoneTransfer «Copy», 15 nov 2026)
+            lanciate_ = {x for a in anns_msg if "AnnotationType_ZoneTransfer" in (a.get("type") or []) and _dettaglio(a, "category") == "CastSpell"
+                         for x in a.get("affectedIds") or []}
+            for x in ids_di("ZoneType_Stack"):
+                o_x = obj.get(x) or {}
+                if x in annunciate or x in lanciate_:
+                    annunciate.add(x)
+                    continue
+                annunciate.add(x)
+                chi_s = o_x.get("controllerSeatId") if o_x.get("controllerSeatId") in (1, 2) else None
+                if o_x.get("type") == "GameObjectType_Ability":
+                    fonte_x = o_x.get("parentId") or o_x.get("objectSourceId")
+                    n_x = n_(fonte_x) if fonte_x and ogg(fonte_x) else (nome(o_x.get("objectSourceGrpId")) or "a card")
+                    ev.append((chi_s, f"ability of {n_x} on the stack"))
+                elif o_x:
+                    ev.append((chi_s, f"{'a copy of ' if o_x.get('isCopy') else ''}{n_(x)} on the stack"))
             # il pagamento arriva nel messaggio dopo il lancio (14 nov 2026, Autore: «vedo che scende prima la creatura e poi il mana per pagarla, dovrebbe
             # essere l'inverso»): Arena scrive prima la magia che va in pila, poi ManaPaid con le terre tappate. Se questo messaggio non e' un'azione nuova,
             # la foto del lancio (l'ultimo passo, con la magia ancora in pila) si rifa' col pagamento
-            if not ev and not danni and frames and frames[-1]["t"] == t and frames[-1].get("_cima") in ids_di("ZoneType_Stack") \
+            n_fr = len(frames)
+            # la magia preparata (Seed Suture e le altre di SOS; 15 nov 2026, la caccia ai glitch): una copia lanciata dalla creatura, che nello stesso
+            # messaggio perde PREPARED (LoseDesignation 24); vola da lei alla pila, non dalla mano
+            for a in anns_msg:
+                if "AnnotationType_ZoneTransfer" in (a.get("type") or []) and _dettaglio(a, "category") == "CastSpell":
+                    z_src = _dettaglio(a, "zone_src")
+                    zona_ = {"ZoneType_Graveyard": "cim", "ZoneType_Exile": "esi", "ZoneType_Library": "lib"}.get(zone.get(z_src))
+                    for x in a.get("affectedIds") or []:
+                        if zona_ and not (obj.get(x) or {}).get("isCopy"):       # lanciata dal cimitero, dall'esilio, dal grimorio: vola da li'
+                            da_zona[x] = [zona_, zown.get(z_src)]
+                        if (obj.get(x) or {}).get("isCopy"):
+                            src_p = next((a2.get("affectorId") for a2 in anns_msg if "AnnotationType_LoseDesignation" in (a2.get("type") or [])
+                                          and _dettaglio(a2, "DesignationType") == 24 and a2.get("affectorId")), None)
+                            if src_p:
+                                da_preparata[x] = src_p
+            # il pagamento a mano, una terra alla volta (15 nov 2026, il verificatore del mana: Winter, Team Player pagata con cinque terre in cinque
+            # messaggi): i messaggi dopo aggiungono le loro fonti al passo di pagamento gia' aperto per la stessa magia, invece di farne altri
+            pagati_ora = [x for a in anns_msg if "AnnotationType_ManaPaid" in (a.get("type") or []) for x in a.get("affectedIds") or []]
+            continua_pag = False
+            if pagati_ora and not ev and not danni and frames and len(set(pagati_ora)) == 1:
+                pf_ = next((f_ for f_ in reversed(frames[-2:]) if f_.get("_pag") == pagati_ora[0] and f_["foto"].get("mn") is not None), None)
+                # solo nei messaggi di fila: un pagamento piu' tardi della stessa magia (il ward pagato quando scatta) e' un passo suo
+                if pf_ is not None and sid - pf_.get("_pag_s", -9) <= 1:
+                    pf_["_pag_s"] = sid
+                    nuove_f = fonti_di(gs, pagati_ora[0])
+                    pf_["foto"]["mn"] += [[i_, col_] for i_, cols_ in nuove_f.items() for col_ in cols_]
+                    for f_ in frames[frames.index(pf_):]:
+                        for lato in f_["foto"]["c"]:
+                            for c_ in lato:
+                                if len(c_) > 5 and c_[5] in nuove_f:
+                                    c_[1] = 1
+                    continua_pag = True
+            if continua_pag:
+                pass
+            elif not ev and not danni and frames and frames[-1]["t"] == t and frames[-1].get("_cima") in ids_di("ZoneType_Stack") \
                     and any("AnnotationType_ManaPaid" in (a.get("type") or []) for a in gs.get("annotations") or []):
                 f_n = foto()
                 f_n.update({k_: frames[-1]["foto"][k_] for k_ in ("r", "s", "sc") if k_ in frames[-1]["foto"]})
@@ -804,11 +884,22 @@ def azioni(righe, nome=lambda g: None):
                             if len(c_) > 5 and c_[5] in fonti:
                                 c_[1] = 1
                     paga(fonti)
+            # il pagamento da solo (15 nov 2026, il verificatore del mana): il costo del ward pagato mentre si risolve il suo innesco, il «puoi pagare»
+            # di un innesco, la porta della Room che si apre pagando; il messaggio non ha altre azioni e il replayer non ne faceva un passo
+            pagati_msg = [x for a in anns_msg if "AnnotationType_ManaPaid" in (a.get("type") or []) for x in a.get("affectedIds") or []]
+            solo_pag = None
+            if pagati_msg and not ev and not danni and len(frames) == n_fr and not continua_pag:
+                solo_pag = pagati_msg[0]
+                fonti_s = fonti_di(gs, solo_pag)
+                ev.append((chi_(next(iter(fonti_s), None)) or chi_(solo_pag), f"paid mana for {n_(solo_pag)}"))
             # il combattimento: attaccanti e blocchi dichiarati (chi e' in campo lo dicono le zone)
             sul = [obj[i] for i in ids_di("ZoneType_Battlefield") if i in obj]
             att_ids = [[o["instanceId"], (o.get("attackInfo") or {}).get("targetId")] for o in sul
                        if o.get("attackState") in ("AttackState_Declared", "AttackState_Attacking")]
-            blocchi = [[o["instanceId"], (o.get("blockInfo") or {}).get("attackerIds") or []] for o in sul if (o.get("blockInfo") or {}).get("attackerIds")]
+            # un blocco conta quando Arena lo conferma (15 nov 2026, il verificatore del combattimento: 9 blocchi su 1.329 combattimenti mostrati e mai fatti):
+            # mentre chi difende sceglie, la scelta e' BlockState_Declared e puo' essere tolta nel messaggio dopo (Surveillance Phantasm messo e tolto)
+            blocchi = [[o["instanceId"], (o.get("blockInfo") or {}).get("attackerIds") or []] for o in sul if (o.get("blockInfo") or {}).get("attackerIds")
+                       and o.get("blockState") != "BlockState_Declared"]
             comb = (tuple(map(tuple, att_ids)), tuple((b, tuple(a_)) for b, a_ in blocchi))
             solo_att = False
             if att_ids and comb != att_prima:
@@ -862,14 +953,25 @@ def azioni(righe, nome=lambda g: None):
                 frames.pop()
             frames.append(dict(t=t, step=(ti.get("step") or ti.get("phase") or "").replace("Step_", "").replace("Phase_", ""), att=att, foto=foto(), ev=ev,
                                danni=danni, rel=rel, _s=sid, _att=solo_att, _cima=pila[0] if pila else None))       # anche in combattimento (un istantaneo prima del danno)
+            annunciate.update(pila)         # quello che un passo mostra in pila e' raccontato
             if rivelate:
                 frames[-1]["foto"]["r"] = rivelate
             if mescola:
                 frames[-1]["foto"]["s"] = mescola
             if guardate:
                 frames[-1]["foto"]["sc"] = guardate
-            if pila and any(" cast " in f" {tx} " for _c, tx in ev):        # pagata nello stesso messaggio del lancio
-                paga(fonti_di(gs, pila[0]))
+            # pagata nello stesso messaggio del lancio (15 nov 2026, il verificatore del mana: anche quando un innesco le va subito sopra, e le abilita'
+            # attivate col mana, e la porta della Room pagata in campo): ogni oggetto che questo messaggio paga, non solo la cima della pila
+            if solo_pag is not None:        # il passo e' il pagamento stesso: le fonti appena tappate, il mana che vola
+                frames[-1]["foto"]["mn"] = [[i_, col_] for i_, cols_ in fonti_di(gs, solo_pag).items() for col_ in cols_]
+                if dest_mana(solo_pag) is not None:
+                    frames[-1]["foto"]["mnd"] = dest_mana(solo_pag)
+                frames[-1]["_pagato"], frames[-1]["_pag"], frames[-1]["_pag_s"] = True, solo_pag, sid
+            # prima cio' che sta in pila: il pagamento di un'abilita' di mana (Three Tree City pagata per dare tre mana a Traveling Chocobo) viene dopo
+            pila_m = set(ids_di("ZoneType_Stack"))
+            for x in ([] if solo_pag is not None else sorted(dict.fromkeys(pagati_msg), key=lambda x_: x_ not in pila_m)):
+                paga(fonti_di(gs, x), x)
+                break
             # un attaccante che qui risulta tappato e nel passo dell'attacco no: Arena ha scritto la tappatura in un messaggio dopo; era gia' tappato quando
             # ha attaccato (14 nov 2026: nel replayer le creature si tappavano una alla volta nel passo dei bloccanti, ad attacco gia' fatto)
             nuovo_ = frames[-1]
@@ -894,11 +996,13 @@ def azioni(righe, nome=lambda g: None):
         for rel_ in p_["rels"]:
             rel_["colpiti"] = sorted(y for y in p_["prima"] if y not in fine_campo)
             rel_["fatti"] = sorted(y for y in p_["fatti"] if y in p_["prima"])
-    for f in frames:
+    for f in ([] if interni else frames):      # interni: tiene il gameStateId e le altre chiavi di lavoro (Strumenti/verifica_pila.py)
         f.pop("_s", None)
         f.pop("_att", None)
         f.pop("_cima", None)
         f.pop("_pagato", None)
+        f.pop("_pag", None)
+        f.pop("_pag_s", None)
     return frames
 
 
@@ -978,6 +1082,19 @@ def prova():
                       annotations=[zt(4, "CastSpell")])]
     tu = [tx for f in azioni(undo, {100: "Island", 200: "Shock", 300: "Opt"}.get) for _c, tx in f["ev"]]
     casi.append(("l'annullamento di Arena: la terra una volta sola, la magia annullata no, quella vera si'", tu == ["played Island", "cast Opt"]))
+    # gli inneschi che scattano insieme (15 nov 2026, il verificatore della pila): Arena li crea in Pending e li mette in pila nel messaggio dopo senza
+    # annotazioni; ogni abilita' che arriva in pila senza essere raccontata e' un passo suo, e una copia di magia pure; negativa: la stessa pila gia' raccontata
+    # non fa un passo nuovo
+    abil = lambda i, src, **k: dict(instanceId=i, grpId=9001, type="GameObjectType_Ability", zoneId=27, controllerSeatId=1, ownerSeatId=1, parentId=src,
+                                    objectSourceGrpId=100, **k)
+    pend = base + [gz(50, type="GameStateType_Diff", zones=[campo(3)], gameObjects=[carta(3, 100, 28, 1)], annotations=[zt(3, "PlayLand")]),
+                   gz(51, type="GameStateType_Diff", zones=[pila(9, 8)], gameObjects=[abil(8, 3), abil(9, 3)]),
+                   gz(52, type="GameStateType_Diff", zones=[pila(9, 8)]),
+                   gz(53, type="GameStateType_Diff", zones=[pila(10, 9, 8)], gameObjects=[carta(10, 200, 27, 1, isCopy=True, cardTypes=["CardType_Instant"])])]
+    fr_p = azioni(pend, {100: "Island", 200: "Shock"}.get)
+    in_p = [[e_[3] for e_ in f["foto"]["p"]] for f in fr_p if f["foto"].get("p")]
+    casi.append(("gli inneschi messi in pila senza annotazioni hanno il loro passo, la copia pure; negativa: la stessa pila due volte, un passo solo",
+                 in_p == [[9, 8], [10, 9, 8]] and any("a copy of Shock on the stack" in tx for f in fr_p for _c, tx in f["ev"])))
     # lui risponde alla tua magia e paga nel messaggio dopo: nel passo del suo pagamento la tua magia resta in pila (14 nov 2026, Autore: «se gioco
     # una carta e oppo si tappa per giocare la sua, la mia pila sparisce e riappare solo con la giocata di oppo»); negativa: senza magia sotto, niente pila
     pg_ = lambda *aff: [dict(type=["AnnotationType_ManaPaid"], affectorId=7, affectedIds=list(aff)), dict(type=["AnnotationType_TappedUntappedPermanent"], affectedIds=[7])]
@@ -1050,6 +1167,30 @@ def prova():
     fb = azioni(base + [uno(50, 9), uno(51, 9, 10), blocco(52)], {500: "Goblin", 800: "Wall"}.get)
     casi.append(("l'attacco e poi il blocco: due azioni, la seconda dice solo chi blocca chi", [f["ev"] for f in fb] ==
                  [[(1, "attacked with Goblin (2/2), Goblin (2/2)")], [(2, "Wall blocked Goblin")]]))
+    # il blocco scelto e tolto (15 nov 2026, il verificatore del combattimento): BlockState_Declared non e' un blocco; confermato (Blocking) si'
+    scelto = lambda sid, st_: gz(sid, type="GameStateType_Diff", zones=[campo(9, 10, 14)], turnInfo=dict(t3, phase="Phase_Combat", step="Step_DeclareBlock"),
+                                 gameObjects=[att_(9), att_(10), carta(14, 800, 28, 2, cardTypes=["CardType_Creature"], blockState=st_,
+                                                                       blockInfo=dict(attackerIds=[9]))])
+    fd = azioni(base + [uno(50, 9), uno(51, 9, 10), scelto(52, "BlockState_Declared")], {500: "Goblin", 800: "Wall"}.get)
+    fc = azioni(base + [uno(50, 9), uno(51, 9, 10), scelto(52, "BlockState_Blocking")], {500: "Goblin", 800: "Wall"}.get)
+    casi.append(("il blocco confermato si racconta; negativa: il blocco ancora in scelta (Declared) no",
+                 any((2, "Wall blocked Goblin") in f["ev"] for f in fc) and not any((2, "Wall blocked Goblin") in f["ev"] for f in fd)))
+    # il mana (15 nov 2026, il verificatore del mana): il pagamento da solo (la porta della Room pagata in campo, il ward) e' un passo suo col mana che vola
+    # sul permanente; l'abilita' attivata col mana manda il mana sulla carta che la attiva; negativa: un messaggio senza ManaPaid non fa passi di mana
+    mp_ = lambda fonte, x: dict(type=["AnnotationType_ManaPaid"], affectorId=fonte, affectedIds=[x], details=[dict(key="color", valueInt32=[3])])
+    porta = base + [gz(60, type="GameStateType_Diff", zones=[campo(3, 21)], gameObjects=[carta(3, 100, 28, 1, isTapped=True), carta(21, 600, 28, 1)],
+                       annotations=[mp_(3, 21)])]
+    fp_ = [f for f in azioni(porta, {100: "Swamp", 600: "Unholy Annex"}.get, interni=True) if f["foto"].get("mn")]
+    abil_ = dict(instanceId=22, grpId=9002, type="GameObjectType_Ability", zoneId=27, controllerSeatId=1, ownerSeatId=1, parentId=21, objectSourceGrpId=600)
+    attiva = base + [gz(59, type="GameStateType_Diff", zones=[campo(3)], gameObjects=[carta(3, 100, 28, 1)], annotations=[zt(3, "PlayLand")]),
+                     gz(61, type="GameStateType_Diff", zones=[campo(3, 21), pila(22)], gameObjects=[carta(3, 100, 28, 1, isTapped=True), carta(21, 600, 28, 1),
+                                                                                                   abil_], annotations=[mp_(3, 22)])]
+    fa_ = [f for f in azioni(attiva, {100: "Swamp", 600: "Unholy Annex"}.get, interni=True) if f["foto"].get("mn")]
+    nulla = base + [gz(62, type="GameStateType_Diff", zones=[campo(3)], gameObjects=[carta(3, 100, 28, 1, isTapped=True)])]
+    casi.append(("il pagamento da solo e' un passo, il mana va sul permanente; l'abilita' manda il mana sulla carta che la attiva; negativa: niente ManaPaid, "
+                 "niente mana", [(f["foto"]["mn"], f["foto"].get("mnd")) for f in fp_] == [([[3, "B"]], 21)]
+                 and [(f["foto"]["mn"], f["foto"].get("mnd")) for f in fa_] == [([[3, "B"]], 21)]
+                 and not any(f["foto"].get("mn") for f in azioni(nulla, interni=True))))
     fine_c = gz(53, type="GameStateType_Diff", zones=[campo(9, 10)], turnInfo=dict(turnNumber=5, activePlayer=1, phase="Phase_Main1"),
                 gameObjects=[carta(9, 500, 28, 1, cardTypes=["CardType_Creature"]), carta(10, 500, 28, 1, cardTypes=["CardType_Creature"])])
     ancora = gz(54, type="GameStateType_Diff", zones=[campo(9, 10)], gameObjects=[att_(9), att_(10)],

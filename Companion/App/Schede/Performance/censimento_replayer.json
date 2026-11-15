@@ -118,8 +118,8 @@
       "le carte volano in esilio, le copie vanno in pila con COPY e in campo restano con COPY (Improvisation Capstone)"
     ],
     "esilia_finche": [
-      "parte",
-      "la carta va in esilio, e quando Arena la mette sotto la fonte (DisplayCardUnderCard) sta dietro di lei; il ritorno quando la fonte lascia il campo e' un volo normale"
+      "si",
+      "la carta esiliata vola sotto la sua fonte (DisplayCardUnderCard, 196 esili su 196 nelle ultime 400 partite; con un'aura, dietro la carta che la porta) e ci resta; la fonte porta la catena viola; quando la fonte se ne va la carta torna da sotto di lei, in campo o in mano (15 nov 2026)"
     ],
     "esilia_scelta_da_te": [
       "si",

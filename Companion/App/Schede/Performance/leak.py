@@ -33,6 +33,39 @@ import dati_analizzatore as DA  # noqa: E402
 
 VITA_ALTA = 10          # da qui in su un chump block costa una carta per vite che non servono ancora (grado C)
 VITA_CONCEDI = 8        # L7: sotto, una concessione e' di solito una partita persa davvero (grado C)
+# Quanti suoi turni il mana aperto guarda avanti (15 nov 2026, Autore: «ampliamo il leaker a capire se il mana aperto è un leak o un'azione strategica per
+# il turno di oppo / invece di guardare da quel momento al turno successivo di oppo mandalo a guardare avanti di qualche turno in più decidi tu quanti»).
+# Misurato sui suoi log quel giorno: 681 fine turno col mana aperto e in mano un istantaneo o un flash che quelle terre pagavano; di quelle carte poi
+# lanciate in un suo turno, il 61% parte nel suo turno subito dopo, il 75% entro due, l'86% entro tre, il 93% entro quattro (un terzo non parte mai).
+# Tre: copre quasi tutte le attese vere, oltre e' piu' un caso che un piano.
+GUARDA_AVANTI = 3
+
+
+def _suoi_turni(t, dopo_suo=False):
+    """I suoi prossimi GUARDA_AVANTI turni di Arena: dopo un tuo turno t sono t+1, t+3, t+5; dopo un suo turno t (L15) i due seguenti, t+2 e t+4, che col
+    turno t fanno tre."""
+    return {t + 2 * i for i in range(1, GUARDA_AVANTI)} if dopo_suo else {t + 1 + 2 * i for i in range(GUARDA_AVANTI)}
+
+
+def _lanciata(d, seat, grps, turni):
+    """Una delle carte (grpId) e' stata lanciata da te in uno di quei turni?"""
+    return any(s_ == seat and t_ in turni and g in grps for t_, s_, g, _f in d.get("fasi") or [])
+
+
+def _strategico(d, seat, t, tenuti_g):
+    """Il mana aperto a fine del tuo turno t era una scelta per i suoi turni, non un leak (guardando avanti GUARDA_AVANTI suoi turni): una delle carte tenute
+    (istantanei e flash che le terre stappate pagavano) e' partita in uno dei suoi prossimi turni (l'attesa del momento giusto: la rimozione sulla minaccia
+    arrivata dopo), oppure la minaccia di rispondere ha fatto il suo lavoro nel suo turno subito dopo (grado C): una contromagia e lui non ha lanciato
+    niente, una magia da combattimento (Settle the Wreckage, «attacking creatures») e lui non ha attaccato."""
+    if not tenuti_g:
+        return False
+    if _lanciata(d, seat, set(tenuti_g), _suoi_turni(t)):
+        return True
+    testi = [(_carta(_nome(g)).get("testo") or "") for g in tenuti_g]
+    if any("counter target" in tx.lower() for tx in testi) and not any(s_ != seat and t_ == t + 1 for t_, s_, _g, _f in d.get("fasi") or []):
+        return True
+    return (any(re.search(r"attacking creatures|attacking creature", tx, re.I) for tx in testi)
+            and not any(m[0] == "comb" and m[1] == t + 1 and m[2] != seat for m in d.get("momenti") or []))
 # i testi dei leak (15 nov 2026, Autore: «la scheda leak deve avere definizioni dei leak e descrizioni moooolto più intendibili»): per ognuno il nome
 # in parole di tutti i giorni (NOMI), cosa si cerca nella partita (SPIEGA), perche' costa (PERCHE), un esempio (ESEMPIO) e come si corregge (COME)
 NOMI = {"l1": "You skipped a land drop", "l2": "You left mana unused with a creature in hand", "l3": "You cast a creature before attacking",
@@ -49,8 +82,10 @@ PARTITA = {"l7", "l12", "l13"}       # i leak della partita intera (gli altri ha
 SPIEGA = {"l1": "At the end of one of your turns you still had a land in your hand, but you hadn't played a land that turn.",
           "l2": "At the end of your turn you had enough untapped lands, of the right colors, to cast a creature in your hand, and you didn't cast it. "
                 "Mana kept for the opponent's turn is not counted: if on their turn you cast something, that mana is taken away first and it is a leak "
-                "only if the creature still fit; if you held an instant or a flash card those lands could pay, it was held on purpose (if you then never "
-                "used it, that is the leak «held mana open and never used it»); an ability activated on their turn clears it.",
+                "only if the creature still fit; an ability activated on their turn clears it. Holding the mana for an instant or a flash card those lands "
+                "could pay counts as a plan only if the plan happened within their next three turns: the card was cast on one of their turns, or a "
+                "counterspell kept them from casting anything, or a combat trick like Settle the Wreckage kept them from attacking. Held for a card you "
+                "never cast, or cast later on your own turn, it is still the leak.",
           "l3": "On a turn you attacked, you first cast a creature (without haste) in your first main phase, and only then attacked. A creature that "
                 "helps that attack is not counted: directly (its entry pumps, puts counters, taps or removes a blocker, makes them discard, shows you "
                 "their hand or draws you a card; its ability pumps your team or triggers at the beginning of combat) or through your other cards (a "
@@ -84,7 +119,8 @@ SPIEGA = {"l1": "At the end of one of your turns you still had a land in your ha
                  "that spell before playing the land.",
           "l15": "At the end of the opponent's turn you still had untapped lands and an instant or a flash creature you could pay for (colors "
                  "included), and you cast nothing during their turn. Not counted: a removal spell when they had nothing to remove, a combat spell "
-                 "(Settle the Wreckage) when they didn't attack, mana you used for an activated ability."}
+                 "(Settle the Wreckage) when they didn't attack, mana you used for an activated ability, and a card you were saving for the right moment: "
+                 "if you cast it on one of their next two turns, holding it here was waiting, not waste."}
 PERCHE = {"l1": "Every land you don't play is mana you lose for the rest of the game: from the next turn you are one land behind on everything you want to cast.",
           "l2": "A creature not cast this turn is a turn of attacking and blocking you never get back, and the mana you didn't use is simply gone.",
           "l3": "That creature can't attack this turn anyway. Casting it first shows your opponent what you had and that your mana is spent, so they block "
@@ -229,9 +265,12 @@ def per_partita(x):
         # istantaneo o un flash che quelle terre pagavano, il mana era tenuto apposta: non e' L2 (se poi non l'hai usato e' L15)
         spese_suo = [c_ for c_ in (_costo(_nome(g)) for t_, s_, g, _f in d.get("fasi") or [] if t_ == t + 1 and s_ == seat) if c_]
         abil_suo = any(a_[0] == t + 1 and a_[1] == seat for a_ in d.get("attivate") or [])
-        tenuti = [n for n in mano if _costo(n) and ("Instant" in (_carta(n).get("tipo") or "") or "Flash" in (_carta(n).get("testo") or ""))
-                  and _paga([_costo(n)], stap)]
-        if abil_suo or (not spese_suo and tenuti):
+        tenuti_g = [g for g in (f.get("m") or [[], []])[a] if _nome(g) and _costo(_nome(g))
+                    and ("Instant" in (_carta(_nome(g)).get("tipo") or "") or "Flash" in (_carta(_nome(g)).get("testo") or "")) and _paga([_costo(_nome(g))], stap)]
+        # guardare avanti piu' turni (15 nov 2026, «decidi tu quanti»: GUARDA_AVANTI): tenere il mana per un istantaneo e' una scelta solo se quella carta poi
+        # parte in uno dei suoi prossimi turni (o, contromagia, se lui non ha lanciato niente); tenuto per una carta che non parte mai, e' un leak
+        strategico = _strategico(d, seat, t, tenuti_g)
+        if abil_suo or (not spese_suo and strategico):
             pass
         elif any(_paga([_costo(n)] + spese_suo, stap) for n in creature if 0 < len(_costo(n))):
             l2.append(t)
@@ -240,7 +279,7 @@ def per_partita(x):
             # guardare avanti (15 nov 2026, la regola di Autore: «il leak finder deve guardare sempre avanti dal mio fino al turno avversario per
             # valutare se è un vero leak o una decisione strategica»): se nel suo turno quelle terre stappate hanno pagato una tua magia o un'abilita',
             # le avevi lasciate stappate apposta
-            apposta = abil_suo or (spese_suo and _paga(spese_suo, stap))
+            apposta = abil_suo or (spese_suo and _paga(spese_suo, stap)) or strategico
             if spese and not apposta and any(len(_costo(n)) <= len(stap) and not _paga([_costo(n)], stap) and _paga(spese + [_costo(n)], tutte_col)
                              for n in lanciabili if _costo(n)):       # le stappate NON la pagano (prima mancava: Sunpearl Kirin, flash, tenuta apposta)
                 l8.append(t)
@@ -496,7 +535,9 @@ def _mana_tenuto(d, seat, mom):
             if combattimento and m[1] not in attacco_suo:
                 continue
             fine_turno = "Instant" in tipo and "counter target" not in testo.lower() and (_guarda(n) or rim)
-            if flash or fine_turno:
+            # guardare avanti piu' turni (15 nov 2026): la carta tenuta e lanciata in uno dei suoi due turni dopo aspettava il momento giusto (la rimozione
+            # sulla minaccia arrivata dopo): in questo turno non era mana sprecato. Lanciata poi nel tuo turno resta un leak (velocita' da stregoneria)
+            if (flash or fine_turno) and not _lanciata(d, seat, {g}, _suoi_turni(m[1], dopo_suo=True)):
                 out.append(m[1])
                 break
     return out
@@ -740,8 +781,34 @@ def prova():
         # il mana tenuto per il suo turno (15 nov 2026): due Plains stappate, in mano Healer's Hawk e Raise the Alarm
         DA._NOMI_GRP[818] = "Raise the Alarm"
         DA._MANA["lk20"] = dict(DA._MANA["lk7"], momenti=[["fine", 1, 1, foto([814, 818], c1=[P1, P2, tap(SW)])]])
-        casi.append(("negativa L2: con Raise the Alarm in mano e le terre per pagarlo, il mana era tenuto apposta",
-                     per_partita(dict(partita="lk20", seat=1, inizia=True))["l2"] == []))
+        # guardare avanti GUARDA_AVANTI suoi turni (15 nov 2026): il mana tenuto e' una scelta se Raise the Alarm parte in uno dei suoi prossimi tre turni
+        # (qui il terzo, il 6 di Arena); tenuto per una carta che non parte mai, o che parte solo nel tuo turno o oltre la finestra, e' un leak
+        DA._MANA["lk43"] = dict(DA._MANA["lk20"], fasi=[[1, 1, 813, "Phase_Main2"], [6, 1, 818, "Phase_Ending"]])
+        DA._MANA["lk44"] = dict(DA._MANA["lk20"], fasi=[[1, 1, 813, "Phase_Main2"], [5, 1, 818, "Phase_Main1"]])
+        DA._MANA["lk45"] = dict(DA._MANA["lk20"], fasi=[[1, 1, 813, "Phase_Main2"], [8, 1, 818, "Phase_Ending"]])
+        casi.append(("guardare avanti L2: Raise the Alarm tenuto e lanciato nel suo terzo turno dopo (il 6 di Arena): il mana era tenuto apposta; negative: "
+                     "mai lanciato, lanciato nel tuo turno (il 5), lanciato oltre la finestra (l'8) restano L2",
+                     per_partita(dict(partita="lk43", seat=1, inizia=True))["l2"] == []
+                     and per_partita(dict(partita="lk20", seat=1, inizia=True))["l2"] == [1]
+                     and per_partita(dict(partita="lk44", seat=1, inizia=True))["l2"] == [1]
+                     and per_partita(dict(partita="lk45", seat=1, inizia=True))["l2"] == [1]))
+        # una contromagia tenuta: se lui nel suo turno dopo non lancia niente, la minaccia di rispondere ha fatto il suo lavoro (grado C); se lancia, e'
+        # mana tenuto per niente
+        DA._NOMI_GRP[838] = "Quench"
+        DA._NOMI_GRP[801] = "Island"
+        DA._MANA["lk46"] = dict(DA._MANA["lk7"], momenti=[["fine", 1, 1, foto([814, 838], c1=[P1, [801, False, False, None, None, 7], tap(SW)])]])
+        DA._MANA["lk47"] = dict(DA._MANA["lk46"], fasi=[[1, 1, 813, "Phase_Main2"], [2, 2, 816, "Phase_Main1"]])
+        casi.append(("guardare avanti L2: Quench tenuto e lui nel turno dopo non lancia niente, una scelta; negativa: lui lancia e Quench resta in mano, L2",
+                     per_partita(dict(partita="lk46", seat=1, inizia=True))["l2"] == []
+                     and per_partita(dict(partita="lk47", seat=1, inizia=True))["l2"] == [1]))
+        # Settle the Wreckage tenuto: se lui nel suo turno dopo non attacca, la minaccia ha fatto il suo lavoro; se attacca e Settle resta in mano, L2
+        DA._NOMI_GRP[836] = "Settle the Wreckage"
+        PP = [P1, P2, [811, False, False, None, None, 8], [811, False, False, None, None, 9]]
+        DA._MANA["lk51"] = dict(DA._MANA["lk7"], momenti=[["fine", 1, 1, foto([814, 836], c1=PP + [tap(SW)])]])
+        DA._MANA["lk52"] = dict(DA._MANA["lk51"], momenti=DA._MANA["lk51"]["momenti"] + [["comb", 2, 2, {}, {"att": [[90, "vita_mio"]], "blocchi": []}]])
+        casi.append(("guardare avanti L2: Settle the Wreckage tenuto e lui nel turno dopo non attacca, una scelta; negativa: lui attacca e Settle resta in "
+                     "mano, L2", per_partita(dict(partita="lk51", seat=1, inizia=True))["l2"] == []
+                     and per_partita(dict(partita="lk52", seat=1, inizia=True))["l2"] == [1]))
         DA._MANA["lk21"] = dict(DA._MANA["lk20"], fasi=[[1, 1, 813, "Phase_Main2"], [2, 1, 818, "Phase_Ending"]])
         casi.append(("negativa L2: Raise the Alarm lanciato nel suo turno usa le due Plains, Healer's Hawk non ci stava piu'",
                      per_partita(dict(partita="lk21", seat=1, inizia=True))["l2"] == []))
@@ -863,6 +930,16 @@ def prova():
                      and per_partita(dict(partita="lk41", seat=1, inizia=False))["l9"] == [2]))
         DA._MANA["lk20"] = dict(DA._MANA["lk19"], fasi=[[2, 1, 815, "Phase_Ending"]])
         casi.append(("negativa L15: Opt lanciato alla fine del suo turno", per_partita(dict(partita="lk20", seat=1, inizia=False))["l15"] == []))
+        # guardare avanti GUARDA_AVANTI suoi turni (15 nov 2026): Opt tenuto al suo turno 2 e lanciato nel suo turno 6 (il terzo) aspettava; nel suo 8 (oltre)
+        # o nel tuo 3 resta mana tenuto e mai usato al turno 2
+        DA._MANA["lk48"] = dict(DA._MANA["lk19"], fasi=[[6, 1, 815, "Phase_Ending"]])
+        DA._MANA["lk49"] = dict(DA._MANA["lk19"], fasi=[[8, 1, 815, "Phase_Ending"]])
+        DA._MANA["lk50"] = dict(DA._MANA["lk19"], fasi=[[3, 1, 815, "Phase_Main1"]])
+        casi.append(("guardare avanti L15: Opt tenuto al suo turno 2 e lanciato nel suo turno 6 aspettava il momento; negative: lanciato nel suo 8 (oltre i tre "
+                     "turni) o nel tuo 3 (da stregoneria) resta L15",
+                     per_partita(dict(partita="lk48", seat=1, inizia=False))["l15"] == []
+                     and per_partita(dict(partita="lk49", seat=1, inizia=False))["l15"] == [2]
+                     and per_partita(dict(partita="lk50", seat=1, inizia=False))["l15"] == [2]))
         # guardare avanti fino al suo turno (15 nov 2026, la regola di Autore): un'abilita' attivata nel suo turno ha usato quel mana (L15); la Swamp
         # lasciata stappata ha pagato una tua magia nel suo turno (L8)
         DA._MANA["lk34"] = dict(DA._MANA["lk19"], attivate=[[2, 1, 811, "Phase_Ending", "Step_End", 2]])
