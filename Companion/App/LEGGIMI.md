@@ -86,6 +86,10 @@ Mockup approvati e regole in `Note/Redesign_Grafico/LEGGIMI.md` (solo lo stile c
 - La barra in alto e' una: logo e nome, le linguette con la riga azzurra sotto quella aperta, l'account col pallino verde (l'unica aggiunta approvata), il
   saldo coi loghi veri e i numeri in Bahnschrift.
 
+## L'icona nel tray
+
+`Comune/tray.py` (Shell_NotifyIcon via ctypes, un filo, coda di comandi) e i metodi `_tray_avvia`, `_tray_giro`, `mostra_dal_tray`, `chiudi_x`, `esci` di `Finestra`. La X nasconde la finestra; l'icona la riporta o chiude l'app. Preferenza in `Log_Arena/tray.json`. Dove non c'e' icona la X chiude come prima. Prove: `tray.py --prova`, `Prove/prova_tray.py`.
+
 ## Le prove
 
 | Comando | Cosa prova |

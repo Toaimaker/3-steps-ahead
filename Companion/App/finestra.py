@@ -69,7 +69,73 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
         self._costruisci_schede()
         self._passo("Reading your games…", 0.70)
         self._costruisci_avvio()
+        self._tray_avvia()
         self._passo("Drawing the first tab…", 0.85)
+
+    def _tray_avvia(self):
+        """L'icona nella barra di sistema (Comune/tray.py; 15 nov 2026, Autore: «quando lanci un app e poi la chiudi lei continua ad andare in mostra icone
+        nascoste»): la X nasconde la finestra e l'app resta accesa (HUD sopra Arena compreso), l'icona la riporta o la chiude. Senza icona (Mac, prove fuori
+        schermo, una Windows che non risponde) la X chiude come prima."""
+        self.tray = None
+        if FUORI_SCHERMO:
+            return
+        try:
+            import tray as TR
+            t = TR.Tray(os.path.join(ASSET, "companion.ico"), PRODOTTO)
+            if not t.avvia():
+                return
+        except Exception as e:      # noqa: BLE001 - l'icona e' un di piu': senza, l'app parte lo stesso
+            print("tray:", e)
+            return
+        self.tray = t
+        self.root.protocol("WM_DELETE_WINDOW", self.chiudi_x)
+        self.root.after(300, self._tray_giro)
+
+    def _tray_giro(self):
+        """I comandi dell'icona (la coda del suo filo) arrivano a Tk da qui, mai direttamente dal filo."""
+        t = self.tray
+        if t is None:
+            return
+        try:
+            while True:
+                e = t.eventi.get_nowait()
+                if e == "mostra":
+                    self.mostra_dal_tray()
+                elif e == "esci":
+                    self.esci()
+                    return
+        except queue.Empty:
+            pass
+        self.root.after(300, self._tray_giro)
+
+    def mostra_dal_tray(self):
+        """Dall'icona: la finestra torna dov'era (nascosta o ridotta a icona), davanti. Mai -topmost: nessuna finestra dell'app resta sopra le altre."""
+        r = self.root
+        try:
+            r.deiconify()
+            if r.state() == "iconic":
+                r.state("normal")
+            r.lift(); r.focus_force()
+        except tk.TclError:
+            pass
+
+    def chiudi_x(self):
+        """La X della finestra: con l'icona nel tray (e la preferenza accesa) la nasconde e l'app resta accesa; la prima volta un fumetto dice dov'e' finita."""
+        import tray as TR
+        if self.tray is not None and TR.nel_tray():
+            self.root.withdraw()
+            if not TR.leggi().get("avvisato"):
+                TR.scrivi(avvisato=True)
+                self.tray.avviso(PRODOTTO, "Still running here. Click the icon to open it again, right-click for the menu or to quit.")
+        else:
+            self.esci()
+
+    def esci(self):
+        """Chiusura vera: l'icona via, poi la finestra (l'HUD sopra Arena si chiude con lei). Il companion nella sua console resta com'e' sempre."""
+        t, self.tray = self.tray, None
+        if t is not None:
+            t.chiudi()
+        self.root.destroy()
 
     def _costruisci_finestra(self):
         """La finestra: posizione, logo, font, testata, barra delle schede, piede."""

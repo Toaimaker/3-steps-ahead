@@ -150,7 +150,12 @@ SEZIONI = (
                 "from their public replays (CC BY 4.0, 17lands.com/public_datasets): 7 leaks of 15 can be measured there, the others need tapped lands or "
                 "the phase of each spell; Constructed has no public replays, the comparison comes with the shared games. Mana kept open for the "
                 "opponent's turn is not a leak: if you cast something on their turn that mana is taken away first, and if you held an instant you could "
-                "pay it counts only as «held mana open and never used it» when you never used it. Clues from the replay, not verdicts: the replay can't "
+                "pay it counts only as «held mana open and never used it» when you never used it. Synergies count: a creature cast before attacking "
+                "that pumps, taps a blocker, shows you their hand or feeds a payoff the attack turns on (lifegain, their life loss, your creatures "
+                "dying, a card that triggers when a creature enters) is not «cast before attacking»; an instant before combat that taps a blocker or "
+                "triggers prowess is not «for no reason»; in a trade, tokens count for their body, a creature that already gave its value entering "
+                "counts for its body only, one that leaves something when it dies counts less, and their trick in that combat cancels the trade; "
+                "a block that saves your planeswalker, or made by a token, is not a chump block. Clues from the replay, not verdicts: the replay can't "
                 "see your hand or your plan"),
       ("Your draft (Limited)", "Advanced filters › You › Draft, from the picks in your logs, Limited only: the pick you settled on your two colors, your "
                 "first-pack picks in your deck's colors, the cards of your colors that wheeled in the first pack (a signal that they were open), your first "

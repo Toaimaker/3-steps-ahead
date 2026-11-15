@@ -103,33 +103,62 @@ OMBRA_SFUMA = 70            # la sfumatura dell'ombra, in pixel del progetto, pe
 # i tempi del replayer (14 nov 2026, Autore: «tutto piu' lento. regola: l'essere umano comprende un'azione alla volta in ordine e non rapida»): circa
 # una volta e mezza quelli della prima versione dello stesso giorno (voli 300/500/450 ms di pausa, 0,35 s a volo, il passo a 3,2 s)
 def con_teschio(im):
-    """La carta grigia (morta) col teschio (14 nov 2026, Autore: «sulle carte grigie per morte fai apparire un teschio», fra tre disegni il C): la carta
-    un po' piu' scura e un teschio grande a tratto bianco al centro. im: PIL RGBA."""
+    """La carta grigia (morta) col badge della morte (15 nov 2026, Autore: «morte a esagono», fra tre stili esport): la carta un po' piu' scura e al
+    centro l'esagono scuro col contorno grigio, il teschio chiaro dentro e sotto il tab grigio con KO. Fino a quel giorno un teschio grande a tratto
+    bianco (14 nov 2026, «teschio C»). im: PIL RGBA. Disegnato a 4x e ridotto."""
     from PIL import Image, ImageDraw
+    import disegno_tappeto as DT
     w, h = im.size
     S = 4
     st = Image.new("RGBA", (w * S, h * S), (0, 0, 0, 0))
     d = ImageDraw.Draw(st)
-    r = min(w, h) * 0.36 * S
-    cx, cy = w * S / 2, h * S * 0.47
-    lw = max(2, int(r * 0.09))
-    # la calotta e la mascella
-    d.ellipse((cx - r, cy - r, cx + r, cy + r * 0.85), outline=(242, 242, 240, 255), width=lw)
-    d.rectangle((cx - r * 0.55, cy + r * 0.55, cx + r * 0.55, cy + r * 1.05), fill=(0, 0, 0, 0))
-    d.line((cx - r * 0.55, cy + r * 0.62, cx - r * 0.55, cy + r * 1.05, cx + r * 0.55, cy + r * 1.05, cx + r * 0.55, cy + r * 0.62),
-           fill=(242, 242, 240, 255), width=lw, joint="curve")
-    # gli occhi e il naso
+    R = min(w * 0.40, h * 0.27) * S                # il raggio dell'esagono (punta in alto)
+    cx, cy = w * S / 2, h * S * 0.45
+    esa = lambda r: [(cx + r * x, cy + r * y) for x, y in ((0, -1), (0.866, -0.5), (0.866, 0.5), (0, 1), (-0.866, 0.5), (-0.866, -0.5))]
+    grigio, chiaro, fondo = (138, 147, 163, 255), (232, 236, 242, 255), (28, 36, 50, 240)
+    d.polygon(esa(R * 1.12), fill=(6, 8, 12, 150))
+    d.polygon(esa(R), fill=grigio)
+    d.polygon(esa(R * 0.89), fill=fondo)
+    r = R * 0.42                                    # il teschio: la calotta, la mascella, gli occhi, il naso
+    ct = cy - R * 0.06
+    d.ellipse((cx - r, ct - r, cx + r, ct + r), fill=chiaro)
+    d.rounded_rectangle((cx - r * 0.6, ct + r * 0.55, cx + r * 0.6, ct + r * 1.25), radius=r * 0.18, fill=chiaro)
     for sx in (-1, 1):
-        d.ellipse((cx + sx * r * 0.42 - r * 0.24, cy - r * 0.05 - r * 0.24, cx + sx * r * 0.42 + r * 0.24, cy - r * 0.05 + r * 0.24), fill=(242, 242, 240, 255))
-    d.polygon([(cx, cy + r * 0.3), (cx - r * 0.13, cy + r * 0.52), (cx + r * 0.13, cy + r * 0.52)], fill=(242, 242, 240, 255))
-    for sx in (-0.25, 0, 0.25):
-        d.line((cx + sx * r, cy + r * 0.78, cx + sx * r, cy + r * 1.02), fill=(242, 242, 240, 255), width=max(1, lw // 2))
+        d.ellipse((cx + sx * r * 0.42 - r * 0.27, ct - r * 0.02 - r * 0.27, cx + sx * r * 0.42 + r * 0.27, ct - r * 0.02 + r * 0.27), fill=fondo)
+    d.polygon([(cx, ct + r * 0.38), (cx - r * 0.13, ct + r * 0.62), (cx + r * 0.13, ct + r * 0.62)], fill=fondo)
+    for sx in (-0.2, 0.2):
+        d.line((cx + sx * r, ct + r * 0.85, cx + sx * r, ct + r * 1.25), fill=fondo, width=max(1, int(r * 0.09)))
+    tw, th = R * 0.95, R * 0.42                     # il tab KO sotto l'esagono, sopra la sua punta
+    ty = cy + R * 0.86
+    d.rounded_rectangle((cx - tw / 2 - S, ty - th / 2 - S, cx + tw / 2 + S, ty + th / 2 + S), radius=th * 0.2, fill=(6, 8, 12, 150))
+    d.rounded_rectangle((cx - tw / 2, ty - th / 2, cx + tw / 2, ty + th / 2), radius=th * 0.18, fill=grigio)
+    f = DT.font(max(8, th * 0.78))
+    bb = d.textbbox((0, 0), "KO", font=f)
+    d.text((cx - (bb[2] - bb[0]) / 2 - bb[0], ty - (bb[3] - bb[1]) / 2 - bb[1]), "KO", font=f, fill=(28, 36, 50, 255))
     out = im.copy()
     velo = Image.new("RGBA", im.size, (0, 0, 0, 90))
     velo.putalpha(Image.eval(im.getchannel("A"), lambda a: min(a, 90)))
     out.alpha_composite(velo)
     out.alpha_composite(st.resize((w, h), Image.LANCZOS))
     return out
+
+
+PIASTRA_W, PIASTRA_H = 66, 28    # la piastra broadcast del danno e della vita (icona_danno), in pixel
+# dove sta la piastra: la goccia sull'angolo in alto a destra di chi e' colpito, la spada in basso a sinistra di chi colpisce, accanto al cerchio della vita
+GOCCIA_DX, GOCCIA_DY = -PIASTRA_W / 2 + 4, PIASTRA_H / 2 - 2
+SPADA_DX, SPADA_DY = PIASTRA_W / 2 - 4, -PIASTRA_H / 2 - 6
+VITA_DX = -PIASTRA_W / 2 - 6
+def alza_icone(c):
+    """Le piastre del danno e della vita sopra a tutte le carte (15 nov 2026, Autore: «controlla la posizione delle nuove icone perche' appaiono dietro
+    le carte»): le copie delle carte che le animazioni creano dopo (la carta che si tappa, quella che scivola, quella che vola) le coprivano, e le piastre,
+    piu' larghe delle icone di prima, sporgono sulle carte vicine. Si rimettono in cima fra un'azione e l'altra e a fine passo; la schermata finale resta
+    sopra a tutto."""
+    try:
+        c.tag_raise("danni")
+        c.tag_raise("cuori")
+        c.tag_raise("finale")
+    except Exception:      # noqa: BLE001 - una tela gia' chiusa
+        pass
 
 
 RIVELA_MS = 1300            # la carta rivelata resta al centro (il censimento, 14 nov 2026)
@@ -2572,76 +2601,63 @@ class PaginaPerformance:
         return cache[k]
 
     def icona_danno(self, tipo, q):
-        """Le icone dei danni del replayer, disegnate a 4x e ridotte (nitide): «goccia», la goccia di sangue rossa col «-N» dentro (chi perde vite o
-        costituzione); «spada», il tondo arancio con la spada bianca e il numero (chi infligge il danno). Scelte da Autore il 14 nov 2026 fra tre
-        disegni per ognuna («spada B, vite A»)."""
+        """Le icone del combattimento e della vita (15 nov 2026, Autore: «vorrei tutto piu' esport», fra tre stili «danno vite perse e vite guadagnate
+        a broadcast»): la piastra inclinata come le barre dell'HUD sopra Arena, il blocco piu' scuro a sinistra col simbolo bianco e il numero grande in
+        Bahnschrift a destra. «spada» arancio col numero (chi infligge il danno), «goccia» rossa col «-N» (chi perde vite o costituzione), «cuore» verde col
+        «+N» (la vita che sale). Disegnate a 4x e ridotte, con un filo scuro intorno perche' si leggano anche sopra le carte. Fino a quel giorno: la goccia
+        di sangue, il tondo arancio con la spada, il cuore verde (14 nov 2026, «spada B, vite A»)."""
         cache = self.__dict__.setdefault("_icone_danno", {})
         k = (tipo, q)
         if k not in cache:
             from PIL import Image, ImageDraw, ImageTk
             import disegno_tappeto as DT
             S = 4
+            W_, H_ = PIASTRA_W, PIASTRA_H
+            colori = {"spada": ((255, 122, 26), (201, 79, 0)), "goccia": ((224, 38, 47), (156, 18, 25)), "cuore": ((31, 191, 106), (17, 138, 74))}
+            chiaro, scuro = colori.get(tipo, colori["spada"])
+            testo = f"+{q}" if tipo == "cuore" else str(q)      # il meno si disegna (il Bahnschrift non ha il segno U+2212, usciva un quadratino)
+            im = Image.new("RGBA", (W_ * S, H_ * S), (0, 0, 0, 0))
+            d = ImageDraw.Draw(im)
+            m, inc = 2 * S, 7 * S                       # il margine del filo scuro e quanto pende la piastra
+            x0, y0, x1, y1 = m, m, W_ * S - m, H_ * S - m
+            piastra = lambda e: [(x0 + inc - e, y0 - e), (x1 + e, y0 - e), (x1 - inc + e, y1 + e), (x0 - e, y1 + e)]
+            d.polygon(piastra(m * 0.9), fill=(6, 8, 12, 170))
+            d.polygon(piastra(0), fill=chiaro + (255,))
+            xb = x0 + 22 * S                             # il blocco del simbolo
+            d.polygon([(x0 + inc, y0), (xb + inc, y0), (xb, y1), (x0, y1)], fill=scuro + (255,))
+            cx, cy = x0 + inc / 2 + 11 * S, (y0 + y1) / 2
+            bianco = (255, 255, 255, 255)
             if tipo == "goccia":
-                W_, H_ = 40, 46
-                im = Image.new("RGBA", (W_ * S, H_ * S), (0, 0, 0, 0))
-                d = ImageDraw.Draw(im)
-                cx, cy, r = W_ * S / 2, H_ * S * 0.62, 15 * S
-                punta = (cx, 3 * S)
-                d.polygon([punta, (cx - r * 0.93, cy - r * 0.38), (cx + r * 0.93, cy - r * 0.38)], fill=(198, 40, 40, 255))
-                d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(198, 40, 40, 255))
-                bordo = Image.new("RGBA", im.size, (0, 0, 0, 0))
-                db = ImageDraw.Draw(bordo)
-                rb = r + 2 * S
-                db.polygon([(cx, 0), (cx - rb * 0.93, cy - rb * 0.38), (cx + rb * 0.93, cy - rb * 0.38)], fill=(255, 255, 255, 255))
-                db.ellipse((cx - rb, cy - rb, cx + rb, cy + rb), fill=(255, 255, 255, 255))
-                bordo.alpha_composite(im)
-                im = bordo
-                d = ImageDraw.Draw(im)
-                f = DT.font(13 * S, "Bold")
-                t = f"-{q}"
-                bb = d.textbbox((0, 0), t, font=f)
-                d.text((cx - (bb[2] - bb[0]) / 2 - bb[0], cy - (bb[3] - bb[1]) / 2 - bb[1] - S), t, font=f, fill=(255, 255, 255, 255))
-            elif tipo == "cuore":     # la vita che sale (14 nov 2026, il censimento: «la perdita ha la goccia, il guadagno niente»): il cuore verde col «+N»
-                W_, H_ = 44, 40
-                im = Image.new("RGBA", (W_ * S, H_ * S), (0, 0, 0, 0))
-
-                def cuore(d_, m_, col):
-                    r_ = 10.5 * S
-                    cx_, top = W_ * S / 2, 4 * S - m_
-                    d_.ellipse((cx_ - 2 * r_ - m_ + 1 * S, top, cx_ + m_ / 2 + 1 * S, top + 2 * r_ + m_ * 1.5), fill=col)
-                    d_.ellipse((cx_ - m_ / 2 - 1 * S, top, cx_ + 2 * r_ + m_ - 1 * S, top + 2 * r_ + m_ * 1.5), fill=col)
-                    d_.polygon([(cx_ - 2 * r_ - m_ + 1.6 * S, top + r_ * 1.25), (cx_ + 2 * r_ + m_ - 1.6 * S, top + r_ * 1.25), (cx_, H_ * S - 2 * S + m_ * 0.6)],
-                               fill=col)
-                cuore(ImageDraw.Draw(im), 2 * S, (255, 255, 255, 255))
-                verde = Image.new("RGBA", im.size, (0, 0, 0, 0))
-                cuore(ImageDraw.Draw(verde), 0, (46, 160, 82, 255))
-                im.alpha_composite(verde)
-                d = ImageDraw.Draw(im)
-                f = DT.font(12 * S, "Bold")
-                t = f"+{q}"
-                bb = d.textbbox((0, 0), t, font=f)
-                d.text((W_ * S / 2 - (bb[2] - bb[0]) / 2 - bb[0], 15 * S - (bb[3] - bb[1]) / 2 - bb[1]), t, font=f, fill=(255, 255, 255, 255))
+                r = 5.6 * S
+                cyg = cy + 2.2 * S
+                d.polygon([(cx, cyg - 11.5 * S), (cx - r * 0.93, cyg - r * 0.36), (cx + r * 0.93, cyg - r * 0.36)], fill=bianco)
+                d.ellipse((cx - r, cyg - r, cx + r, cyg + r), fill=bianco)
+            elif tipo == "cuore":
+                r = 3.9 * S
+                top = cy - 6.2 * S
+                d.ellipse((cx - 2 * r + 0.4 * S, top, cx + 0.4 * S, top + 2 * r), fill=bianco)
+                d.ellipse((cx - 0.4 * S, top, cx + 2 * r - 0.4 * S, top + 2 * r), fill=bianco)
+                d.polygon([(cx - 2 * r + 0.7 * S, top + r * 1.25), (cx + 2 * r - 0.7 * S, top + r * 1.25), (cx, cy + 7.6 * S)], fill=bianco)
             else:
-                W_ = H_ = 38
-                im = Image.new("RGBA", (W_ * S, H_ * S), (0, 0, 0, 0))
-                d = ImageDraw.Draw(im)
-                c0 = W_ * S / 2
-                d.ellipse((S, S, W_ * S - S, H_ * S - S), fill=(255, 255, 255, 255))
-                d.ellipse((3 * S, 3 * S, W_ * S - 3 * S, H_ * S - 3 * S), fill=(216, 90, 48, 255))
-                spada = Image.new("RGBA", (16 * S, 30 * S), (0, 0, 0, 0))
+                spada = Image.new("RGBA", (12 * S, 24 * S), (0, 0, 0, 0))
                 ds = ImageDraw.Draw(spada)
-                m = 8 * S
-                ds.polygon([(m, 0), (m + 3 * S, 4 * S), (m + 3 * S, 18 * S), (m - 3 * S, 18 * S), (m - 3 * S, 4 * S)], fill=(255, 255, 255, 255))
-                ds.rounded_rectangle((m - 7 * S, 18 * S, m + 7 * S, 21 * S), radius=S, fill=(255, 255, 255, 255))
-                ds.rectangle((m - 1.6 * S, 21 * S, m + 1.6 * S, 27 * S), fill=(255, 255, 255, 255))
-                ds.ellipse((m - 2.4 * S, 26 * S, m + 2.4 * S, 30 * S), fill=(255, 255, 255, 255))
+                mm = 6 * S
+                ds.polygon([(mm, 0), (mm + 2.2 * S, 3 * S), (mm + 2.2 * S, 14 * S), (mm - 2.2 * S, 14 * S), (mm - 2.2 * S, 3 * S)], fill=bianco)
+                ds.rectangle((mm - 5.5 * S, 14 * S, mm + 5.5 * S, 16.4 * S), fill=bianco)
+                ds.rectangle((mm - 1.3 * S, 16.4 * S, mm + 1.3 * S, 21 * S), fill=bianco)
+                ds.ellipse((mm - 2 * S, 20.5 * S, mm + 2 * S, 24 * S), fill=bianco)
                 spada = spada.rotate(45, expand=True, resample=Image.BICUBIC)
-                im.alpha_composite(spada, (int(c0 - spada.width / 2 - 6 * S), int(c0 - spada.height / 2)))
-                f = DT.font(13 * S, "Bold")
-                t = str(q)
-                bb = d.textbbox((0, 0), t, font=f)
+                im.alpha_composite(spada, (int(cx - spada.width / 2), int(cy - spada.height / 2)))
                 d = ImageDraw.Draw(im)
-                d.text((c0 + 7 * S - (bb[2] - bb[0]) / 2 - bb[0], c0 - (bb[3] - bb[1]) / 2 - bb[1] + S), t, font=f, fill=(255, 255, 255, 255))
+            f = DT.font(19 * S)
+            bb = d.textbbox((0, 0), testo, font=f)
+            meno = 7 * S if tipo == "goccia" else 0          # la barra del meno e lo spazio dopo
+            largo = (bb[2] - bb[0]) + (meno + 2 * S if meno else 0)
+            xt = (xb + inc / 2 + x1 - inc / 2) / 2 - largo / 2
+            if meno:
+                d.rectangle((xt, cy - 1.2 * S, xt + meno, cy + 1.2 * S), fill=bianco)
+                xt += meno + 2 * S
+            d.text((xt - bb[0], cy - (bb[3] - bb[1]) / 2 - bb[1]), testo, font=f, fill=bianco)
             cache[k] = ImageTk.PhotoImage(im.resize((W_, H_), Image.LANCZOS))
         return cache[k]
 
@@ -2989,6 +3005,7 @@ class PaginaPerformance:
         if b.get("modo") == "azioni":
             self.danni_board(c, b["passi"][b["i"]][5])
             self.guadagno_board(c, prima, f, b["passi"][b["i"]][5])
+            alza_icone(c)
             righe_r = [(m_, "▸ " + t_) for m_, t_ in b["passi"][b["i"]][4]]       # quest'azione, in testa, poi la spalla, poi il resto del turno
             prima_ = [ev_ for p_ in b["passi"][:b["i"]] if p_[2] == b["passi"][b["i"]][2] for ev_ in p_[4]]
             righe_r += consigli
@@ -3361,6 +3378,7 @@ class PaginaPerformance:
             c.delete("anim")
             c.itemconfigure("frecce", state="normal")
             c.itemconfigure("danni", state="normal")
+            alza_icone(c)
             for it_ in getattr(self, "_nascoste", []):
                 c.itemconfigure(it_, state="normal")
         self._nascoste = []
@@ -4052,6 +4070,7 @@ class PaginaPerformance:
         pausate = set()
 
         def avanti(j):
+            alza_icone(c)
             self._anim_after.append(self.fin_board.after(16, lambda: esegui(j)))
 
         self._anim_in_corso = True      # la caccia ai glitch aspetta questo, non l'assenza di pezzi provvisori (fra due duelli non ce ne sono)
@@ -4070,6 +4089,7 @@ class PaginaPerformance:
                         c.itemconfigure(cop_[1], text=cop_[2])
                 c.itemconfigure("danni", state="normal")
                 c.itemconfigure("cuori", state="normal")
+                alza_icone(c)
                 for it__ in self._nascoste:
                     c.itemconfigure(it__, state="normal")
                 self._nascoste = []
@@ -4270,6 +4290,7 @@ class PaginaPerformance:
                 return
             if t_ == "danni":
                 c.itemconfigure("danni", state="normal")
+                alza_icone(c)
                 for it_v in vite_coperte:       # e le vite, insieme ai danni
                     c.delete(it_v)
                 return esegui(j + 1)
@@ -4387,7 +4408,7 @@ class PaginaPerformance:
     def schermata_finale(self, c, b, Wt, H):
         """La fine della partita sopra la tavola (14 nov 2026, Autore: «aggiungiamo in schermata finale se opponent concede / player win / player lost /
         player concede»): il tavolo in ombra, al centro YOU WIN in verde o YOU LOSE in rosso, sotto come e' finita (chi ha concesso, a 0 vite, il grimorio
-        vuoto, il tempo). Si capisce anche senza leggere: il colore, la corona o la X."""
+        vuoto, il tempo). Si capisce anche senza leggere: il colore, la corona o la X. Dal 15 nov 2026 il banner broadcast (banner_finale)."""
         x = b.get("x") or {}
         vinta = x.get("vinta")
         if vinta is None:
@@ -4406,25 +4427,74 @@ class PaginaPerformance:
             come = ("OPPONENT" if vinta else "YOU") + " · POISONED"
         else:
             come = ("OPPONENT" if vinta else "YOU") + " · 0 LIFE"
-        col = "#5cd17a" if vinta else "#e05a5a"
+        import re as _re
+        m_t = _re.search(r"T(\d+)", b["passi"][-1][0] if b.get("passi") else "")
+        if m_t:
+            come += f" · T{m_t.group(1)}"
+        concessa = fine == "You conceded"
         c.delete("finale")
         c.create_image(0, 0, image=self.velo(c, 3), anchor="nw", tags="finale")
-        cx, cy = Wt / 2, H / 2
-        w2, h2 = 300, 120
-        c.create_rectangle(cx - w2, cy - h2, cx + w2, cy + h2, fill="#0d1118", outline=col, width=3, tags="finale")
-        # il segno, senza bisogno di leggere: la corona per chi vince, la X per chi perde
-        sx, sy = cx, cy - 58
-        if vinta:
-            c.create_polygon(sx - 46, sy + 22, sx - 46, sy - 18, sx - 23, sy + 2, sx, sy - 30, sx + 23, sy + 2, sx + 46, sy - 18, sx + 46, sy + 22,
-                             fill=col, outline="", tags="finale")
-            for dx_ in (-46, 0, 46):
-                c.create_oval(sx + dx_ - 7, sy - (30 if dx_ == 0 else 18) - 7, sx + dx_ + 7, sy - (30 if dx_ == 0 else 18) + 7, fill=col, outline="", tags="finale")
-        else:
-            c.create_line(sx - 32, sy - 26, sx + 32, sy + 26, fill=col, width=12, capstyle="round", tags="finale")
-            c.create_line(sx - 32, sy + 26, sx + 32, sy - 26, fill=col, width=12, capstyle="round", tags="finale")
-        c.create_text(cx, cy + 22, text="YOU WIN" if vinta else "YOU LOSE", fill=col, font=self.F(34, True), tags="finale")
-        c.create_text(cx, cy + 80, text=come, fill="#e8ecf2", font=self.F(14, True), tags="finale")
+        img_f = self.banner_finale("concessa" if concessa else ("vinta" if vinta else "persa"), come, int(min(Wt * 0.62, 860)))
+        c.create_image(Wt / 2, H / 2, image=img_f, tags="finale")
         c.tag_raise("finale")
+
+    def banner_finale(self, esito, come, largo):
+        """La schermata finale in stile broadcast (15 nov 2026, Autore: «il redesign di victory loss e concede in stile esport allineato al design
+        dell'app», fra tre proposte «A»): la barra inclinata a tutta larghezza come le barre dell'HUD sopra Arena, il blocco piu' scuro a sinistra col segno
+        che si capisce senza leggere (la corona per la vittoria, la X per la sconfitta, la bandiera per la concessione), il risultato grande in Bahnschrift
+        (VICTORY, DEFEAT, CONCEDED) e sotto il tab con come e' finita e il turno, col filo del colore (arancio per la concessione). Verde, rosso, grigio:
+        la concessione non si confonde con la sconfitta a 0 vite. Disegnata a 4x e ridotta."""
+        cache = self.__dict__.setdefault("_banner_finale", {})
+        k = (esito, come, largo)
+        if k in cache:
+            return cache[k]
+        from PIL import Image, ImageDraw, ImageTk
+        import disegno_tappeto as DT
+        S = 4
+        stili = {"vinta": ((31, 191, 106), (17, 138, 74), (31, 191, 106), "VICTORY"), "persa": ((224, 38, 47), (156, 18, 25), (224, 38, 47), "DEFEAT"),
+                 "concessa": ((58, 69, 86), (38, 47, 61), (255, 122, 26), "CONCEDED")}
+        chiaro, scuro, filo, titolo = stili[esito]
+        W_, hb, ht = largo, 116, 40
+        H_ = hb + 18 + ht + 8
+        im = Image.new("RGBA", (W_ * S, H_ * S), (0, 0, 0, 0))
+        d = ImageDraw.Draw(im)
+        inc, m = 26 * S, 4 * S
+        x0, y0, x1, y1 = m, m, W_ * S - m, hb * S
+        barra = lambda e: [(x0 + inc - e, y0 - e), (x1 + e, y0 - e), (x1 - inc + e, y1 + e), (x0 - e, y1 + e)]
+        d.polygon(barra(m * 0.9), fill=(4, 6, 10, 200))
+        d.polygon(barra(0), fill=chiaro + (255,))
+        xb = x0 + 150 * S
+        d.polygon([(x0 + inc, y0), (xb + inc, y0), (xb, y1), (x0, y1)], fill=scuro + (255,))
+        d.line([(x0 + inc, y0 + 2 * S), (x1 - 2 * S, y0 + 2 * S)], fill=(255, 255, 255, 70), width=2 * S)       # il filo chiaro in cima
+        cx, cy = x0 + inc / 2 + 75 * S, (y0 + y1) / 2
+        bianco = (255, 255, 255, 255)
+        if esito == "vinta":            # la corona
+            r = 30 * S
+            d.polygon([(cx - r, cy + r * 0.6), (cx - r, cy - r * 0.45), (cx - r * 0.5, cy + r * 0.05), (cx, cy - r * 0.75), (cx + r * 0.5, cy + r * 0.05),
+                       (cx + r, cy - r * 0.45), (cx + r, cy + r * 0.6)], fill=bianco)
+            for dx_, dy_ in ((-1, -0.45), (0, -0.75), (1, -0.45)):
+                d.ellipse((cx + dx_ * r - 5 * S, cy + dy_ * r - 5 * S, cx + dx_ * r + 5 * S, cy + dy_ * r + 5 * S), fill=bianco)
+        elif esito == "persa":          # la X
+            r, sp = 24 * S, 9 * S
+            d.line([(cx - r, cy - r), (cx + r, cy + r)], fill=bianco, width=sp)
+            d.line([(cx - r, cy + r), (cx + r, cy - r)], fill=bianco, width=sp)
+        else:                           # la bandiera
+            d.rectangle((cx - 20 * S, cy - 30 * S, cx - 15 * S, cy + 30 * S), fill=bianco)
+            d.polygon([(cx - 15 * S, cy - 30 * S), (cx + 26 * S, cy - 19 * S), (cx - 15 * S, cy - 6 * S)], fill=bianco)
+        f = DT.font(70 * S)
+        bb = d.textbbox((0, 0), titolo, font=f)
+        xt = (xb + inc / 2 + x1 - inc / 2) / 2
+        d.text((xt - (bb[2] - bb[0]) / 2 - bb[0], cy - (bb[3] - bb[1]) / 2 - bb[1]), titolo, font=f, fill=bianco)
+        ft = DT.font(17 * S)                                   # il tab sotto: come e' finita e il turno
+        bt = d.textbbox((0, 0), come, font=ft)
+        tw = (bt[2] - bt[0]) + 44 * S
+        tx0, ty0 = W_ * S / 2 - tw / 2, (hb + 18) * S
+        d.rectangle((tx0 - m, ty0 - m, tx0 + tw + m, ty0 + ht * S + m), fill=(4, 6, 10, 200))
+        d.rectangle((tx0, ty0, tx0 + tw, ty0 + ht * S), fill=(20, 29, 42, 255), outline=filo + (255,), width=2 * S)
+        col_t = (255, 176, 122, 255) if esito == "concessa" else (200, 212, 228, 255)
+        d.text((W_ * S / 2 - (bt[2] - bt[0]) / 2 - bt[0], ty0 + ht * S / 2 - (bt[3] - bt[1]) / 2 - bt[1]), come, font=ft, fill=col_t)
+        cache[k] = ImageTk.PhotoImage(im.resize((W_, H_), Image.LANCZOS))
+        return cache[k]
 
     def velo(self, c, livello):
         """Il velo scuro su tutta la tavola (il duello: tutto in ombra tranne chi combatte), livello 1-4."""
@@ -4552,7 +4622,7 @@ class PaginaPerformance:
                         if not r_v:
                             continue
                         c.delete(f"dn_{k_f}")
-                        c.create_image(r_v[0] - 22, (r_v[1] + r_v[3]) / 2 - 4, image=self.icona_danno("goccia", q_f), tags=("danni", f"dn_{k_f}"))
+                        c.create_image(r_v[0] + VITA_DX, (r_v[1] + r_v[3]) / 2 - 4, image=self.icona_danno("goccia", q_f), tags=("danni", f"dn_{k_f}"))
                         cop_ = vite_cop_k.get(k_f)
                         if cop_:
                             c.delete(cop_[0])
@@ -4566,7 +4636,7 @@ class PaginaPerformance:
                             continue
                         bf = c.bbox(it_f)
                         c.delete(f"dn_{k_f}")
-                        c.create_image(bf[2] - 6, bf[1] + 6, image=self.icona_danno("goccia", q_f), tags=("danni", f"dn_{k_f}"))
+                        c.create_image(bf[2] + GOCCIA_DX, bf[1] + GOCCIA_DY, image=self.icona_danno("goccia", q_f), tags=("danni", f"dn_{k_f}"))
                     c.tag_raise(f"dn_{k_f}")
             for k_f in ([] if d.get("ricevuti") is not None else d["ferite"]):
                 tag_ = f"dn_{k_f}"
@@ -4574,7 +4644,7 @@ class PaginaPerformance:
                 bb_t = c.bbox(tag_)
                 if bb_t and esiste(it_f):
                     bf = c.bbox(it_f)
-                    c.move(tag_, (bf[2] - 6) - (bb_t[0] + bb_t[2]) / 2, (bf[1] + 6) - (bb_t[1] + bb_t[3]) / 2)
+                    c.move(tag_, (bf[2] + GOCCIA_DX) - (bb_t[0] + bb_t[2]) / 2, (bf[1] + GOCCIA_DY) - (bb_t[1] + bb_t[3]) / 2)
                 c.itemconfigure(tag_, state="normal")
                 c.tag_raise(tag_)
             for k_s, q_s in (d.get("inflitti") or {}).items():       # la spada col numero sull'angolo di chi colpisce, sopra a tutto
@@ -4582,7 +4652,7 @@ class PaginaPerformance:
                 if q_s and esiste(it_s):
                     bs = c.bbox(it_s)
                     c.delete(f"sp_{k_s}")
-                    c.create_image(bs[0] + 16, bs[1] + 16, image=self.icona_danno("spada", q_s), tags=("danni", f"sp_{k_s}"))
+                    c.create_image(bs[0] + SPADA_DX, bs[3] + SPADA_DY, image=self.icona_danno("spada", q_s), tags=("danni", f"sp_{k_s}"))
                     c.tag_raise(f"sp_{k_s}")
             for k_v, n_v, q_v in ([] if d.get("ricevuti") is not None else (d.get("vita") or [])):
                 c.itemconfigure(f"dn_{k_v}_{n_v}", state="normal")
@@ -4678,8 +4748,8 @@ class PaginaPerformance:
             if pv is None or fv is None or fv <= pv or not r_:
                 continue
             gocce = any(b_ == k_v and q_ for b_, q_ in danni or [])
-            cy = (r_[1] + r_[3]) / 2 + (30 if gocce else -4)
-            c.create_image(r_[0] - 22, cy, image=self.icona_danno("cuore", fv - pv), tags=("cuori", f"gu_{k_v}"))
+            cy = (r_[1] + r_[3]) / 2 + (PIASTRA_H + 4 if gocce else -4)
+            c.create_image(r_[0] + VITA_DX, cy, image=self.icona_danno("cuore", fv - pv), tags=("cuori", f"gu_{k_v}"))
 
     def immagine_mana(self, col, lato):
         """Il simbolo di mana di Scryfall (W U B R G C) largo lato, col bordino bianco e l'ombra; se manca il file, un tondo col colore e la lettera."""
@@ -4745,7 +4815,7 @@ class PaginaPerformance:
             r_ = self._pos_id.get(bers) or self._pos_vita.get(bers) or (prima_pz.get(bers) or (None, None))[1]
             if not r_ or not q:
                 continue
-            cx, cy = (r_[0] - 22, (r_[1] + r_[3]) / 2) if bers in ("vita_mio", "vita_suo") else (r_[2] - 4, r_[1] + 4)      # sul cuore: accanto, non sopra
+            cx, cy = (r_[0] + VITA_DX, (r_[1] + r_[3]) / 2) if bers in ("vita_mio", "vita_suo") else (r_[2] + GOCCIA_DX, r_[1] + GOCCIA_DY + 4)      # sul cuore: accanto, non sopra
             k_n = n_colpo.get(bers, 0)
             n_colpo[bers] = k_n + 1
             tg_ = ("danni", f"dn_{bers}", f"dn_{bers}_{k_n}")

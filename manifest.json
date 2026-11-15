@@ -1,6 +1,6 @@
 {
- "version": "0.1.115",
+ "version": "0.1.116",
  "date": "2026-11-15",
- "notes": "Website: the home now opens with Performance filters, the replayer, the deck builder and the Board, with a new animation of the filters",
+ "notes": "The close button now hides the app in the system tray instead of quitting it (click the icon to bring it back, right-click to quit); Replayer: damage and life plates always above the cards; Leak Finder: synergies, leaks L3, L4, L5, L10 reworked",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

@@ -22,6 +22,7 @@ while not os.path.isfile(os.path.join(_casa, "percorsi.py")):
 if _casa not in sys.path:
     sys.path.insert(0, _casa)
 import percorsi  # noqa: E402,F401
+import re  # noqa: E402
 
 
 class _DA:
@@ -48,6 +49,26 @@ def _info(g):
     n = LK._nome(g)
     c = LK._carta(n) if n else {}
     return n, (c.get("tipo") or ""), (c.get("testo") or ""), c.get("cmc")
+
+
+# Le sinergie (15 nov 2026, Autore: «alcuni leak non tengono conto di sinergie»): un istantaneo o un flash lanciato in Main 1 del turno in cui attacchi
+# non «poteva aspettare» se serve all'attacco. Il suo effetto tappa un bloccante o gli toglie il blocco (una pompa no: quella si lancia dopo i blocchi),
+# o una tua carta in campo ha un payoff che scatta quando lanci la magia e potenzia le creature (prowess, «whenever you cast a noncreature / an instant
+# spell ... gets +1/+1», un segnalino +1/+1, magecraft) o, se fa danno non da combattimento, Master of Barbs.
+_RX_BLOCCO = re.compile(r"\btap (?:target|up to|all)|can't block", re.I)
+_RX_PAYOFF = re.compile(r"\bprowess\b|(?:whenever you cast|magecraft)[^.]{0,80}(?:\+\d+/\+\d+|gets? \+|\+1/\+1 counter)|"
+                        r"dealt noncombat damage, creatures you control get", re.I)
+
+
+def _serve_attacco(n, testo, t, a, mom):
+    if _RX_BLOCCO.search(testo or ""):
+        return True
+    comb = next((m for m in mom if m[0] == "comb" and m[1] == t and isinstance(m[3], dict)), None)
+    for c in ((comb[3].get("c") or [[], []])[a] if comb else []):
+        tx = _info(c[0])[2] or ""
+        if _RX_PAYOFF.search(tx):
+            return True
+    return False
 
 
 def per_partita(x):
@@ -88,6 +109,8 @@ def per_partita(x):
             continue        # una risposta
         if fase in ("Phase_Main1", "Phase_Beginning") and t in attaccato and sm and (sm[4].get("colpiti") or sm[4].get("fatti")):
             continue        # ha liberato l'attacco
+        if fase in ("Phase_Main1", "Phase_Beginning") and t in attaccato and _serve_attacco(n, testo, t, a, mom):
+            continue        # ha servito l'attacco: tappa o ferma un bloccante, o accende un payoff da combattimento in campo (15 nov 2026, le sinergie)
         out["aspetta"].append(t)
         perso = False
         f = fine.get(t)
@@ -153,6 +176,16 @@ def prova():
         p = partita([[1, 1, 803, "Phase_Main1"]], mom, "tm7")
         casi.append(("flash esposto: la Viper lanciata nel tuo turno non c'e' piu' due turni dopo", p["perso"] == [1]))
         DA.e_terra = DA_e
+        # le sinergie (15 nov 2026): Opt in Main 1 del turno in cui attacchi con un prowess in campo serve all'attacco; negativa: senza il payoff aspetta
+        nomi[805] = ("Monastery Swiftspear", "Creature — Human Monk", "Haste\nProwess", 1)
+        nomi[806] = ("Frost Breath", "Instant", "Tap up to two target creatures. They don't untap during their controller's next untap step.", 3)
+        comb_ = lambda campo: ["comb", 1, 1, dict(c=[campo, []], m=[[], []]), dict(att=[[5, 2]], blocchi=[])]
+        p = partita([[1, 1, 801, "Phase_Main1"]], [comb_([[805, 0, 0, 1, 2, 5]]), fine1], "tm8")
+        p2 = partita([[1, 1, 801, "Phase_Main1"]], [comb_([[802, 0, 0, 2, 2, 5]]), fine1], "tm9")
+        casi.append(("sinergia: Opt prima dell'attacco con Monastery Swiftspear (prowess) non poteva aspettare; negativa: coi Grizzly Bears si'",
+                     p["aspetta"] == [] and p2["aspetta"] == [1]))
+        p = partita([[1, 1, 806, "Phase_Main1"]], [comb_([[802, 0, 0, 2, 2, 5]]), fine1], "tm10")
+        casi.append(("sinergia: Frost Breath prima dell'attacco tappa i bloccanti, non poteva aspettare", p["aspetta"] == []))
         casi.append(("valore: 2+ e 0", valore(dict(partita="tm7", seat=1), "tm_perso") == "1" and valore(dict(partita="tm4", seat=1), "tm_nel_mio") == "0"))
     finally:
         LK._nome, LK._carta = vecchie

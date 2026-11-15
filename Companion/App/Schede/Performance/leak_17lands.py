@@ -31,8 +31,9 @@ TURNI = 20
 # quanto la regola su 17Lands e' la stessa della nostra: «same» stessa regola, «close» vicina (e perche')
 REGOLE = {"l1": ("same", ""),
           "l2": ("close", "their data has no tapped lands: untapped = lands in play minus mana spent; colors counted on all your lands"),
-          "l4": ("close", "the attack's power is the printed power of the attackers"),
-          "l5": ("same", ""),
+          "l4": ("close", "the attack's power is the printed power of the attackers; tokens and attacks on a planeswalker are not in their data"),
+          "l5": ("close", "the creatures' power and toughness are the printed ones (not with counters), tokens are not in their data, and their "
+                          "flash creatures can't be told apart from yours"),
           "l12": ("same", ""), "l13": ("same", ""),
           "l15": ("close", "the lands open on their turn are your lands minus the mana you spent on your turn before (their data has no tapped lands)")}
 FONTE = ("17Lands public replay data (CC BY 4.0, 17lands.com/public_datasets), Premier Draft of " + ", ".join(SET))
@@ -93,6 +94,42 @@ def _paga(costo, terre_colori, n_aperte):
     return True
 
 
+def _pt(g):
+    """Forza e costituzione stampate di una carta (i dati di 17Lands non hanno quelle del momento); (0, 0) se non si sa."""
+    c = info(g)
+    if not c:
+        return 0, 0
+    import leak as LK
+    pt = (LK._carta(c["n"]).get("pt") or "").split("/")
+    try:
+        return int(pt[0]), int(pt[1])
+    except (ValueError, IndexError):
+        return 0, 0
+
+
+def _scambio(d, pre, persi_miei, persi_suoi):
+    """L5 sui dati di 17Lands, con la regola di leak.valore_morta: (valore tuo, suo, carte tue, sue). Il corpo e' quello stampato, i payoff della morte
+    sono le creature in campo a fine turno piu' quelle morte; le pedine non ci sono (i loro id non sono carte)."""
+    import leak as LK
+    campo = {0: _ids(d.get(pre + "eot_user_creatures_in_play")) + persi_miei, 1: _ids(d.get(pre + "eot_oppo_creatures_in_play")) + persi_suoi}
+    val, carte = [0.0, 0.0], [0, 0]
+    for i_, morti in ((0, persi_miei), (1, persi_suoi)):
+        payoff = sum(1 for g in campo[i_] if info(g) and LK._RX_MUORE.search(info(g)["testo"]))
+        for g in morti:
+            if not info(g):
+                continue
+            p_, t_ = _pt(g)
+            val[i_] += LK.valore_morta([int(g), False, False, p_, t_, 0], payoff)
+            carte[i_] += 1
+    return val[0], val[1], carte[0], carte[1]
+
+
+def _trucco(d, pre, mio_turno):
+    """L'avversario ha lanciato un istantaneo nel turno: lo scambio non l'hai scelto tu (le sue creature con flash non si distinguono dalle tue nella
+    colonna creatures_cast: restano fuori, regola vicina)."""
+    return any(info(g) and "Instant" in info(g)["tipo"] for g in _ids(d.get(pre + "oppo_instants_sorceries_cast")))
+
+
 # ------------------------------------------------------------------ i leak di una partita di 17Lands
 def leak_partita(d):
     """d: la riga del replay (colonna -> valore). -> {l1, l2, l4, l5, l12, l13, l15: bool}, o None se la partita non si legge."""
@@ -136,24 +173,24 @@ def leak_partita(d):
                     out["l2"] = True
             vita_prima = _num(d.get(u + "eot_user_life")) or vita_prima
         for pre in (u, o):
-            persi_miei = [info(g) for g in _ids(d.get(pre + "user_creatures_killed_combat"))]
-            persi_suoi = [info(g) for g in _ids(d.get(pre + "oppo_creatures_killed_combat"))]
-            if persi_miei and persi_suoi:
-                if sum(c["cmc"] for c in persi_miei if c) >= sum(c["cmc"] for c in persi_suoi if c) + 2:
+            persi_miei = _ids(d.get(pre + "user_creatures_killed_combat"))
+            persi_suoi = _ids(d.get(pre + "oppo_creatures_killed_combat"))
+            if persi_miei and persi_suoi and not _trucco(d, pre, pre == u):
+                if LK.scambio_cattivo(_scambio(d, pre, persi_miei, persi_suoi)):
                     out["l5"] = True
         # il suo turno n: chump block a vita alta (prima del suo turno la vita a fine del tuo turno prima, o 20)
         if _num(d.get(o + "eot_user_life")) is not None:
             vita = vita_prima if on_play else (_num(d.get(f"user_turn_{n - 1}_eot_user_life")) if n > 1 else 20.0)
             bloccanti = set(_ids(d.get(o + "creatures_blocking")))
             morti = set(_ids(d.get(o + "user_creatures_killed_combat")))
-            att = [info(g) for g in _ids(d.get(o + "creatures_attacked"))]
-            forza = 0
-            for c in att:
-                try:
-                    forza += int(str(LK._carta(c["n"]).get("forza") or 0)) if c else 0
-                except ValueError:
-                    pass
-            if (bloccanti & morti and not _ids(d.get(o + "oppo_creatures_killed_combat")) and vita is not None and vita >= LK.VITA_ALTA
+            # la forza stampata (15 nov 2026: fino a quel giorno si leggeva il campo «forza», che le carte non hanno, e la forza era sempre 0)
+            forza = sum(_pt(g)[0] for g in _ids(d.get(o + "creatures_attacked")))
+            # le sinergie, come in leak._blocchi: una creatura che morendo lascia qualcosa, o con un tuo payoff della morte in campo, non e' una carta
+            # buttata (le pedine non sono nei loro dati; il planeswalker attaccato nemmeno: regola vicina)
+            campo = _ids(d.get(o + "eot_user_creatures_in_play")) + list(morti)
+            payoff = sum(1 for g in campo if info(g) and LK._RX_MUORE.search(info(g)["testo"]))
+            butta = [g for g in bloccanti & morti if info(g) and LK.valore_morta([int(g), False, False, *_pt(g), 0], payoff) >= 1]
+            if (butta and not _ids(d.get(o + "oppo_creatures_killed_combat")) and vita is not None and vita >= LK.VITA_ALTA
                     and forza < vita):
                 out["l4"] = True
             # L15: a fine del suo turno, niente speso da te e in mano un istantaneo da fine turno o un flash che le tue terre pagavano
@@ -272,6 +309,20 @@ def prova():
                                  "user_turn_2_oppo_creatures_killed_combat": "814"}))
     casi.append(("L5: Serra Angel (5) per Healer's Hawk (1); negativa: senza i morti suoi non e' uno scambio", lk["l5"]
                  and not leak_partita(dict(t1, **{"user_turn_2_eot_user_life": "20", "user_turn_2_user_creatures_killed_combat": "816"}))["l5"]))
+    DA._NOMI_GRP.update({831: "Giant Growth"})
+    lk = leak_partita(dict(t1, **{"user_turn_2_eot_user_life": "20", "user_turn_2_user_creatures_killed_combat": "816",
+                                 "user_turn_2_oppo_creatures_killed_combat": "814", "user_turn_2_oppo_instants_sorceries_cast": "831"}))
+    casi.append(("negativa L5: il suo Giant Growth nel turno ha deciso lo scambio, non e' tuo", not lk["l5"]))
+    lk = leak_partita(dict(t1, **{"user_turn_2_eot_user_life": "20", "user_turn_2_user_creatures_killed_combat": "814",
+                                 "user_turn_2_oppo_creatures_killed_combat": "814|814"}))
+    casi.append(("negativa L5: un Healer's Hawk per due non e' uno scambio cattivo", not lk["l5"]))
+    DA._NOMI_GRP.update({833: "Unstoppable Slasher"})
+    c4 = {"oppo_turn_1_eot_user_life": "16", "oppo_turn_1_creatures_blocking": "814", "oppo_turn_1_user_creatures_killed_combat": "814",
+          "oppo_turn_1_creatures_attacked": "816"}
+    lk = leak_partita(dict(t1, **c4))
+    lk2 = leak_partita(dict(t1, **dict(c4, **{"oppo_turn_1_creatures_blocking": "833", "oppo_turn_1_user_creatures_killed_combat": "833"})))
+    casi.append(("L4: Healer's Hawk blocca la Serra Angel (forza stampata 4) a 20 vite; negativa: Unstoppable Slasher torna in campo, non e' buttata",
+                 lk["l4"] and not lk2["l4"]))
     # L15: due Island, Opt (scry) in mano a fine del suo turno 1 (on the play, dopo il tuo turno 1) e niente speso nel suo turno
     DA._NOMI_GRP.update({819: "Island", 815: "Opt"})
     t15 = dict(t1, **{"user_turn_1_eot_user_lands_in_play": "819|819", "user_turn_1_user_mana_spent": "0", "user_turn_1_eot_user_cards_in_hand": "815",

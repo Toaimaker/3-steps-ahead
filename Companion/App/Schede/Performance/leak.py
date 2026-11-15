@@ -51,9 +51,19 @@ SPIEGA = {"l1": "At the end of one of your turns you still had a land in your ha
                 "Mana kept for the opponent's turn is not counted: if on their turn you cast something, that mana is taken away first and it is a leak "
                 "only if the creature still fit; if you held an instant or a flash card those lands could pay, it was held on purpose (if you then never "
                 "used it, that is the leak «held mana open and never used it»); an ability activated on their turn clears it.",
-          "l3": "On a turn you attacked, you first cast a creature (without haste) in your first main phase, and only then attacked.",
-          "l4": f"You blocked, your blocker died and their attacker survived. You had {VITA_ALTA} or more life and the attack would not have killed you.",
-          "l5": "In one of your combats (attacking or blocking) creatures died on both sides, and the ones you lost cost at least 2 mana more than theirs.",
+          "l3": "On a turn you attacked, you first cast a creature (without haste) in your first main phase, and only then attacked. A creature that "
+                "helps that attack is not counted: directly (its entry pumps, puts counters, taps or removes a blocker, makes them discard, shows you "
+                "their hand or draws you a card; its ability pumps your team or triggers at the beginning of combat) or through your other cards (a "
+                "lifegain payoff and you gained life in the attack, a card that triggers when a creature enters and pumps, deals damage or gains life "
+                "for a payoff, a payoff for their life loss or for your creatures dying that the combat turned on).",
+          "l4": f"You blocked, your blocker died and their attacker survived. You had {VITA_ALTA} or more life and the attack would not have killed you. "
+                "Not counted: a block that saves your planeswalker or battle, a token blocking, a creature that leaves something when it dies.",
+          "l5": "In one of your combats (attacking or blocking) creatures died on both sides, and what you lost was worth at least 2 more than what "
+                "they lost, without killing more of their cards than you lost. A creature is worth its body ((power + toughness) / 2, counters "
+                "included), at least its mana cost if it's a card with no enter-the-battlefield effect (the effect you already got doesn't die "
+                "with it); tokens and animated lands are worth their body; a creature that leaves something when it dies is worth half (a quarter "
+                "if it comes back), and each death payoff on the battlefield takes 1 off. It doesn't count if the opponent cast an instant that "
+                "turn or targeted one of the creatures in the fight: a trick or a removal chose that trade, not you.",
           "l6": "At the end of your turn the opponent had every land tapped, so they couldn't respond. You waited and cast your instant on their turn, "
                 "when their mana was back (combat tricks and counterspells don't count).",
           "l7": f"You conceded with {VITA_CONCEDI} or more life, more than twice the power they had on the battlefield, and at least one card in your hand.",
@@ -115,10 +125,12 @@ ESEMPIO = {"l1": "Turn 4: you have a Forest in hand, you cast a 3-drop with your
 COME = {"l1": "Play a land every turn, unless you are holding it on purpose (a landfall card, a bluff).",
         "l2": "At the end of your turn count your untapped lands against your hand: if a creature fits, cast it, unless you are holding up an instant for "
               "their turn (and then use it).",
-        "l3": "Attack first, then cast your creatures in the second main phase (unless the new creature helps the attack).",
+        "l3": "Attack first, then cast your creatures in the second main phase. Cast it before combat only when it changes the attack: it pumps, "
+              "taps a blocker, feeds a payoff that the attack will trigger, or shows you something you need to decide the attack.",
         "l4": "While your life is high, take the damage: block to trade creatures, not to throw one away. Start chump blocking only when the life total "
               "matters.",
-        "l5": "Before blocking or attacking into a block, compare what you lose with what they lose: avoid trading an expensive card for a cheap one.",
+        "l5": "Before blocking or attacking into a block, compare what you lose with what they lose: avoid trading an expensive card for a cheap one "
+              "or a token. Trading a creature that already gave you its value when it entered, or one that leaves something when it dies, is fine.",
         "l6": "Cast your instants when they can't answer: on your turn while they are tapped out, or at a moment they can't respond.",
         "l7": "With life and cards in hand, play it out: many games turn on one draw.",
         "l8": "Before tapping, look at the cards left in your hand: tap the lands whose colors you won't need, and leave open the colors you will.",
@@ -224,7 +236,8 @@ def per_partita(x):
             continue
         cc = _carta(n)
         tipo, testo = cc.get("tipo") or "", (cc.get("testo") or "")
-        if s_ == seat and t in attaccato and fase == "Phase_Main1" and "Creature" in tipo and "Haste" not in testo and "haste" not in testo:
+        if (s_ == seat and t in attaccato and fase == "Phase_Main1" and "Creature" in tipo and "Haste" not in testo and "haste" not in testo
+                and not aiuta_attacco(n, t, seat, d, mom)):
             l3.append(t)
         mio_turno = (t % 2 == 1) == bool(x.get("inizia")) if x.get("inizia") is not None else None
         if s_ == seat and mio_turno is False and "Instant" in tipo and fase != "Phase_Combat" and "counter target" not in testo.lower():
@@ -236,8 +249,7 @@ def per_partita(x):
     import decisioni as DEC
     for dec in DEC.per_partita(dict(x, vinta=x.get("vinta"), quando=x.get("quando"))):
         if dec["persi_miei"] and dec["persi_suoi"]:         # uno scambio: muoiono creature da tutte e due le parti
-            v = _scambio(d, dec, seat)
-            if v is not None and v[0] >= v[1] + 2:
+            if scambio_cattivo(_scambio(d, dec, seat)):
                 l5.append(dec["t"])
     l7 = False
     ult = d.get("ultima")
@@ -256,6 +268,99 @@ def per_partita(x):
     l14, l15 = _sequenza(d, seat, mom), _mana_tenuto(d, seat, mom)
     return dict(l1=sorted(set(l1)), l2=sorted(set(l2)), l3=sorted(set(l3)), l4=sorted(set(l4)), l5=sorted(set(l5)), l6=sorted(set(l6)), l7=l7,
                 l8=sorted(set(l8)), l9=sorted(set(l9)), l10=sorted(set(l10)), l11=sorted(set(l11)), l12=bool(l12), l13=bool(l13), l14=l14, l15=l15)
+
+
+# L3 e le sinergie (15 nov 2026, Autore: «alcuni leak non tengono conto di sinergie, per esempio creature che entrano prima della fase di combattimento
+# per potenziare altre in maniera diretta o indiretta»): una creatura lanciata prima dell'attacco non e' un leak se serve all'attacco di quel turno. Dal
+# testo delle carte (grado C) e da quello che e' successo nel combattimento (le vite, le creature morte), mai da un'ipotesi:
+# - diretta, la sua entrata: potenzia o mette segnalini, tappa, toglie o fa combattere una creatura, fa scartare o guarda la sua mano, fa pescare o
+#   scry/surveil (sai cosa hai prima di attaccare), empower Jace, una Role, da' una parola chiave, rende giocabile una carta;
+# - diretta, la sua statica: «creatures you control get/have», «attacking creatures», exalted, un innesco a inizio combattimento o all'attacco, raddoppia
+#   la vita che lui perde nel tuo turno, pesca quando lo colpisci in combattimento;
+# - un payoff che il combattimento ha acceso: «whenever you gain life» e nel turno hai guadagnato vita dopo l'inizio del combattimento; «whenever an
+#   opponent loses life» e lui ha perso vita; «whenever a creature you control dies» e ne e' morta una nel combattimento;
+# - indiretta, le tue carte: un tuo permanente in campo con un innesco quando entra una creatura (o un artefatto, un incantesimo, del tipo giusto) o
+#   quando lanci una creatura, che fa qualcosa da combattimento, o fa guadagnare vita con un payoff della vita in campo.
+_RX_EFFETTO = re.compile(r"\+\d+/\+\d+|\+1/\+1 counter|\bgets? \+|\btap (?:target|up to)|\bdestroy target|\bexile (?:target|up to one target) (?:creature|nonland|permanent)|"
+                         r"deals? (?:\d+|x|that much) damage|\bfights?\b|\bdiscards?\b|look at target opponent's hand|\bdraws?\b|\bscry\b|\bsurveil\b|"
+                         r"\bempower\b|\brole token|gains? (?:flying|trample|menace|haste|first strike|double strike|lifelink|deathtouch|indestructible|"
+                         r"hexproof)|an opponent controls[^.]*owner's hand|\bloses? \d+ life|can't block|you may (?:play|cast) (?:that|it|the exiled)", re.I)
+_RX_STATICA = re.compile(r"creatures you control (?:get|have)|other [^.]{0,40}you control (?:get|have)|attacking creatures|\bexalted\b|"
+                         r"beginning of combat on your turn|whenever (?:a|another|one or more) creatures? you control attacks?|"
+                         r"would lose life during your turn|(?:are|is) dealt combat damage during your turn", re.I)
+_RX_VITA = re.compile(r"whenever you gain life|gain life for the first time", re.I)
+_RX_PERDE = re.compile(r"whenever (?:an|each) opponent loses life|whenever an opponent is dealt", re.I)
+_RX_MUORE = re.compile(r"whenever (?:this creature or )?(?:another|a) (?:nontoken )?creature you control dies|whenever (?:a|another) creature dies", re.I)
+_RX_ENTRA = re.compile(r"whenever (?:another |a |an |one or more )?(?:nontoken )?(?:(\w+) )?(creature|artifact|enchantment)s?(?: card)?s? "
+                       r"(?:you control )?enters?|whenever you cast a (?:(\w+) )?creature spell", re.I)
+
+
+def _righe(n):
+    """Le frasi del testo della carta (il testo qui non va a capo fra le abilita'); una frase che segue un'entrata e comincia con If, Then, Until,
+    When you do o un punto elenco resta attaccata (Nurturing Pixie: «If a permanent was returned this way, put a +1/+1 counter»)."""
+    testo = (_carta(n).get("testo") or "").replace("\n", " ")
+    out = []
+    for f in re.split(r"(?<=[.)])\s+|\s+(?=•)", testo):
+        f = f.strip()
+        if not f:
+            continue
+        if out and re.match(r"(?:if |then |until |when you do|•|it |that )", f, re.I) and _entrata(out[-1]):
+            out[-1] += " " + f
+        else:
+            out.append(f)
+    return out
+
+
+def _entrata(r_):
+    return bool(re.search(r"\bwhen [^,.]{0,60}\benters?\b", r_, re.I))
+
+
+def aiuta_attacco(n, t, seat, d, mom):
+    """Perche' la creatura n, lanciata prima dell'attacco del turno t, serve a quell'attacco (una frase), o None (allora e' L3)."""
+    righe = _righe(n)
+    for r_ in righe:
+        if _entrata(r_) and _RX_EFFETTO.search(r_):
+            return "its entry helps the attack"
+        if not _entrata(r_) and _RX_STATICA.search(r_):
+            return "its ability helps the attack"
+    a, b = seat - 1, 2 - seat
+    comb = next((m for m in mom if m[0] == "comb" and m[1] == t and isinstance(m[3], dict)), None)
+    fine = next((m[3] for m in mom if m[0] == "fine" and m[1] == t and isinstance(m[3], dict)), None)
+    v0 = (comb[3].get("v") if comb else None) or [None, None]
+    v1 = (fine.get("v") if fine else None) or [None, None]
+    guadagno = v0[a] is not None and v1[a] is not None and v1[a] > v0[a]
+    perde = v0[b] is not None and v1[b] is not None and v1[b] < v0[b]
+    morte = False
+    if comb and fine:
+        resta = {c[5] for c in (fine.get("c") or [[], []])[a] if len(c) > 5}
+        ids = {x_[0] for x_ in (comb[4] or {}).get("att") or []} | {x_[0] for x_ in (comb[4] or {}).get("blocchi") or []}
+        morte = any(len(c) > 5 and c[5] in ids and c[5] not in resta for c in (comb[3].get("c") or [[], []])[a])
+    testo = " ".join(righe)
+    if (_RX_VITA.search(testo) and guadagno) or (_RX_PERDE.search(testo) and perde) or (_RX_MUORE.search(testo) and morte):
+        return "the attack fed its payoff"
+    # le tue carte in campo (il tavolo del combattimento, senza una copia della creatura appena lanciata)
+    campo = [_nome(c[0]) for c in ((comb[3].get("c") or [[], []])[a] if comb else [])]
+    if n in campo:
+        campo.remove(n)
+    tipo_n = (_carta(n).get("tipo") or "")
+    payoff_vita = bool(_RX_VITA.search(testo)) or any(_RX_VITA.search(" ".join(_righe(m_))) for m_ in campo if m_)
+    for m_ in set(campo):
+        if not m_ or DA.e_terra(m_):
+            continue
+        for r_ in _righe(m_):
+            k = _RX_ENTRA.search(r_)
+            if not k:
+                continue
+            quale = (k.group(2) or "creature").lower()
+            sotto = (k.group(1) or k.group(3) or "").lower()
+            if quale != "creature" and quale.capitalize() not in tipo_n:
+                continue
+            if sotto and sotto not in ("nontoken", "another", "other") and sotto not in tipo_n.lower():
+                continue
+            effetto = r_[k.end():]
+            if _RX_EFFETTO.search(effetto) or (re.search(r"gains? \d+ life", effetto, re.I) and payoff_vita):
+                return f"it triggered {m_}"
+    return None
 
 
 def mulligan(x):
@@ -388,8 +493,53 @@ def _paga(costi, terre):
     return all(prova(i, set()) for i in range(len(colorati)))
 
 
+# L5 e le sinergie (15 nov 2026, Autore: «alcuni leak non tengono conto di sinergie»; voce del Memo_In_Sospeso «L'analisi degli scambi»). Fino a quel
+# giorno una creatura valeva il suo costo e una pedina zero: una pedina 5/5, una terra animata 6/3 o un Goblin 3/3 equipaggiato non contavano, il suo
+# trucco in combattimento diventava uno scambio tuo, e una creatura che aveva gia' dato il suo valore entrando (Mindseeker Oculus, Stockpiling Celebrant)
+# pesava quanto il costo pieno. Ora il valore di una creatura che muore:
+# - il corpo: (forza + costituzione) / 2 di quel momento, segnalini compresi; una carta senza effetto d'entrata vale almeno il suo costo (perderla e'
+#   una carta in meno), una con l'effetto d'entrata il solo corpo (l'entrata l'hai gia' incassata), una pedina o una terra animata il solo corpo;
+# - meno quello che lascia morendo: «when this creature dies» meta' del valore, se torna in campo (Unstoppable Slasher) un quarto;
+# - meno 1 per ogni payoff in campo del suo controllore che scatta quando muore una sua creatura (Vengeful Bloodwitch);
+# e lo scambio non conta se l'avversario ha lanciato un istantaneo o una creatura con flash in quel turno, o ha preso di mira una delle creature del
+# combattimento (un trucco, una rimozione: lo scambio non l'hai scelto tu).
+_RX_LASCIA = re.compile(r"when (?:this creature|[^,.]{0,30}) dies", re.I)
+_RX_TORNA = re.compile(r"dies[^.]*return (?:it|this card|[^.]{0,20}) to the battlefield", re.I)
+
+
+def valore_morta(c, payoff=0):
+    """Il valore di una creatura del tavolo ([grpId, tappata, pedina, forza, costituzione, id...]) che muore in uno scambio (L5)."""
+    n = _nome(c[0])
+    cc = _carta(n) if n else {}
+    corpo = (max(0, c[3] or 0) + max(0, c[4] or 0)) / 2 if len(c) > 4 else 0
+    v = corpo
+    if not c[2] and not DA.e_terra(n or "") and not any(_entrata(r_) and _RX_EFFETTO.search(r_) for r_ in _righe(n)):
+        v = max(corpo, cc.get("cmc") or 0)
+    testo = cc.get("testo") or ""
+    if _RX_TORNA.search(testo):
+        v *= 0.25
+    elif _RX_LASCIA.search(testo):
+        v *= 0.5
+    return max(0.0, v - payoff)
+
+
+def _trucco(mom, t, seat, ids):
+    """Nel turno t l'avversario ha lanciato un istantaneo o un flash, o ha preso di mira una delle creature del combattimento?"""
+    for m_ in mom:
+        if m_[0] != "spell" or m_[1] != t or not m_[4] or m_[4].get("chi") == seat:
+            continue
+        if set(m_[4].get("bers") or []) & ids:
+            return True
+        n = _nome(m_[4].get("g"))
+        cc = _carta(n) if n and not m_[4].get("ab") else {}
+        if "Instant" in (cc.get("tipo") or "") or ("Creature" in (cc.get("tipo") or "") and "Flash" in (cc.get("testo") or "")):
+            return True
+    return False
+
+
 def _scambio(d, dec, seat):
-    """L5: (costo delle tue creature perse, costo delle sue) nel combattimento della decisione, dai momenti di mana_aperto; None se non si sa."""
+    """L5: (valore delle tue creature perse, delle sue) nel combattimento della decisione, dai momenti di mana_aperto; None se non si sa o se il suo
+    trucco ha deciso lo scambio."""
     mom = d.get("momenti") or []
     m = next((m_ for m_ in mom if m_[0] == "comb" and m_[1] == dec["t"]), None)
     dopo = next((m_[3] for m_ in mom if m_[0] == "fine" and m_[1] == dec["t"]), None)
@@ -398,12 +548,23 @@ def _scambio(d, dec, seat):
     resta = {c[5] for lato in dopo.get("c") or [[], []] for c in lato if len(c) > 5}
     info = m[4] or {}
     ids = {a_[0] for a_ in info.get("att") or []} | {b_[0] for b_ in info.get("blocchi") or []}
-    val = [0, 0]
+    if _trucco(mom, dec["t"], seat, ids):
+        return None
+    val, carte = [0.0, 0.0], [0, 0]
     for lato_i, lato in enumerate(m[3].get("c") or [[], []]):
+        payoff = sum(1 for c in lato if not _terra(c[0]) and _RX_MUORE.search(_carta(_nome(c[0])).get("testo") or ""))
         for c in lato:
             if len(c) > 5 and c[5] in ids and c[5] not in resta:
-                val[0 if lato_i == seat - 1 else 1] += 0 if c[2] else (_carta(_nome(c[0])).get("cmc") or 0)
-    return tuple(val)
+                i_ = 0 if lato_i == seat - 1 else 1
+                val[i_] += valore_morta(c, payoff)
+                carte[i_] += 0 if c[2] else 1
+    return val[0], val[1], carte[0], carte[1]
+
+
+def scambio_cattivo(v):
+    """Lo scambio di _scambio e' un leak? Le tue perdite valgono almeno 2 piu' delle sue, e non hai tolto piu' carte di quante ne hai perse (due pedine
+    1/1 che fermano due sue carte non sono uno scambio cattivo, anche se le sue valevano poco)."""
+    return v is not None and v[0] >= v[1] + 2 and v[2] >= v[3]
 
 
 def _blocchi(x, d, seat):
@@ -424,6 +585,22 @@ def _blocchi(x, d, seat):
         prima = m[3]
         vita = (prima.get("v") or [None, None])[seat - 1]
         att_ids = {a_[0] for a_ in m[4]["att"]}
+        # le sinergie (15 nov 2026): bloccare per salvare un tuo planeswalker o una battaglia non e' un chump per le vite; e una pedina, o una creatura
+        # che morendo lascia qualcosa (o con un tuo payoff della morte in campo), non e' una carta buttata
+        bloccati = set()
+        for b_ in m[4].get("blocchi") or []:
+            bloccati.update(b_[1] if isinstance(b_[1], list) else [b_[1]])
+        if any(len(a_) > 1 and a_[0] in bloccati and a_[1] not in (1, 2) for a_ in m[4]["att"]):
+            continue
+        dopo = next((m_[3] for m_ in mom if m_[0] == "fine" and m_[1] == dec["t"] and isinstance(m_[3], dict)), None)
+        if dopo is not None:
+            resta = {c[5] for lato in dopo.get("c") or [[], []] for c in lato if len(c) > 5}
+            bl_ids = {b_[0] for b_ in m[4].get("blocchi") or []}
+            miei = (prima.get("c") or [[], []])[seat - 1]
+            payoff = sum(1 for c in miei if not _terra(c[0]) and _RX_MUORE.search(_carta(_nome(c[0])).get("testo") or ""))
+            morti = [c for c in miei if len(c) > 5 and c[5] in bl_ids and c[5] not in resta]
+            if morti and all(c[2] or valore_morta(c, payoff) < 1 for c in morti):
+                continue
         forza_att = _forza((prima.get("c") or [[], []])[2 - seat], att_ids)
         if vita is not None and vita >= VITA_ALTA and forza_att < vita:
             out.append(dec["t"])
@@ -478,6 +655,14 @@ def prova():
         DA._MANA["lk5"] = dict(DA._MANA["lk3"], momenti=[["comb", 4, 2, foto([], v=(15, 20), c1=[tua], c2=[sua]), dict(att=[[50, 1]], blocchi=[[60, 50]])],
                                                          ["fine", 4, 2, foto([], v=(15, 20), c1=[], c2=[])]])
         casi.append(("negativa L4: se muore anche il suo e' uno scambio, non un chump block", per_partita(dict(x3, partita="lk5"))["l4"] == []))
+        # L4 e le sinergie (15 nov 2026): il blocco che salva un tuo planeswalker, e la pedina che blocca, non sono carte buttate per le vite
+        DA._MANA["lk32"] = dict(DA._MANA["lk3"], momenti=[["comb", 4, 2, foto([], v=(15, 20), c1=[tua], c2=[sua]), dict(att=[[50, 77]], blocchi=[[60, 50]])],
+                                                          DA._MANA["lk3"]["momenti"][1]])
+        casi.append(("negativa L4: bloccare l'attacco al tuo planeswalker non e' un chump per le vite", per_partita(dict(x3, partita="lk32"))["l4"] == []))
+        ped_ = [700, False, True, 1, 1, 60]
+        DA._MANA["lk33"] = dict(DA._MANA["lk3"], momenti=[["comb", 4, 2, foto([], v=(15, 20), c1=[ped_], c2=[sua]), dict(att=[[50, 1]], blocchi=[[60, 50]])],
+                                                          DA._MANA["lk3"]["momenti"][1]])
+        casi.append(("negativa L4: una pedina che blocca non e' una carta buttata", per_partita(dict(x3, partita="lk33"))["l4"] == []))
         # L2, L3, L5, L6, L8 con carte vere del database (nomi dal grpId finto)
         DA._NOMI_GRP.update({811: "Plains", 812: "Swamp", 813: "Ajani's Pridemate", 814: "Healer's Hawk", 815: "Opt", 816: "Serra Angel"})
         P1, P2, SW = [811, False, False, None, None, 1], [811, False, False, None, None, 2], [812, False, False, None, None, 3]
@@ -520,6 +705,26 @@ def prova():
         casi.append(("L3: una creatura lanciata prima dell'attacco", per_partita(dict(partita="lk9", seat=1, inizia=True))["l3"] == [1]))
         DA._MANA["lk10"] = dict(DA._MANA["lk9"], fasi=[[1, 1, 813, "Phase_Main2"]])
         casi.append(("negativa L3: lanciata dopo l'attacco (seconda fase principale)", per_partita(dict(partita="lk10", seat=1, inizia=True))["l3"] == []))
+        # L3 e le sinergie (15 nov 2026): la creatura che serve all'attacco non e' un leak, direttamente o con le tue carte
+        DA._NOMI_GRP.update({819: "Spellbook Vendor", 820: "Hinterland Sanctifier"})
+        DA._MANA["lk24"] = dict(DA._MANA["lk9"], fasi=[[1, 1, 819, "Phase_Main1"]])
+        casi.append(("L3 e sinergie: Spellbook Vendor (innesco a inizio combattimento) prima dell'attacco non e' un leak",
+                     per_partita(dict(partita="lk24", seat=1, inizia=True))["l3"] == []))
+        com_ = lambda vita: [["comb", 1, 1, foto([], v=(20, 20), c1=[[813, False, False, 2, 2, 9]]), dict(att=[[9, 2]], blocchi=[])],
+                             ["fine", 1, 1, foto([], v=(vita, 18), c1=[[813, False, False, 3, 3, 9]])]]
+        DA._MANA["lk25"] = dict(azioni=[], fasi=[[1, 1, 813, "Phase_Main1"]], momenti=com_(22), ultima=None)
+        DA._MANA["lk26"] = dict(DA._MANA["lk25"], momenti=com_(20))
+        casi.append(("L3 e sinergie: Ajani's Pridemate prima di un attacco che ti fa guadagnare vita (il payoff si accende); negativa: senza vita "
+                     "guadagnata resta un leak", per_partita(dict(partita="lk25", seat=1, inizia=True))["l3"] == []
+                     and per_partita(dict(partita="lk26", seat=1, inizia=True))["l3"] == [1]))
+        ind_ = lambda campo: [["comb", 1, 1, foto([], c1=campo + [[814, False, False, 1, 1, 12]]), dict(att=[[9, 2]], blocchi=[])]]
+        PM, HS = [813, False, False, 2, 2, 9], [820, False, False, 2, 1, 10]
+        DA._MANA["lk27"] = dict(azioni=[], fasi=[[1, 1, 814, "Phase_Main1"]], momenti=ind_([PM, HS]), ultima=None)
+        DA._MANA["lk28"] = dict(DA._MANA["lk27"], momenti=ind_([[816, False, False, 4, 4, 9], HS]))
+        casi.append(("L3 e sinergie indirette: Healer's Hawk entra, Hinterland Sanctifier ti fa guadagnare 1 vita e Pridemate cresce prima "
+                     "dell'attacco; negativa: senza un payoff della vita in campo resta un leak",
+                     per_partita(dict(partita="lk27", seat=1, inizia=True))["l3"] == []
+                     and per_partita(dict(partita="lk28", seat=1, inizia=True))["l3"] == [1]))
         # L6: alla fine del tuo turno 1 le sue terre sono tutte tappate, nel suo turno 2 lanci Opt fuori dal combattimento
         DA._MANA["lk11"] = dict(azioni=[], fasi=[[2, 1, 815, "Phase_Main1"]], ultima=None,
                                 momenti=[["fine", 1, 1, foto([], c2=[tap([812, False, False, None, None, 7])])]])
@@ -534,6 +739,23 @@ def prova():
         casi.append(("L5: perdi un 5 mana per il suo 1 mana", per_partita(x13)["l5"] == [3]))
         DA._MANA["lk14"] = dict(DA._MANA["lk13"], momenti=[DA._MANA["lk13"]["momenti"][0], ["fine", 3, 1, foto([], c1=[], c2=[hawk])]])
         casi.append(("negativa L5: se muore solo il tuo non e' uno scambio", per_partita(dict(x13, partita="lk14"))["l5"] == []))
+        # L5 e le sinergie (15 nov 2026): una pedina 4/4 vale il suo corpo, il suo trucco in combattimento non e' uno scambio tuo, una creatura che
+        # ha gia' dato il suo valore entrando vale il solo corpo
+        pedina = [900, False, True, 4, 4, 21]
+        DA._MANA["lk29"] = dict(DA._MANA["lk13"], momenti=[["comb", 3, 1, foto([], c1=[ang], c2=[pedina]), dict(att=[[20, 2]], blocchi=[[21, 20]])],
+                                                         ["fine", 3, 1, foto([], c1=[], c2=[])]])
+        casi.append(("negativa L5: Serra Angel per una pedina 4/4 non e' uno scambio cattivo (prima la pedina valeva 0)",
+                     per_partita(dict(x13, partita="lk29"))["l5"] == []))
+        DA._NOMI_GRP[831] = "Giant Growth"
+        DA._MANA["lk30"] = dict(DA._MANA["lk13"], momenti=[DA._MANA["lk13"]["momenti"][0], ["spell", 3, 1, foto([]), dict(g=831, chi=2, bers=[21])],
+                                                         DA._MANA["lk13"]["momenti"][1]])
+        casi.append(("negativa L5: il suo Giant Growth sull'Hawk ha deciso lo scambio, non e' tuo", per_partita(dict(x13, partita="lk30"))["l5"] == []))
+        DA._NOMI_GRP[832] = "Mindseeker Oculus"
+        oc = [832, False, False, 2, 1, 20]
+        DA._MANA["lk31"] = dict(DA._MANA["lk13"], momenti=[["comb", 3, 1, foto([], c1=[oc], c2=[hawk]), dict(att=[[20, 2]], blocchi=[[21, 20]])],
+                                                         ["fine", 3, 1, foto([], c1=[], c2=[])]])
+        casi.append(("negativa L5: Mindseeker Oculus (l'entrata gia' incassata, resta un 2/1) per un Hawk non e' uno scambio cattivo",
+                     per_partita(dict(x13, partita="lk31"))["l5"] == []))
         casi.append(("il filtro dice Yes e No", valore(dict(leak=lk), "l7") == "Yes" and valore(dict(leak=dict(l7=False)), "l7") == "No"))
         # il Leak Finder (15 nov 2026): L14 la terra prima di Opt (pagabile gia' prima), L15 il mana tenuto con Opt in mano e niente lanciato, L12-L13 il mulligan
         mio = lambda t, tot: [t, 1, 0, tot]

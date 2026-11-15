@@ -110,6 +110,36 @@ def e_terra(nome):
 
 
 _FONT = {}
+_ICONE_AB = {}
+
+
+def icona_abilita(nome, lato):
+    """Il simbolo di una parola chiave (15 nov 2026, Autore: «accanto ai testi che mettiamo sulle carte come life link e trample possiamo inserire i
+    loghi originali?»): gli svg delle abilita' del font Mana di Andrew Gioia (github.com/andrewgioia/mana, simboli di Wizards of the Coast; font OFL), in
+    Companion/Grafica/abilita/, resi bianchi a 4x con PyMuPDF e ridotti. «first strike» -> firststrike.svg. None se la parola non ha un simbolo."""
+    f_ = os.path.join(_casa, "Grafica", "abilita", nome.lower().replace(" ", "").replace("-", "") + ".svg")
+    k = (f_, lato)
+    if k not in _ICONE_AB:
+        _ICONE_AB[k] = None
+        if os.path.isfile(f_):
+            try:
+                import re
+                try:
+                    import pymupdf as fitz
+                except ImportError:
+                    import fitz
+                testo = re.sub(r'fill="#[0-9a-fA-F]{3,6}"', 'fill="#000000"', open(f_, encoding="utf-8").read())
+                pg = fitz.open(stream=testo.encode("utf-8"), filetype="svg")[0]
+                z = lato * 4 / max(pg.rect.width, pg.rect.height)
+                pm = pg.get_pixmap(matrix=fitz.Matrix(z, z), alpha=True)
+                a = Image.frombytes("RGBA", (pm.width, pm.height), pm.samples).getchannel("A")
+                w_, h_ = max(1, round(pm.width / 4)), max(1, round(pm.height / 4))
+                out = Image.new("RGBA", (w_, h_), (255, 255, 255, 0))
+                out.putalpha(a.resize((w_, h_), Image.LANCZOS))
+                _ICONE_AB[k] = out
+            except Exception:      # noqa: BLE001 - senza PyMuPDF la pillola resta senza simbolo
+                pass
+    return _ICONE_AB[k]
 _LISCI = {}          # le forme lisce gia' ridotte (liscio)
 
 
@@ -348,23 +378,25 @@ def dall_esilio(im):
     return out
 
 
-def gruppi(carte, soli=()):
+def gruppi(carte, soli=(), segni=None):
     """Le carte del campo: [nome, tappata, pedina, forza, costituzione, quante, [id], grpId, segnalini] nell'ordine di arrivo. Le pedine uguali e le terre
     uguali (stessi segnalini compresi) stanno insieme col ×N; ogni altra carta sta da sola anche se ce n'e' un'altra uguale (14 nov 2026, Autore: «se ci
     sono carte non pedina doppie sul tavolo non impiliamole ma che siano ognuna individuale», poi «terre possono restare impilate se sono simili»). soli: gli
     id che stanno da soli comunque (chi attacca o blocca: ognuno ha la sua freccia e il suo colpo; stesso giorno: «2 attaccanti si impilano nascondendo uno
-    sotto l'altro»)."""
+    sotto l'altro»).
+    La regola delle pedine (15 nov 2026, Autore: «se piu' asset come pedine sono uguali e di pari forza e costituzione allora li teniamo impilati con un
+    numero quantita' mentre se hanno differenti forze o costituzioni li sleghiamo, e li sleghiamo nei combattimenti / vedo che non accade sempre»): stanno
+    insieme le pedine con lo stesso nome, la stessa forza e costituzione, gli stessi segnalini, gli stessi segni (segni: {id: dict}, i segni del tappeto) e
+    la stessa posizione (tappate o no); una diversa in una di queste cose sta a parte. Fino a quel giorno le pedine creatura stavano insieme solo da 4 in su
+    (14 nov 2026, contro la fila che si rifaceva di colpo: ora le carte scivolano al posto nuovo) e una pedina con un segno stava sempre da sola."""
     out, idx = [], {}
-    # le pedine creatura uguali stanno insieme solo da 4 in su: sotto, ognuna al suo posto (14 nov 2026: attaccando si separavano, le creature passavano
-    # da 6 a 7 e la fila si rifaceva di colpo in due file piu' piccole)
-    quante = {}
-    for c in carte:
-        if c[2] and (len(c) > 3 and c[3] is not None):
-            quante[(c[0], c[1])] = quante.get((c[0], c[1]), 0) + 1
+    segni = segni or {}
     for c in carte:
         seg = c[7] if len(c) > 7 else None
-        k = (c[0], c[1], c[2], c[3] if len(c) > 3 else None, c[4] if len(c) > 4 else None, tuple(sorted((seg or {}).items())))
-        da_solo = (len(c) > 5 and c[5] in soli) or (c[2] and len(c) > 3 and c[3] is not None and quante.get((c[0], c[1]), 0) < 4)
+        sg_ = segni.get(c[5]) if len(c) > 5 else None
+        k = (c[0], c[1], c[2], c[3] if len(c) > 3 else None, c[4] if len(c) > 4 else None, tuple(sorted((seg or {}).items())),
+             repr(sorted(sg_.items(), key=lambda kv: str(kv[0]))) if sg_ else None)
+        da_solo = (len(c) > 5 and c[5] in soli) or (bool(sg_) and not c[2])
         if (c[2] or e_terra(c[0])) and k in idx and not da_solo:
             g = out[idx[k]]
             g[5] += 1
@@ -562,13 +594,17 @@ class Tappeto:
         if lay.width > 0 and lay.height > 0:
             im.alpha_composite(lay, (ox + cx0, oy + cy0))
 
-    def pillola(self, d, cx, cy, testo, f, fondo=(12, 12, 16, 235), bordo=(230, 230, 236, 255), colore=(255, 255, 255), pad=6):
+    def pillola(self, d, cx, cy, testo, f, fondo=(12, 12, 16, 235), bordo=(230, 230, 236, 255), colore=(255, 255, 255), pad=6, icona=None):
+        """La pillola col testo; icona (PIL RGBA, il simbolo dell'abilita') a sinistra del testo, dentro la pillola."""
         bb = d.textbbox((0, 0), testo, font=f)
         tw, th = bb[2] - bb[0], bb[3] - bb[1]
         p = self.K(pad)
-        x0, y0, x1, y1 = cx - tw / 2 - p, cy - th / 2 - p * 0.55, cx + tw / 2 + p, cy + th / 2 + p * 0.55
+        gi = (icona.width + self.K(3)) if icona is not None else 0
+        x0, y0, x1, y1 = cx - (tw + gi) / 2 - p, cy - th / 2 - p * 0.55, cx + (tw + gi) / 2 + p, cy + th / 2 + p * 0.55
         self.liscio(d, "rr", (x0, y0, x1, y1), fill=fondo, outline=bordo, width=max(1.0, self.K(1.2)), radius=(y1 - y0) / 2)
-        d.text((cx - tw / 2 - bb[0], cy - th / 2 - bb[1]), testo, font=f, fill=colore)
+        if icona is not None:
+            d._image.alpha_composite(icona, (max(0, round(x0 + p)), max(0, round(cy - icona.height / 2))))
+        d.text((cx - (tw + gi) / 2 + gi - bb[0], cy - th / 2 - bb[1]), testo, font=f, fill=colore)
         return (x0, y0, x1, y1)
 
     def metti(self, tela, im, x, y, ombra=True, raggio=10, alfa=150, sposta=6):
@@ -662,7 +698,8 @@ class Tappeto:
                 self.clessidra(ds, cx + self.K(14), cy + self.K(14), self.K(13))
             fkw = font(max(8, self.K(10.5)), "Bold")
             for k_, kw_ in enumerate((sg.get("kw") or [])[:4]):     # C2: le parole chiave date da altre carte, pillole verdi sul bordo sinistro
-                self.pillola(ds, cx + self.K(30), cy + hh * 0.66 - k_ * self.K(22), "+" + kw_.title(), fkw, fondo=(30, 138, 79, 240), bordo=(255, 255, 255, 230))
+                self.pillola(ds, cx + self.K(30), cy + hh * 0.66 - k_ * self.K(22), "+" + kw_.title(), fkw, fondo=(30, 138, 79, 240), bordo=(255, 255, 255, 230),
+                             icona=icona_abilita(kw_, max(8, round(self.K(12)))))
             for k_, de_ in enumerate((sg.get("des") or [])[:2]):    # D3: la pillola viola col nome (preparata, porta sbloccata, complottata...)
                 self.pillola(ds, cx + ww / 2, cy + hh * 0.78 - k_ * self.K(22), de_, fkw, fondo=(122, 79, 208, 245), bordo=(255, 255, 255, 230))
             # W2 (14 nov 2026, scelto da Autore fra tre disegni): la parola d'abilita' come anello nell'angolo in alto a destra, pieno quanto il conto
@@ -1003,7 +1040,7 @@ class Tappeto:
             if rel and rel.get("tipo") == "comb":
                 in_comb = {a_[0] for a_ in rel.get("att") or []} | {b_[0] for b_ in rel.get("blocchi") or []}
             segni_ = f.get("segni") or {}
-            gg = gruppi(f[chi], in_comb | set(segni_))      # una carta coi suoi segni sta da sola (la pedina temporanea fra le uguali)
+            gg = gruppi(f[chi], in_comb, segni_)      # chi combatte sta da solo; le pedine uguali anche nei segni stanno insieme
             self._segni = segni_
             seg_prima = {c[5]: (c[7] if len(c) > 7 else None) for c in prima[chi] if len(c) > 5} if prima is not None else None
             nuove = {}
@@ -1294,7 +1331,13 @@ def prova():
     casi.append(("due carte uguali stanno separate; le pedine creatura uguali insieme da 4 in su, le altre pedine sempre",
                  [(g[0], g[5]) for g in gg] == [("Bear", 1), ("Bear", 1), ("Cat", 4), ("Treasure", 2)]))
     gg = gruppi([("Cat", False, True, 1, 1, i_, 9001) for i_ in (3, 4, 5)])
-    casi.append(("negativa: tre pedine creatura uguali stanno ognuna da sola (attaccando non cambia la fila)", [g[5] for g in gg] == [1, 1, 1]))
+    casi.append(("tre pedine creatura uguali stanno insieme col ×3 (15 nov 2026: la regola di Autore, anche sotto le 4)", [g[5] for g in gg] == [3]))
+    gg = gruppi([("Cat", False, True, 1, 1, 3, 9001), ("Cat", False, True, 2, 2, 4, 9001), ("Cat", False, True, 1, 1, 5, 9001)])
+    casi.append(("negativa: la pedina con forza e costituzione diverse sta a parte", [(g[3], g[5]) for g in gg] == [(1, 2), (2, 1)]))
+    seg_ = {3: dict(tmp=True), 4: dict(tmp=True), 5: dict(kw=["Flying"])}
+    gg = gruppi([("Cat", False, True, 1, 1, i_, 9001) for i_ in (3, 4, 5)], segni=seg_)
+    casi.append(("le pedine con gli stessi segni insieme, con un segno diverso a parte; una carta non pedina col segno da sola",
+                 [g[5] for g in gg] == [2, 1] and [g[5] for g in gruppi([("Plains", False, False, None, None, i_) for i_ in (1, 2)], segni={1: dict(tmp=True)})] == [1, 1]))
     gg = gruppi([("Plains", False, False, None, None, 1), ("Plains", False, False, None, None, 2), ("Plains", True, False, None, None, 3)])
     casi.append(("le terre uguali stanno insieme col ×N (la tappata a parte)", [(g[0], g[1], g[5]) for g in gg] == [("Plains", False, 2), ("Plains", True, 1)]))
     gg = gruppi([("Cat", False, True, 1, 1, 3, 9001, {1: 1}), ("Cat", False, True, 1, 1, 4, 9001, None)])
