@@ -1,6 +1,6 @@
 {
- "version": "0.1.119",
- "date": "2026-11-15",
- "notes": "Replayer checked against the Arena log and the rules: no more double combats, every trigger shows on the stack, spells cast from graveyard, exile or as Omens fly right, every mana payment animates; brand and site on the mat; Leak Finder updates; security fixes",
+ "version": "0.1.120",
+ "date": "2026-11-16",
+ "notes": "Leak Finder: new Board tab in Advanced filters (each side of the table, area by area), spell roles before or after combat, replays that open on the spot of your filters, Filters from here, card search boxes",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

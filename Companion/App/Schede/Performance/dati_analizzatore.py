@@ -331,9 +331,160 @@ def per_turno(match_id, seat, inizia, turni, grezzo=False):
     for t, scelta in MA.scelte_attacco(d).items():      # la scelta d'attacco (V3): «q{chi}{n}»
         if not turni or t <= turni:
             out[f"q{di_turno(t)}{(t + 1) // 2}"] = scelta
+    out.update(campo_inizio_turno(d, seat, di_turno, turni))
+    out.update(ruoli_turno(d, seat, di_turno, turni))
     out = {k: [v] if isinstance(v, str) else list(v) if isinstance(v, tuple) else (sorted(v, key=ordine_lancio) if v else ["Nothing"])
            for k, v in out.items()}       # le magie del turno: una lista coi tipi ripetuti, in ordine; «Nothing» se niente
     return out if grezzo else turni_estesi(out)      # grezzo: un turno per chiave, anche oltre TURNI_FILTRO (spot_filtri)
+
+
+# ------------------------------------------------------------------ Board: il campo all'inizio di ogni turno (16 nov 2026, Autore: «credo che nel leak finder
+# ci manchi un presupposto importante: la condizione in cui si trova il board per noi e per oppo ... se io volessi sapere se a t3 con una mia creatura in campo
+# e nessuna di oppo io faccio bene a giocare una creatura o piuttosto a lanciare per un extra pescata pre combat?», poi «tenere you e opponent e aggiungere
+# board / da board derivano tutte le aree del board che abbiamo in gioco», «si vai»). Il campo all'inizio del turno t e' la foto di fine del turno t-1
+# (mana_aperto, momenti «fine»): permanenti con forza e se sono tappati, vite, mano, cimitero, esilio. Il grimorio nelle foto non c'e'.
+# Le chiavi, nello schema di per_turno: «b{area}{chi}{x}{n}» = l'area di chi all'inizio del turno n di chi (x: del turno dell'altro), e
+# «b{area}vio{x}{n}» = chi e' avanti in quell'area, dal tuo posto, all'inizio del tuo turno n (x: del suo). Le lettere delle aree non sono i, o, l, u
+# (la regola delle chiavi le leggerebbe come «io», «lui»).
+# 16 nov 2026, seconda versione (Autore: «other permanents dovrebbe avere l'elenco di tutti i tipi di permanente», e prima «non abbiamo contesto di
+# cimitero, incantesimi o creature incantate»): i tipi di permanente della regola 110.4 uno per uno (creature, terre, artefatti, incantesimi, planeswalker,
+# battaglie) piu' aure ed equipaggiamenti (303.4, 301.5); il cimitero per tipo e coi tipi di carta (il delirium). Il tipo e' quello stampato (il database
+# delle carte): una terra animata resta una terra, una creatura che non lo e' piu' resta una creatura (grado C).
+_N4 = lambda cosa, una=None: (f"0 {cosa}", f"1 {una or cosa}", f"2 {cosa}", f"3+ {cosa}")
+BOARD_AREE = (("c", "Creatures", ("0 creatures", "1 creature", "2 creatures", "3+ creatures")),
+              ("f", "Power on the battlefield", ("0 power", "1-2 power", "3-5 power", "6+ power")),
+              ("t", "Lands", ("0-1 lands", "2 lands", "3 lands", "4 lands", "5+ lands")),
+              ("s", "Untapped lands", ("0 untapped", "1 untapped", "2 untapped", "3+ untapped")),
+              ("k", "Artifacts", _N4("artifacts", "artifact")),
+              ("q", "Equipment", _N4("equipment")),
+              ("y", "Enchantments", _N4("enchantments", "enchantment")),
+              ("r", "Auras", _N4("auras", "aura")),
+              ("w", "Planeswalkers", _N4("planeswalkers", "planeswalker")),
+              ("z", "Battles", _N4("battles", "battle")),
+              ("m", "Cards in hand", ("0-1 cards", "2-3 cards", "4-5 cards", "6+ cards")),
+              ("g", "Graveyard", ("0 cards", "1-2 cards", "3-5 cards", "6+ cards")),
+              ("j", "Creatures in the graveyard", _N4("creatures", "creature")),
+              ("h", "Instants and sorceries in the graveyard", _N4("instants and sorceries", "instant or sorcery")),
+              ("d", "Card types in the graveyard", ("0-1 types", "2-3 types", "4+ types (delirium)")),
+              ("e", "Exile", ("0 cards", "1-2 cards", "3+ cards")),
+              ("v", "Life", ("1-5 life", "6-10 life", "11-15 life", "16-20 life", "21+ life")))
+# le sottovoci della fase Board (le aree vicine insieme, perche' i pulsanti stiano in una riga)
+BOARD_GRUPPI = (("Creatures", ("c", "f")), ("Lands", ("t", "s")), ("Other permanents", ("k", "q", "y", "r", "w", "z")), ("Hand", ("m",)),
+                ("Graveyard, exile", ("g", "j", "h", "d", "e")), ("Life", ("v",)))
+BOARD_AVANTI = ("c", "f", "t", "k", "y", "w", "m", "g", "v")           # le aree dove «chi e' avanti» ha senso
+ORDINE_AVANTI = ("You're ahead", "Even", "Opponent's ahead")
+SOGLIE_BOARD = dict(c=(1, 2, 3), f=(1, 3, 6), t=(2, 3, 4, 5), s=(1, 2, 3), k=(1, 2, 3), q=(1, 2, 3), y=(1, 2, 3), r=(1, 2, 3), w=(1, 2, 3), z=(1, 2, 3),
+                    m=(2, 4, 6), g=(1, 3, 6), j=(1, 2, 3), h=(1, 2, 3), d=(2, 4), e=(1, 3), v=(6, 11, 16, 21))
+TIPI_CARTA = ("Artifact", "Battle", "Creature", "Enchantment", "Instant", "Kindred", "Land", "Planeswalker", "Sorcery")      # 205.2a, per il delirium
+
+
+def _fascia_board(n, soglie):
+    """L'indice della fascia: soglie = i limiti bassi delle fasce dalla seconda in poi."""
+    return sum(1 for s_ in soglie if n >= s_)
+
+
+def _misure_campo(f, lato):
+    """Le misure di un lato di una foto di fine turno: {area: numero} (None dove la foto non lo dice)."""
+    c = (f.get("c") or [[], []])[lato]
+    tipo = lambda g: (_carta(nome_grp(g) or "") or {}).get("tipo") or ""
+    terre = [z for z in c if e_terra(nome_grp(z[0]) or "")]
+    crea = [z for z in c if len(z) > 4 and z[3] is not None and not e_terra(nome_grp(z[0]) or "")]
+    altri = [(z, tipo(z[0]).split(" // ")[0]) for z in c if z not in terre and z not in crea]
+    conta = lambda parola: sum(1 for _z, tp in altri if parola in tp)
+    cim = [tipo(g).split(" // ")[0] for g in (f.get("g") or [[], []])[lato] if g]
+    return dict(c=len(crea), f=sum(max(0, z[3] or 0) for z in crea), t=len(terre), s=sum(1 for z in terre if not z[1]),
+                k=conta("Artifact"), q=conta("Equipment"), y=conta("Enchantment"), r=conta("Aura"), w=conta("Planeswalker"), z=conta("Battle"),
+                m=(f.get("n") or [None, None])[lato], g=len((f.get("g") or [[], []])[lato]),
+                j=sum(1 for tp in cim if "Creature" in tp), h=sum(1 for tp in cim if "Instant" in tp or "Sorcery" in tp),
+                d=len({w_ for tp in cim for w_ in TIPI_CARTA if w_ in tp}), e=len((f.get("e") or [[], []])[lato]),
+                v=(f.get("v") or [None, None])[lato])
+
+
+def campo_inizio_turno(d, seat, di_turno, turni):
+    """Le famiglie «b...» di per_turno: il campo di tutti e due all'inizio di ogni turno, dalla foto di fine del turno prima (il turno 1 parte dal campo
+    vuoto: creature, forza, terre, altri permanenti a zero; mano, vite, cimitero ed esilio non si sanno). Chi e' di turno ha appena stappato: tutte le sue
+    terre sono stappate."""
+    fine = {m[1]: m[3] for m in d.get("momenti") or [] if m[0] == "fine" and isinstance(m[3], dict)}
+    out = {}
+    a, b = seat - 1, 2 - seat
+    for t in range(1, (turni or 0) + 1):
+        chi_t, n = di_turno(t), (t + 1) // 2
+        if t == 1:
+            vuoto = dict(c=0, f=0, t=0, s=0, k=0, q=0, y=0, r=0, w=0, z=0, g=0, j=0, h=0, d=0, e=0)
+            mis = {"io": dict(vuoto), "lui": dict(vuoto)}
+        else:
+            f = fine.get(t - 1)
+            if f is None:
+                continue
+            mis = {"io": _misure_campo(f, a), "lui": _misure_campo(f, b)}
+            mis[chi_t]["s"] = mis[chi_t]["t"]
+        for chi in ("io", "lui"):
+            x_ = "" if chi == chi_t else "x"
+            for k, _nome, voci in BOARD_AREE:
+                v = mis[chi].get(k)
+                if v is not None:
+                    out[f"b{k}{chi}{x_}{n}"] = voci[_fascia_board(v, SOGLIE_BOARD[k])]
+        x_ = "" if chi_t == "io" else "x"
+        for k in BOARD_AVANTI:
+            vi, vl = mis["io"].get(k), mis["lui"].get(k)
+            if vi is not None and vl is not None:
+                out[f"b{k}vio{x_}{n}"] = ORDINE_AVANTI[0 if vi > vl else 1 if vi == vl else 2]
+    return out
+
+
+# il ruolo di ogni magia lanciata e quando, rispetto al combattimento del turno (stesso giorno): «r{chi}{x}{n}», una lista con due voci per magia, il ruolo
+# («Card draw») e il ruolo col momento («Card draw · before combat»), cosi' una tendina col solo ruolo vale in qualunque momento. Dal testo (grado C).
+RUOLI = ("Creature", "Removal", "Counterspell", "Card draw", "Combat trick", "Other spell")
+MOMENTI_RUOLO = ("before combat", "in combat", "after combat")
+ORDINE_RUOLI = RUOLI + tuple(f"{r_} · {m_}" for r_ in RUOLI for m_ in MOMENTI_RUOLO) + ("Nothing",)
+_RX_PESCA = re.compile(r"draws? (?:a|one|two|three|\d+) cards?|\bscry \d|\bsurveil \d", re.I)
+_RX_TRUCCO = re.compile(r"target creature (?:you control )?gets \+|\bgains? (?:hexproof|indestructible|protection|first strike|double strike|trample|lifelink|"
+                        r"deathtouch)", re.I)
+
+
+def ruolo_magia(n):
+    """Il ruolo di una magia dal tipo e dal testo, in quest'ordine: creatura, rimozione (le regole VERA di variabili_c), contromagia, pescata (draw, scry,
+    surveil), trucco da combattimento, altro."""
+    c = _carta(n or "") or {}
+    tipo, testo = c.get("tipo") or "", c.get("testo") or ""
+    if "Creature" in tipo.split(" // ")[0]:
+        return "Creature"
+    import variabili_c as VC
+    if VC.rimozione(n):
+        return "Removal"
+    if "counter target" in testo.lower():
+        return "Counterspell"
+    if _RX_PESCA.search(testo):
+        return "Card draw"
+    if "Instant" in tipo and _RX_TRUCCO.search(testo):
+        return "Combat trick"
+    return "Other spell"
+
+
+def ruoli_turno(d, seat, di_turno, turni):
+    """Le famiglie «r...» di per_turno, dalle «fasi» di mana_aperto (ogni magia col suo turno e la fase di Arena); «Nothing» senza magie."""
+    out = {}
+    for t in range(1, (turni or 0) + 1):
+        chi_t, n = di_turno(t), (t + 1) // 2
+        out[f"r{chi_t}{n}"] = []
+        out[f"r{'lui' if chi_t == 'io' else 'io'}x{n}"] = []
+    for t, s_, g_, fase in d.get("fasi") or []:
+        if (turni and t > turni) or g_ in SENZA_FACCIA:
+            continue
+        chi = "io" if s_ == seat else "lui"
+        k = f"r{chi}{'' if di_turno(t) == chi else 'x'}{(t + 1) // 2}"
+        if k not in out:
+            continue
+        r_ = ruolo_magia(nome_grp(g_))
+        m_ = "in combat" if fase == "Phase_Combat" else "after combat" if fase in ("Phase_Main2", "Phase_Ending") else "before combat"
+        out[k] += [r_, f"{r_} · {m_}"]
+        # il nome della carta (16 nov 2026, Autore: «in ogni tendina in cui possiamo dire di aver castato qualcosa dobbiamo avere una tendina in piu' per
+        # inserire il nome specifico della carta se vogliamo»): la famiglia «n» per le righe dei tipi, «nr» (la stessa) per quelle dei ruoli
+        nome = nome_intero(nome_grp(g_) or "")
+        if nome:
+            out.setdefault("n" + k[1:], []).append(nome)
+            out.setdefault("nr" + k[1:], []).append(nome)
+    return out
 
 
 FAMIGLIE_TURNO = ("{c}", "{c}x", "a{c}", "d{c}", "m{c}", "p{c}", "p{c}x", "q{c}", "u{c}")      # u: il mana lasciato      # le famiglie turno per turno di per_turno (q: la scelta d'attacco)
@@ -354,8 +505,114 @@ def turni_estesi(out):
             finale[k] = v
         else:
             finale.setdefault(fam + "L", []).append(v)
+            finale.setdefault(fam + "L#", []).append(n)
         finale.setdefault(fam + "A", []).append(v)
+        finale.setdefault(fam + "A#", []).append(n)      # il numero di ogni turno (16 nov 2026): le condizioni nello stesso turno (turni_comuni)
     return finale
+
+
+# le condizioni nello stesso turno (16 nov 2026, Autore: «le condizioni devono sommarsi non essere individuali ... come spieghiamo che voglio che quella
+# situazione sia letta su tutti i replay in qualunque turno io e oppo vi troviamo ad avere io una creatura e lui no nello stesso turno?»): i filtri «in
+# qualunque turno» (A) e «dal turno 11» (L) che parlano dei turni dello stesso giocatore valgono insieme solo in un turno in cui sono veri tutti. Il turno di
+# chi: quello di chi agisce, o dell'altro se la famiglia ha la «x» (o e' la difesa, nel turno dell'altro); «chi e' avanti» col «x» e' il suo turno.
+# i filtri da un momento del replay (16 nov 2026, Autore: «possiamo lavorare dai replay al contrario? ovvero estrarre da un momento di un replay un
+# insieme di filtri che descrivono quel momento? con l'opzione di poter completare dal leak finder le azioni fino a un range di momenti o turni precedenti e/o
+# successivi ma sicuramente nel filtro completerà la parte iniziale del game: chi era on the draw, Mulligan ecc», «Sì, costruiscilo»). La foto del momento,
+# a fasce, perche' trovi altre partite simili e non solo quella da cui viene: l'inizio della partita (play o draw, mulligan, terre in mano), il campo dei due
+# all'inizio di quel turno (creature, terre, mano, vita; gli altri tipi di permanente e le creature nel cimitero solo se ci sono) e, se chiesto, cosa hanno
+# lanciato per ruolo in quel turno e in quelli intorno. Ogni pezzo e' un filtro normale, che si toglie con la sua x.
+# Misurato sui log del 16 nov (50 momenti a caso, Constructed): con tutto il campo la meta' dei momenti trova solo la sua partita; con inizio, creature e
+# terre la mediana e' 9 partite simili, con le sole creature 23. Quindi di partenza inizio, creature e terre; il campo intero (mano, vita, altri tipi,
+# cimitero) e le terre in mano si aggiungono a richiesta.
+AREE_MOMENTO = ("c", "t")                       # sempre
+AREE_TUTTO = ("m", "v")                         # col campo intero
+AREE_SE_CI_SONO = ("k", "y", "w", "z", "j")     # col campo intero, solo se il valore non e' zero (la loro assenza e' quasi sempre la regola)
+
+
+def filtri_momento(x, T, intorno=None, tutto=False):
+    """{filtro: valore} che descrivono il turno di Arena T della partita x. intorno: None = niente giocate; 0 = anche cosa e' stato lanciato in quel turno;
+    N = anche nei N turni (di Arena) prima e dopo. tutto: il campo intero (mano, vita, gli altri tipi di permanente e le creature nel cimitero se ci sono)
+    e le terre nella mano iniziale. I turni oltre TURNI_FILTRO diventano «dal turno 11» (L), che resta nello stesso turno degli altri filtri dello stesso
+    giocatore (turni_comuni)."""
+    out = {}
+    for k in ("partenza", "mull") + (("terre",) if tutto else ()):
+        v = LEGGI[k](x) if k in LEGGI else None
+        if v is not None:
+            out[k] = v
+    pt = x.get("per_turno") or {}
+    inizia = x.get("inizia")
+    if inizia is None or not T:
+        return out
+    padrone = lambda t: "io" if (t % 2 == 1) == bool(inizia) else "lui"
+    altro = {"io": "lui", "lui": "io"}
+
+    def chiave(fam, chi, t):
+        """La chiave del filtro e il valore di per_turno per la famiglia di chi nel turno t (con la «x» se il turno e' dell'altro)."""
+        n = (t + 1) // 2
+        base = f"{fam}{chi}{'' if padrone(t) == chi else 'x'}"
+        if n <= TURNI_FILTRO:
+            return f"t_{base}{n}", pt.get(f"{base}{n}")
+        vv = dict(zip(pt.get(base + "L#") or [], pt.get(base + "L") or []))
+        return f"t_{base}L", vv.get(n)
+
+    for chi in ("io", "lui"):
+        for a in AREE_MOMENTO + ((AREE_TUTTO + AREE_SE_CI_SONO) if tutto else ()):
+            k, v = chiave("b" + a, chi, T)
+            if not v:
+                continue
+            if a in AREE_SE_CI_SONO and v[0].startswith("0 "):
+                continue
+            out[k] = list(v)
+    if intorno is not None:
+        for t in range(max(1, T - intorno), T + intorno + 1):
+            for chi in ("io", "lui"):
+                k, v = chiave("r", chi, t)
+                if v is None:
+                    continue
+                ruoli = [r_ for r_ in v if " · " not in r_]       # i ruoli, senza il momento: piu' largo; il momento si aggiunge a mano
+                out[k] = ruoli or ["Nothing"]
+    return out
+
+
+def padrone_turno(k):
+    """(di chi e' il turno, A o L) di un filtro esteso «t_...A/L»; None se non lo e'."""
+    m_ = re.fullmatch(r"t_([a-z]*?)(io|lui)(x?)([AL])", k)
+    if not m_:
+        return None
+    fam, chi, ics, q = m_.groups()
+    altro = {"io": "lui", "lui": "io"}
+    return (altro[chi] if (ics or fam == "d") else chi), q
+
+
+def gruppi_turno(filtri):
+    """{(padrone, A/L): [chiavi]} dei filtri estesi accesi: ogni gruppo vale in un turno solo."""
+    out = {}
+    for k, v in (filtri or {}).items():
+        if v is None or v == [] or k == "wr_rif":
+            continue
+        pt = padrone_turno(k)
+        if pt:
+            out.setdefault(pt, []).append(k)
+    return out
+
+
+def _turni_veri(x, k, scelte):
+    """I numeri dei turni in cui il filtro esteso k ha tutte le voci scelte."""
+    pt = x.get("per_turno") or {}
+    voglio = collections.Counter(scelte if isinstance(scelte, (list, tuple)) else [scelte])
+    return {n for v, n in zip(pt.get(k[2:]) or [], pt.get(k[2:] + "#") or [])
+            if all(collections.Counter(v)[i] >= q for i, q in voglio.items())}
+
+
+def turni_comuni(x, filtri, chiavi):
+    """I turni in cui sono veri insieme tutti i filtri estesi di un gruppo."""
+    comuni = None
+    for k in chiavi:
+        t_ = _turni_veri(x, k, filtri[k])
+        comuni = t_ if comuni is None else comuni & t_
+        if not comuni:
+            return set()
+    return comuni or set()
 
 
 def esteso(k):
@@ -392,6 +649,8 @@ def episodi(r, filtri):
                 occ += len(tt)
                 voglio = collections.Counter(v if isinstance(v, (list, tuple)) else [v])
                 n_ = sum(1 for t_ in tt if all(collections.Counter(t_)[i] >= q for i, q in voglio.items()))
+                if esteso(k):       # nello stesso turno degli altri filtri estesi dei turni dello stesso giocatore (16 nov 2026)
+                    n_ = len(turni_comuni(x, filtri, gruppi_turno(filtri).get(padrone_turno(k), [k])))
                 volte += n_
                 part += 1 if n_ else 0
         elif k in ("sit:io_non_att_chiuso", "sit:io_letale_mancato") and v == "Yes":
@@ -451,6 +710,22 @@ def _fase_lancio(x, t, posto, voglio):
     d = _MANA.get(x.get("partita")) or {}
     nomi = {v: k for k, v in NOMI_TIPO.items()}
     lettere = {nomi[v] for v in voglio if v in nomi}
+    ruoli = {v for v in voglio if v.partition(" · ")[0] in RUOLI}
+    carte = {v for v in voglio if v not in nomi and v.partition(" · ")[0] not in RUOLI and v != "Nothing"}
+    if carte:       # i nomi delle carte (16 nov 2026): la prima di quelle carte lanciata in quel turno
+        for t_, s_, g_, f_ in d.get("fasi") or []:
+            if t_ == t and s_ == posto and g_ not in SENZA_FACCIA and nome_intero(nome_grp(g_) or "") in carte:
+                return f_, g_
+        return None
+    if ruoli:       # i ruoli (16 nov 2026): la prima magia di quel ruolo, e se la voce lo dice, in quel momento del combattimento
+        for t_, s_, g_, f_ in d.get("fasi") or []:
+            if t_ != t or s_ != posto or g_ in SENZA_FACCIA:
+                continue
+            r_ = ruolo_magia(nome_grp(g_))
+            m_ = "in combat" if f_ == "Phase_Combat" else "after combat" if f_ in ("Phase_Main2", "Phase_Ending") else "before combat"
+            if r_ in ruoli or f"{r_} · {m_}" in ruoli:
+                return f_, g_
+        return None
     fasi = {(t_, s_, g_): f_ for t_, s_, g_, f_ in d.get("fasi") or []}
     for t_, s_, cosa, g_, tipi in d.get("azioni") or []:
         if cosa == "magia" and t_ == t and s_ == posto and (not lettere or lettere & set(tipi or "")) and (t_, s_, g_) in fasi:
@@ -465,6 +740,8 @@ def spot_filtri(x, filtri):
     out = []
     seat, inizia = x.get("seat"), x.get("inizia")
     grezzo = None
+    # i filtri estesi dello stesso giocatore insieme (16 nov 2026): uno spot «any turn» c'e' solo nei turni in cui sono veri tutti quelli del suo gruppo
+    comuni_k = {k: turni_comuni(x, filtri, ch) for ch in gruppi_turno(filtri).values() for k in ch}
     for k, v in (filtri or {}).items():
         if v is None or v == [] or k == "wr_rif":
             continue
@@ -492,11 +769,13 @@ def spot_filtri(x, filtri):
                 n = int(mg.group(4))
                 if (quale.isdigit() and n != int(quale)) or (quale == "L" and n <= TURNI_FILTRO):
                     continue
+                if quale in "AL" and n not in comuni_k.get(k, set()):
+                    continue
                 if not all(collections.Counter(voci)[i] >= q for i, q in voglio.items()):
                     continue
                 padrone = altro[chi] if (ics or fam == "d") else chi        # di chi e' il turno: il suo, o quello dell'altro («x»; la difesa e' nel suo attacco)
                 t = 2 * n - 1 if padrone == primo else 2 * n
-                aggiungi(t, DOVE_FAMIGLIA.get(fam, "inizio"), chi == "io", fase=_fase_lancio(x, t, seat if chi == "io" else 3 - seat, voglio) if fam == "" else None)
+                aggiungi(t, DOVE_FAMIGLIA.get(fam, "inizio"), chi == "io", fase=_fase_lancio(x, t, seat if chi == "io" else 3 - seat, voglio) if fam in ("", "r", "n", "nr") else None)
         elif re.fullmatch(r"leak_l\d+", k) and v == "Yes":
             l_ = k[5:]
             if l_ in ("l12", "l13"):
@@ -1412,6 +1691,40 @@ EXTRA += [(f"luck{N}", f"Lands drawn by your turn {N} · vs chance", (lambda x, 
           for N in TURNI_FORTUNA]
 for _k, _n, _f in EXTRA:
     NOME[_k], LEGGI[_k] = _n, _f
+# il Board e i ruoli (16 nov 2026): i nomi e le voci delle famiglie nuove; non entrano in EXTRA (Split by, Group by e Spots ne avrebbero centinaia in piu')
+for _n_ in CAMPI_TURNO:
+    _tn = turno_nome(_n_)
+    _quando = lambda di, n=_n_, tn=_tn: f"any of {di} turns" if n == "A" else f"{di} {tn}"       # «start of any of your turns», non «your any turn»
+    for _ch, _Tu in (("io", "You"), ("lui", "Opponent")):
+        for _x, _di in (("", "your" if _ch == "io" else "their"), ("x", "the opponent's" if _ch == "io" else "your")):
+            for _a, _nm, _voci in BOARD_AREE:
+                NOME[f"t_b{_a}{_ch}{_x}{_n_}"] = f"{_Tu} · {_nm.lower()} at the start of {_quando(_di)}"
+                ORDINE_VALORI[f"t_b{_a}{_ch}{_x}{_n_}"] = _voci
+            NOME[f"t_r{_ch}{_x}{_n_}"] = f"{_Tu} · {_di} {_tn} · cast, by role"
+            ORDINE_VALORI[f"t_r{_ch}{_x}{_n_}"] = ORDINE_RUOLI
+            NOME[f"t_n{_ch}{_x}{_n_}"] = NOME[f"t_nr{_ch}{_x}{_n_}"] = f"{_Tu} · {_di} {_tn} · the card cast"
+    for _x, _di in (("", "your"), ("x", "the opponent's")):
+        for _a, _nm, _voci in BOARD_AREE:
+            if _a in BOARD_AVANTI:
+                NOME[f"t_b{_a}vio{_x}{_n_}"] = f"Who's ahead · {_nm.lower()} at the start of {_quando(_di)}"
+                ORDINE_VALORI[f"t_b{_a}vio{_x}{_n_}"] = ORDINE_AVANTI
+DOVE_FAMIGLIA.update({f"b{_a}": "inizio" for _a, _n, _v in BOARD_AREE})
+DOVE_FAMIGLIA.update({f"b{_a}v": "inizio" for _a in BOARD_AVANTI})
+DOVE_FAMIGLIA.update(r="magia", n="magia", nr="magia")
+# Hero e Opponent nei nomi dei filtri turno per turno (16 nov 2026, Autore: «you che poi deve essere Hero Player al posto di you ovunque», «non usare
+# theyr mai più si usa opponent»)
+
+
+def _hero(t):
+    for a_, b_ in (("the opponent's", "Opponent's"), ("their", "Opponent's"), ("they", "Opponent"), ("your", "Hero's"), ("You", "Hero"), ("you", "Hero")):
+        t = re.sub(r"(?<![A-Za-z'])" + re.escape(a_) + r"(?![A-Za-z])", b_, t)
+    return t
+
+
+for _k in [k for k in NOME if k.startswith("t_")]:
+    NOME[_k] = _hero(NOME[_k])
+
+
 # vinta o persa come tendina della fase Opening and first turns (12 nov 2026, Autore: «aggiungiamo la tendina di partita vinta o persa nella sezione opening
 # hands and first turns»): non entra negli Spots (spiegherebbe tutto il win rate da sola)
 NOME["esito"], LEGGI["esito"] = "Result", (lambda x: "Won" if x["vinta"] else "Lost")
@@ -1545,9 +1858,8 @@ def passa(x, filtri):
             continue
         if k == "wr_rif":       # non e' un filtro della singola partita: lo applica filtra, dopo gli altri (finestra_wr)
             continue
-        elif esteso(k):         # qualunque turno / dal turno 11: un turno che abbia tutte le voci scelte
-            if (v or v == 0) and not passa_turni(k, x, v):
-                return False
+        elif esteso(k):         # qualunque turno / dal turno 11: per gruppo, dopo (turni_comuni)
+            continue
         elif isinstance(v, (list, tuple)):
             if not v:
                 continue
@@ -1555,6 +1867,9 @@ def passa(x, filtri):
             if any(ci_sono[i] < n for i, n in collections.Counter(v).items()):      # «Instant», «Instant»: almeno due istantanei
                 return False
         elif v not in valori_di(k, x):
+            return False
+    for chiavi in gruppi_turno(filtri).values():        # i filtri estesi dei turni dello stesso giocatore: tutti veri nello stesso turno
+        if not turni_comuni(x, filtri, chiavi):
             return False
     return True
 
@@ -2794,6 +3109,66 @@ def prova():
                  and pt["ioL"] == [["Instant", "Instant"]] and pt["ioA"] == [["Creature"], ["Instant", "Instant"]]))
     casi.append(("any turn: due istantanei nello stesso turno passano; negativa: una creatura e un istantaneo non stanno nello stesso turno",
                  passa(xt, {"t_ioA": ["Instant", "Instant"]}) and not passa(xt, {"t_ioA": ["Creature", "Instant"]})))
+    # il Board (16 nov 2026): il campo all'inizio di ogni turno dalla foto di fine del turno prima. Tu (posto 1) cominci; alla fine del tuo turno 3 di Arena
+    # (il tuo 2) hai un 2/2 e tre terre, lui niente in campo, due terre stappate; all'inizio del suo turno 4 di Arena (il suo 2) le sue terre sono stappate
+    salva_nomi = dict(_NOMI_GRP)
+    try:
+        _NOMI_GRP.update({880: "Plains", 881: "Grizzly Bears", 882: "Opt", 883: "Shock"})
+        foto3 = dict(c=[[[880, True, 0, None, None, 1], [880, True, 0, None, None, 2], [880, False, 0, None, None, 3], [881, False, 0, 2, 2, 4]],
+                        [[880, False, 0, None, None, 5], [880, False, 0, None, None, 6]]], n=[4, 6], v=[20, 17], g=[[882], []], e=[[], []])
+        dt = dict(momenti=[["fine", 3, 1, foto3]], fasi=[[1, 1, 881, "Phase_Main1"], [5, 1, 882, "Phase_Main1"], [5, 1, 881, "Phase_Main2"],
+                                                         [4, 2, 883, "Phase_Combat"]])
+        dit = lambda t: "io" if t % 2 == 1 else "lui"
+        cb = campo_inizio_turno(dt, 1, dit, 5)
+        casi.append(("Board: all'inizio del suo turno 2 (il 4 di Arena) tu hai 1 creatura, 2 di forza, 3 terre (1 stappata), lui 0 creature e 2 terre "
+                     "stappate; sei avanti in creature e terre", cb.get("bciox2") == ["1 creature"][0] and cb.get("bfiox2") == "1-2 power"
+                     and cb.get("btiox2") == "3 lands" and cb.get("bsiox2") == "1 untapped" and cb.get("bclui2") == "0 creatures"
+                     and cb.get("bslui2") == "2 untapped" and cb.get("bcviox2") == "You're ahead" and cb.get("btviox2") == "You're ahead"
+                     and cb.get("bgiox2") == "1-2 cards" and cb.get("bvlui2") == "16-20 life"))
+        casi.append(("Board: il turno 1 parte dal campo vuoto (0 creature, pari); negativa: senza la foto del turno prima (il 3 di Arena da quella del 2) "
+                     "il campo non si inventa", cb.get("bcio1") == "0 creatures" and cb.get("bcvio1") == "Even" and "bcio2" not in cb and "bmio1" not in cb))
+        ru = ruoli_turno(dt, 1, dit, 5)
+        casi.append(("ruoli: al tuo turno 3 una pescata prima del combattimento e una creatura dopo; il suo Shock nel combattimento e' una rimozione; "
+                     "negativa: il tuo turno 2 (il 4 di Arena) senza magie tue resta vuoto",
+                     ru["rio3"] == ["Card draw", "Card draw · before combat", "Creature", "Creature · after combat"]
+                     and ru["rlui2"] == ["Removal", "Removal · in combat"] and ru["riox2"] == []))
+        xb = dict(per_turno=turni_estesi({**{k: [v] for k, v in cb.items()}, **{k: (v or ["Nothing"]) for k, v in ru.items()}}))
+        casi.append(("Board nei filtri: all'inizio del suo turno 2 tu 1 creatura e lui 0, e al tuo turno 3 «Card draw · before combat» passa anche come "
+                     "«Card draw»; negative: «Card draw · after combat», lui con 1 creatura",
+                     passa(xb, {"t_bciox2": ["1 creature"], "t_bclui2": ["0 creatures"], "t_rio3": ["Card draw · before combat"]})
+                     and passa(xb, {"t_rio3": ["Card draw"]}) and not passa(xb, {"t_rio3": ["Card draw · after combat"]})
+                     and not passa(xb, {"t_bclui2": ["1 creature"]})))
+        # le condizioni nello stesso turno (16 nov 2026, Autore: «come spieghiamo che voglio che quella situazione sia letta ... in qualunque turno io e
+        # oppo vi troviamo ad avere io una creatura e lui no nello stesso turno?»): al tuo turno 2 tu 1 creatura e lui 2, al 3 tu 0 e lui 0, al 4 tu 1 e lui 0
+        xs = dict(per_turno=turni_estesi({"bcio2": ["1 creature"], "bcluix2": ["2 creatures"], "bcio3": ["0 creatures"], "bcluix3": ["0 creatures"],
+                                          "bcio4": ["1 creature"], "bcluix4": ["0 creatures"]}))
+        fs = {"t_bcioA": ["1 creature"], "t_bcluixA": ["0 creatures"]}
+        casi.append(("stesso turno: «any turn» tu 1 creatura e lui 0 vale solo al tuo turno 4; negativa: senza il turno 4 ognuna e' vera in un turno diverso "
+                     "(2 e 3) e la partita non passa", passa(xs, fs) and turni_comuni(xs, fs, list(fs)) == {4}
+                     and not passa(dict(per_turno=turni_estesi({k: v for k, v in {"bcio2": ["1 creature"], "bcluix2": ["2 creatures"], "bcio3": ["0 creatures"],
+                                                                                   "bcluix3": ["0 creatures"]}.items()})), fs)))
+        # i filtri da un momento del replay (16 nov 2026): il tuo turno 3 di Arena 5 (cominci tu)
+        xm = dict(partenza="Play", mull="0", terre=3, inizia=True, per_turno=turni_estesi({
+            "bcio3": ["1 creature"], "bcluix3": ["0 creatures"], "btio3": ["2 lands"], "btluix3": ["3 lands"], "bkio3": ["0 artifacts"],
+            "byluix3": ["1 enchantment"], "rio3": ["Creature", "Creature · before combat"], "rluix3": ["Nothing"], "rlui2": ["Removal", "Removal · in combat"],
+            "riox2": ["Nothing"], "rio2": ["Nothing"], "rluix2": ["Nothing"]}))
+        fm = filtri_momento(xm, 5, tutto=True)
+        fm0 = filtri_momento(xm, 5, 0)
+        fm1 = filtri_momento(xm, 5, 1)
+        casi.append(("filtri dal momento: l'inizio (Play, 0 mulligan, 3 terre) e il campo dei due all'inizio del tuo turno 3; un tipo a zero non entra, un "
+                     "incantesimo suo si'; negativa: senza la richiesta niente giocate", fm.get("partenza") == "Play" and fm.get("mull") == "0"
+                     and fm.get("terre") == "3" and fm.get("t_bcio3") == ["1 creature"] and fm.get("t_bcluix3") == ["0 creatures"]
+                     and "t_bkio3" not in fm and fm.get("t_byluix3") == ["1 enchantment"] and not any(k_.startswith("t_r") for k_ in fm)))
+        casi.append(("filtri dal momento: «questo turno» aggiunge le tue giocate per ruolo (senza il momento), ±1 turno anche il suo turno prima; di "
+                     "partenza solo inizio, creature e terre (negativa: niente terre in mano ne' incantesimi)",
+                     fm0.get("t_rio3") == ["Creature"] and "t_rlui2" not in fm0 and fm1.get("t_rlui2") == ["Removal"]
+                     and "terre" not in fm0 and "t_byluix3" not in fm0 and fm0.get("t_btio3") == ["2 lands"]))
+        casi.append(("filtri dal momento: la partita da cui vengono li passa tutti", passa(xm, fm1)))
+        casi.append(("stesso turno: un filtro dei suoi turni non si lega a uno dei tuoi (gruppi diversi)", sorted(gruppi_turno({"t_bcioA": ["1 creature"],
+                     "t_bcluiA": ["0 creatures"]})) == [("io", "A"), ("lui", "A")]))
+    finally:
+        _NOMI_GRP.clear()
+        _NOMI_GRP.update(salva_nomi)
     for n, ok in casi:
         print(("ok    " if ok else "ROSSO ") + n)
     print(f"{sum(1 for _n, ok in casi if ok)}/{len(casi)}")

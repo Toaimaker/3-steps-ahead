@@ -15,6 +15,7 @@ import collections
 import datetime
 import math
 import os
+import re
 import threading
 import time
 
@@ -264,6 +265,58 @@ AVANZATI = {
                                                    "lui_prima_crea", "trucco_comb_lui", "contrastate_lui")),
                       ("CARDS · DISCARDS, SCRY AND SURVEIL", ("scarti_lui", "scry_lui", "scry_giu_lui", "surveil_lui")),
                       ("GRAVEYARD AND EXILE · FROM THE CARD TEXT", ("rian_lui", "esil_lui", "odio_lui")))))}
+# il Board (16 nov 2026, Autore: «da board derivano tutte le aree del board che abbiamo in gioco», poi «porta board in you (Hero Player) e Opponent prima di
+# attack, così separiamo le sezioni, tienila così com'è con i suoi sotto menù»): una fase Board in Hero Player e in Opponent, prima di Attack, con le sue
+# sottovoci per area (DA.BOARD_GRUPPI); in ogni area il campo di quel giocatore all'inizio dei suoi turni e di quelli dell'altro, e in Hero Player chi e'
+# avanti. Le chiavi sono le famiglie «b...» di per_turno (DA.campo_inizio_turno)
+def _board_sezioni(sch, aree):
+    sezioni = []
+    for a in aree:
+        nm = next(n_ for k_, n_, _v in DA.BOARD_AREE if k_ == a).upper()
+        if sch == "io":
+            sezioni.append((f"YOUR {nm} · AT THE START OF YOUR TURNS", (f"@t_b{a}io",)))
+            sezioni.append((f"YOUR {nm} · AT THE START OF THE OPPONENT'S TURNS", (f"@t_b{a}iox",)))
+        else:
+            sezioni.append((f"THEIR {nm} · AT THE START OF THEIR TURNS", (f"@t_b{a}lui",)))
+            sezioni.append((f"THEIR {nm} · AT THE START OF YOUR TURNS", (f"@t_b{a}luix",)))
+    return tuple(sezioni)
+
+
+BOARD_AV = {sch: tuple((nome, _board_sezioni(sch, aree)) for nome, aree in DA.BOARD_GRUPPI) for sch in ("io", "lui")}
+for _sch in ("io", "lui"):
+    _fasi = list(AVANZATI[_sch])
+    _fasi.insert(next(j for j, (n_, _s) in enumerate(_fasi) if n_ == "Attack"), ("Board", ()))      # le sezioni le da' la sottovoce aperta
+    AVANZATI[_sch] = tuple(_fasi)
+# il ruolo delle magie e quando (stesso giorno): nelle fasi dei turni di You e Opponent, sotto le giocate per tipo
+for _sch, _fase, _k, _tit in (("io", "Your turns", "@t_rio", "WHAT YOU CAST ON YOUR TURNS · BY ROLE, BEFORE OR AFTER COMBAT (FROM THE TEXT, GRADE C)"),
+                              ("io", "Opponent's turns", "@t_riox", "WHAT YOU CAST ON THE OPPONENT'S TURNS · BY ROLE (FROM THE TEXT, GRADE C)"),
+                              ("lui", "Their turns", "@t_rlui", "WHAT THEY CAST ON THEIR TURNS · BY ROLE, BEFORE OR AFTER COMBAT (FROM THE TEXT, GRADE C)"),
+                              ("lui", "Your turns", "@t_rluix", "WHAT THEY CAST ON YOUR TURNS · BY ROLE (FROM THE TEXT, GRADE C)")):
+    _fasi = list(AVANZATI[_sch])
+    _j = next(j for j, (n_, _s) in enumerate(_fasi) if n_ == _fase)
+    _sez = list(_fasi[_j][1])
+    _sez.insert(1, (_tit, (_k,)))
+    _fasi[_j] = (_fase, tuple(_sez))
+    AVANZATI[_sch] = tuple(_fasi)
+SCHEDE_AV = (("io", "Hero Player"), ("lui", "Opponent"))       # 16 nov 2026, Autore: «you (Hero Player)»
+
+
+# Hero e Opponent (16 nov 2026, Autore: «you che poi deve essere Hero Player al posto di you ovunque», «non usare theyr mai più si usa opponent»): i testi
+# di Advanced filters si scrivono come prima (You, their...) e passano tutti da qui. Un testo nuovo non va scritto con their/they: passa comunque da hero_txt.
+def hero_txt(t):
+    """You/your -> Hero/Hero's, their/they -> Opponent's/Opponent, «the opponent's» -> «Opponent's» (maiuscolo resta maiuscolo)."""
+    sub = (("THE OPPONENT'S", "OPPONENT'S"), ("the opponent's", "Opponent's"), ("The opponent's", "Opponent's"),
+           ("THEIR", "OPPONENT'S"), ("Their", "Opponent's"), ("their", "Opponent's"), ("THEY", "OPPONENT"), ("They", "Opponent"), ("they", "Opponent"),
+           ("THEM", "OPPONENT"), ("them", "Opponent"), ("YOUR", "HERO'S"), ("Your", "Hero's"), ("your", "Hero's"), ("YOU", "HERO"), ("You", "Hero"),
+           ("you", "Hero"))
+    for a_, b_ in sub:
+        t = re.sub(r"(?<![A-Za-z'])" + re.escape(a_) + r"(?![A-Za-z])", b_, t)
+    return t
+
+
+AVANZATI = {sch: tuple((hero_txt(nome).replace("Hero's turns", "Hero's turns"), tuple((hero_txt(ti), kk) for ti, kk in sez)) for nome, sez in fasi)
+            for sch, fasi in AVANZATI.items()}
+BOARD_AV = {sch: tuple((nome, tuple((hero_txt(ti), kk) for ti, kk in sez)) for nome, sez in gruppi) for sch, gruppi in BOARD_AV.items()}
 VALORI_FISSI = {"mull": ("0", "1", "2+"), "partenza": ("Play", "Draw"), "esito": ("Won", "Lost")}      # le tendine con le voci fisse
 # le tendine dell'avversario (Opponent, Opp. colors) non ci sono piu' (15 nov 2026, Autore: «rivedi in smart filters i filtri per oppo perche' sono
 # ridondanti col pulsante by deck»): l'avversario si sceglie in By deck (vs colors, la variante esatta del suo mazzo); la fase resta, col suo + dei filtri in
@@ -363,7 +416,8 @@ class PaginaPerformance:
         self.scheda_av = "io"        # la scheda aperta della finestra Advanced filters
         self.playlist = None        # R15: le partite da guardare una dopo l'altra nel replayer (dict(partite, nome)), o None
         self.ord_partite = ("data", False)        # la tabella delle partite: la colonna e il verso (di partenza dalla piu' recente)
-        self.fase_av = {"io": 0, "lui": 0}      # e la fase aperta di ognuna
+        self.fase_av = {"io": 0, "lui": 0}
+        self.area_av = {"io": 0, "lui": 0}      # la sottovoce aperta della fase Board (16 nov 2026)      # e la fase aperta di ognuna
         self.costruisci()
         self.fr.bind("<<Davanti>>", lambda e: self.se_sporca(), add="+")
         self.fr.bind("<Map>", lambda e: self.se_sporca(), add="+")
@@ -1876,6 +1930,10 @@ class PaginaPerformance:
             # R3: una nota sulla partita (e sullo spot, se e' segnato)
             self.b_nota = pulsante_solido(tk, F, testa_b, "Note", False, self.apri_nota_board, alto=26, bg=C["cap"], colori=("#3a3220", "#4a4028", "#8a6d1c"))
             self.b_nota.configure(width=84); self.b_nota.pack(side="left", padx=(0, 6), pady=8)
+            # i filtri da questo momento (16 nov 2026, Autore: «possiamo lavorare dai replay al contrario? ovvero estrarre da un momento di un replay un
+            # insieme di filtri che descrivono quel momento?», «Sì, costruiscilo»)
+            self.b_momento = pulsante_solido(tk, F, testa_b, "Filters from here", False, self.menu_momento, alto=26, bg=C["cap"], colori=GRIGI, icona=False)
+            self.b_momento.configure(width=150); self.b_momento.pack(side="left", padx=(0, 6), pady=8)
             # In hand: la mano a ventaglio (acceso) o il tavolo ingrandito con la mano in riga piccola (spento); 14 nov 2026
             self.b_mano = pulsante_solido(tk, F, testa_b, "In hand" if self.mano_in_vista() else "In hand: off", self.mano_in_vista(), self.cambia_mano, alto=26,
                                           bg=C["cap"], colori=GRIGI)
@@ -5909,31 +5967,45 @@ class PaginaPerformance:
     # ------------------------------------------------------------ Advanced filters (13 nov 2026, Autore: «io voglio una sezione dove posso ottenere una
     # risposta in base a dei filtri ... mio wr quando ho 3 terre in mano on the draw e chiudo entro T5 senza creature e oppo mulliga», poi «tutta sta roba sta in
     # una nuova sotto finestra / il pulsante per aprirla e' advanced filters», «filtri e domanda ma i filtri per me e per oppo stanno in due schede differenti»)
+    @staticmethod
+    def sezioni_av(scheda):
+        """Tutte le sezioni di una scheda di Advanced filters, quelle del Board (ogni sottovoce) comprese."""
+        out = [z for _f, sezioni in AVANZATI[scheda] for z in sezioni]
+        out += [z for _g, sezioni in BOARD_AV.get(scheda, ()) for z in sezioni]
+        return out
+
+    def sezioni_aperte(self):
+        """Le sezioni a video: quelle della fase aperta, o della sottovoce aperta del Board."""
+        nome, sezioni = AVANZATI[self.scheda_av][self.fase_av[self.scheda_av]]
+        if nome == "Board":
+            return BOARD_AV[self.scheda_av][self.area_av[self.scheda_av]][1]
+        return sezioni
+
     def chiavi_scheda_av(self, scheda):
-        """I filtri di una scheda di Advanced filters (You o Opponent), le righe delle giocate per turno comprese."""
-        return {k2 for _f, sezioni in AVANZATI[scheda] for _t, kk in sezioni for k in kk for k2 in self.chiavi_av(k)}
+        """I filtri di una scheda di Advanced filters (Hero Player o Opponent), le righe delle giocate per turno e il Board compresi."""
+        return {k2 for _t, kk in self.sezioni_av(scheda) for k in kk for k2 in self.chiavi_av(k)}
 
     @staticmethod
     def chiavi_av(k):
         """Le chiavi dei filtri di una voce di AVANZATI: «@t_io» le righe turno per turno (t_io1 ... t_io5), «&ab_io» le abilita' (ab_io), le altre se stesse."""
         if k.startswith("@"):
-            return [f"{k[1:]}{n}" for n in DA.CAMPI_TURNO]
+            carta = [f"{PaginaPerformance.chiave_carta(k[1:])}{n}" for n in DA.CAMPI_TURNO] if PaginaPerformance.chiave_carta(k[1:]) else []
+            return [f"{k[1:]}{n}" for n in DA.CAMPI_TURNO] + carta
         return [k[1:]] if k.startswith("&") else [k]
 
     def reset_scheda_av(self):
         """Il Reset della scheda aperta di Advanced filters: i suoi filtri via, gli altri (le altre schede, gli smart filters) restano."""
         for k in self.chiavi_scheda_av(self.scheda_av):
             self.filtri.pop(k, None)
-        for _f, sezioni in AVANZATI[self.scheda_av]:
-            for _t, kk in sezioni:
-                for k in kk:
-                    if k[:1] in ("@", "&"):
-                        self.__dict__.setdefault("_righe_ui", {}).pop(k[1:], None)
+        for _t, kk in self.sezioni_av(self.scheda_av):
+            for k in kk:
+                if k[:1] in ("@", "&"):
+                    self.__dict__.setdefault("_righe_ui", {}).pop(k[1:], None)
         self.disegna()
 
     def avanzati_on(self):
         """Quanti filtri della finestra Advanced filters sono accesi."""
-        chiavi = {k2 for fasi in AVANZATI.values() for _f, sezioni in fasi for _t, kk in sezioni for k in kk for k2 in self.chiavi_av(k)}
+        chiavi = {k2 for sch in AVANZATI for _t, kk in self.sezioni_av(sch) for k in kk for k2 in self.chiavi_av(k)}
         return sum(1 for k, v in self.filtri.items() if v is not None and k in chiavi)
 
     def aggiorna_bottone_avanzati(self):
@@ -5942,7 +6014,7 @@ class PaginaPerformance:
             n = self.avanzati_on()
             b.metti("Advanced filters" + (f"  ·  {n} on" if n else ""), bool(n))
 
-    def apri_avanzati(self, scheda=None, fase=None):
+    def apri_avanzati(self, scheda=None, fase=None, area=None):
         """La finestra: in cima la domanda (ogni filtro acceso, anche quelli della pagina, con la sua x) e la risposta; sotto due schede, You e Opponent, coi
         filtri avanzati di ognuno. Tutto si applica subito: la pagina (grafico, report, partite) segue la stessa domanda. Una finestra sola."""
         tk, F = self.tk, self.F
@@ -5950,6 +6022,8 @@ class PaginaPerformance:
             self.scheda_av = scheda
         if fase is not None:
             self.fase_av[self.scheda_av] = fase
+        if area is not None:
+            self.area_av[self.scheda_av] = area
         f = getattr(self, "fin_av", None)
         if f is None or not f.winfo_exists():
             f = self.fin_av = tk.Toplevel(self.fr); f.configure(bg=C["scheda"])
@@ -5967,8 +6041,8 @@ class PaginaPerformance:
             self.cv_dom.bind("<Button-1>", self.clic_domanda)
             schede = tk.Frame(f, bg=C["scheda"]); schede.pack(fill="x", padx=8, pady=(2, 4))
             self.b_schede_av = {}
-            for k, n in (("io", "You"), ("lui", "Opponent")):
-                b = pulsante_solido(tk, F, schede, n, k == self.scheda_av, lambda k=k: self.apri_avanzati(k), alto=28, bg=C["scheda"], colori=GRIGI)
+            for k, n in SCHEDE_AV:
+                b = pulsante_solido(tk, F, schede, n, k == self.scheda_av, lambda k=k: self.apri_avanzati(k), alto=28, bg=C["scheda"], colori=GRIGI, icona=False)
                 b.configure(width=150); b.pack(side="left", padx=(0, 6))
                 self.b_schede_av[k] = b
             # il Reset della scheda aperta (13 nov 2026, Autore: «per ogni scheda in cui inseriamo valori crea un pulsante reset localizzato, mentre il main
@@ -5976,6 +6050,9 @@ class PaginaPerformance:
             self.b_reset_av = pulsante_solido(tk, F, schede, "Reset", False, self.reset_scheda_av, alto=28, bg=C["scheda"], colori=ARANCIO)
             self.b_reset_av.configure(width=150); self.b_reset_av.pack(side="right")
             self.fr_fasi_av = tk.Frame(f, bg=C["scheda"]); self.fr_fasi_av.pack(fill="x", padx=8, pady=(2, 4))
+            # le sottovoci della fase Board (16 nov 2026): una riga sotto le fasi, solo con Board aperta
+            self.fr_aree_av = tk.Frame(f, bg=C["scheda"]); self.fr_aree_av.pack(fill="x", padx=8, pady=(0, 4))
+            self.b_aree_av = []
             # i filtri scorrono (13 nov 2026, Autore: «caso mai mettiamo uno scroller per scendere alle voci in fondo»): la rotella su tutta la finestra e una
             # barra sottile a destra, da cliccare o trascinare
             corpo = tk.Frame(f, bg=C["scheda"]); corpo.pack(padx=8, pady=(4, 12))
@@ -5989,8 +6066,8 @@ class PaginaPerformance:
             self.cv_barra_av.bind("<B1-Motion>", self.trascina_av)
             f.bind("<MouseWheel>", lambda e: (self.cv_av.yview_scroll(-2 if e.delta > 0 else 2, "units"), "break")[1])
         for k, b in self.b_schede_av.items():
-            b.metti({"io": "You", "lui": "Opponent"}[k], k == self.scheda_av)
-        self.b_reset_av.metti("Reset · " + {"io": "You", "lui": "Opponent"}[self.scheda_av], False)
+            b.metti(dict(SCHEDE_AV)[k], k == self.scheda_av)
+        self.b_reset_av.metti("Reset · " + dict(SCHEDE_AV)[self.scheda_av], False)
         # le fasi della scheda: rifatte quando cambia la scheda (You e Opponent ne hanno di diverse) o il formato (la fase Draft solo nel Limited, SOLO_FASE)
         vive = [j for j, (nome, _sez) in enumerate(AVANZATI[self.scheda_av]) if SOLO_FASE.get(nome, self.tipo) == self.tipo]
         if self.fase_av[self.scheda_av] not in vive:        # la fase aperta non c'e' in questo formato: la prima
@@ -6001,15 +6078,25 @@ class PaginaPerformance:
             self.b_fasi_av, self._j_fasi_av = [], []
             for j in vive:
                 b = pulsante_solido(tk, F, self.fr_fasi_av, AVANZATI[self.scheda_av][j][0], False, lambda j=j: self.apri_avanzati(fase=j), alto=24,
-                                    bg=C["scheda"], colori=("#202024", "#2c2c32", "#1f3446"))
+                                    bg=C["scheda"], colori=("#202024", "#2c2c32", "#1f3446"), icona=False)
                 b.configure(width=124); b.pack(side="left", padx=(0, 4))
                 self.b_fasi_av.append(b)
                 self._j_fasi_av.append(j)
             self._fasi_di = (self.scheda_av, self.tipo)
         for j, b in zip(self._j_fasi_av, self.b_fasi_av):
             b.metti(AVANZATI[self.scheda_av][j][0], j == self.fase_av[self.scheda_av])
+        # le sottovoci del Board: rifatte a ogni apertura (poche), solo con la fase Board aperta
+        for w in self.fr_aree_av.winfo_children():
+            w.destroy()
+        self.b_aree_av = []
+        if AVANZATI[self.scheda_av][self.fase_av[self.scheda_av]][0] == "Board":
+            for j, (nome_g, _sez) in enumerate(BOARD_AV[self.scheda_av]):
+                b = pulsante_solido(tk, F, self.fr_aree_av, nome_g, j == self.area_av[self.scheda_av], lambda j=j: self.apri_avanzati(area=j), alto=22,
+                                    bg=C["scheda"], colori=("#1a1d24", "#262a33", "#1f3446"), icona=False)
+                b.configure(width=124); b.pack(side="left", padx=(0, 4))
+                self.b_aree_av.append(b)
         self.disegna_avanzati()
-        if scheda or fase is not None:          # un'altra scheda o fase riparte dall'alto
+        if scheda or fase is not None or area is not None:          # un'altra scheda, fase o sottovoce riparte dall'alto
             self.cv_av.yview_moveto(0)
         f.lift()
         return f
@@ -6075,7 +6162,7 @@ class PaginaPerformance:
         self._box_av = []
         tutte = [x_ for x_ in self.righe if x_["tipo"] == self.tipo]
         y = 4
-        for titolo, chiavi in AVANZATI[self.scheda_av][self.fase_av[self.scheda_av]][1]:
+        for titolo, chiavi in self.sezioni_aperte():
             ca.create_text(8, y + 10, text=titolo, anchor="w", fill=C["azzurro"], font=F(7, True))
             y += 24
             if len(chiavi) == 1 and chiavi[0].startswith("@"):
@@ -6128,26 +6215,54 @@ class PaginaPerformance:
                   "t_pio": ("Your T{}", "drew"), "t_piox": ("Opponent's T{}", "you drew"), "t_plui": ("Their T{}", "drew"), "t_pluix": ("Your T{}", "they drew"),
                   "t_aio": ("Your T{}", "attack"), "t_alui": ("Their T{}", "attack"), "t_mio": ("Your T{}", "their lands"), "t_mlui": ("Their T{}", "your lands"),
                   "t_dio": ("Opponent's T{}", "you"), "t_dlui": ("Your T{}", "they"), "t_qio": ("Your T{}", "you"), "t_qlui": ("Their T{}", "they"),
-                  "t_uio": ("Your T{}", "you"), "t_ului": ("Their T{}", "they")}
+                  "t_uio": ("Your T{}", "you"), "t_ului": ("Their T{}", "they"),
+                  # i ruoli (16 nov 2026)
+                  "t_rio": ("Your T{}", "cast"), "t_riox": ("Opponent's T{}", "you cast"), "t_rlui": ("Their T{}", "cast"), "t_rluix": ("Your T{}", "they cast"),
+                  # il Board (16 nov 2026): all'inizio di quel turno
+                  **{f"t_b{a_}{s_}": (t_, d_) for a_, _n, _v in DA.BOARD_AREE
+                     for s_, t_, d_ in (("io", "Your T{}", "you have"), ("luix", "Your T{}", "they have"), ("lui", "Their T{}", "they have"),
+                                        ("iox", "Their T{}", "you have"))},
+                  **{f"t_b{a_}{s_}": (t_, "ahead") for a_ in DA.BOARD_AVANTI for s_, t_ in (("vio", "Your T{}"), ("viox", "Their T{}"))}}
     VOCI_RIGHE = {"pio": DA.ORDINE_PESCATE, "plui": DA.ORDINE_PESCATE, "piox": DA.ORDINE_PESCATE_X, "pluix": DA.ORDINE_PESCATE_X, "aio": DA.ORDINE_ATT,
                   "alui": DA.ORDINE_ATT, "mio": DA.ORDINE_APERTE, "mlui": DA.ORDINE_APERTE, "dio": DA.ORDINE_DIF, "dlui": DA.ORDINE_DIF,
-                  "qio": DA.ORDINE_SCELTA, "qlui": DA.ORDINE_SCELTA, "uio": DA.ORDINE_MANA, "ului": DA.ORDINE_MANA}
+                  "qio": DA.ORDINE_SCELTA, "qlui": DA.ORDINE_SCELTA, "uio": DA.ORDINE_MANA, "ului": DA.ORDINE_MANA,
+                  **{f"b{a_}{s_}": v_ for a_, _n, v_ in DA.BOARD_AREE for s_ in ("io", "luix", "lui", "iox")},
+                  **{f"b{a_}{s_}": DA.ORDINE_AVANTI for a_ in DA.BOARD_AVANTI for s_ in ("vio", "viox")}}
+    VOCI_MULTI = {k_: DA.ORDINE_RUOLI for k_ in ("rio", "riox", "rlui", "rluix")}      # le famiglie a piu' voci che non sono i tipi
+    CAST = ("t_io", "t_iox", "t_lui", "t_luix", "t_rio", "t_riox", "t_rlui", "t_rluix")      # le righe «cast»: la tendina della carta
+
+    @staticmethod
+    def chiave_carta(pre):
+        """La famiglia del nome della carta di una riga «cast» (16 nov 2026): «t_io» -> «t_nio», «t_rio» -> «t_nrio»; None per le altre righe."""
+        return ("t_n" + pre[2:]) if pre in PaginaPerformance.CAST else None
 
     @staticmethod
     def campo_riga(nome, n):
-        """Il campo del turno di una riga: «Your T3», «Your T11+», «Your turns · any» (A: in qualunque turno, basta uno)."""
+        """Il campo del turno di una riga: «Hero T3», «Hero T11+», «Hero turns · any» (A: in qualunque turno, basta uno; 16 nov 2026: Hero e Opponent)."""
+        nome = PaginaPerformance.nome_riga(nome)
         if n == "A":
-            return nome.split(" T{}")[0].replace("Your", "Your turns").replace("Their", "Their turns").replace("Opponent's", "Opponent's turns") + " · any"
+            return nome.split(" T{}")[0] + " turns · any"
         return nome.format(f"{DA.TURNI_FILTRO + 1}+" if n == "L" else n)
+
+    @staticmethod
+    def nome_riga(t):
+        """«Your T{}» -> «Hero T{}», «Their T{}» e «Opponent's T{}» -> «Opponent T{}»; «you cast» -> «Hero cast», «they have» -> «Opponent has»."""
+        t = t.replace("Your T{}", "Hero T{}").replace("Their T{}", "Opponent T{}").replace("Opponent's T{}", "Opponent T{}")
+        t = re.sub(r"\b(you|they) (have)\b", lambda m: ("Hero" if m.group(1) == "you" else "Opponent") + " has", t)
+        return hero_txt(t).replace("Opponent's lands", "Opponent's lands")
 
     def _da_righe(self, pre, righe):
         """I filtri di un gruppo dalle sue righe: {«t_io3»: [voci]} (le righe dello stesso turno si uniscono)."""
         nuovi = {}
-        for campo, voci in righe:
+        kc = self.chiave_carta(pre)
+        for r_ in righe:
+            campo, voci = r_[0], r_[1]
             vv = [v for v in voci or [] if v]
             if campo and vv:        # le voci ripetute contano (due Instant = due istantanei); le righe dello stesso turno si sommano
                 k = f"{pre}{campo}"
                 nuovi[k] = sorted(nuovi.get(k, []) + vv, key=DA.ordine_lancio)
+            if campo and kc and len(r_) > 2 and r_[2]:      # la carta scelta (16 nov 2026): una lista, come i tipi
+                nuovi[f"{kc}{campo}"] = nuovi.get(f"{kc}{campo}", []) + [r_[2]]
         return nuovi
 
     def righe_av(self, pre):
@@ -6158,22 +6273,42 @@ class PaginaPerformance:
             v = self.filtri.get(f"{pre}{n}")
             if v:
                 ora[f"{pre}{n}"] = sorted(v if isinstance(v, list) else [v], key=DA.ordine_lancio)
+        kc = self.chiave_carta(pre)
+        carte = {}
+        if kc:
+            for n in DA.CAMPI_TURNO:
+                v = self.filtri.get(f"{kc}{n}")
+                if v:
+                    carte[n] = list(v) if isinstance(v, list) else [v]
+                    ora[f"{kc}{n}"] = carte[n]
         ui = self.__dict__.setdefault("_righe_ui", {}).get(pre)
         if ui and self._da_righe(pre, ui) == ora:
-            return [[c_, list(v_)] for c_, v_ in ui]
-        righe = [[k[len(pre):], list(v)] for k, v in sorted(ora.items(), key=lambda kv: DA.CAMPI_TURNO.index(kv[0][len(pre):]))]
-        return righe or [["1", [None]]]
+            return [[r_[0], list(r_[1])] + list(r_[2:3]) for r_ in ui]
+        turni_ = sorted({k[len(pre):] for k in ora if k.startswith(pre) and k[len(pre):] in DA.CAMPI_TURNO} | set(carte), key=DA.CAMPI_TURNO.index)
+        righe = []
+        for n in turni_:
+            cc = carte.get(n) or [None]
+            for j, c_ in enumerate(cc):
+                righe.append([n, list(ora.get(f"{pre}{n}", [None])) if j == 0 else [None]] + ([c_] if kc else []))
+        return righe or [["1", [None]] + ([None] if kc else [])]
 
     def righe_avanzate(self, ca, pre, y, tutte):
         """Il costruttore delle righe di un gruppo dentro la tela di Advanced filters, a y. -> la y sotto."""
         tk, F = self.tk, self.F
         nome, dopo = self.NOMI_RIGHE[pre]
+        dopo = self.nome_riga(dopo)
         una = self.VOCI_RIGHE.get(pre[2:])      # le famiglie con una voce sola per turno: le loro voci, e niente +
-        voci = lambda n: list(DA.ORDINE_TIPI)      # i tipi soli: le ripetizioni dicono quante (13 nov 2026)
+        voci = lambda n, o_=self.VOCI_MULTI.get(pre[2:], DA.ORDINE_TIPI): list(o_)      # i tipi soli: le ripetizioni dicono quante (13 nov 2026); i ruoli
         if una:
             voci = lambda n, una=una: list(una)
+        kc = self.chiave_carta(pre)
+        carte = None
+        if kc:      # le carte lanciate in questa famiglia nelle partite del tipo, dalla piu' frequente
+            conta = collections.Counter(c_ for x_ in tutte for k_, v_ in (x_.get("per_turno") or {}).items()
+                                        if re.fullmatch(kc[2:] + r"(\d+)", k_) for c_ in v_)
+            carte = [c_ for c_, _n in conta.most_common()]
         b = R_F.Righe(tk, F, ca, self.righe_av(pre), list(DA.CAMPI_TURNO), lambda n: self.campo_riga(nome, n), voci,
-                      lambda rr, pre=pre: self.metti_righe_av(pre, rr), dopo=dopo, larga_campo=170, larga_voce=200, una_voce=bool(una))
+                      lambda rr, pre=pre: self.metti_righe_av(pre, rr), dopo=dopo, larga_campo=170, larga_voce=200, una_voce=bool(una), carte=carte)
         self._costruttori_av[pre] = b
         ca.create_window(8, y, window=b.fr, anchor="nw")
         b.fr.update_idletasks()
@@ -6224,10 +6359,13 @@ class PaginaPerformance:
 
     def metti_righe_av(self, pre, righe):
         """Dalle righe ai filtri del gruppo; le righe restano come sono a video (anche le tendine ancora vuote)."""
+        kc = self.chiave_carta(pre)
         for n in DA.CAMPI_TURNO:
             self.filtri.pop(f"{pre}{n}", None)
+            if kc:
+                self.filtri.pop(f"{kc}{n}", None)
         self.filtri.update(self._da_righe(pre, righe))
-        self.__dict__.setdefault("_righe_ui", {})[pre] = [[c_, list(v_ or [None])] for c_, v_ in righe]
+        self.__dict__.setdefault("_righe_ui", {})[pre] = [[r_[0], list(r_[1] or [None])] + list(r_[2:3]) for r_ in righe]
         self.fr.after_idle(self.disegna)
 
     def barra_av(self, a, b):
@@ -7269,6 +7407,45 @@ class PaginaPerformance:
             with open(file, "w", encoding="utf-8") as g:
                 g.write(self.testo_partita(html=cosa == "html"))
         return file
+
+    # (titolo, riga, giocate intorno, campo intero): la prima e' la foto larga (misurata: con tutto il campo quasi sempre solo la partita da cui vieni)
+    INTORNO = (("Start, creatures and lands", "Play or draw and mulligans; Hero's and Opponent's creatures and lands at the start of this turn", None, False),
+               ("+ what was cast this turn", "The Hero's and the Opponent's spells this turn, by role", 0, False),
+               ("+ one turn before and after", "The spells of the turn before and the turn after too", 1, False),
+               ("+ the whole board", "Also hands, life, other permanents, the graveyard and the lands in the opening hand", None, True))
+
+    def menu_momento(self):
+        """Il menu del pulsante «Filters from here»: quanto della partita intorno a questo momento entra nei filtri."""
+        import menu_board as MB
+        b = getattr(self, "_board", None)
+        if not b:
+            return None
+        m = MB.Menu(self.tk, self.F, self.fin_board, "Filters from this moment", larga=340)
+        m.sezione("Fill Advanced filters with this moment")
+        T = b["passi"][b["i"]][2]
+        tutte = [x_ for x_ in self.righe or [] if x_["tipo"] == self.tipo]
+        for titolo, riga, k, tutto in self.INTORNO:
+            f_ = DA.filtri_momento(b["x"], T, k, tutto)
+            n_ = sum(1 for x_ in tutte if DA.passa(x_, f_))      # quante partite simili, accanto: si sceglie sapendo quante ne restano
+            m.voce(titolo, riga, lambda k=k, tutto=tutto: self.filtri_dal_momento(k, tutto), destra=f"{n_} games")
+        m.posa(sotto=self.b_momento)
+        self._menu_momento = m
+        return m
+
+    def filtri_dal_momento(self, intorno=None, tutto=False):
+        """I filtri di questo momento del replay al posto di quelli di prima (DA.filtri_momento), e Advanced filters aperta sul Board dell'Hero: ogni pezzo e'
+        un filtro con la sua x, da togliere per allargare. -> i filtri messi."""
+        b = getattr(self, "_board", None)
+        if not b:
+            return {}
+        T = b["passi"][b["i"]][2]
+        nuovi = DA.filtri_momento(b["x"], T, intorno, tutto)
+        self.filtri = dict(nuovi)
+        self._righe_ui = {}
+        self.disegna()
+        j = next(j_ for j_, (n_, _s) in enumerate(AVANZATI["io"]) if n_ == "Board")
+        self.apri_avanzati("io", j, 0)
+        return nuovi
 
     def apri_nota_board(self):
         """R3: la nota sulla partita aperta nel replayer, e sullo spot se e' segnato: una finestrella con le due caselle, Save e Delete."""
