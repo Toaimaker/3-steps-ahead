@@ -104,16 +104,85 @@ def info_carte():
     return _INFO
 
 
-def colori_di(nomi, info=None):
-    """I colori di un mazzo dalle sue carte: quelli di almeno 2 carte diverse (una carta sola fuori colore, uno splash o una pedina, non cambia il mazzo);
-    se nessun colore ha 2 carte, tutti quelli visti."""
-    info = info or info_carte()
-    conta = {}
+_REQ = {}
+RX_SIMBOLO = re.compile(r"o\(([^)]*)\)|o([A-Z0-9]+)")
+
+
+def requisiti():
+    """{nome minuscolo: (colori fissi, [colori di ogni simbolo ibrido], terra, colori che la terra produce)} dal database delle carte di Arena, dal costo di
+    mana (16 nov 2026, Autore: «il leak finder crede che alcuni mazzi mono white siano azorius e alcuni altri doppio colore siano mono colore»: un simbolo
+    ibrido come {W/U} di Peer Review contava per tutti e due i colori). {W/P} e {2/W} sono del loro colore; una carta colorata senza simboli (una faccia
+    dietro) ha fissi i suoi colori. Una volta per processo; fra piu' stampe vince la prima che non e' una faccia secondaria."""
+    with _LOCK:
+        if not _REQ:
+            import db_carte
+            t = db_carte.testi()
+            for c in db_carte.carte():
+                n = t.get(c.get("titleId"))
+                if not n:
+                    continue
+                k = _chiave(n)
+                if k in _REQ and (c.get("isSecondaryCard") or not _REQ[k][4]):
+                    continue
+                terra = "Land" in (t.get(c.get("cardTypeTextId")) or "")
+                fissi, ibridi = set(), []
+                for m in RX_SIMBOLO.finditer(c.get("castingcost") or ""):
+                    parti = (m.group(1) or m.group(2) or "").split("/")
+                    col = {x for x in parti if x in COLORI}
+                    if len(col) >= 2:
+                        ibridi.append(frozenset(col))
+                    else:
+                        fissi |= col
+                if not fissi and not ibridi:
+                    fissi = {COLORI[i - 1] for i in (c.get("colors") or []) if 1 <= i <= 5}
+                prod = "".join(COLORI[i - 1] for i in (c.get("colorIdentity") or []) if 1 <= i <= 5) if terra else ""
+                _REQ[k] = (frozenset(fissi), tuple(ibridi), terra, prod, bool(c.get("isSecondaryCard")))
+    return _REQ
+
+
+def colori_di(nomi, info=None, minimo=2):
+    """I colori di un mazzo dalle sue carte viste (16 nov 2026, rifatto). Prima l'insieme piu' piccolo di colori che paga ogni magia vista (un simbolo ibrido
+    chiede uno dei suoi colori, non tutti e due: un mono bianco con Peer Review {W/U} resta bianco), a parita' quello che le sue terre viste producono. Poi
+    un colore resta se lo chiedono almeno `minimo` magie diverse, o almeno una e una sua terra vista lo produce (Island e Azorius Guildgate dicono che il blu
+    di una carta sola e' il suo mazzo, non uno splash); una carta sola fuori colore senza terre (una presa all'avversario, uno splash) non cambia il mazzo.
+    Se non resta niente, i colori dell'insieme. minimo=1 per una lista intera, dove ogni carta e' del mazzo."""
+    R = requisiti()
+    info_ = None
+    magie_, terre_ = [], set()
     for k in {_chiave(n) for n in nomi}:
-        for x in (info.get(k) or ("", False))[0]:
-            conta[x] = conta.get(x, 0) + 1
-    s = {x for x, q in conta.items() if q >= 2} or set(conta)
-    return "".join(x for x in COLORI if x in s)
+        r = R.get(k)
+        if r is None:
+            info_ = info_ or info or info_carte()
+            col, terra = info_.get(k) or ("", False)
+            if not terra and col:
+                magie_.append((frozenset(col), ()))
+            continue
+        if r[2]:
+            terre_ |= set(r[3])
+        elif r[0] or r[1]:
+            magie_.append((r[0], r[1]))
+    if not magie_:
+        return ""
+    meglio = None
+    for bit in range(1, 32):
+        S = {COLORI[i] for i in range(5) if bit >> i & 1}
+        if not all(f <= S and all(o & S for o in ib) for f, ib in magie_):
+            continue
+        uso = sum(len((f | set().union(*ib)) & S) if ib else len(f & S) for f, ib in magie_)
+        chiave = (len(S), -len(S & terre_), -uso)
+        if meglio is None or chiave < meglio[0]:
+            meglio = (chiave, S)
+    S = meglio[1]
+    sup = {c: 0 for c in S}
+    for f, ib in magie_:
+        per = set(f & S)
+        for o in ib:
+            if len(o & S) == 1:
+                per |= o & S
+        for c in per:
+            sup[c] += 1
+    resta = {c for c in S if sup[c] >= minimo or (sup[c] >= 1 and c in terre_)} or {c for c in S if sup[c]} or S
+    return "".join(x for x in COLORI if x in resta)
 
 
 def magie(nomi, info=None):
@@ -313,6 +382,16 @@ def prova():
     casi.append(("una carta sola fuori colore non cambia il mazzo: resta Mono-White Auras",
                  riconosci(["Ethereal Armor", "Sheltered by Ghosts", "Opt"], "x", arch)[0] == "Mono-White Auras"))
     casi.append(("senza magie viste: Unknown", riconosci(["Plains", "Island"], "x", arch)[0] == "Unknown"))
+    # i colori (16 nov 2026, Autore: «il leak finder crede che alcuni mazzi mono white siano azorius e alcuni altri doppio colore siano mono colore»)
+    casi.append(("un ibrido {W/U} non fa Azorius: Peer Review con due carte bianche resta Mono-White",
+                 colori_di(["Peer Review", "Unflinching Hortimancer", "Dazzling Angel", "Plains"]) == "W"))
+    casi.append(("una carta blu sola con Island e Azorius Guildgate: Azorius, non Mono-White",
+                 colori_di(["Spectral Sailor", "Dazzling Angel", "Serra Angel", "Island", "Azorius Guildgate", "Plains"]) == "WU"))
+    casi.append(("negativa: una carta blu sola senza terre blu resta fuori (Mono-White)",
+                 colori_di(["Spectral Sailor", "Dazzling Angel", "Serra Angel", "Plains"]) == "W"))
+    casi.append(("negativa: le sole terre non danno un colore (Island senza magie blu)", colori_di(["Dazzling Angel", "Serra Angel", "Island", "Plains"]) == "W"))
+    casi.append(("una lista intera (minimo 1): ogni colore che serve resta, l'ibrido no", colori_di(["Peer Review", "Opt", "Island"], minimo=1) == "U"
+                 and colori_di(["Opt", "Dazzling Angel"], minimo=1) == "WU"))
     casi.append(("i formati: Ladder e Play Standard, Sparky fuori, draft limited, precon a parte",
                  formato("Ladder") == formato("Play") == formato("Constructed_Event_2026") == "standard" and formato("AIBotMatch_Rebalanced") is None
                  and formato("QuickDraft_FRA_20261008") == "limited" and formato("DualColorPrecons") == "precon" and formato("Historic_Ladder") == "historic"))

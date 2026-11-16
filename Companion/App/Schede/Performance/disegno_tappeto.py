@@ -528,6 +528,34 @@ def icona_occhio(lato, aperto):
     return _OCCHI[k]
 
 
+def frase_sostituzione(t):
+    """Di un testo con una sostituzione («...If that creature would die this turn, exile it instead.») la sola frase della sostituzione (16 nov 2026);
+    gli altri testi restano come sono."""
+    import re
+    for f_ in re.split(r"(?<=\.)\s+", t or ""):
+        if "would" in f_ and "instead" in f_:
+            return f_.strip()
+    return t
+
+
+def giocabile(im):
+    """La carta della tua mano che in questo passo potevi giocare (16 nov 2026, le azioni legali che Arena manda a ogni tua priorita'): il bordo luminoso
+    azzurro come in Arena, dentro la carta."""
+    from PIL import ImageFilter
+    k = 3
+    w, h = im.size
+    out = im.copy()
+    st = Image.new("RGBA", (w * k, h * k), (0, 0, 0, 0))
+    d = ImageDraw.Draw(st)
+    r_ = max(4, w // 12) * k
+    d.rounded_rectangle((k, k, w * k - k, h * k - k), radius=r_, outline=(90, 205, 255, 230), width=max(5, w // 14) * k)
+    alone = st.filter(ImageFilter.GaussianBlur(4 * k))
+    d2 = ImageDraw.Draw(alone)
+    d2.rounded_rectangle((k, k, w * k - k, h * k - k), radius=r_, outline=(170, 235, 255, 255), width=max(2, w // 45) * k)
+    out.alpha_composite(alone.resize((w, h), Image.LANCZOS))
+    return out
+
+
 def mostrata(im):
     """La carta della tua mano che l'avversario ha visto (15 nov 2026): il bordo azzurro e, in fondo, la pillola con l'occhio e SHOWN."""
     k = 3
@@ -1045,7 +1073,7 @@ class Tappeto:
             if sg.get("ab"):
                 try:
                     import testi_arena as TA
-                    testi_ab = [t_ for t_ in (TA.abilita(g_) for g_ in sg["ab"]) if t_]
+                    testi_ab = [frase_sostituzione(t_) for t_ in (TA.abilita(g_) for g_ in sg["ab"]) if t_]
                 except Exception:      # noqa: BLE001 - senza database niente testo
                     testi_ab = []
                 if testi_ab:
@@ -1505,13 +1533,18 @@ class Tappeto:
             wm = int(self.K(158))
             # la carta che hai mostrato all'avversario (15 nov 2026, il censimento: InstanceRevealedToOpponent): l'occhio e SHOWN in fondo alla carta
             mostrate_ = list(f.get("mostrate") or [])
+            gioc_ = [g_[0] for g_ in f.get("gioc") or [] if g_[3] == "mano"]      # le carte che potevi giocare (16 nov 2026)
             mie = []
             for n in mano:
+                k_g = n in gioc_
+                if k_g:
+                    gioc_.remove(n)
                 if n in mostrate_:
                     mostrate_.remove(n)
-                    mie.append(((n, wm, "shown"), mostrata(faccia(n, wm))))
+                    im_ = mostrata(faccia(n, wm))
+                    mie.append(((n, wm, "shown") + (("play",) if k_g else ()), giocabile(im_) if k_g else im_))
                 else:
-                    mie.append(((n, wm), faccia(n, wm)))
+                    mie.append(((n, wm) + (("play",) if k_g else ()), giocabile(faccia(n, wm)) if k_g else faccia(n, wm)))
             self.ventaglio(tela, mie, cxm, self.H + wm * RAPP / 2 - self.K(130), wm, 6, 0.30, False, scatole, self.K(760), "mano")
             wr = int(self.K(92))
             self.ventaglio(tela, [(("dorso", wr), dorso(wr))] * n_suo, cxm, -wr * RAPP / 2 + self.K(100), wr, 6, 0.42, True, [], self.K(560), "mano_suo")
@@ -1537,12 +1570,17 @@ class Tappeto:
         else:
             w9 = int(self.K(90))
             mostrate_, mie9 = list(f.get("mostrate") or []), []
+            gioc9 = [g_[0] for g_ in f.get("gioc") or [] if g_[3] == "mano"]
             for n in mano:
+                k_g = n in gioc9
+                if k_g:
+                    gioc9.remove(n)
                 if n in mostrate_:
                     mostrate_.remove(n)
-                    mie9.append(mostrata(faccia(n, w9)))
+                    im_ = mostrata(faccia(n, w9))
                 else:
-                    mie9.append(faccia(n, w9))
+                    im_ = faccia(n, w9)
+                mie9.append(giocabile(im_) if k_g else im_)
             for chi, carte_, nomi_, col_ in (("mio", mie9 + [dall_esilio(faccia(n, w9)) for n in esi_mie], mano + esi_mie, BLU),
                                              ("suo", [dorso(w9)] * n_suo + [dall_esilio(dorso(w9) if n == FACCIA_GIU else faccia(n, w9)) for n in esi_sue],
                                               [None] * n_suo + [None if n == FACCIA_GIU else n for n in esi_sue], ARANCIO)):

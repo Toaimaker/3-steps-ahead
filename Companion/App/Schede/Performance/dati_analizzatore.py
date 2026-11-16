@@ -286,6 +286,14 @@ def per_turno(match_id, seat, inizia, turni, grezzo=False):
                 extra[altro[chi]] = max(extra[altro[chi]], sue)
         for chi, e in extra.items():
             out[f"pe{chi}"] = tuple(ORDINE_EXTRA[i] for i in range(1, min(e, 3) + 1)) or (ORDINE_EXTRA[0],)
+        # le carte pescate per nome (16 nov 2026, Autore: «per ogni filtro che parla di carte in advanced filter dobbiamo sempre poter scrivere alla fine una
+        # carta specifica se la conosciamo»): «np{chi}{x}{n}»; dell'avversario Arena non scrive la carta (grpId 0), quindi niente
+        for t, s_, cosa, g_, _tp in d["azioni"]:
+            if cosa == "pesca" and g_ and (not turni or t <= turni):
+                chi = "io" if s_ == seat else "lui"
+                nome = nome_intero(nome_grp(g_) or "")
+                if nome:
+                    out.setdefault(f"np{chi}{'' if di_turno(t) == chi else 'x'}{(t + 1) // 2}", []).append(nome)
     for t, s_, cosa, g_, tipi in d["azioni"]:
         if cosa != "magia":
             continue
@@ -304,6 +312,16 @@ def per_turno(match_id, seat, inizia, turni, grezzo=False):
             na = len(info["att"])
             out[f"a{chi}{n}"] = "1 creature" if na == 1 else "2 creatures" if na == 2 else "3+ creatures"
             out[f"d{altro[chi]}{n}"] = "Blocked" if info.get("blocchi") else "No block"
+            # chi ha attaccato e chi ha bloccato, per nome (16 nov 2026): «na{chi}{n}», «nd{chi}{n}» (la difesa sta nel turno dell'altro, come «d»)
+            per_id = {z[5]: z[0] for lato in ((_f.get("c") if isinstance(_f, dict) else None) or []) for z in lato if len(z) > 5}
+            for a_ in info["att"]:
+                nm_ = nome_intero(nome_grp(per_id.get(a_[0])) or "") if per_id.get(a_[0]) else ""
+                if nm_:
+                    out.setdefault(f"na{chi}{n}", []).append(nm_)
+            for b_ in info.get("blocchi") or []:
+                nm_ = nome_intero(nome_grp(per_id.get(b_[0])) or "") if per_id.get(b_[0]) else ""
+                if nm_:
+                    out.setdefault(f"nd{altro[chi]}{n}", []).append(nm_)
             ap = info.get("aperte")
             if ap is None:          # un combattimento letto prima della VERSIONE 12: le terre di chi difende non si sanno
                 out.pop(f"m{chi}{n}", None)
@@ -400,6 +418,43 @@ def _misure_campo(f, lato):
                 v=(f.get("v") or [None, None])[lato])
 
 
+def _nomi_campo(f, lato):
+    """Le carte di un lato di una foto di fine turno, per area del Board: {area: [nomi]} (16 nov 2026: la carta specifica nelle righe del Board). Le aree
+    senza carte (forza, stappate, tipi nel cimitero, vita) non ci sono; la mano solo se la foto la dice (la sua no)."""
+    nome = lambda g: nome_intero(nome_grp(g) or "") if g else ""
+    c = (f.get("c") or [[], []])[lato]
+    tipo = lambda g: ((_carta(nome_grp(g) or "") or {}).get("tipo") or "").split(" // ")[0]
+    out = {k: [] for k in ("c", "t", "k", "q", "y", "r", "w", "z", "m", "g", "j", "h", "e")}
+    for z in c:
+        n_ = nome(z[0])
+        if not n_ or z[2]:          # le pedine non hanno un nome di carta da cercare
+            continue
+        if e_terra(nome_grp(z[0]) or ""):
+            out["t"].append(n_)
+        elif len(z) > 4 and z[3] is not None:
+            out["c"].append(n_)
+        else:
+            tp = tipo(z[0])
+            for a_, parola in (("k", "Artifact"), ("q", "Equipment"), ("y", "Enchantment"), ("r", "Aura"), ("w", "Planeswalker"), ("z", "Battle")):
+                if parola in tp:
+                    out[a_].append(n_)
+    out["m"] = [nome(g) for g in (f.get("m") or [[], []])[lato] if nome(g)]
+    for g in (f.get("g") or [[], []])[lato]:
+        n_ = nome(g)
+        if n_:
+            out["g"].append(n_)
+            tp = tipo(g)
+            if "Creature" in tp:
+                out["j"].append(n_)
+            if "Instant" in tp or "Sorcery" in tp:
+                out["h"].append(n_)
+    out["e"] = [nome(g) for g in (f.get("e") or [[], []])[lato] if nome(g)]
+    return out
+
+
+AREE_CON_CARTE = ("c", "t", "k", "q", "y", "r", "w", "z", "m", "g", "j", "h", "e")
+
+
 def campo_inizio_turno(d, seat, di_turno, turni):
     """Le famiglie «b...» di per_turno: il campo di tutti e due all'inizio di ogni turno, dalla foto di fine del turno prima (il turno 1 parte dal campo
     vuoto: creature, forza, terre, altri permanenti a zero; mano, vite, cimitero ed esilio non si sanno). Chi e' di turno ha appena stappato: tutte le sue
@@ -418,6 +473,11 @@ def campo_inizio_turno(d, seat, di_turno, turni):
                 continue
             mis = {"io": _misure_campo(f, a), "lui": _misure_campo(f, b)}
             mis[chi_t]["s"] = mis[chi_t]["t"]
+            for chi, lato in (("io", a), ("lui", b)):        # le carte per nome: «nb{area}{chi}{x}{n}»
+                x_ = "" if chi == chi_t else "x"
+                for k, nomi_ in _nomi_campo(f, lato).items():
+                    if nomi_:
+                        out[f"nb{k}{chi}{x_}{n}"] = sorted(nomi_)
         for chi in ("io", "lui"):
             x_ = "" if chi == chi_t else "x"
             for k, _nome, voci in BOARD_AREE:
@@ -581,7 +641,7 @@ def padrone_turno(k):
         return None
     fam, chi, ics, q = m_.groups()
     altro = {"io": "lui", "lui": "io"}
-    return (altro[chi] if (ics or fam == "d") else chi), q
+    return (altro[chi] if (ics or fam in ("d", "nd")) else chi), q
 
 
 def gruppi_turno(filtri):
@@ -773,7 +833,7 @@ def spot_filtri(x, filtri):
                     continue
                 if not all(collections.Counter(voci)[i] >= q for i, q in voglio.items()):
                     continue
-                padrone = altro[chi] if (ics or fam == "d") else chi        # di chi e' il turno: il suo, o quello dell'altro («x»; la difesa e' nel suo attacco)
+                padrone = altro[chi] if (ics or fam in ("d", "nd")) else chi        # di chi e' il turno: il suo, o quello dell'altro («x»; la difesa e' nel suo attacco)
                 t = 2 * n - 1 if padrone == primo else 2 * n
                 aggiungi(t, DOVE_FAMIGLIA.get(fam, "inizio"), chi == "io", fase=_fase_lancio(x, t, seat if chi == "io" else 3 - seat, voglio) if fam in ("", "r", "n", "nr") else None)
         elif re.fullmatch(r"leak_l\d+", k) and v == "Yes":
@@ -967,11 +1027,24 @@ def colori_mazzo(nomi_):
     """La variante di colore del tuo mazzo (WUBRG, «C» senza colori) dalle magie della lista; None senza lista."""
     if not nomi_:
         return None
-    trovati = set()
+    # 16 nov 2026: i simboli ibridi chiedono uno dei loro colori, non tutti e due (un mono bianco con Peer Review {W/U} non e' Azorius): le carte che il database
+    # di Arena conosce passano da matchup_log.colori_di (minimo 1: la lista e' tutta del mazzo); le altre col colore della tabella, come prima
+    trovati, note = set(), []
+    try:
+        import matchup_log as MU
+        R = MU.requisiti()
+    except Exception:       # noqa: BLE001 - senza database delle carte, i colori della tabella
+        MU, R = None, {}
     for n in nomi_:
+        r_ = R.get(MU._chiave(n)) if MU is not None else None
+        if r_ and (r_[0] or r_[1] or r_[2]):       # una magia coi suoi simboli, o una terra
+            note.append(n)
+            continue
         c = _carta(n)
         if c and "Land" not in (c.get("tipo") or "").split(" // ")[0]:
             trovati |= set(c.get("colori") or "")
+    if note:
+        trovati |= set(MU.colori_di(note, minimo=1))
     return "".join(k for k in "WUBRG" if k in trovati) or "C"
 
 
@@ -1330,6 +1403,82 @@ def foto_partita(x):
     return dict(mano0=gira(d.get("mano0")), turni=turni, ultima=(ult[0], ult[1] == seat, gira(ult[2])) if ult else None)
 
 
+FRASI_EMOTE = {"Phrase_Basic_Hello": "Hello!", "Phrase_Basic_GoodGame": "Good game", "Phrase_Basic_Nice": "Nice!", "Phrase_Basic_Thinking": "Thinking...",
+               "Phrase_Basic_Oops": "Oops", "Phrase_Basic_YourGo": "Your go", "Phrase_Basic_GoodLuck": "Good luck!"}
+
+
+def _frase_emote(p_):
+    import re
+    if p_ in FRASI_EMOTE:
+        return FRASI_EMOTE[p_]
+    return re.sub(r"(?<=[a-z])(?=[A-Z])", " ", (p_ or "").split("_")[-1]) or p_
+
+
+def _info_foto(f, seat):
+    """I dati del passo che vengono dalle richieste e dai messaggi di Arena (16 nov 2026), dal tuo posto, coi nomi delle carte."""
+    try:
+        import testi_arena as TA
+    except Exception:      # noqa: BLE001 - senza database niente testi
+        TA = None
+    mio = lambda d_: (d_ or {}).get("chi") in (None, seat)
+    out = {}
+    if f.get("pa") and mio(f["pa"]):
+        out["pa"] = list(f["pa"].get("ids") or [])
+    if f.get("pb") and mio(f["pb"]):
+        out["pb"] = [b_[0] for b_ in f["pb"].get("b") or []]
+    if f.get("lt") and mio(f["lt"]):
+        out["lt"] = list(f["lt"].get("ids") or [])
+    if f.get("op") and mio(f["op"]):
+        out["op"] = list(f["op"].get("o") or [])
+    if f.get("sn") and mio(f["sn"]):
+        out["sn"] = (f["sn"].get("mn"), f["sn"].get("mx"), [nome_grp(g_) or "a card" for g_ in f["sn"].get("g") or []])
+    if f.get("pdd"):
+        out["pdd"] = [(nome_grp(g_) or "a card", v_) for g_, v_ in f["pdd"].values()]
+    if f.get("sp"):
+        out["sp"] = [(nome_grp(e_[2]) or "a card", e_[1]) for e_ in f["sp"]]
+    if f.get("ch"):
+        out["ch"] = [(s_ == seat, _frase_emote(p_)) for s_, p_ in f["ch"]]
+    if f.get("dado"):
+        out["dado"] = (f["dado"].get(str(seat)), f["dado"].get(str(2 if seat == 1 else 1)))
+    if f.get("mul"):
+        out["mul"] = (f["mul"].get(str(seat), 0), f["mul"].get(str(2 if seat == 1 else 1), 0))
+    if f.get("pp"):
+        out["pp"] = True
+    for k_ in ("canc", "auto", "conc"):
+        if f.get(k_):
+            out[k_] = True
+    if f.get("mdec"):
+        out["mdec"] = list(f["mdec"])
+    if f.get("parte") is not None:
+        out["parte"] = "first" if f["parte"] == seat else "second"
+    if f.get("opz") and mio(f["opz"]):
+        out["opz"] = (nome_grp(f["opz"].get("g")) or "a card", f.get("opr") or "")
+    elif f.get("opr"):
+        out["opz"] = ("a card", f["opr"])
+    if f.get("cerca") is not None:
+        out["cerca"] = [nome_grp(g_) or "a card" for g_ in f["cerca"]]
+    if f.get("div"):
+        out["div"] = [(nome_grp(a_) or "a creature", [(nome_grp(b_) or "a creature", q_) for b_, q_ in bb_]) for a_, bb_ in f["div"]]
+    if f.get("trz"):
+        out["trz"] = [(nome_grp(g_) or "a card", z_) for g_, z_ in f["trz"]]
+    if f.get("hvm"):
+        out["hvm"] = list(f["hvm"])
+    if f.get("abt") and TA is not None:
+        out["abt"] = {int(i_): TA.abilita(g_) or "" for i_, g_ in f["abt"].items()}
+    gi_ = f.get("gi") or {}
+    if gi_.get("a") and gi_.get("chi") in (None, seat):
+        voci = []
+        for e_ in gi_["a"]:
+            n_ = nome_grp(e_[3]) or "a card"
+            if e_[1] == "A" and len(e_) > 4 and e_[4] and TA is not None:
+                tx_ = (TA.abilita(e_[4]) or "").strip()
+                voci.append(f"{n_}: {tx_[:48]}{'…' if len(tx_) > 48 else ''}" if tx_ else n_)
+            else:
+                voci.append(n_)
+        out["gioc"] = list(dict.fromkeys(voci))
+    return out
+
+
 def gira_foto(f, seat):
     """Una foto di mana_aperto o di replay_log girata dal tuo posto, coi nomi (come in foto_partita)."""
     if not f:
@@ -1363,7 +1512,16 @@ def gira_foto(f, seat):
                 pc=list(f.get("pc") or []), pd=dict(f.get("pd") or {}),       # le copie in pila; da quale creatura parte la copia preparata
                 pz={k_: [z_, z_o == seat] for k_, (z_, z_o) in (f.get("pz") or {}).items()},      # da quale pila e' lanciata (tua?)
                 mp=(((f.get("mp") or [[], []])[seat - 1]), ((f.get("mp") or [[], []])[2 - seat])),      # il mana in riserva (tuo, suo)
-                vel=((f.get("vel") or {}).get(seat), (f.get("vel") or {}).get(2 if seat == 1 else 1)))
+                vel=((f.get("vel") or {}).get(seat), (f.get("vel") or {}).get(2 if seat == 1 else 1)),
+                # le tue giocate legali in questo passo (16 nov 2026): (nome, id, lancio|terra|abilita' C/P/A, zona mano/campo/esi/cim)
+                pt=[tuple(x_) for x_ in f.get("pt") or []],
+                pf=list(f.get("pf") or []),        # le carte il cui potenziamento e' appena finito (16 nov 2026)
+                hv=list(f.get("hv") or []),       # le carte che l'avversario ha avuto sotto il mouse in questo passo (16 nov 2026)
+                # cosa Arena ti ha chiesto e detto in questo passo (16 nov 2026, «vai monta»): chi poteva attaccare o bloccare, i bersagli legali, le
+                # opzioni del lancio, «scegli N», il danno previsto, gli avvisi, le emote, il dado, il testo delle abilita' in pila
+                info=_info_foto(f, seat),        # i potenziamenti del passo: (id, forza, costituzione), «got +3/+3» (16 nov 2026)
+                gioc=[(nome_grp(e_[3]) or f"#{e_[3]}", e_[0], e_[1], e_[2]) for e_ in ((f.get("gi") or {}).get("a") or [])]
+                if (f.get("gi") or {}).get("chi") in (None, seat) else [])
 
 
 VERBI = ("paid", "played", "cast", "drew", "gained", "lost", "created", "attacked", "discarded", "sacrificed", "turn", "conceded", "scried", "revealed", "shuffled", "surveilled", "chose")
@@ -1400,8 +1558,30 @@ def azioni_partita(x):
             rel = dict(tipo="spell", nome=nome_grp(r_["g"]), g=r_["g"], mio=r_["chi"] == seat, ab=r_["ab"], bers=[lato(b_) for b_ in r_["bers"]], colpiti=colpiti_di(r_),
                        fuori=_fuori(r_.get("fuori"), seat), da=list(r_.get("da") or []))       # chi ha fatto scattare l'abilita' (15 nov 2026)
         nome = f"{'You' if fr['att'] == seat else 'Opponent'} T{(fr['t'] + 1) // 2} · {fr['step'] or '-'}"
-        out.append((nome, gira_foto(fr["foto"], seat), fr["t"], rel, ev, [(lato(d_[0]), d_[1]) for d_ in fr["danni"]],
+        foto_ = gira_foto(fr["foto"], seat)
+        inf_ = (foto_ or {}).get("info") or {}
+        if inf_.get("pp"):
+            # hai passato potendo giocare: conta solo quando chiudi il tuo turno (seconda fase principale, fine) con una terra o una magia ancora
+            # giocabili; passare con un'istantanea in mano o dalla prima fase al combattimento e' normale (16 nov 2026: senza questo, 256 passi su 256)
+            ist_ = {(e_[0], e_[1]) for e_ in (fr["foto"].get("gi") or {}).get("a") or [] if len(e_) > 5 and e_[5]}
+            mie_ = [e_[0] for e_ in (foto_ or {}).get("gioc") or [] if e_[2] in ("C", "P") and (e_[1], e_[2]) not in ist_]
+            if fr["att"] == seat and fr["step"] in ("Main2", "End") and mie_ and not (foto_ or {}).get("pila"):
+                inf_["pp"] = list(dict.fromkeys(mie_))
+            else:
+                inf_.pop("pp", None)
+        out.append((nome, foto_, fr["t"], rel, ev, [(lato(d_[0]), d_[1]) for d_ in fr["danni"]],
                     [(lato(d_[0]), d_[1], d_[2] if len(d_) > 2 else None) for d_ in fr["danni"]]))       # il settimo: chi infligge ogni danno
+    if out and (out[0][1].get("mio") or out[0][1].get("suo")):
+        # il passo zero, il campo vuoto con la mano tenuta (16 nov 2026, Autore: «perche' a volte il replay parte con gia' terre in campo?»): il
+        # primo passo del log e' gia' la prima terra giocata, e senza un passo prima quella terra non entrava mai in campo con la sua animazione
+        f0 = dict(out[0][1])
+        mie = [c[0] for c in f0.get("mio") or [] if not c[2]] if all(len(c) > 2 for c in f0.get("mio") or []) else []
+        f0.update(mio=[], suo=[], pila=[], mn=[], mnd=None, pz={}, pd={}, pc=[], scry=[], riv=[], mes=[],
+                  mano=list(f0.get("mano") or []) + mie, n_suo=(f0.get("n_suo") or 0) + len([c for c in f0.get("suo") or [] if len(c) > 2 and not c[2]]))
+        f0["info"] = dict(f0.get("info") or {})
+        for k_ in ("dado", "mul", "mdec", "parte"):      # le righe dell'inizio stanno solo sul passo zero
+            (out[0][1].get("info") or {}).pop(k_, None)
+        out.insert(0, (out[0][0].split(" · ")[0] + " · Game start", f0, out[0][2], None, [(True, "The game begins")], [], []))
     return out
 
 
@@ -1703,6 +1883,12 @@ for _n_ in CAMPI_TURNO:
             NOME[f"t_r{_ch}{_x}{_n_}"] = f"{_Tu} · {_di} {_tn} · cast, by role"
             ORDINE_VALORI[f"t_r{_ch}{_x}{_n_}"] = ORDINE_RUOLI
             NOME[f"t_n{_ch}{_x}{_n_}"] = NOME[f"t_nr{_ch}{_x}{_n_}"] = f"{_Tu} · {_di} {_tn} · the card cast"
+            NOME[f"t_np{_ch}{_x}{_n_}"] = f"{_Tu} · {_di} {_tn} · the card drawn"
+            for _a, _nm, _voci in BOARD_AREE:
+                if _a in AREE_CON_CARTE:
+                    NOME[f"t_nb{_a}{_ch}{_x}{_n_}"] = f"{_Tu} · {_nm.lower()} at the start of {_quando(_di)} · the card"
+        NOME[f"t_na{_ch}{_n_}"] = f"{_Tu} · {'your' if _ch == 'io' else 'their'} {_tn} · the attacking card"
+        NOME[f"t_nd{_ch}{_n_}"] = f"{_Tu} · {'the opponent' if _ch == 'io' else 'your'} {_tn} · the blocking card"
     for _x, _di in (("", "your"), ("x", "the opponent's")):
         for _a, _nm, _voci in BOARD_AREE:
             if _a in BOARD_AVANTI:
@@ -1711,6 +1897,7 @@ for _n_ in CAMPI_TURNO:
 DOVE_FAMIGLIA.update({f"b{_a}": "inizio" for _a, _n, _v in BOARD_AREE})
 DOVE_FAMIGLIA.update({f"b{_a}v": "inizio" for _a in BOARD_AVANTI})
 DOVE_FAMIGLIA.update(r="magia", n="magia", nr="magia")
+DOVE_FAMIGLIA.update(np="inizio", na="comb", nd="comb", **{f"nb{_a}": "inizio" for _a in AREE_CON_CARTE})
 # Hero e Opponent nei nomi dei filtri turno per turno (16 nov 2026, Autore: «you che poi deve essere Hero Player al posto di you ovunque», «non usare
 # theyr mai più si usa opponent»)
 

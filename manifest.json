@@ -1,6 +1,6 @@
 {
- "version": "0.1.120",
+ "version": "0.1.121",
  "date": "2026-11-16",
- "notes": "Leak Finder: new Board tab in Advanced filters (each side of the table, area by area), spell roles before or after combat, replays that open on the spot of your filters, Filters from here, card search boxes",
+ "notes": "Replayer: Moments now built from Every action (reliable stack and combat order), your playable cards lit up, buffs and their end animated, planeswalker powers with their text, what Arena asked you (attackers, blockers, targets, options), turns passed with plays left, exact mulligans, marked damage, opponent's hovered cards, Flameshape cards playable only with a Wizard, and many sequence fixes",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

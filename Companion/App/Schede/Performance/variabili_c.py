@@ -77,11 +77,8 @@ def _colori_terra(nome):
 
 
 def _colori_mazzo(lista):
-    out = set()
-    for n in lista or {}:
-        if not DA.e_terra(n):
-            out |= set((DA._carta(n) or {}).get("colori") or "") & set("WUBRG")
-    return out
+    """I colori del mazzo dalle magie (16 nov 2026: come DA.colori_mazzo, un simbolo ibrido chiede uno solo dei suoi colori)."""
+    return set(DA.colori_mazzo([n for n in lista or {}]) or "") & set("WUBRG")
 
 
 def campi_mazzo(lista):

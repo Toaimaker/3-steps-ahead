@@ -94,6 +94,7 @@ def chip(c, x0, y0, x1, y1, testo, on, font, scritta=None):
     scelto (14 nov 2026, Autore: «ogni pulsante esistente deve avere il redesign in linea con lo stile»; fino a quel giorno rettangoli col bordo)."""
     disegna_s3(c, x0, y0, x1, y1, testo, font, GRIGI, premuto=on, icona=False, scritta=scritta or ("#ffffff" if on else C["testo"]))
 ALTO_TAB, LARGA_TAB = 34, 132                   # le cartelle
+ALTO_AREE = 26                                  # le cartelle delle sottovoci del Board in Advanced filters (16 nov 2026)
 LARGA_DECK = 1000                               # la finestra By deck
 ALTO_PARTITA = 30                               # una riga della tabella delle partite (30 dal redesign del 14 nov 2026; era 24)
 ALTO_CTRL = 158                                 # la barra del replayer della board: il grafico della partita sopra, i comandi sotto
@@ -168,6 +169,7 @@ RIVELA_MS = 1300            # la carta rivelata resta al centro (il censimento, 
 MANA_MS = 700               # un simbolo di mana dalla terra alla vaschetta (M1)
 SPENDI_MS, SPENDI_PAUSA = 520, 160      # un simbolo dalla vaschetta alla carta che si paga, e la pausa prima del prossimo
 SCRY_MS = 1500              # le carte guardate restano a ventaglio col loro TOP o BOTTOM (S1)
+POTENZIA_MS = 1100          # l'impulso di un potenziamento: la carta accesa e il «+3/+3» che sale (16 nov 2026)
 MESCOLA_MS = 1100           # il grimorio che si rimescola
 FOTOGRAMMA = 8               # ms fra due fotogrammi delle animazioni (guidate dal tempo vero: un fotogramma in ritardo non le rallenta)
 VELO_ALFA = 150             # il velo del duello: quanto si scurisce il resto della tavola
@@ -201,6 +203,8 @@ AVANZATI = {
     # smart filters abbiamo i filtri by deck»): colori, classe, terre, creature, costo medio, magie da 2, rimozioni e rare del mazzo restano variabili
     # dell'analizzatore (Report › Group by, Split by, Spots), per confrontare i mazzi fra loro; un mazzo si sceglie con By deck
     "io": (("Opening hand", (("YOUR OPENING HAND", ("crea_in_mano", "ist_mano", "str_mano", "art_mano", "inc_mano", "pw_mano", "bat_mano", "rim_mano", "c2_mano")),
+                              # la carta specifica (16 nov 2026): una casella che completa
+                              ("A SPECIFIC CARD", ("%mano",)),
                               # per formato (14 nov 2026): nel Limited la tabella misurata, nel Constructed la regola a 60 carte; si vede solo quella del formato
                               ("YOUR MULLIGAN DECISION", ("mull_tabella", "mull_60")))),
            # le pescate (13 nov 2026, Autore: «nei filtri di you e opponent aggiungiamo anche le pescate nel proprio e nel turno avversario più alcuni filtri
@@ -261,6 +265,7 @@ AVANZATI = {
             ("Game", (("LAND DROPS", ("s_terre_lui3", "s_terre_lui4", "s_terre_lui5")),
                       ("LIFE AND CREATURES", ("s_vita_lui", "senza_lui")),
                       ("CARDS IN THEIR HAND", ("mano_lui3", "mano_lui5", "mano_lui7")),
+                      ("A SPECIFIC CARD THEY SHOWED IN THE GAME", ("%sue",)),
                       ("REMOVAL AND INTERACTION", ("s_rim_lui", "s_wipe_lui", "s_counter_lui", "s_cim_lui", "s_magie_lui", "rim_lanciate_lui", "rim_prima_lui",
                                                    "lui_prima_crea", "trucco_comb_lui", "contrastate_lui")),
                       ("CARDS · DISCARDS, SCRY AND SURVEIL", ("scarti_lui", "scry_lui", "scry_giu_lui", "surveil_lui")),
@@ -388,6 +393,39 @@ class _Ricevitore:
 
 def p_is_comb(p_):
     return len(p_) > 3 and isinstance(p_[3], dict) and p_[3].get("tipo") == "comb"
+
+
+def nome_momento(az, k):
+    """Il nome di un momento come nei Moments di sempre: «Opening hand», «You T3» (la fine del turno), «You T6 · combat», «You T6 · Moment of Craving»."""
+    if k == 0:
+        return "Opening hand"
+    nome_, _f, t_, rel_ = az[k][:4]
+    chi_ = nome_.split(" · ")[0]
+    if len(az[k]) > 5 and az[k][5] and "CombatDamage" in nome_:
+        return f"{chi_} · combat"
+    if rel_ and rel_.get("tipo") == "spell" and (rel_.get("bers") or rel_.get("colpiti")):
+        cima_ = ((az[k][1] or {}).get("pila") or [None])[0]
+        cima0_ = ((az[k - 1][1] or {}).get("pila") or [None])[0]
+        if not (cima_ and cima0_ and cima_[4] == cima0_[4]):
+            return f"{chi_} · {rel_.get('nome')}"
+    return chi_
+
+
+def momenti_da_azioni(az):
+    """Quali passi di Every action sono i Moments (16 nov 2026): il passo zero; una magia o un'abilita' coi bersagli o che toglie permanenti quando entra in
+    pila (non ancora nei passi dopo); il passo del danno in combattimento; l'ultimo passo di ogni turno. -> indici in az, in ordine."""
+    out = [0]
+    for k_ in range(1, len(az)):
+        nome_, f_, t_, rel_ = az[k_][:4]
+        danni_ = az[k_][5] if len(az[k_]) > 5 else None
+        fine_ = k_ + 1 == len(az) or az[k_ + 1][2] != t_
+        cima_ = ((f_ or {}).get("pila") or [None])[0]
+        cima0_ = ((az[k_ - 1][1] or {}).get("pila") or [None])[0]
+        magia_ = bool(rel_ and rel_.get("tipo") == "spell" and (rel_.get("bers") or rel_.get("colpiti"))) and not (cima_ and cima0_ and cima_[4] == cima0_[4])
+        comb_ = bool(danni_) and "CombatDamage" in nome_
+        if fine_ or magia_ or comb_:
+            out.append(k_)
+    return out
 
 
 class PaginaPerformance:
@@ -1891,6 +1929,13 @@ class PaginaPerformance:
         passi = self.passi_board(fo)
         if not passi:
             return None
+        # i Moments dalle foto di Every action (16 nov 2026, Autore: «in modalita' moments ora e' un po' buggato nel mettere in sequenza le azioni la pila
+        # ecc mentre in every action e' piu' affidabile»): un momento e' un passo scelto della sequenza azione per azione, con gli stessi dati (la pila, gli
+        # id, da dove parte una magia); senza il log della partita restano i momenti di mana_aperto
+        az_ = DA.azioni_partita(x_) or []
+        idx_m = momenti_da_azioni(az_) if az_ else None
+        if idx_m:
+            passi = [(nome_momento(az_, k_),) + tuple(az_[k_][1:]) for k_ in idx_m]
         f = getattr(self, "fin_board", None)
         if f is None or not f.winfo_exists():
             # il replayer parte con tutte le sezioni espandibili chiuse (14 nov 2026, Autore: «il replayer deve partire con tutte le sezioni espandibili
@@ -2025,6 +2070,8 @@ class PaginaPerformance:
         self._pila_aperta = None
         self._board = dict(x=x_, passi=passi, i=len(passi) - 1 if dove == "fine" else 0, play=False, vel=getattr(self, "_vel_board", 1.0), modo="momenti",
                            momenti_passi=passi)
+        if idx_m:
+            self._board["azioni_passi"], self._board["mom_idx"] = az_, idx_m
         self._board["svolta"] = self.svolta(passi, x_["vinta"])
         if getattr(self, "_modo_board", "momenti") == "azioni":      # resta la scelta dell'ultima volta
             self.cambia_modo_board("azioni", ridisegna=False)
@@ -2238,7 +2285,7 @@ class PaginaPerformance:
             c.create_image(pos(j), cy, image=punto_)
         c.create_image(xi, cy, image=DG.punto(17, "#ffffff", "#0f86cc", 2))
         for s_ in DA.segnalibri():      # gli spot segnati di questa partita in questo modo: un segno d'oro sopra la timeline
-            if s_.get("partita") == b["x"].get("partita") and s_.get("modo") == b.get("modo", "momenti") and 0 <= s_.get("i", -1) < n:
+            if s_.get("partita") == b["x"].get("partita") and s_.get("modo") == b.get("modo", "momenti") and 0 <= (s_.get("i") if s_.get("i") is not None else -1) < n:       # il segno fatto dal vivo (★ MARK) ha solo il turno
                 xs_ = pos(s_["i"])
                 c.create_polygon(xs_ - 5, cy - 20, xs_ + 5, cy - 20, xs_ + 5, cy - 9, xs_, cy - 13, xs_ - 5, cy - 9, fill="#ffd23f", outline="")
         im_f = DG.spot_filtro(12, SEGNO_FILTRO, "#ffffff")
@@ -2982,6 +3029,17 @@ class PaginaPerformance:
         if c is None or not c.winfo_exists() or not b:
             return
         F = self.F
+        mi_ = b.get("mom_idx") if b.get("modo") == "momenti" and not b.get("_pre") else None
+        if mi_ and getattr(self, "_anima", False) and 0 < b["i"] < len(mi_) and mi_[b["i"]] - 1 > mi_[b["i"] - 1]:
+            # un momento avanti: prima, senza animazioni, la tavola all'azione subito prima del momento; poi il momento anima solo la sua azione, come in
+            # Every action (16 nov 2026: animare in un colpo tutto quello che era successo dal momento prima mescolava l'ordine di pila, voli e combattimento)
+            passi_m, i_m = b["passi"], b["i"]
+            b["_pre"], b["passi"], b["i"], self._anima = True, b["azioni_passi"], mi_[i_m] - 1, False
+            try:
+                self.disegna_board()
+            finally:
+                b["passi"], b["i"], self._anima = passi_m, i_m, True
+                b.pop("_pre", None)
         import mazzi_salvati as MS
         self.disegna_liste()
         # i momenti
@@ -3038,6 +3096,8 @@ class PaginaPerformance:
         Wt = W - LARGA_RACCONTO - 12 if cr is None else W     # col racconto staccato la tavola prende tutto: la pila sta sul tappeto
         nome, f, _t, rel = b["passi"][b["i"]][:4]
         prima = b["passi"][b["i"] - 1][1] if b["i"] > 0 else None
+        if mi_ and 0 < mi_[b["i"]] <= len(b["azioni_passi"]):       # nei Moments da Every action: la foto dell'azione subito prima
+            prima = b["azioni_passi"][mi_[b["i"]] - 1][1]
         if getattr(self, "b_segna", None) is not None:
             segnato_ = DA.segnato(b["x"].get("partita"), b.get("modo", "momenti"), b["i"])
             self.b_segna.metti("Bookmarked ★" if segnato_ else "Bookmark", segnato_)
@@ -3093,6 +3153,9 @@ class PaginaPerformance:
         for nl_ in self.leak_passi(b).get(b["i"], []):       # i leak di questo momento (leak.py): un indizio, non una sentenza
             i_l = cc.create_text(x0_r + 14, y, text=f"▲ LEAK · {nl_}", anchor="nw", fill="#ff5d5d", font=F(8, True), width=larga_r - 28)
             y = (cc.bbox(i_l) or (0, 0, 0, y + 14))[3] + 6
+        for col_i, tx_i in self.righe_info(f):      # cosa Arena ti ha chiesto e detto in questo passo (16 nov 2026, «vai monta»)
+            i_i = cc.create_text(x0_r + 14, y, text=tx_i, anchor="nw", fill=col_i, font=F(8, True), width=larga_r - 28)
+            y = (cc.bbox(i_i) or (0, 0, 0, y + 14))[3] + 6
         if cr is None:
             yp = y
         if cr is not None:      # dove va la carta in pila sulla tavola: in cima alla colonna stretta (nel racconto, sotto il titolo)
@@ -3106,6 +3169,15 @@ class PaginaPerformance:
             cc.create_text(x0_r + 14, y, text=f"ON THE STACK · {chi.upper()}" + (" · ABILITY OF" if rel["ab"] else "") + f" · {rel['nome']}", anchor="w",
                            fill="#b58cff", font=F(7, True), width=larga_r - 28)
             y += 26
+            cima_ = ((f or {}).get("pila") or [None])[0]
+            tx_ab = ((f or {}).get("info") or {}).get("abt", {}).get(cima_[4]) if cima_ and rel["ab"] else None
+            if tx_ab:       # quale abilita' (il potere del planeswalker col suo costo in fedelta'): il testo dal database di Arena (16 nov 2026)
+                import re as _re
+                costo_ = next((("+" if m_.group(1) == "got" else "−") + m_.group(2) for _m, t_ in b["passi"][b["i"]][4]
+                               for m_ in [_re.match(_re.escape(rel["nome"]) + r" (got|lost) (\d+) loyalty", t_)] if m_), "")
+                i_ab = cc.create_text(x0_r + 14, y - 8, text=(f"{rel['nome']} {costo_}: " if costo_ else "") + f"“{tx_ab}”", anchor="nw", fill="#d6c2ff",
+                                      font=F(8), width=larga_r - 28)
+                y = (cc.bbox(i_ab) or (0, 0, 0, y + 14))[3] + 10
             dove_n = {"cim_mio": "in your graveyard", "cim_suo": "in the opponent's graveyard", "esi_mio": "in your exile", "esi_suo": "in the opponent's exile",
                       "pila": "on the stack", "mano": "in hand", "grimorio": "in the library"}
             for _i, (z_, _l, n_) in (rel.get("fuori") or {}).items():      # i bersagli che non sono in campo: una contromagia, una rianimazione
@@ -3125,6 +3197,9 @@ class PaginaPerformance:
         elif cr is not None:
             c.create_text(xr + 14, 36, text="nothing on the stack", anchor="w", fill=C["grigio"], font=F(7))
         self.frecce_board(c, rel, pila_box, W, H)
+        self.metti_giocabili(c, f)
+        self.metti_possibili(c, f)
+        self.metti_sguardo(c, f)
         if "spalla" not in b:       # cosa diceva la spalla (solo nei limited seguiti dal companion)
             try:
                 import replay_log as RL
@@ -3133,12 +3208,13 @@ class PaginaPerformance:
                 b["spalla"] = {}
         t_passo = b["passi"][b["i"]][2]
         consigli = [(None, "THE COMPANION SAID")] + [("spalla", s_) for s_ in b["spalla"].get(t_passo, [])] if b["spalla"].get(t_passo) else []
-        if b.get("modo") == "azioni":
-            self.danni_board(c, b["passi"][b["i"]][5], b["passi"][b["i"]][6] if len(b["passi"][b["i"]]) > 6 and "Damage" not in b["passi"][b["i"]][0] else None)
-            self.guadagno_board(c, prima, f, b["passi"][b["i"]][5])
+        if b.get("modo") == "azioni" or mi_:
+            pas_, i_p = (b["azioni_passi"], mi_[b["i"]]) if mi_ else (b["passi"], b["i"])
+            self.danni_board(c, pas_[i_p][5], pas_[i_p][6] if len(pas_[i_p]) > 6 and "Damage" not in pas_[i_p][0] else None)
+            self.guadagno_board(c, prima, f, pas_[i_p][5])
             alza_icone(c)
-            righe_r = [(m_, "▸ " + t_) for m_, t_ in b["passi"][b["i"]][4]]       # quest'azione, in testa, poi la spalla, poi il resto del turno
-            prima_ = [ev_ for p_ in b["passi"][:b["i"]] if p_[2] == b["passi"][b["i"]][2] for ev_ in p_[4]]
+            righe_r = [(m_, "▸ " + t_) for m_, t_ in pas_[i_p][4]]       # quest'azione, in testa, poi la spalla, poi il resto del turno
+            prima_ = [ev_ for p_ in pas_[:i_p] if p_[2] == pas_[i_p][2] for ev_ in p_[4]]
             righe_r += consigli
             if prima_:
                 righe_r += [(None, "EARLIER THIS TURN")] + list(reversed(prima_))
@@ -3278,6 +3354,7 @@ class PaginaPerformance:
                 self._pedine_nomi[q["nome"]] = q["grp"]
             if q["nome"]:
                 (mani if q["zkey"] == "mano" else self._box_carte).append(tuple(q.get("vis") or bx) + (q["nome"],))
+        self._mano_vis = list(mani)          # la parte che si vede di ogni carta della tua mano (le giocabili si accendono li')
         self._box_carte += list(reversed(mani))     # nella mano a ventaglio la carta di destra sta sopra: il passaggio del mouse la trova prima
         for i_a, h_a in (info.get("attaccati") or {}).items():      # l'aura attaccata sta sul riquadro della carta che la porta (frecce, voli)
             if h_a in self._pos_id:
@@ -3322,6 +3399,7 @@ class PaginaPerformance:
                 for i_p, (n_p, x_p, y_p, lato_p) in conta_p.items():
                     if n_p > 1:
                         self._pool_badge[(chi_p, i_p)] = self.badge_mana(c, x_p, y_p, lato_p, n_p, "pool")
+        self._mano_mio_box = (info.get("mani") or {}).get("mio")
         self._mano_suo_box = ((info.get("mani") or {}).get("suo")      # col tavolo ingrandito la sua mano sta in mezzo alla sua fila dietro
                               or (tp.X(tp.L["MANO"][0]) - tp.K(46), -tp.K(120), tp.X(tp.L["MANO"][0]) + tp.K(46), tp.K(20)))
         if DT.PEDINE_ATTESA:        # un'immagine di pedina in arrivo: quando c'e', la tavola si ridisegna (senza animazione)
@@ -3609,7 +3687,7 @@ class PaginaPerformance:
         # cima (la magia contrastata sta sotto la contromagia)
         in_pila_turno = Counter()       # lanciate in questo turno e non ancora risolte (dai racconti dei passi: «cast X», «X resolved»)
         lanciate_turno = Counter()      # lanciate in questo turno, risolte o no: una che arriva nel cimitero o in esilio senza altra origine viene dalla pila
-        b_p = getattr(self, "_board", None) or {}
+        b_p = self.vista_azioni(getattr(self, "_board", None)) or {}
         if b_p.get("passi") and b_p.get("modo") == "azioni":
             i_p = b_p.get("i", 0)
             t_p = b_p["passi"][i_p][2]
@@ -3619,8 +3697,9 @@ class PaginaPerformance:
             for q_ in range(q0, i_p):
                 for _m, tx_ in (b_p["passi"][q_][4] if len(b_p["passi"][q_]) > 4 else []):
                     if " cast " in f" {tx_} ":
-                        in_pila_turno[tx_.split(" cast ", 1)[1].strip()] += 1
-                        lanciate_turno[tx_.split(" cast ", 1)[1].strip()] += 1
+                        n_c = tx_.split(" cast ", 1)[1].replace(" from the top of the library", "").strip()
+                        in_pila_turno[n_c] += 1
+                        lanciate_turno[n_c] += 1
                     elif tx_.endswith(" resolved") and in_pila_turno[tx_[:-len(" resolved")]] > 0:
                         in_pila_turno[tx_[:-len(" resolved")]] -= 1
             if pila_prima and in_pila_turno[pila_prima[1]] > 0:         # quella in cima ha la sua regola (dalla_pila)
@@ -3690,7 +3769,8 @@ class PaginaPerformance:
                     da = da_mano(n)
                     if da:
                         mano_meno[n] -= 1
-                elif suo_mano[1] < suo_mano[0]:
+                elif suo_mano[1] < suo_mano[0] or any(tx_ == f"Opponent played {n}" for _m, tx_ in eventi_passo):
+                    # (16 nov 2026: la terra giocata dalla sua mano quando il conto della sua mano nel log resta indietro, «Opponent played Island»)
                     da = getattr(self, "_mano_suo_box", None)
                 if da is None and not ped:      # messa in campo dal grimorio
                     da = zc.get(f"lib_{zkey}")
@@ -3814,6 +3894,25 @@ class PaginaPerformance:
                     mosse.append((z[1], z[3], z[2], s_[0], None, False, 0.5, "attacca", s_[1]))
                     continue
                 dove = zc.get(f"esi_{z[0]}")
+            elif not ped and cim_piu[1 - i][z[1]] > 0:
+                # la carta controllata dall'altro va nel cimitero del proprietario (400.3; 16 nov 2026: Sunpearl Kirin presa con Come Back Wrong e
+                # sacrificata a fine turno volava nel suo grimorio)
+                cim_piu[1 - i][z[1]] -= 1
+                dove = zc.get(f"cim_{lati[1 - i]}")
+                muore = True
+            elif not ped and esi_piu[1 - i][z[1]] > 0:      # e nell'esilio del proprietario
+                esi_piu[1 - i][z[1]] -= 1
+                dove = zc.get(f"esi_{lati[1 - i]}")
+            elif not ped and any(tx_ == f"{z[1]} exiled" for _m, tx_ in eventi_passo) \
+                   and any(tx_.startswith(f"{z[1]} returned to the battlefield") for _m, tx_ in eventi_passo):
+                # esce e rientra nello stesso passo (16 nov 2026: Daydream su Starfield Shepherd): vola in esilio e torna al suo posto, con l'id nuovo
+                nuova_z = next((zz for zz in self._box_zona if zz[0] == z[0] and zz[1] == z[1]), None)
+                esi_b = zc.get(f"esi_{z[0]}")
+                if esi_b:
+                    mosse.append((z[1], z[3], z[2], esi_b, None, False, 0.5))
+                    if nuova_z:
+                        mosse.append((z[1], nuova_z[3], esi_b, nuova_z[2], nuova_z[4], False, 1))       # nell'effetto, prima che la magia lasci la pila
+                continue
             elif i == 0 and mano_piu[z[1]] > 0:
                 dove = next((zz[2] for zz in self._box_zona if zz[0] == "mano" and zz[1] == z[1]), None)
             elif i == 1 and not ped and suo_mano[1] - suo_mano[0] - suo_torna[0] > 0:
@@ -3825,7 +3924,9 @@ class PaginaPerformance:
                 # la carta a due facce lascia il campo con la faccia dietro e arriva nel cimitero o in esilio con quella davanti (14 nov 2026, la caccia
                 # ai glitch: Neo Exdeath muore, nel cimitero e' Exdeath, Void Warlock, e volava nel grimorio): il nome nuovo lo dice il racconto del passo
                 for k_z2, piu_ in ((f"cim_{z[0]}", cim_piu[i]), (f"esi_{z[0]}", esi_piu[i])):
-                    n2 = next((n2 for n2, q2 in piu_.items() if q2 > 0 and n2 != z[1] and any(n2 in tx_ for _m, tx_ in eventi_passo)), None)
+                    # non la magia che lascia la pila nello stesso passo (16 nov 2026: Daydream risolta finiva sulla creatura che fa uscire e rientrare)
+                    n2 = next((n2 for n2, q2 in piu_.items() if q2 > 0 and n2 != z[1] and any(n2 in tx_ for _m, tx_ in eventi_passo)
+                               and not (pila_prima and stessa(pila_prima[1], n2))), None)
                     if n2:
                         piu_[n2] -= 1
                         dove, muore = zc.get(k_z2), k_z2.startswith("cim")
@@ -3855,17 +3956,25 @@ class PaginaPerformance:
                         elif lanciate_turno[n] > 0:         # lanciata in questo turno (risolta mentre in pila c'era la sua abilita')
                             lanciate_turno[n] -= 1
                             da = (pila_prima or (None,))[0] or getattr(self, "_stack_box", None)
-                        elif k_z.startswith("esi") and any(tx_ == f"{n} exiled" for _m, tx_ in eventi_passo) and ((prima.get("cim") or vuoto)[i]):
+                        elif k_z.startswith("esi") and any(tx_ == f"{n} exiled" for _m, tx_ in eventi_passo) and ((prima.get("cim") or vuoto)[i]) and not (dalla_pila and any(tx_ == f"{n} resolved" for _m, tx_ in eventi_passo)):
+                            # (16 nov 2026: Gandalf risolto come Flameshape va in esilio dalla pila, non dal cimitero)
                             da = zc.get(f"cim_{lato}")      # esiliata da un cimitero che la foto non aveva per intero
                         elif i == 0 and mano_meno[n] > 0:
                             mano_meno[n] -= 1
                             da = da_mano(n)
                         elif i == 1 and suo_mano[1] < suo_mano[0]:
                             da = getattr(self, "_mano_suo_box", None)
-                        if da is None and dalla_pila and pila_prima and not (len(pila_prima) > 3 and pila_prima[3]):
+                        if da is None and dalla_pila and pila_prima and not (len(pila_prima) > 3 and pila_prima[3]) \
+                                and any(tx_ == f"{n} resolved" for _m, tx_ in eventi_passo):
+                            # (solo la carta che il passo dice risolta: con Flameshape anche la Mountain esiliata dalla cima arrivava senza spiegazione)
                             # la magia uscita dalla pila col nome dell'altra meta' (15 nov 2026: Flameshape, la magia di Gandalf, va in esilio come
                             # Gandalf): una carta arrivata senza altra spiegazione mentre una magia lascia la pila e' lei
                             da, dalla_pila = pila_prima[0], False
+                        if da is None and not any(w_ in tx_ for _m, tx_ in eventi_passo for w_ in ("milled", "surveil", "library", "exiled", "discard",
+                                                                                                        "graveyard", "left out part")):
+                            # nessuna azione del passo dice da dove arriva (16 nov 2026: Solstice Revelations gia' nel cimitero, senza nome prima): compare
+                            # al suo posto, senza un volo dal grimorio inventato
+                            continue
                         if da is None:
                             da = zc.get(f"lib_{lato}")
                         s_ = sotto_di(n) if k_z.startswith("esi") else None
@@ -3894,7 +4003,8 @@ class PaginaPerformance:
                     mosse.append(("dorso", False, zc["lib_suo"], bx_n, it_n, False, 4))
                 else:
                     mosse.append(("dorso", False, zc["lib_suo"], self._mano_suo_box, None, False, 4))
-        if dalla_pila and pila_prima and not (len(pila_prima) > 3 and pila_prima[3]) and id_prima not in (prima.get("pc") or [])                 and not any(m_[2] is pila_prima[0] for m_ in mosse) and any("library" in tx_ for _m, tx_ in eventi_passo):
+        if dalla_pila and pila_prima and not (len(pila_prima) > 3 and pila_prima[3]) and id_prima not in (prima.get("pc") or []) \
+               and not any(m_[2] is pila_prima[0] for m_ in mosse) and any("library" in tx_ for _m, tx_ in eventi_passo):
             # la magia che dalla pila va nel grimorio (15 nov 2026: Exude Toxin, l'Omen di Scavenger Regent, «put on top of the library»)
             dest_l = zc.get("lib_mio" if pila_prima[2] else "lib_suo")
             if dest_l:
@@ -3922,6 +4032,12 @@ class PaginaPerformance:
                 da = next((z[2] for z in mano_prima if z[1] == k_m and id(z) not in usate), None) if k_m else None
                 if da:      # vola col nome che ha in mano: l'immagine della Room c'e' col nome intero, non con quello della meta'
                     mosse.append((k_m, False, da, pila_ora[0], it_p, False, 2.5))
+                elif any(tx_ in (f"You cast {pila_ora[1]}", f"You cast {pila_ora[1]} from the top of the library") for _m, tx_ in eventi_passo):
+                    # rilanciata dopo un annullamento che Arena ha scritto riassunto (16 nov 2026, Seam Rip): la foto della mano non l'aveva piu', ma il log
+                    # dice che arriva dalla mano: vola dal centro della mano
+                    box_m = getattr(self, "_mano_mio_box", None) or (mano_prima[len(mano_prima) // 2][2] if mano_prima else None)
+                    if box_m:
+                        mosse.append((pila_ora[1], False, box_m, pila_ora[0], it_p, it_p is not None, 2.5))
             elif suo_mano[1] < suo_mano[0] and getattr(self, "_mano_suo_box", None):
                 # la sua: un dorso dalla sua mano alla pila, e li' si rivela (14 nov 2026, Autore: «anche all'oppo devono scorrere le carte per esempio dalla
                 # mano alla pila e li' rivelarsi»)
@@ -3938,7 +4054,7 @@ class PaginaPerformance:
         # attaccano e i bloccanti verso l'attaccante (spinte nuove, una alla volta), nel passo del danno ogni attaccante colpisce (avanti e indietro), poi
         # i danni, poi chi muore diventa grigio al suo posto, poi va al cimitero
         spinte_nuove = list(getattr(self, "_spinte_anim", []) or [])
-        b_ = getattr(self, "_board", None) or {}
+        b_ = self.vista_azioni(getattr(self, "_board", None)) or {}
         passo_ = (b_.get("passi") or [None])[b_.get("i", 0)] if b_.get("passi") else None
         danni_ = bool(b_.get("modo") == "azioni" and passo_ and len(passo_) > 5 and passo_[5])
         rel_ = passo_[3] if passo_ else None
@@ -3962,6 +4078,7 @@ class PaginaPerformance:
         # uno alla volta (14 nov 2026, Autore: «vorrei che non ci fossero animazioni contemporaneamente, ogni azione ha un suo spazio privato e poi la
         # successiva»): nell'ordine della partita; ogni carta che deve ancora arrivare resta nascosta finche' non tocca a lei
         mosse.sort(key=lambda m_: m_[6])
+        self._voli_persi = []
         # la magia in pila di questo passo (un'abilita' d'entrata, quella dopo) compare quando quella risolta ha lasciato la pila: prima Seam Rip va in
         # campo, poi la sua abilita' sta in pila con la freccia (14 nov 2026)
         # (non si nasconde piu' la pila: la magia risolta, grande come la carta in pila, ci sta sopra finche' non va al suo posto; nasconderla toglieva
@@ -4011,8 +4128,10 @@ class PaginaPerformance:
                 grigia = self.immagine_pezzo(n, w0, tap, grigia=True)
             if img is None:
                 w0 = max(30, round(min(a_[2] - a_[0], a_[3] - a_[1]) if tap else a_[2] - a_[0]))
-                img = self.immagine_carta(n, int(w0), tap)
+                # una pedina (il Ruolo Sorcerer che si attacca) ha l'immagine fra le pedine, non fra le carte: senza, il volo si perdeva (16 nov 2026)
+                img = self.immagine_carta(n, int(w0), tap) or self.immagine_pezzo(n, int(w0), tap)
             if img is None:
+                self._voli_persi.append(n)      # un volo senza immagine si perde: la caccia ai glitch lo segnala (G-VOLO-PERSO)
                 continue
             vecchio_it = None
             if it_ is not None:
@@ -4114,7 +4233,9 @@ class PaginaPerformance:
             # duella solo chi in questo passo fa o riceve danno (15 nov 2026: col primo colpo di Lyra Dawnbringer duellavano tutti gli attaccanti, e poi
             # di nuovo nel passo del danno normale); senza chi infligge il danno (i Moments) come prima
             fonti_c = passo_[6] if len(passo_) > 6 else []
-            coinvolti_ = ({t_ for t_, q_, s_ in fonti_c or [] if q_} | {s_ for t_, q_, s_ in fonti_c or [] if q_})                 if fonti_c and any(len(d_) > 2 and d_[2] is not None for d_ in fonti_c) else None
+            # anche i danni da 0 (Market Gnome che attacca con forza 0, 16 nov 2026): l'attacco c'e', e si vede
+            coinvolti_ = ({t_ for t_, q_, s_ in fonti_c or []} | {s_ for t_, q_, s_ in fonti_c or []}) \
+                if fonti_c and any(len(d_) > 2 and d_[2] is not None for d_ in fonti_c) else None
             for a_id, tg in rel_.get("att") or []:
                 bls = [b_id for b_id, aa in rel_.get("blocchi") or [] if a_id in aa]
                 if coinvolti_ is not None and a_id not in coinvolti_ and not any(b_ in coinvolti_ for b_ in bls):
@@ -4129,6 +4250,10 @@ class PaginaPerformance:
                     bx_d = carta_(k_d)
                     if bx_d:
                         difese.append((k_d, it_d, bx_d))
+                if not difese and bls and tg is not None and carta_(tg):
+                    # i bloccanti non ci sono piu' (morti col primo colpo) e l'attaccante travolge: il duello va verso cio' che attacca (16 nov 2026,
+                    # Timeline Culler dopo Stockpiling Celebrant)
+                    difese.append((tg, item_(tg) if tg not in ("vita_mio", "vita_suo") else None, carta_(tg)))
                 ba = carta_(a_id)
                 if not difese or not ba:
                     continue
@@ -4258,7 +4383,19 @@ class PaginaPerformance:
         if f.get("mn") and tp_m is not None:
             n_paga = next((tx_.split("paid mana for ", 1)[1] for _m, tx_ in eventi_passo if "paid mana for " in tx_), None)
             mio_p = any(m_ and "paid mana for " in tx_ for m_, tx_ in eventi_passo)
-            dest_p = next((z_[2] for z_ in self._box_zona if z_[0] == "mano" and z_[1] == n_paga), None) if mio_p else getattr(self, "_mano_suo_box", None)
+            # dove va il mana (16 nov 2026, Autore: «a volte il mana dal mana pool va verso il mazzo e altre volte verso la pila senza capirsi»): sulla
+            # carta che si paga, cercata anche per meta' nome (Room, Omen, avventure) e in ogni zona a vista (la fila PLAYABLE, le pile); per l'avversario
+            # sui dorsi della sua mano che si vedono, non sul riquadro della sua mano che senza zoom sta per meta' fuori dal bordo alto
+            dest_p = None
+            if mio_p:
+                dest_p = next((z_[2] for z_ in self._box_zona if z_[0] == "mano" and stessa(z_[1], n_paga)), None)                     or next((z_[2] for z_ in self._box_zona if stessa(z_[1], n_paga)), None)
+            else:
+                its_s = [it_ for it_ in (getattr(self, "_mano_suo_items", None) or []) if c.bbox(it_)]
+                bb_s = c.bbox(*its_s) if its_s else None
+                if bb_s:
+                    dest_p = (bb_s[0], max(bb_s[1], 4), bb_s[2], max(bb_s[3], 40))
+                else:
+                    dest_p = getattr(self, "_mano_suo_box", None)
             if f.get("mnd") is not None and self._pos_id.get(f["mnd"]):     # l'abilita' o il permanente pagato: il mana va su di lui (15 nov 2026)
                 dest_p = self._pos_id[f["mnd"]]
             if dest_p is None:
@@ -4343,6 +4480,16 @@ class PaginaPerformance:
                 if c.find_withtag("ombra"):
                     c.tag_lower(cop_v, "ombra")
             voli.append(dict(tipo="vita", fase=9, k=k_v, da=pv, a=fv, cop=cop_v))
+        # i potenziamenti e gli indebolimenti (16 nov 2026, Autore: «nel log esistono ulteriori note che fino ad adesso non sono state considerate?»):
+        # la creatura si accende e sopra le sale il «+3/+3», verde se cresce, rosso se cala, dopo che la magia che lo fa e' arrivata
+        restano_ = {c_[5] for lato_ in ("mio", "suo") for c_ in f.get(lato_) or [] if len(c_) > 5}
+        for i_f in f.get("pf") or []:       # il potenziamento finito: la carta si accende di grigio e le sale sopra «ENDS» (16 nov 2026)
+            if i_f in restano_ and self._pos_id.get(i_f):
+                voli.append(dict(tipo="potenzia", fase=8.6, box=self._pos_id[i_f], txt="ENDS", su=None))
+        for i_p, dp_, dt_ in f.get("pt") or []:
+            box_p = self._pos_id.get(i_p) if i_p in restano_ else (prima_pz.get(i_p) or (None, None))[1]
+            if box_p:     # chi muore per il -2/-2 (Stab) lo riceve al suo posto di prima, prima di andare via (fase 0.4); gli altri dopo gli arrivi
+                voli.append(dict(tipo="potenzia", fase=8.5 if i_p in restano_ else 0.4, box=box_p, txt=f"{dp_:+d}/{dt_:+d}", su=dp_ + dt_ >= 0))
         voli.sort(key=lambda v_: v_["fase"])
         if scivola:     # dopo chi va via (fase 5.5), prima di chi arriva; una carta alla volta, da sinistra (14 nov 2026, Autore: «immagina l'osservatore
             # come un bambino che vuole vedere ogni cosa arrivare per piccoli step che puo' capire uno alla volta»)
@@ -4391,7 +4538,7 @@ class PaginaPerformance:
         dura = {"vola": (quadri + 1) * 16, "sposta": (PASSI_SPINTA + 1) * 16, "colpo": (2 * PASSI_COLPO + 1) * 16, "via": 7 * 45 + 16,
                 "duello": DUELLO_MS + 2 * (PASSI_COLPO + 1) * 16, "rivela": 2 * (quadri + 1) * 16 + RIVELA_MS, "faccia": 12 * 45 + 16,
                 "mescola": MESCOLA_MS, "scry": SCRY_MS + 3 * (quadri + 1) * 16, "mana": MANA_MS, "spendi": SPENDI_MS * max(1, len(f.get("mn") or [])), "vita": 120 + 110 * min(12, max([a__["a"] - a__["da"] for a__ in az if a__["tipo"] == "vita"] or [0])),
-                "scivola": (PASSI_SPINTA + 1) * 16}
+                "scivola": (PASSI_SPINTA + 1) * 16, "potenzia": POTENZIA_MS}
         self._durata_anim = attesa0 + sum(dura.get(a__["tipo"], 0) for a__ in az) + sum(pause_)     # il play aspetta (attesa_play)
         pausate = set()
 
@@ -4435,6 +4582,33 @@ class PaginaPerformance:
                 return esegui(j + 1)
             if t_ == "duello":
                 return self.duello(c, a__, vite_cop_k, lambda: avanti(j + 1))
+            if t_ == "potenzia":     # la creatura si accende e il «+3/+3» le sale sopra
+                x0_, y0_, x1_, y1_ = a__["box"]
+                col_ = "#9aa3b2" if a__["su"] is None else ("#39d98a" if a__["su"] else "#ff5d5d")
+                c.create_rectangle(x0_ - 3, y0_ - 3, x1_ + 3, y1_ + 3, outline=col_, width=3, tags=("anim", "pot_box"))
+                cx_, cy_ = (x0_ + x1_) / 2, (y0_ + y1_) / 2
+                w_ = 30 + 8 * len(a__["txt"])
+                pill_ = c.create_rectangle(cx_ - w_ / 2, cy_ - 15, cx_ + w_ / 2, cy_ + 15, fill="#1a1d24" if a__["su"] is None else ("#0b1a12" if a__["su"] else "#2a0c0c"), outline=col_, width=2,
+                                           tags=("anim", "pot_pill"))
+                txt_ = c.create_text(cx_, cy_, text=a__["txt"], fill=col_, font=self.F(16, True), tags=("anim", "pot_pill"))
+                t_p = [None]
+
+                def sale(k):
+                    if t_p[0] is None:
+                        t_p[0] = time.monotonic()
+                    u_ = (time.monotonic() - t_p[0]) * 1000 / POTENZIA_MS
+                    if u_ < 1.0:
+                        dy_ = -(y1_ - y0_) * 0.35 * min(1.0, u_ * 1.6)
+                        c.coords(pill_, cx_ - w_ / 2, cy_ - 15 + dy_, cx_ + w_ / 2, cy_ + 15 + dy_)
+                        c.coords(txt_, cx_, cy_ + dy_)
+                        c.tag_raise("pot_pill")
+                        self._anim_after.append(self.fin_board.after(FOTOGRAMMA, lambda: sale(k + 1)))
+                    else:
+                        c.delete("pot_box")
+                        c.delete("pot_pill")
+                        avanti(j + 1)
+                sale(0)
+                return
             if t_ == "vita":         # la vita che sale: il cuore verde, poi il numero che sale
                 k_v = a__["k"]
                 c.itemconfigure(f"gu_{k_v}", state="normal")
@@ -5046,11 +5220,19 @@ class PaginaPerformance:
         c.create_oval(cx - R * 0.78, cy - R * 0.78, cx + R * 0.78, cy + R * 0.62, fill="#0c0e12", outline="", tags=("anim", f"vita_corsa_{k_v}"))
         c.create_text(cx, cy - R * 0.08, text=str(valore), fill="#ffffff", font=self.F(max(12, int(R * 0.55)), True), tags=("anim", f"vita_corsa_{k_v}"))
 
+    def vista_azioni(self, b):
+        """Nei Moments ricavati da Every action, la board vista come in Every action (la sequenza intera e l'indice dell'azione del momento): la usano le
+        animazioni che guardano i passi prima nello stesso turno (la dichiarazione dell'attacco, le magie lanciate). 16 nov 2026."""
+        if b and b.get("modo") == "momenti" and b.get("mom_idx") and not b.get("_pre") and b.get("azioni_passi") and 0 <= b.get("i", 0) < len(b["mom_idx"]):
+            return dict(b, passi=b["azioni_passi"], i=b["mom_idx"][b["i"]], modo="azioni")
+        return b
+
     def combattimento_dichiarato(self, b):
         """Nel passo del danno, attaccanti e blocchi come dichiarati nello stesso turno (14 nov 2026, Autore: «le carte non si spostano sui bloccanti ma
         entrambi attacco e difesa spariscono all'improvviso», «attaccante viene bloccato ... planeswalker riceve danno pur non essendo stato attaccato»):
         nel log il passo del danno puo' non avere piu' il bloccante (morto nello stesso messaggio) o avere un innesco al posto del combattimento. None se il
         passo non e' un danno o il turno non ha attacchi."""
+        b = self.vista_azioni(b)
         if not b or not b.get("passi"):
             return None
         i_ = b.get("i", 0)
@@ -5084,6 +5266,7 @@ class PaginaPerformance:
     def blocchi_veri(self, b, rel, turno):
         """Tiene solo i blocchi che il danno del turno conferma: il bloccante o l'attaccante bloccato prendono danno (un blocco scelto e poi tolto
         dall'avversario resta nel log del passo dei bloccanti). Senza passi del danno nel turno, tutti."""
+        b = self.vista_azioni(b)
         colpiti_t, c_danno = set(), False
         for pq_ in b["passi"]:
             if pq_[2] == turno and "Damage" in pq_[0] and len(pq_) > 5:
@@ -5198,6 +5381,129 @@ class PaginaPerformance:
             tg_ = ("danni", f"dn_{bers}", f"dn_{bers}_{k_n}")
             # la goccia di sangue col «-N» dentro (14 nov 2026, Autore, fra tre disegni: «vite A»): chi perde vite o costituzione
             c.create_image(cx, cy - 4, image=self.icona_danno("goccia", q), tags=tg_)
+
+    def metti_giocabili(self, c, f):
+        """Le tue giocate legali in questo passo (16 nov 2026, Autore: «nel log esistono ulteriori note che fino ad adesso non sono state considerate?»):
+        Arena, a ogni tua priorita', manda le azioni che puoi fare; le carte che potevi lanciare, la terra che potevi giocare e i permanenti con un'abilita'
+        attivabile si accendono col bordo azzurro, come in Arena. Senza priorita' tua nel passo, niente."""
+        c.delete("giocabile")
+        gioc = (f or {}).get("gioc") or []
+        if not gioc:
+            return
+        vis = getattr(self, "_mano_vis", None) or []
+        box_ = []
+        usati = set()
+        for n_g, i_g, k_g, z_g in gioc:
+            if z_g == "campo" and self._pos_id.get(i_g):
+                box_.append(self._pos_id[i_g])
+            elif z_g == "mano":         # la mano: il bordo sta dentro il disegno della carta (disegno_tappeto.giocabile)
+                pass
+            else:       # dalla fila PLAYABLE (esilio, cimitero)
+                for n2, b2, _it in (getattr(self, "_giocabili", {}) or {}).get("mio", []):
+                    if n2 == n_g:
+                        box_.append(b2)
+                        break
+        for b_ in box_:
+            x0, y0, x1, y1 = b_
+            c.create_rectangle(x0 - 2, y0 - 2, x1 + 2, y1 + 2, outline="#5acdff", width=2, tags="giocabile")
+        if c.find_withtag("frecce"):
+            c.tag_lower("giocabile", "frecce")
+
+    def righe_info(self, f):
+        """Le righe del racconto che vengono da cosa Arena ti ha chiesto e detto in questo passo (16 nov 2026, Autore: «vai monta»)."""
+        inf = (f or {}).get("info") or {}
+        out = []
+        if inf.get("dado") and inf["dado"][0] is not None:
+            out.append(("#c8ccd6", f"DIE ROLL · you {inf['dado'][0]} · opponent {inf['dado'][1]}"))
+        if inf.get("mul"):
+            out.append(("#c8ccd6", f"MULLIGANS · you {inf['mul'][0]} · opponent {inf['mul'][1]}"))
+        if inf.get("parte"):
+            out.append(("#c8ccd6", f"YOU CHOSE TO GO {inf['parte'].upper()}"))
+        if inf.get("mdec"):
+            out.append(("#c8ccd6", "YOUR HAND · " + " → ".join("kept" if d_ == "AcceptHand" else "mulligan" for d_ in inf["mdec"])))
+        for n_, z_ in inf.get("trz") or []:
+            out.append(("#b58cff", f"TRIGGERED FROM THE {z_.upper()} · {n_}"))
+        if inf.get("opz"):
+            n_, r_ = inf["opz"]
+            out.append(("#ffd23f", f"YOU MAY · {n_}" + (f" · you said {'YES' if 'Yes' in r_ else 'NO'}" if r_ else "")))
+        if inf.get("cerca") is not None:
+            out.append(("#ffd23f", "YOU SEARCHED · " + (", ".join(inf["cerca"]) if inf["cerca"] else "found nothing")))
+        for a_, bb_ in inf.get("div") or []:
+            out.append(("#ff8a5c", f"YOU DIVIDED THE DAMAGE OF {a_} · " + ", ".join(f"{b_} {q_}" for b_, q_ in bb_)))
+        if inf.get("canc"):
+            out.append(("#9aa3b2", "YOU CANCELED AN ACTION"))
+        if inf.get("auto"):
+            out.append(("#9aa3b2", "MANA PAID AUTOMATICALLY"))
+        if inf.get("conc"):
+            out.append(("#ff5d5d", "YOU CONCEDED HERE"))
+        if inf.get("pp"):      # hai chiuso il turno potendo ancora giocare (dal tuo client): un indizio, non per forza un errore
+            out.append(("#ff9a3c", "YOU PASSED THE TURN · could still play " + ", ".join(inf["pp"][:6]) + (f" +{len(inf['pp']) - 6}" if len(inf["pp"]) > 6 else "")))
+        for mio_, fr_ in inf.get("ch") or []:
+            out.append(("#ffe08a", f"{'YOU SAY' if mio_ else 'OPPONENT SAYS'} · {fr_}"))
+        if inf.get("gioc"):
+            out.append(("#5acdff", "YOU COULD PLAY · " + ", ".join(inf["gioc"][:8]) + (f" +{len(inf['gioc']) - 8}" if len(inf["gioc"]) > 8 else "")))
+        if inf.get("pa"):
+            out.append(("#39d98a", f"COULD ATTACK · {len(inf['pa'])} creature{'s' if len(inf['pa']) != 1 else ''}"))
+        if inf.get("pb"):
+            out.append(("#5acdff", f"COULD BLOCK · {len(inf['pb'])} creature{'s' if len(inf['pb']) != 1 else ''}"))
+        if inf.get("lt"):
+            out.append(("#c39bff", f"LEGAL TARGETS · {len(inf['lt'])}"))
+        if inf.get("op"):
+            out.append(("#ffd23f", "OPTIONS OFFERED · " + ", ".join(o_.replace("_", " ") for o_ in inf["op"])))
+        if inf.get("sn"):
+            mn_, mx_, nomi_ = inf["sn"]
+            quanti = f"{mn_}" if mn_ == mx_ else f"{mn_}-{mx_}"
+            out.append(("#ffd23f", f"CHOOSE {quanti} OF · " + ", ".join(nomi_[:6])))
+        for n_, v_ in inf.get("pdd") or []:
+            out.append(("#ff8a5c", f"PREDICTED DAMAGE · {n_}: {v_}"))
+        for n_, r_ in inf.get("sp") or []:
+            out.append(("#ff9a3c", f"ARENA WARNING · {n_}" + (f": {r_}" if r_ else "")))
+        return out
+
+    def metti_possibili(self, c, f):
+        """Chi poteva attaccare (verde), chi poteva bloccare (azzurro) e i bersagli legali (viola), tratteggiati sulle carte, nel passo in cui Arena te
+        li ha chiesti (16 nov 2026, «vai monta»)."""
+        c.delete("possibili")
+        inf = (f or {}).get("info") or {}
+        for k_, col_ in (("pa", "#39d98a"), ("pb", "#5acdff"), ("lt", "#c39bff")):
+            for i_ in inf.get(k_) or []:
+                b_ = self._pos_id.get(i_)
+                if b_:
+                    c.create_rectangle(b_[0] - 4, b_[1] - 4, b_[2] + 4, b_[3] + 4, outline=col_, width=2, dash=(4, 3), tags="possibili")
+        if c.find_withtag("frecce"):
+            c.tag_lower("possibili", "frecce")
+
+    def metti_sguardo(self, c, f):
+        """Dove guarda l'avversario (16 nov 2026): le carte in campo o in pila che ha avuto sotto il mouse in questo passo hanno il bordo arancio
+        tratteggiato e l'occhio in alto a destra, come nell'HUD sopra Arena."""
+        c.delete("sguardo")
+        for i_m in ((f or {}).get("info") or {}).get("hvm") or []:      # le carte che guardavi tu: un filo azzurro sottile
+            b_m = self._pos_id.get(i_m)
+            if b_m:
+                c.create_rectangle(b_m[0] - 2, b_m[1] - 2, b_m[2] + 2, b_m[3] + 2, outline="#5acdff", width=1, dash=(2, 3), tags="sguardo")
+        hv = (f or {}).get("hv") or []
+        if not hv:
+            return
+        try:
+            import disegno_tappeto as DT_
+            from PIL import Image, ImageDraw, ImageTk as _ITk
+            if not getattr(self, "_img_occhio_suo", None):
+                im_o = DT_.icona_occhio(18, True)
+                fondo_ = Image.new("RGBA", (28, 28), (0, 0, 0, 0))
+                ImageDraw.Draw(fondo_).ellipse((0, 0, 27, 27), fill=(214, 120, 30, 245))
+                fondo_.alpha_composite(im_o, ((28 - im_o.width) // 2, (28 - im_o.height) // 2))
+                self._img_occhio_suo = _ITk.PhotoImage(fondo_)
+        except Exception:      # noqa: BLE001 - senza l'icona resta il bordo
+            self._img_occhio_suo = None
+        pila_ids = {q[4]: q for q in (f.get("pila") or [])}
+        for i_h in hv:
+            b_ = self._pos_id.get(i_h) or (getattr(self, "_stack_box", None) if i_h in pila_ids else None)
+            if not b_:
+                continue
+            x0, y0, x1, y1 = b_
+            c.create_rectangle(x0 - 2, y0 - 2, x1 + 2, y1 + 2, outline="#ff9a3c", width=2, dash=(6, 4), tags="sguardo")
+            if self._img_occhio_suo is not None:
+                c.create_image(x1 - 4, y0 + 4, image=self._img_occhio_suo, tags="sguardo")
 
     def frecce_board(self, c, rel, pila_box, W, H):
         """Le frecce di chi interagisce con chi (12 nov 2026, Autore: «una freccia che definisce quali carte interagiscono con quali altre, per vedere
@@ -5991,7 +6297,7 @@ class PaginaPerformance:
         if k.startswith("@"):
             carta = [f"{PaginaPerformance.chiave_carta(k[1:])}{n}" for n in DA.CAMPI_TURNO] if PaginaPerformance.chiave_carta(k[1:]) else []
             return [f"{k[1:]}{n}" for n in DA.CAMPI_TURNO] + carta
-        return [k[1:]] if k.startswith("&") else [k]
+        return [k[1:]] if k[:1] in ("&", "%") else [k]
 
     def reset_scheda_av(self):
         """Il Reset della scheda aperta di Advanced filters: i suoi filtri via, gli altri (le altre schede, gli smart filters) restano."""
@@ -6050,8 +6356,13 @@ class PaginaPerformance:
             self.b_reset_av = pulsante_solido(tk, F, schede, "Reset", False, self.reset_scheda_av, alto=28, bg=C["scheda"], colori=ARANCIO)
             self.b_reset_av.configure(width=150); self.b_reset_av.pack(side="right")
             self.fr_fasi_av = tk.Frame(f, bg=C["scheda"]); self.fr_fasi_av.pack(fill="x", padx=8, pady=(2, 4))
-            # le sottovoci della fase Board (16 nov 2026): una riga sotto le fasi, solo con Board aperta
-            self.fr_aree_av = tk.Frame(f, bg=C["scheda"]); self.fr_aree_av.pack(fill="x", padx=8, pady=(0, 4))
+            # le sottovoci della fase Board (16 nov 2026): cartelle disegnate sotto le fasi, solo con Board aperta (Autore, stesso giorno: «i suoi sotto menù
+            # non farli come pulsanti ma come cartelle o si generano troppi pulsanti su troppe file»)
+            self.fr_aree_av = tk.Frame(f, bg=C["scheda"]); self.fr_aree_av.pack(fill="x", padx=8, pady=(0, 0))
+            self.cv_aree_av = tk.Canvas(self.fr_aree_av, bg=C["scheda"], highlightthickness=0, bd=0, width=LARGA_FASE, height=ALTO_AREE, cursor="hand2")
+            self.cv_aree_av.bind("<Button-1>", self.clic_aree_av)
+            self.cv_aree_av.bind("<Motion>", self.sopra_aree_av)
+            self.cv_aree_av.bind("<Leave>", lambda e: self.sopra_aree_av(None))
             self.b_aree_av = []
             # i filtri scorrono (13 nov 2026, Autore: «caso mai mettiamo uno scroller per scendere alle voci in fondo»): la rotella su tutta la finestra e una
             # barra sottile a destra, da cliccare o trascinare
@@ -6085,24 +6396,82 @@ class PaginaPerformance:
             self._fasi_di = (self.scheda_av, self.tipo)
         for j, b in zip(self._j_fasi_av, self.b_fasi_av):
             b.metti(AVANZATI[self.scheda_av][j][0], j == self.fase_av[self.scheda_av])
-        # le sottovoci del Board: rifatte a ogni apertura (poche), solo con la fase Board aperta
-        for w in self.fr_aree_av.winfo_children():
-            w.destroy()
-        self.b_aree_av = []
+        # le sottovoci del Board: le cartelle, solo con la fase Board aperta
         if AVANZATI[self.scheda_av][self.fase_av[self.scheda_av]][0] == "Board":
-            for j, (nome_g, _sez) in enumerate(BOARD_AV[self.scheda_av]):
-                b = pulsante_solido(tk, F, self.fr_aree_av, nome_g, j == self.area_av[self.scheda_av], lambda j=j: self.apri_avanzati(area=j), alto=22,
-                                    bg=C["scheda"], colori=("#1a1d24", "#262a33", "#1f3446"), icona=False)
-                b.configure(width=124); b.pack(side="left", padx=(0, 4))
-                self.b_aree_av.append(b)
+            self.cv_aree_av.pack(anchor="w")
+            self.disegna_aree_av()
+        else:
+            self.cv_aree_av.pack_forget()
+            self.b_aree_av = []
         self.disegna_avanzati()
         if scheda or fase is not None or area is not None:          # un'altra scheda, fase o sottovoce riparte dall'alto
             self.cv_av.yview_moveto(0)
         f.lift()
         return f
 
+    def disegna_aree_av(self):
+        """Le sottovoci del Board come cartelle (come le viste della pagina): larghe quanto il nome, quella aperta si fonde con l'area dei filtri sotto, le
+        altre solo testo, sotto il puntatore un velo appena chiaro. self.b_aree_av = [(x0, x1, j)]."""
+        c, F = self.cv_aree_av, self.F
+        c.delete("all")
+        W, H = LARGA_FASE, ALTO_AREE
+        d = DG.Disegno(W, H)
+        from tkinter import font as tkfont
+        fnt = tkfont.Font(font=F(9, True))
+        sopra = getattr(self, "_aree_sopra", None)
+        aperta = self.area_av[self.scheda_av]
+        self.b_aree_av, testi, att, x = [], [], None, 0
+        for j, (nome_g, _sez) in enumerate(BOARD_AV[self.scheda_av]):
+            x0, x1 = x, x + fnt.measure(nome_g) + 28
+            top = 2 if j == aperta else 6
+            if j == aperta:
+                att = (x0, x1)
+            elif sopra == j:
+                d.poligono(_cartella(x0, x1, top, H + 1, sl=0, r=4), riempi="#121722")
+            testi.append(((x0 + x1) / 2, (top + H) / 2 + 1, nome_g, j == aperta))
+            self.b_aree_av.append((x0, x1, j))
+            x = x1 + 2
+        if att:
+            x0, x1 = att
+            d.linea([(0, H - 0.5), (x0 + 0.5, H - 0.5)], C["filo"], 1.0)
+            d.linea([(x1 - 0.5, H - 0.5), (W, H - 0.5)], C["filo"], 1.0)
+            pts = _cartella(x0, x1, 2, H + 1, sl=0, r=4)
+            d.poligono(pts, riempi=C["scheda"])
+            d.linea(pts, C["filo"], 1.0)
+            d.linea([(x0 + 3, 2.8), (x1 - 3, 2.8)], C["accento"], 2.0)
+        self._img_aree_av = d.foto()
+        c.create_image(0, 0, image=self._img_aree_av, anchor="nw")
+        for tx, ty, t, on in testi:
+            c.create_text(tx, ty, text=t, fill=C["titolo"] if on else C["grigio"], font=F(9, on))
+
+    def _area_a(self, x):
+        return next((j for x0, x1, j in getattr(self, "b_aree_av", []) if x0 <= x <= x1), None)
+
+    def clic_aree_av(self, e):
+        j = self._area_a(e.x)
+        if j is not None and j != self.area_av[self.scheda_av]:
+            self.apri_avanzati(area=j)
+        return j
+
+    def sopra_aree_av(self, e):
+        j = None if e is None else self._area_a(e.x)
+        if j != getattr(self, "_aree_sopra", None):
+            self._aree_sopra = j
+            self.disegna_aree_av()
+
     def disegna_avanzati(self):
-        """La domanda con la risposta e i filtri della scheda aperta."""
+        """La domanda con la risposta e i filtri della scheda aperta. Mai dentro se stessa (16 nov 2026): le righe misurano la loro altezza con
+        update_idletasks, che fa partire un disegno in attesa (una carta scelta nella casella) e distruggeva le righe a meta'; quel disegno si rifa' dopo."""
+        if getattr(self, "_in_avanzati", False):
+            self.fr.after(15, self.disegna_avanzati)      # un timer: update_idletasks non lo fa partire (after_idle girerebbe all'infinito)
+            return
+        self._in_avanzati = True
+        try:
+            self._disegna_avanzati()
+        finally:
+            self._in_avanzati = False
+
+    def _disegna_avanzati(self):
         c = getattr(self, "cv_dom", None)
         if c is None or not c.winfo_exists() or self.righe is None:
             return
@@ -6178,6 +6547,9 @@ class PaginaPerformance:
                 y += 34
                 continue
             for k in chiavi:
+                if k.startswith("%"):       # una carta di tutta la partita (16 nov 2026): la casella che completa
+                    y = self.casella_carta_av(ca, k[1:], y, tutte)
+                    continue
                 if DA.SOLO_TIPO.get(k, self.tipo) != self.tipo:      # la voce di un altro formato (il mulligan)
                     continue
                 sc = self.filtri.get(k)
@@ -6233,8 +6605,21 @@ class PaginaPerformance:
 
     @staticmethod
     def chiave_carta(pre):
-        """La famiglia del nome della carta di una riga «cast» (16 nov 2026): «t_io» -> «t_nio», «t_rio» -> «t_nrio»; None per le altre righe."""
-        return ("t_n" + pre[2:]) if pre in PaginaPerformance.CAST else None
+        """La famiglia del nome della carta di una riga (16 nov 2026, Autore: «per ogni filtro che parla di carte in advanced filter dobbiamo sempre poter
+        scrivere alla fine una carta specifica se la conosciamo»): le giocate per tipo e per ruolo («t_io» -> «t_nio», «t_rio» -> «t_nrio»), le pescate dell'Hero
+        («t_pio» -> «t_npio»; quelle dell'Opponent Arena non le dice), chi attacca e chi blocca («t_naio», «t_ndio»), le aree del Board con le carte
+        («t_bcio» -> «t_nbcio»; la mano dell'Opponent no). None per le righe senza carte (mana, terre stappate, forza, vita, chi e' avanti)."""
+        if pre in PaginaPerformance.CAST:
+            return "t_n" + pre[2:]
+        m_ = re.fullmatch(r"t_([a-z]*?)(io|lui)(x?)", pre)
+        if not m_:
+            return None
+        base, chi, _x = m_.groups()
+        if base in ("a", "d") or (base == "p" and chi == "io"):
+            return "t_n" + pre[2:]
+        if base[:1] == "b" and base[1:] in DA.AREE_CON_CARTE and not (base == "bm" and chi == "lui"):
+            return "t_n" + pre[2:]
+        return None
 
     @staticmethod
     def campo_riga(nome, n):
@@ -6355,6 +6740,27 @@ class PaginaPerformance:
         if self.filtri[k] is None:
             self.filtri.pop(k)
         self.__dict__.setdefault("_righe_ui", {})[k] = [[c_, list(v_ or [None])] for c_, v_ in righe]
+        self.fr.after_idle(self.disegna)
+
+    def casella_carta_av(self, ca, k, y, tutte):
+        """Una voce di Advanced filters che e' una carta di tutta la partita (la carta nella mano iniziale, la carta vista dell'Opponent): il nome e la casella
+        che completa, coi nomi delle partite del tipo dal piu' frequente. -> la y sotto."""
+        sc = self.filtri.get(k)
+        sc = sc[0] if isinstance(sc, list) and sc else sc
+        ca.create_text(8, y + 13, text=hero_txt(DA.nome_var(k)), anchor="w", fill=C["titolo"] if sc else C["testo"], font=self.F(8, bool(sc)), width=290)
+        conta = collections.Counter(c_ for x_ in tutte for c_ in set(DA.valori_di(k, x_) or []))
+        cc = R_F.CartaCompleta(self.tk, self.F, ca, [c_ for c_, _n in conta.most_common()], sc or None,
+                               lambda v_, k=k: self.metti_carta_av(k, v_), larga=300)
+        ca.create_window(310, y + 2, window=cc.fr, anchor="nw")
+        self._costruttori_av["%" + k] = cc
+        return y + 36
+
+    def metti_carta_av(self, k, v):
+        """La carta scelta in una casella di tutta la partita; «Any card» la toglie."""
+        if not v or v == R_F.QUALSIASI:
+            self.filtri.pop(k, None)
+        else:
+            self.filtri[k] = v
         self.fr.after_idle(self.disegna)
 
     def metti_righe_av(self, pre, righe):

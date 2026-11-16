@@ -199,6 +199,33 @@ def metti_stato(x, i, st):
         lst.append(list(st))
 
 
+CLIENTE = "[CLIENTE] "
+RICHIESTE_RIGA = ("declareAttackersReq", "declareBlockersReq", "selectTargetsReq", "castingTimeOptionsReq", "selectNReq", "onChat", "dieRollResultsResp",
+                  "optionalActionMessage", CLIENTE)
+
+
+def condizione_gioco(det, obj, zona, chi):
+    """Il permesso di giocare una carta esiliata con una condizione (16 nov 2026, Autore: «le carte esiliate utilizzabili da Gandalf solo quando un wizard
+    e' sul campo ... le vedo sempre esiliate playabili anche se non ho un wizard»): Arena tiene il permesso finche' la carta resta in esilio (Flameshape:
+    «you may play them if you control a Wizard»), anche quando la condizione non c'e'. Se il testo dell'abilita' dice «if you control a(n) X», la carta e'
+    giocabile solo con una carta di quel tipo nel campo di chi la gioca. Senza condizione, o senza testo, vale il permesso."""
+    import re
+    try:
+        import testi_arena as TA_
+        tx_ = TA_.abilita((det.get("grpid") or [0])[0]) or ""
+    except Exception:      # noqa: BLE001 - senza database vale il permesso di Arena
+        return True
+    m_ = re.search(r"if you control an? ([A-Z][a-z]+)", tx_)
+    if not m_:
+        return True
+    tipo_ = m_.group(1)
+    for o_ in obj.values():
+        if o_.get("controllerSeatId") == chi and zona(o_) == "ZoneType_Battlefield" and \
+                (f"SubType_{tipo_}" in (o_.get("subtypes") or []) or f"CardType_{tipo_}" in (o_.get("cardTypes") or [])):
+            return True
+    return False
+
+
 def segni(pers, obj, ricordo, tutti, zona=lambda o: None, scelte=None):
     """I segni che restano sul tavolo (14 nov 2026, il censimento: «poi i segni che restano sul tavolo»), dalle annotazioni persistenti di Arena:
     {id: dict(tmp=1 se se ne va a fine turno, sotto=[grpId delle carte sotto di lei], kw=[parole chiave date], des=[designazioni])}, e la velocita'
@@ -244,6 +271,26 @@ def segni(pers, obj, ricordo, tutti, zona=lambda o: None, scelte=None):
                     lst = x.setdefault(i, {}).setdefault("ab", [])
                     if g_ not in lst and len(lst) < 4:
                         lst.append(g_)
+        elif "AnnotationType_ReplacementEffect" in ty:
+            # la sostituzione che una carta mette su un'altra (16 nov 2026, Autore: «nel log esistono ulteriori note che fino ad adesso non sono state
+            # considerate?»; Scorching Dragonfire, Fiery Annihilation: «if that creature would die this turn, exile it instead»): il suo testo sulla carta
+            # che la subisce, finche' vale. Le sostituzioni della carta su se stessa («as it enters...», Fog Bank) si vedono gia' dal risultato
+            ric_ = (det.get("replacedEffectRecipient") or [None])[0]
+            src_ = (det.get("replacedEffectSource") or [None])[0]
+            g_r = (det.get("grpid") or [None])[0]
+            if ric_ and g_r and ric_ != src_ and ric_ != a.get("affectorId"):
+                try:
+                    import testi_arena as TA_
+                    tx_r = TA_.abilita(g_r) or ""
+                except Exception:      # noqa: BLE001 - senza database niente testo
+                    tx_r = ""
+                if "would" in tx_r:
+                    lst = x.setdefault(ric_, {}).setdefault("ab", [])
+                    if g_r not in lst and len(lst) < 4:
+                        lst.append(g_r)
+        elif "AnnotationType_LoyaltyActivationsRemaining" in ty:       # il potere del planeswalker ancora da usare in questo turno (16 nov 2026)
+            for i in aff:
+                x.setdefault(i, {})["lar"] = (det.get("ActivationsRemaining") or [0])[0]
         elif "AnnotationType_Attachment" in ty and a.get("affectorId") and aff:
             # l'aura o l'equipaggiamento attaccato (15 nov 2026, Autore: «quando una carta riceve un incantesimo aura o indossa un artefatto, non dovremmo
             # vedere quelle carte al di sotto di chi l'ha ricevuta?»): Arena lo scrive come annotazione persistente, l'aura (affector) sulla carta (affected)
@@ -272,7 +319,8 @@ def segni(pers, obj, ricordo, tutti, zona=lambda o: None, scelte=None):
                 # chi puo' giocarla: chi controlla la fonte del permesso (una tua carta che ti fa giocare le sue esiliate), se no il proprietario
                 fonte_ = obj.get(a.get("affectorId")) or ricordo.get(a.get("affectorId")) or {}
                 chi_g = fonte_.get("controllerSeatId") if fonte_.get("controllerSeatId") in (1, 2) else o.get("ownerSeatId")
-                if z_ in ("ZoneType_Exile", "ZoneType_Graveyard") and chi_g in (1, 2):      # senza grpId: a faccia in giu' (il suo foretell)
+                if z_ in ("ZoneType_Exile", "ZoneType_Graveyard") and chi_g in (1, 2) and condizione_gioco(det, obj, zona, chi_g):
+                    # senza grpId: a faccia in giu' (il suo foretell)
                     x.setdefault(i, {})["gioca"] = [MA.grp_vero(o, tutti) if o.get("grpId") else 0, chi_g, "esi" if z_ == "ZoneType_Exile" else "cim"]
         elif "AnnotationType_Qualification" in ty and (det.get("QualificationType") or [None])[0] in STATI_QUAL:
             # lo stato della carta (15 nov 2026, il censimento: 1.048 passi coi divieti e i permessi che non si vedevano): non si stappa, non puo' bloccare,
@@ -325,6 +373,50 @@ def segni(pers, obj, ricordo, tutti, zona=lambda o: None, scelte=None):
     return x, vel
 
 
+def con_client(righe):
+    """Le righe del log con i messaggi del tuo client (scritti su piu' righe: «... to Match: ClientToGremessage» e poi il JSON) raccolti ognuno in una riga
+    sola, «[CLIENTE] {json}», al loro posto (16 nov 2026, Autore: «montiamo ... gli altri messaggi del client»)."""
+    out, buf = [], None
+    for k, l in enumerate(righe):
+        if buf is None:
+            if l.strip() == "{" and k > 0 and " to Match: " in righe[k - 1]:
+                buf = [l]
+            else:
+                out.append(l)
+            continue
+        buf.append(l)
+        if l.rstrip() == "}":
+            try:
+                out.append(CLIENTE + json.dumps(json.loads("\n".join(buf)).get("payload") or {}))
+            except ValueError:
+                pass
+            buf = None
+    return out
+
+
+def passi_client(righe):
+    """I tuoi passaggi di priorita' (16 nov 2026, Autore: «solo quelli davvero utili»): il tuo client scrive le sue risposte ad Arena su piu' righe
+    («... to Match: ClientToGremessage» e poi il JSON); di quelle si tiene solo PerformActionResp con «Pass». -> insieme dei gameStateId in cui hai passato."""
+    out, buf = set(), None
+    for k, l in enumerate(righe):
+        if buf is None:
+            if l.strip() == "{" and k > 0 and " to Match: " in righe[k - 1]:
+                buf = [l]
+            continue
+        buf.append(l)
+        if l.rstrip() == "}":
+            testo, buf = "\n".join(buf), None
+            if "ActionType_Pass" not in testo or "PerformActionResp" not in testo:
+                continue
+            try:
+                p_ = (json.loads(testo).get("payload") or {})
+            except ValueError:
+                continue
+            if any(a_.get("actionType") == "ActionType_Pass" for a_ in (p_.get("performActionResp") or {}).get("actions") or []):
+                out.add(p_.get("gameStateId") or 0)
+    return out
+
+
 def azioni(righe, nome=lambda g: None, interni=False):
     """Le righe del log di una partita -> [dict(t, step, att, foto, ev=[(posto o None, testo)], danni=[(bersaglio, quanto)], rel)]: una foto a ogni azione che
     si vede. nome(grpId) da' il nome di una carta (per i testi); le foto portano i grpId come quelle di mana_aperto.
@@ -343,6 +435,8 @@ def azioni(righe, nome=lambda g: None, interni=False):
     sorv_suo = {}                                   # il surveil che non chiede niente a te (il suo): per abilita', chi, quante, quelle al cimitero
     riassunto, finita, veleno = False, False, {}
     annunciate = set()      # le abilita' gia' raccontate «on the stack» (15 nov 2026, il verificatore della pila)
+    pila_msg = []           # la pila del messaggio prima: chi la lascia senza un'altra azione ha un passo suo (16 nov 2026)
+    pila_storia = {}        # {gameStateId: la pila dopo quel messaggio}: l'annullamento rimette la pila di prima dello stato a cui torna
     da_preparata = {}       # {id in pila: id della creatura}: la copia preparata lanciata dalla creatura che perde PREPARED (15 nov 2026)
     da_zona = {}            # {id in pila: [zona, posto del proprietario]}: la magia lanciata fuori dalla mano (cimitero, esilio, grimorio; 15 nov 2026)
 
@@ -425,10 +519,21 @@ def azioni(righe, nome=lambda g: None, interni=False):
             if tp == "ZoneType_Stack":
                 for i in zids.get(zid, []):
                     o = obj.get(i)
-                    if o and o.get("controllerSeatId") in (1, 2):
+                    # una terra non sta mai in pila (le terre si giocano, non si lanciano): quelle rivelate che Arena mette per un attimo nella zona della
+                    # pila (Solstice Revelations, Improvisation Capstone) non si mostrano come magie (16 nov 2026)
+                    if o and o.get("controllerSeatId") in (1, 2) and not (o.get("type") == "GameObjectType_Card" and "CardType_Land" in (o.get("cardTypes") or [])):
                         pl.append([MA.grp_vero(o, tutti), o["controllerSeatId"], 1 if o.get("type") == "GameObjectType_Ability" else 0, i])
         pl_ids = {e_[3] for e_ in pl}
         x, vel = segni(pers, obj, ricordo, tutti, lambda o: zone.get(o.get("zoneId")), scelte_carte)
+        for i_d in ids_di("ZoneType_Battlefield"):       # il danno gia' segnato sulla creatura fino a fine turno (16 nov 2026)
+            dm_ = (obj.get(i_d) or {}).get("damage")
+            if dm_:
+                metti_stato(x, i_d, (f"{dm_} DAMAGE", "no"))
+        # il potere del planeswalker nel turno del suo controllore (16 nov 2026, «vai monta»): ancora da usare o gia' usato
+        for i_w in ids_di("ZoneType_Battlefield"):
+            o_w = obj.get(i_w) or {}
+            if "CardType_Planeswalker" in (o_w.get("cardTypes") or []) and o_w.get("controllerSeatId") == ti.get("activePlayer"):
+                metti_stato(x, i_w, ("POWER USED", "off") if (ti.get("turnNumber"), i_w) in pw_usati else ("POWER READY", "si"))
         # le copie senza CopiedObject (le pedine copia, le magie copiate) e le carte a faccia in giu' in campo (15 nov 2026, le meta' del censimento: Arena
         # le segna sull'oggetto, isCopy e isFacedown; a faccia in giu' il proprietario ne vede il nome, l'altro un dorso)
         for lato_c in c:
@@ -439,6 +544,9 @@ def azioni(righe, nome=lambda g: None, interni=False):
                 if o_c.get("isFacedown"):
                     metti_stato(x, e_c[5], ("FACE DOWN", "off"))
         out = dict(c=c, m=m, n=n, v=[vite.get(1), vite.get(2)], g=g, e=e, p=pl)
+        abt_ = {str(e_[3]): obj[e_[3]].get("grpId") for e_ in pl if e_[2] and obj.get(e_[3], {}).get("grpId")}
+        if abt_:        # quale abilita' e' in pila (il potere del planeswalker): l'id della sua abilita', il testo dal database di Arena (16 nov 2026)
+            out["abt"] = abt_
         # le copie in pila (707.10: risolte smettono di esistere, non vanno in nessuna zona) e da dove parte la copia preparata
         copie_p = [e_[3] for e_ in pl if (obj.get(e_[3]) or {}).get("isCopy")]
         if copie_p:
@@ -540,8 +648,9 @@ def azioni(righe, nome=lambda g: None, interni=False):
             return
         lancio = frames[-1]
         cima = pagato if pagato is not None else lancio.get("_cima")
+        pagati_qui.add(cima)        # una volta per messaggio (16 nov 2026: Food pagata due volte, all'abilita' in pila e al sacrificio)
         f2 = copy.deepcopy(frames[-2]["foto"])
-        f2.pop("r", None), f2.pop("s", None), f2.pop("sc", None), f2.pop("mn", None)
+        f2.pop("r", None), f2.pop("s", None), f2.pop("sc", None), f2.pop("mn", None), f2.pop("pt", None), f2.pop("hv", None), f2.pop("ch", None), f2.pop("pdd", None), f2.pop("sp", None), f2.pop("pf", None), f2.pop("trz", None), f2.pop("hvm", None), f2.pop("conc", None)
         for lato in f2["c"]:
             for c_ in lato:
                 if len(c_) > 5 and c_[5] in fonti:
@@ -562,11 +671,52 @@ def azioni(righe, nome=lambda g: None, interni=False):
         frames.insert(len(frames) - 1, dict(t=lancio["t"], step=lancio["step"], att=lancio["att"], foto=f2, ev=[(chi_(cima), f"paid mana for {n_(cima)}")],
                                             danni=[], rel=rel_s, _s=lancio["_s"], _att=False, _cima=sotto if rel_s else None, _pagato=True, _pag=cima, _pag_s=sid))
 
-    for r in righe:
+    pagati_qui = set()
+    giocate, richieste, dado = {}, {}, {}
+    pw_usati = set()
+    mulligan, effetti_pt = {}, {}
+    mull_scelte, parte_scelta = [], []
+    for r in con_client(righe):
+        if r.startswith(CLIENTE):
+            try:
+                p_c = json.loads(r[len(CLIENTE):])
+            except ValueError:
+                continue
+            t_c = (p_c.get("type") or "").replace("ClientMessageType_", "")
+            s_c = p_c.get("gameStateId") or 0
+            if t_c == "UIMessage" and ((p_c.get("uiMessage") or {}).get("onHover") or {}).get("objectId") and frames:
+                hm_ = frames[-1]["foto"].setdefault("hvm", [])       # le carte che guardavi tu
+                o_h = p_c["uiMessage"]["onHover"]["objectId"]
+                if o_h not in hm_ and len(hm_) < 3:
+                    hm_.append(o_h)
+            elif t_c == "ConcedeReq" and frames:
+                frames[-1]["foto"]["conc"] = 1
+            elif t_c == "CancelActionReq":
+                richieste.setdefault(s_c, {})["canc"] = 1
+            elif t_c == "PerformAutoTapActionsResp":
+                richieste.setdefault(s_c, {})["auto"] = 1
+            elif t_c == "MulliganResp":
+                mull_scelte.append((p_c.get("mulliganResp") or {}).get("decision", "").replace("MulliganOption_", ""))
+            elif t_c == "ChooseStartingPlayerResp":
+                parte_scelta.append((p_c.get("chooseStartingPlayerResp") or {}).get("systemSeatId"))
+            elif t_c == "OptionalActionResp":
+                richieste.setdefault(s_c, {})["opr"] = (p_c.get("optionalResp") or {}).get("response", "").replace("OptionResponse_", "")
+            elif t_c == "SearchResp":
+                richieste.setdefault(s_c, {})["cerca"] = [MA.grp_vero(ogg(i_), tutti) if ogg(i_).get("grpId") else 0
+                                                          for i_ in (p_c.get("searchResp") or {}).get("itemsFound") or []]
+            elif t_c == "AssignDamageResp":
+                richieste.setdefault(s_c, {})["div"] = [[MA.grp_vero(ogg(a_.get("instanceId")), tutti) or 0,
+                                                         [[MA.grp_vero(ogg(b_.get("instanceId")), tutti) or 0, b_.get("assignedDamage", 0)]
+                                                          for b_ in a_.get("assignments") or []]]
+                                                        for a_ in (p_c.get("assignDamageResp") or {}).get("assigners") or []]
+            elif t_c == "PerformActionResp" and any(a_.get("actionType") == "ActionType_Pass" for a_ in (p_c.get("performActionResp") or {}).get("actions") or []):
+                richieste.setdefault(s_c, {})["pp"] = 1
+            continue
         if r.startswith(MA.RIASSUNTO):
             riassunto = True
             continue
-        if "gameStateMessage" not in r and "GroupingContext_Surveil" not in r:
+        if "gameStateMessage" not in r and "GroupingContext_Surveil" not in r and "ActionsAvailableReq" not in r and "onHover" not in r \
+                and not any(k_r in r for k_r in RICHIESTE_RIGA):
             continue
         i = r.find("{")
         if i < 0:
@@ -576,6 +726,71 @@ def azioni(righe, nome=lambda g: None, interni=False):
         except ValueError:
             continue
         for msg in (d.get("greToClientEvent") or {}).get("greToClientMessages") or []:
+            u_ = msg.get("uiMessage") or {}
+            if (u_.get("onHover") or {}).get("objectId") and frames:
+                # dove guarda l'avversario (16 nov 2026, Autore: «nel log esistono ulteriori note che fino ad adesso non sono state considerate?», poi
+                # «ok» al cursore dell'avversario): Arena ti manda la carta che lui ha sotto il mouse; resta sul passo in cui succede, al massimo tre carte
+                chi_h = (u_.get("seatIds") or [None])[0]
+                if chi_h is not None and chi_h != (msg.get("systemSeatIds") or [None])[0]:
+                    hv_ = frames[-1]["foto"].setdefault("hv", [])
+                    o_h = u_["onHover"]["objectId"]
+                    if o_h not in hv_ and len(hv_) < 3:
+                        hv_.append(o_h)
+                continue
+            if (u_.get("onChat") or {}).get("text") and frames:      # le emote (16 nov 2026, «vai monta»): chi e la frase
+                frames[-1]["foto"].setdefault("ch", []).append([(u_.get("seatIds") or [None])[0], u_["onChat"]["text"]])
+                continue
+            if msg.get("dieRollResultsResp"):       # il dado per chi comincia
+                dado.update({d_.get("systemSeatId"): d_.get("rollValue") for d_ in msg["dieRollResultsResp"].get("playerDieRolls") or []})
+                continue
+            chi_q = (msg.get("systemSeatIds") or [None])[0]
+            sid_q = msg.get("gameStateId") or 0
+            if msg.get("declareAttackersReq"):     # chi poteva attaccare (16 nov 2026, «vai monta»)
+                q_ = msg["declareAttackersReq"]
+                richieste.setdefault(sid_q, {})["pa"] = dict(chi=chi_q, ids=[a_.get("attackerInstanceId") for a_ in (q_.get("attackers") or q_.get("qualifiedAttackers") or [])
+                                                                            if a_.get("attackerInstanceId")])
+                continue
+            if msg.get("declareBlockersReq"):      # chi poteva bloccare, e chi
+                richieste.setdefault(sid_q, {})["pb"] = dict(chi=chi_q, b=[[b_.get("blockerInstanceId"), list(b_.get("attackerInstanceIds") or [])]
+                                                                          for b_ in msg["declareBlockersReq"].get("blockers") or [] if b_.get("blockerInstanceId")])
+                continue
+            if msg.get("selectTargetsReq"):        # i bersagli legali
+                lt_ = [t_.get("targetInstanceId") for g_ in msg["selectTargetsReq"].get("targets") or [] for t_ in g_.get("targets") or []
+                       if t_.get("targetInstanceId")]
+                if lt_:
+                    richieste.setdefault(sid_q, {})["lt"] = dict(chi=chi_q, ids=list(dict.fromkeys(lt_)))
+                continue
+            if msg.get("optionalActionMessage"):       # «puoi farlo»: la carta che lo chiede (la risposta e' del tuo client)
+                src_o = (msg["optionalActionMessage"] or {}).get("sourceId")
+                richieste.setdefault(sid_q, {})["opz"] = dict(chi=chi_q, g=MA.grp_vero(ogg(src_o), tutti) if src_o and ogg(src_o).get("grpId") else 0)
+                continue
+            if msg.get("castingTimeOptionsReq"):   # le opzioni del lancio (kicker, X, costi alternativi)
+                op_ = [o_.get("castingTimeOptionType", "").replace("CastingTimeOptionType_", "") for o_ in
+                       msg["castingTimeOptionsReq"].get("castingTimeOptionReq") or []]
+                op_ = [o_ for o_ in op_ if o_ and o_ != "Done"]
+                if op_:
+                    richieste.setdefault(sid_q, {})["op"] = dict(chi=chi_q, o=op_)
+                continue
+            if msg.get("selectNReq") and "Stacking" not in str(msg["selectNReq"].get("optionContext")):       # «scegli N»
+                q_ = msg["selectNReq"]
+                if q_.get("idType") == "IdType_InstanceId" and q_.get("ids"):
+                    richieste.setdefault(sid_q, {})["sn"] = dict(chi=chi_q, ids=list(q_["ids"])[:12], mn=q_.get("minSel"), mx=q_.get("maxSel"),
+                                                                 g=[MA.grp_vero(ogg(i_), tutti) if ogg(i_).get("grpId") else 0 for i_ in list(q_["ids"])[:12]])
+                continue
+            if msg.get("type") == "GREMessageType_ActionsAvailableReq":
+                # le giocate che avevi (16 nov 2026, Autore: «nel log esistono ulteriori note che fino ad adesso non sono state considerate?»): a ogni
+                # priorita' Arena ti manda le azioni legali, lanci, terre, abilita' non di mana; il passo le mostra accese sulle carte
+                zona_di = {**{i_: "campo" for i_ in ids_di("ZoneType_Battlefield")}, **{i_: "esi" for i_ in ids_di("ZoneType_Exile")},
+                           **{i_: "cim" for i_ in ids_di("ZoneType_Graveyard")}, **{i_: "mano" for i_ in ids_di("ZoneType_Hand")}}
+                lst_ = []
+                for a_ in (msg.get("actionsAvailableReq") or {}).get("actions") or []:
+                    k_ = {"ActionType_Cast": "C", "ActionType_Play": "P", "ActionType_Activate": "A"}.get(a_.get("actionType"))
+                    i_ = a_.get("instanceId")
+                    if k_ and i_ and zona_di.get(i_) and [i_, k_] not in [x_[:2] for x_ in lst_]:
+                        lst_.append([i_, k_, zona_di[i_], MA.grp_vero(ogg(i_), tutti) or a_.get("grpId") or 0, a_.get("abilityGrpId") or 0,
+                                     1 if "CardType_Instant" in (ogg(i_).get("cardTypes") or []) else 0])
+                giocate[msg.get("gameStateId") or 0] = dict(chi=(msg.get("systemSeatIds") or [None])[0], a=lst_)
+                continue
             gq = msg.get("groupReq") or {}
             if gq.get("context") == "GroupingContext_Surveil" and gq.get("instanceIds"):     # il tuo surveil: le carte guardate (il censimento)
                 sorv = dict(ids=list(gq["instanceIds"]), chi=(msg.get("systemSeatIds") or [None])[0], s=msg.get("gameStateId") or 0,
@@ -589,6 +804,10 @@ def azioni(righe, nome=lambda g: None, interni=False):
             sid = gs.get("gameStateId") or 0
             if gs.get("update") == "GameStateUpdate_Undo" and gs.get("prevGameStateId"):     # l'annullamento: via le azioni da quello stato in poi
                 frames = [f for f in frames if f["_s"] < gs["prevGameStateId"]]
+                # e la pila di prima di quello stato (16 nov 2026, il giro: Jace che si risolve, Arena annulla e riscrive la stessa risoluzione; senza,
+                # l'uscita dalla pila non si vedeva piu' e l'abilita' spariva dentro il turno dopo)
+                prima_p = [k_ for k_ in pila_storia if k_ < gs["prevGameStateId"]]
+                pila_msg = list(pila_storia[max(prima_p)]) if prima_p else []
                 att_prima = None
             if gs.get("type") == "GameStateType_Full":
                 obj, zone, zown, zids = {}, {}, {}, {}
@@ -600,6 +819,8 @@ def azioni(righe, nome=lambda g: None, interni=False):
             MA.persistenti_da(gs, pers)
             for pl in gs.get("players") or []:
                 if pl.get("systemSeatNumber") in (1, 2):
+                    if pl.get("mulliganCount"):     # i mulligan esatti di tutti e due (16 nov 2026)
+                        mulligan[pl["systemSeatNumber"]] = max(mulligan.get(pl["systemSeatNumber"], 0), pl["mulliganCount"])
                     veleno[pl["systemSeatNumber"]] = pl.get("poisonCounters", 0)
                     riserva[pl["systemSeatNumber"]] = [COLORI_RISERVA.get(m_.get("color"), "C") for m_ in pl.get("manaPool") or [] for _q in range(m_.get("count", 1) or 1)]
             for a in gs.get("annotations") or []:
@@ -619,6 +840,27 @@ def azioni(righe, nome=lambda g: None, interni=False):
             for a in gs.get("persistentAnnotations") or []:
                 if "AnnotationType_TargetSpec" in (a.get("type") or []):
                     bersagli[a.get("affectorId")] = a.get("affectedIds") or []
+            for a in gs.get("persistentAnnotations") or []:        # quale effetto cambia forza e costituzione di chi (per sapere chi torna come prima)
+                ty_e = a.get("type") or []
+                if ("AnnotationType_ModifiedPower" in ty_e or "AnnotationType_ModifiedToughness" in ty_e) and _dettaglio(a, "effect_id"):
+                    effetti_pt[_dettaglio(a, "effect_id")] = list(a.get("affectedIds") or [])
+            for a in gs.get("annotations") or []:       # la fine di un potenziamento (16 nov 2026): l'effetto finisce, la carta torna come prima
+                if frames and "AnnotationType_LayeredEffectDestroyed" in (a.get("type") or []):
+                    for e_ in a.get("affectedIds") or []:
+                        for x_ in effetti_pt.pop(e_, []):
+                            if x_ in ids_di("ZoneType_Battlefield"):
+                                pf_ = frames[-1]["foto"].setdefault("pf", [])
+                                if x_ not in pf_:
+                                    pf_.append(x_)
+            for a in (gs.get("annotations") or []) + (gs.get("persistentAnnotations") or []):        # il danno previsto e gli avvisi di Arena (16 nov 2026)
+                if frames and "AnnotationType_PredictedDirectDamage" in (a.get("type") or []) and a.get("affectorId"):
+                    frames[-1]["foto"].setdefault("pdd", {})[str(a["affectorId"])] = [MA.grp_vero(ogg(a["affectorId"]), tutti) or 0, _dettaglio(a, "value") or 0]
+                if frames and "AnnotationType_ShouldntPlay" in (a.get("type") or []):
+                    rg_ = next((d_.get("valueString") or [""] for d_ in a.get("details") or [] if d_.get("key") == "Reason"), [""])[0]
+                    for x_ in a.get("affectedIds") or []:
+                        sp_ = frames[-1]["foto"].setdefault("sp", [])
+                        if [x_, rg_] not in [e_[:2] for e_ in sp_] and len(sp_) < 4:
+                            sp_.append([x_, rg_, MA.grp_vero(ogg(x_), tutti) or 0])
             # i bersagli scelti dopo il lancio (14 nov 2026, Autore: «pila erode - freccia su creatura oppo - creatura oppo nel cimitero - erode nel
             # cimitero»): Arena scrive TargetSpec in un messaggio a parte, dopo la magia in pila (o l'abilita'), e la freccia compariva solo con la risoluzione
             # (Erode) o mai (l'abilita' di Seam Rip). Si attaccano al passo della magia in pila, cosi' la freccia si vede prima che il bersaglio sparisca
@@ -680,7 +922,8 @@ def azioni(righe, nome=lambda g: None, interni=False):
                     sv_ora = [[0, v_s["chi"], 1, 1] for _ in range(max(0, v_s["n"] - len(giu_)))] + giu_
             colpiti_vita, perdite = set(), []          # chi ha preso danno; le vite perse senza danno (Perforating Artist: «perde 3 vite a meno che…»)
             effetti_abilita = []                       # (abilita', bersagli): un'abilita' che fa effetto adesso, senza essere mai stata in pila in un passo
-            rivelate, mescola = [], []                 # [grpId, proprietario] delle carte rivelate; i giocatori che rimescolano il grimorio (il censimento)
+            rivelate, mescola, potenzia = [], [], []
+            da_zona_ab = []                 # [grpId, proprietario] delle carte rivelate; i giocatori che rimescolano il grimorio (il censimento)
             anns_msg = gs.get("annotations") or []
             guardate = []                              # lo scry: [grpId o 0 se non si vede, chi, 1 sopra / 0 sotto], nell'ordine in cui restano
             if sv_ora:                                 # il surveil: [grpId, chi, 1 sopra / 0 al cimitero, 1]
@@ -709,6 +952,12 @@ def azioni(righe, nome=lambda g: None, interni=False):
                     cat = _dettaglio(a, "category") or ""
                     for x in aff:
                         verbo = CATEGORIE.get(cat)
+                        if not verbo and cat == "nil" and zone.get(_dettaglio(a, "zone_src")) == "ZoneType_Stack" \
+                                and zone.get(_dettaglio(a, "zone_dest")) in ("ZoneType_Graveyard", "ZoneType_Exile"):
+                            # la magia che lascia la pila senza risolversi perche' non ha piu' un bersaglio legale (608.2b; 16 nov 2026, Autore: «errori
+                            # di cose messe nella sbagliata sequenza soprattutto in pila»: Ethereal Armor col bersaglio morto finiva nel passo dell'attacco)
+                            ev.append((chi_(x), f"{n_(x)} had no legal target"))
+                            continue
                         if not verbo:
                             continue
                         if cat == "Draw":       # di chi e' la mano dove arriva (la sua pescata non si vede: «a card»)
@@ -732,7 +981,10 @@ def azioni(righe, nome=lambda g: None, interni=False):
                                 verbo = ("put on top of the library" if k_d == 0 else "put on the bottom of the library" if k_d == len(ids_d) - 1
                                          else f"put into the library, {k_d + 1}{'nd' if k_d == 1 else 'rd' if k_d == 2 else 'th'} from the top")
                                 chi_x = zown.get(dz_) or chi_x
-                            ev.append((chi_x, f"{verbo} {n_(x)}" if cat in ("PlayLand", "CastSpell", "Discard", "Sacrifice") else f"{n_(x)} {verbo}"))
+                            # la terra giocata o la magia lanciata dalla cima del grimorio lo dice (16 nov 2026: «Opponent played Forest» volava dal grimorio
+                            # e sembrava un errore)
+                            dal_g = " from the top of the library" if cat in ("PlayLand", "CastSpell") and zone.get(_dettaglio(a, "zone_src")) == "ZoneType_Library" else ""
+                            ev.append((chi_x, f"{verbo} {n_(x)}{dal_g}" if cat in ("PlayLand", "CastSpell", "Discard", "Sacrifice") else f"{n_(x)} {verbo}"))
                 elif "AnnotationType_DamageDealt" in tipi:
                     q = _dettaglio(a, "damage") or 0
                     for x in aff:
@@ -806,8 +1058,16 @@ def azioni(righe, nome=lambda g: None, interni=False):
                     for x in aff:
                         if x not in con_segnalino:
                             ev.append((chi_(x), f"{n_(x)} got {p_:+d}/{t_:+d}"))
+                            potenzia.append([x, p_, t_])        # l'impulso sulla carta (16 nov 2026)
                 elif "AnnotationType_AbilityInstanceCreated" in tipi:        # solo le abilita' che vanno in pila (non quelle di mana)
                     pila_ora = set(ids_di("ZoneType_Stack"))
+                    src_pw = ogg(a.get("affectorId"))
+                    zs_ = zone.get(_dettaglio(a, "source_zone"))       # l'innesco partito dal cimitero, dall'esilio o dalla mano (16 nov 2026)
+                    if zs_ in ("ZoneType_Graveyard", "ZoneType_Exile", "ZoneType_Hand") and any(x in pila_ora for x in aff):
+                        da_zona_ab.append([MA.grp_vero(src_pw, tutti) or 0, {"ZoneType_Graveyard": "graveyard", "ZoneType_Exile": "exile",
+                                                                             "ZoneType_Hand": "hand"}[zs_]])
+                    if "CardType_Planeswalker" in (src_pw.get("cardTypes") or []) and any(x in pila_ora for x in aff):
+                        pw_usati.add((t, a.get("affectorId")))      # il potere del planeswalker usato in questo turno (16 nov 2026)
                     for x in aff:
                         if x in pila_ora:
                             ev.append((chi_(x) or chi_(a.get("affectorId")), f"ability of {n_(a.get('affectorId'))} on the stack"))
@@ -834,6 +1094,13 @@ def azioni(righe, nome=lambda g: None, interni=False):
             # il pagamento arriva nel messaggio dopo il lancio (14 nov 2026, Autore: «vedo che scende prima la creatura e poi il mana per pagarla, dovrebbe
             # essere l'inverso»): Arena scrive prima la magia che va in pila, poi ManaPaid con le terre tappate. Se questo messaggio non e' un'azione nuova,
             # la foto del lancio (l'ultimo passo, con la magia ancora in pila) si rifa' col pagamento
+            # chi lascia la pila in questo messaggio (16 nov 2026, Autore: «errori di cose messe nella sbagliata sequenza soprattutto in pila»): un
+            # innesco che si risolve senza un effetto da raccontare (il «puoi» rifiutato di Strongbox Raider, Slumbering Cerberus a fine turno) spariva
+            # dentro l'azione dopo (il turno nuovo, un blocco, un'altra magia); ora, se il messaggio non ha altre azioni, la sua risoluzione e' un passo
+            pila_adesso = ids_di("ZoneType_Stack")
+            usciti_sil = [x for x in pila_msg if x not in pila_adesso]
+            pila_msg = list(pila_adesso)
+            pila_storia[sid] = list(pila_adesso)
             n_fr = len(frames)
             # la magia preparata (Seed Suture e le altre di SOS; 15 nov 2026, la caccia ai glitch): una copia lanciata dalla creatura, che nello stesso
             # messaggio perde PREPARED (LoseDesignation 24); vola da lei alla pila, non dalla mano
@@ -842,7 +1109,9 @@ def azioni(righe, nome=lambda g: None, interni=False):
                     z_src = _dettaglio(a, "zone_src")
                     zona_ = {"ZoneType_Graveyard": "cim", "ZoneType_Exile": "esi", "ZoneType_Library": "lib"}.get(zone.get(z_src))
                     for x in a.get("affectedIds") or []:
-                        if zona_ and not (obj.get(x) or {}).get("isCopy"):       # lanciata dal cimitero, dall'esilio, dal grimorio: vola da li'
+                        # lanciata dal cimitero, dall'esilio, dal grimorio: vola da li'; anche la copia del Paradigm dall'esilio (Improvisation Capstone, 16
+                        # nov 2026); la magia preparata vola dalla sua creatura (vince «pd», nel replayer)
+                        if zona_:
                             da_zona[x] = [zona_, zown.get(z_src)]
                         if (obj.get(x) or {}).get("isCopy"):
                             src_p = next((a2.get("affectorId") for a2 in anns_msg if "AnnotationType_LoseDesignation" in (a2.get("type") or [])
@@ -853,6 +1122,7 @@ def azioni(righe, nome=lambda g: None, interni=False):
             # messaggi): i messaggi dopo aggiungono le loro fonti al passo di pagamento gia' aperto per la stessa magia, invece di farne altri
             pagati_ora = [x for a in anns_msg if "AnnotationType_ManaPaid" in (a.get("type") or []) for x in a.get("affectedIds") or []]
             continua_pag = False
+            pagati_qui.clear()
             if pagati_ora and not ev and not danni and frames and len(set(pagati_ora)) == 1:
                 pf_ = next((f_ for f_ in reversed(frames[-2:]) if f_.get("_pag") == pagati_ora[0] and f_["foto"].get("mn") is not None), None)
                 # solo nei messaggi di fila: un pagamento piu' tardi della stessa magia (il ward pagato quando scatta) e' un passo suo
@@ -866,7 +1136,13 @@ def azioni(righe, nome=lambda g: None, interni=False):
                                 if len(c_) > 5 and c_[5] in nuove_f:
                                     c_[1] = 1
                     continua_pag = True
-            if continua_pag:
+            # il pagamento fatto mentre un innesco si risolve e crea un'abilita' nuova (16 nov 2026, Spellbook Vendor: «puoi pagare {1}», poi l'abilita'
+            # riflessa): e' il passo della nuova abilita' a riceverlo (il ciclo in fondo), non l'innesco che era gia' in pila: si contava due volte
+            _tipi = lambda a_: a_.get("type") or []
+            _creati = {x for a in anns_msg if "AnnotationType_AbilityInstanceCreated" in _tipi(a) for x in a.get("affectedIds") or []}
+            _cancellati = {x for a in anns_msg if "AnnotationType_AbilityInstanceDeleted" in _tipi(a) for x in a.get("affectedIds") or []}
+            paga_dopo = bool(_creati - _cancellati) and any("AnnotationType_ResolutionComplete" in _tipi(a) for a in anns_msg)
+            if continua_pag or paga_dopo:
                 pass
             elif not ev and not danni and frames and frames[-1]["t"] == t and frames[-1].get("_cima") in ids_di("ZoneType_Stack") \
                     and any("AnnotationType_ManaPaid" in (a.get("type") or []) for a in gs.get("annotations") or []):
@@ -913,9 +1189,20 @@ def azioni(righe, nome=lambda g: None, interni=False):
                         if (b_, tuple(aa)) not in gia:
                             ev.append((chi_(b_), f"{n_(b_)} blocked {', '.join(n_(a_) for a_ in aa)}"))
                             solo_att = False
-            elif not att_ids and not ev:
+            elif not att_ids and not ev and not usciti_sil:
                 att_prima = None        # finito il combattimento: le stesse creature che riattaccano al turno dopo sono un attacco nuovo
                 continue
+            if not att_ids:
+                att_prima = None
+            if usciti_sil and not ev and not danni:
+                for x in usciti_sil:
+                    o_x = ogg(x)
+                    if o_x.get("type") == "GameObjectType_Ability":
+                        fonte_x = o_x.get("parentId") or o_x.get("objectSourceId")
+                        n_x = n_(fonte_x) if fonte_x and ogg(fonte_x) else (nome(o_x.get("objectSourceGrpId")) or "a card")
+                        ev.append((o_x.get("controllerSeatId") if o_x.get("controllerSeatId") in (1, 2) else None, f"ability of {n_x} resolved"))
+                    elif o_x:
+                        ev.append((chi_(x), f"{n_(x)} left the stack"))
             att_prima = comb if att_ids else None
             if not ev and not danni:
                 continue
@@ -958,6 +1245,10 @@ def azioni(righe, nome=lambda g: None, interni=False):
                 frames[-1]["foto"]["r"] = rivelate
             if mescola:
                 frames[-1]["foto"]["s"] = mescola
+            if potenzia:
+                frames[-1]["foto"]["pt"] = potenzia
+            if da_zona_ab:
+                frames[-1]["foto"]["trz"] = da_zona_ab
             if guardate:
                 frames[-1]["foto"]["sc"] = guardate
             # pagata nello stesso messaggio del lancio (15 nov 2026, il verificatore del mana: anche quando un innesco le va subito sopra, e le abilita'
@@ -969,7 +1260,7 @@ def azioni(righe, nome=lambda g: None, interni=False):
                 frames[-1]["_pagato"], frames[-1]["_pag"], frames[-1]["_pag_s"] = True, solo_pag, sid
             # prima cio' che sta in pila: il pagamento di un'abilita' di mana (Three Tree City pagata per dare tre mana a Traveling Chocobo) viene dopo
             pila_m = set(ids_di("ZoneType_Stack"))
-            for x in ([] if solo_pag is not None else sorted(dict.fromkeys(pagati_msg), key=lambda x_: x_ not in pila_m)):
+            for x in ([] if solo_pag is not None else sorted((x_ for x_ in dict.fromkeys(pagati_msg) if x_ not in pagati_qui), key=lambda x_: x_ not in pila_m)):
                 paga(fonti_di(gs, x), x)
                 break
             # un attaccante che qui risulta tappato e nel passo dell'attacco no: Arena ha scritto la tappatura in un messaggio dopo; era gia' tappato quando
@@ -996,6 +1287,25 @@ def azioni(righe, nome=lambda g: None, interni=False):
         for rel_ in p_["rels"]:
             rel_["colpiti"] = sorted(y for y in p_["prima"] if y not in fine_campo)
             rel_["fatti"] = sorted(y for y in p_["fatti"] if y in p_["prima"])
+    s_fr = [f["_s"] for f in frames]
+    for k_, f in enumerate(frames):     # le giocate che avevi in questo passo: le richieste fra il suo stato e quello del passo dopo con uno stato piu' alto
+        dopo_ = next((s_ for s_ in s_fr[k_ + 1:] if s_ > f["_s"]), None)
+        if dopo_ is not None and any(s2 == f["_s"] for s2 in s_fr[k_ + 1:]):
+            continue        # un altro passo dello stesso stato viene dopo: le prende lui
+        gs_ = [s_ for s_ in giocate if s_ >= f["_s"] and (dopo_ is None or s_ < dopo_)]
+        if gs_:
+            g_ = giocate[max(gs_)]
+            f["foto"]["gi"] = dict(chi=g_["chi"], a=g_["a"])
+        for s_ in sorted(s_ for s_ in richieste if s_ >= f["_s"] and (dopo_ is None or s_ < dopo_)):
+            f["foto"].update(richieste[s_])
+    if frames and dado:
+        frames[0]["foto"]["dado"] = {str(k_): v_ for k_, v_ in dado.items()}
+    if frames:
+        frames[0]["foto"]["mul"] = {str(k_): mulligan.get(k_, 0) for k_ in (1, 2)}
+        if mull_scelte:
+            frames[0]["foto"]["mdec"] = mull_scelte
+        if parte_scelta:
+            frames[0]["foto"]["parte"] = parte_scelta[-1]
     for f in ([] if interni else frames):      # interni: tiene il gameStateId e le altre chiavi di lavoro (Strumenti/verifica_pila.py)
         f.pop("_s", None)
         f.pop("_att", None)
