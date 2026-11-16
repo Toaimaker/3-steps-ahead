@@ -267,12 +267,7 @@ def font(px, peso="Bold SemiCondensed"):
 
 # ---------------------------------------------------------------- disegni comuni
 
-def logo_carte(d, cx, cy, lato, filo, fondo=(24, 24, 30)):
-    """Le tre carte del logo (Distribuzione/logo.py) centrate in (cx, cy), nel quadrato da 150 scalato a lato."""
-    k = lato / 150
-    for (x, y), f in zip([(26, 56), (48, 42), (70, 28)], [(70, 70, 80), (120, 120, 132), BLU]):
-        x0, y0 = cx - lato / 2 + x * k, cy - lato / 2 + y * k
-        d.rounded_rectangle((x0, y0, x0 + 44 * k, y0 + 62 * k), radius=6 * k, fill=fondo, outline=f, width=max(1, round(filo)))
+from marchio import logo_carte  # noqa: E402  le tre carte del logo, le stesse del marchio di scheda mazzo, builder e Board (16 nov 2026)
 
 
 _DORSI = {}

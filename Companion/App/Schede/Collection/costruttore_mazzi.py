@@ -115,7 +115,10 @@ class Costruttore:
         self.tavolo, self._da_tavolo, self._nomi = None, False, {}
         tk.Frame(w, bg=C["filo"], height=1).pack(fill="x")
         # a sinistra la lista (riceve le carte), a destra i dati dall'alto in basso: le stesse proporzioni della scheda del mazzo
-        corpo = tk.Frame(w, bg=C["scheda"]); corpo.pack(fill="both", expand=True, padx=10, pady=8)
+        corpo = tk.Frame(w, bg=C["scheda"]); corpo.pack(fill="both", expand=True, padx=10, pady=(8, 0))
+        # il marchio di 3 Steps Ahead in basso a destra, come nella scheda del mazzo (16 nov 2026, Autore: «in basso a destra delle schede mazzo anche editor»)
+        import marchio
+        self.piede_marchio = marchio.piede(tk, w, C["scheda"]); self.piede_marchio.pack(side="bottom", fill="x", before=corpo)
         corpo.columnconfigure(0, weight=11, uniform="det"); corpo.columnconfigure(1, weight=10, uniform="det"); corpo.rowconfigure(0, weight=1)
         sx = tk.Frame(corpo, bg=C["scheda"]); sx.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
         dx = tk.Frame(corpo, bg=C["scheda"]); dx.grid(row=0, column=1, sticky="nsew")

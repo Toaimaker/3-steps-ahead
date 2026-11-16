@@ -5510,6 +5510,7 @@ class PaginaPerformance:
         come si e' bloccato in combattimento o contro cosa e' stato lanciato uno spot removal»): nel combattimento dal bloccante all'attaccante (gialle) e
         dall'attaccante non bloccato al giocatore o al planeswalker che attacca (rosse); per una magia o un'abilita' dalla carta in pila ai bersagli (viola).
         Curve nitide in un'immagine sola sopra la tavola; la punta sul bordo della carta."""
+        rimossi_ = []       # i permanenti che la magia toglie: REMOVED compare con le frecce, non prima che la magia arrivi in pila (16 nov 2026)
         dich_ = self.combattimento_dichiarato(getattr(self, "_board", None))
         if dich_ and (not rel or rel["tipo"] == "comb"):        # nel passo del danno le frecce del combattimento dichiarato (un innesco in pila resta suo)
             rel = dich_
@@ -5552,13 +5553,11 @@ class PaginaPerformance:
                 if k_ not in rel["bers"] and dove(k_):
                     frecce.append((pila_box, dove(k_), "#ff5d5d", ("tolto", rel.get("nome"), k_)))
             for k_ in rel.get("colpiti") or []:
-                r_ = self._pos_id.get(k_)
-                if r_:
-                    c.create_rectangle(r_[0] - 3, r_[1] - 3, r_[2] + 3, r_[3] + 3, outline="#ff5d5d", width=3)
-                    c.create_rectangle(r_[0] + 4, r_[3] - 40, r_[0] + 62, r_[3] - 24, fill="#ff5d5d", outline="")
-                    c.create_text(r_[0] + 33, r_[3] - 32, text="REMOVED", fill="#ffffff", font=self.F(6, True))
+                if self._pos_id.get(k_):
+                    rimossi_.append((k_, self._pos_id[k_]))
         self._frecce_ids, self._frecce_firme = [], []
         if not frecce:
+            self.metti_rimossi(c, rimossi_)
             return
         self._img_frecce = []
 
@@ -5604,6 +5603,19 @@ class PaginaPerformance:
             im_ = d.foto(veloce=True)
             self._img_frecce.append(im_)
             self._frecce_ids.append(c.create_image(ox, oy, image=im_, anchor="nw", tags="frecce"))
+        self.metti_rimossi(c, rimossi_)
+
+    def metti_rimossi(self, c, rimossi):
+        """REMOVED sui permanenti che la magia toglie, nella sequenza delle frecce (16 nov 2026, Autore: «a volte risultano removed dei permanenti quando
+        ancora la carta che li doveva rimuovere non e' arrivata in pila»): ogni segno e' un gruppo della tela col suo tag, messo fra le frecce; con
+        l'animazione resta nascosto e compare dopo le frecce, una volta arrivata la magia."""
+        for k_, r_ in rimossi:
+            tag_ = f"rem_{k_}"
+            c.create_rectangle(r_[0] - 3, r_[1] - 3, r_[2] + 3, r_[3] + 3, outline="#ff5d5d", width=3, tags=("frecce", tag_))
+            c.create_rectangle(r_[0] + 4, r_[3] - 40, r_[0] + 62, r_[3] - 24, fill="#ff5d5d", outline="", tags=("frecce", tag_))
+            c.create_text(r_[0] + 33, r_[3] - 32, text="REMOVED", fill="#ffffff", font=self.F(6, True), tags=("frecce", tag_))
+            self._frecce_ids.append(tag_)
+            self._frecce_firme.append(("rem", k_))
 
     def icona_board(self, k):
         """Le icone grigie della tavola: il cuore delle vite, due carte per la mano. Disegnate nitide, una volta."""

@@ -221,6 +221,11 @@ class TelaGPU:
             self.w = pyglet.window.Window(64, 64, style=pyglet.window.Window.WINDOW_STYLE_BORDERLESS, visible=False, vsync=VSYNC)
         self.batch = batch_che_tiene()
         self.batch_fisso = pyglet.graphics.Batch()      # lo strato fisso: coordinate della finestra, sopra tutto, non segue pan e zoom (l'HUD del Board)
+        # lo strato di fondo (16 nov 2026, il marchio di 3 Steps Ahead nel Board: «posizione fissa anche se la board trasla o zooma e sempre dietro le carte»):
+        # coordinate della finestra come il fisso, ma disegnato prima di tutto il resto
+        self.batch_fondo = pyglet.graphics.Batch()
+        # e sotto lo strato di fondo, il foglio stesso (sotto=True: i puntini del Board, opachi), che segue pan e zoom come il resto
+        self.batch_sotto = pyglet.graphics.Batch()
         # lo strato senza zoom (12 nov 2026, Autore: «sistema lo zoom sideboard»): finche' dura lo zoom immediato della rotella gli elementi coi tag di
         # senza_zoom (la fascia della sideboard del Board) passano qui e si disegnano con la vista senza lo zoom, sopra il foglio; poi tornano al loro posto
         self.batch_banda = pyglet.graphics.Batch()
@@ -370,6 +375,11 @@ class TelaGPU:
         w.projection = Mat4.orthogonal_projection(0, w.width, w.height, 0, -8192, 8192)      # la y in giu', come Tk
         w.view = (Mat4.from_translation(Vec3(self.ztx, self.zty, 0)) @ Mat4.from_scale(Vec3(self.zk, self.zk, 1))
                   @ Mat4.from_translation(Vec3(-self.vx, -self.vy, 0)))
+        self.batch_sotto.draw()
+        vista = w.view
+        w.view = Mat4()         # lo strato di fondo: in coordinate della finestra, sopra il foglio a puntini e sotto le carte
+        self.batch_fondo.draw()
+        w.view = vista
         self.batch.draw()
         if self._banda:         # lo strato senza zoom: la vista com'e', senza lo zoom immediato
             w.view = Mat4.from_translation(Vec3(-self.vx, -self.vy, 0))
@@ -596,8 +606,10 @@ class TelaGPU:
         if isinstance(tags, str):
             tags = (tags,)
         fisso = bool(opz.pop("fisso", False))
+        fondo = bool(opz.pop("fondo", False))
+        sotto = bool(opz.pop("sotto", False))
         e = dict(id=i, tipo=tipo, c=list(coords), tags=tuple(tags or ()), opz=opz, stato=opz.pop("state", "normal"), obj=[], ord=float(len(self.ord) and self.el[self.ord[-1]]["ord"] + 1),
-                 fisso=fisso)
+                 fisso=fisso, fondo=fondo, sotto=sotto)
         self.el[i] = e
         for tg in e["tags"]:
             self.per_tag.setdefault(tg, set()).add(i)
@@ -711,7 +723,7 @@ class TelaGPU:
             o.delete()
         e["obj"] = []
         g = self._gruppo(e["ord"])
-        b = self.batch_fisso if e.get("fisso") else self.batch_banda if self._in_banda(e) else self.batch
+        b = self.batch_fisso if e.get("fisso") else self.batch_fondo if e.get("fondo") else self.batch_sotto if e.get("sotto") else self.batch_banda if self._in_banda(e) else self.batch
         o, c = e["opz"], e["c"]
         if e["tipo"] == "image":
             foto = o.get("image")
@@ -813,7 +825,7 @@ class TelaGPU:
             for i in reversed(self.ord):
                 e = self.el[i]
                 b = e.get("box")
-                if e["stato"] != "hidden" and b and b[0] <= x <= b[2] and b[1] <= y <= b[3]:
+                if e["stato"] != "hidden" and not e.get("fondo") and b and b[0] <= x <= b[2] and b[1] <= y <= b[3]:
                     return [i]
             return []
         ids = self.per_tag.get(t)
@@ -833,7 +845,7 @@ class TelaGPU:
         for i in self.ord:
             e = self.el[i]
             b = e.get("box")
-            if e.get("fisso"):      # lo strato fisso e' in coordinate della finestra: non e' sul foglio
+            if e.get("fisso") or e.get("fondo"):      # gli strati fisso e di fondo sono in coordinate della finestra: non sono sul foglio
                 continue
             if e["stato"] != "hidden" and b and b[0] <= x1 and x0 <= b[2] and b[1] <= y1 and y0 <= b[3]:
                 out.append(i)
@@ -1257,6 +1269,25 @@ def prova():
     casi.append(("lo strato fisso: nello strato sopra, fuori dalla ricerca sul foglio, la vista non lo sposta", t.el[fx]["obj"][0].batch is t.batch_fisso
                  and fx not in t.find_overlapping(0, 0, 100, 100) and nf in t.find_overlapping(0, 0, 100, 100) and t.bbox(fx) == (10, 10, 60, 40)))
     t.delete("hud"); t.delete("foglio"); t.xview_moveto(0); t.yview_moveto(0)
+    # lo strato di fondo (16 nov 2026, il marchio del Board): fermo nella finestra come il fisso, ma sotto le carte
+    def pixel(x, y):
+        from pyglet import gl as gl_
+        t.w.switch_to(); t._disegna()
+        buf = (gl_.GLubyte * 4)()
+        gl_.glReadPixels(int(x), int(t.w.get_framebuffer_size()[1] - y - 1), 1, 1, gl_.GL_RGBA, gl_.GL_UNSIGNED_BYTE, buf)
+        return tuple(buf[:3])
+    t.scan_mark(0, 0); t.scan_dragto(-300, -200, gain=1)
+    vx_, vy_ = t.canvasx(0), t.canvasy(0)
+    t.create_rectangle(vx_ - 50, vy_ - 50, vx_ + 300, vy_ + 300, fill="#0000ff", tags="foglio", sotto=True)
+    fo = t.create_rectangle(10, 10, 60, 40, fill="#ff0000", tags="marchio", fondo=True)
+    sopra_ = t.create_rectangle(vx_ + 30, vy_ + 10, vx_ + 60, vy_ + 40, fill="#00ff00", tags="foglio")
+    casi.append(("lo strato di fondo: fermo nella finestra, fuori dalla ricerca, sopra il foglio opaco (sotto=True) e sotto le carte (verde sopra il rosso)",
+                 t.el[fo]["obj"][0].batch is t.batch_fondo and fo not in t.find_overlapping(vx_, vy_, vx_ + 100, vy_ + 100)
+                 and pixel(45, 25)[1] > 200 and pixel(45, 25)[0] < 60 and pixel(20, 25)[0] > 200 and pixel(80, 25)[2] > 200
+                 and fo not in t.find_withtag("current")))
+    t.tag_raise("marchio")
+    casi.append(("e portato in cima nell'ordine resta sotto il foglio", pixel(45, 25)[1] > 200 and pixel(45, 25)[0] < 60))
+    t.delete("marchio"); t.delete("foglio"); t.xview_moveto(0); t.yview_moveto(0)
     lettere = []
     t.bind("<Key>", lambda e: lettere.append(e.keysym))
     t._tasto(t.pyglet.window.key.F, 0); t._tasto(t.pyglet.window.key.A, 0)

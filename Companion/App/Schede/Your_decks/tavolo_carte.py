@@ -1833,7 +1833,42 @@ class TavoloCarte:
         vista = (cv.canvasx(0), cv.canvasy(0), W)
         if self._hud_vista is not None and (vista != self._hud_vista if not self.gpu else vista[2] != self._hud_vista[2]) and getattr(self, "_hud_dati", None):
             self.disegna_info(*self._hud_dati)
+        if self.chiave_marchio() != getattr(self, "_marchio_chiave", None):
+            self.disegna_marchio()
         self.fin.after(90, self.giro_hud)
+
+    def chiave_marchio(self):
+        cv = self.cv
+        try:
+            pw = self.pannello.winfo_width()
+        except Exception:       # noqa: BLE001 - la finestrella dei comandi non c'e' ancora
+            pw = 0
+        return (cv.winfo_width(), cv.winfo_height(), pw if pw > 1 else 0)
+
+    def disegna_marchio(self):
+        """Il marchio di 3 Steps Ahead in basso a destra (16 nov 2026, Autore: «in basso a destra della board e board editor, posizione fissa anche se la
+        board trasla o zooma e sempre dietro le carte se ci vanno sopra, si deve vedere il logo e ben visibile il nome dell'app»): le tre carte del logo, il nome
+        e il sito (marchio.py), a sinistra della finestrella dei comandi e allineato al suo fondo. Sulla scheda video nello strato di fondo della tela (fermo
+        nella finestra anche durante lo zoom della rotella, sopra i puntini, sotto tutto il resto); con la tela di Tk subito sopra i puntini, spostato con la
+        fascia quando la vista cambia (segui_fascia). Non si prende col mouse."""
+        import marchio
+        cv = self.cv
+        chiave = self.chiave_marchio()
+        self._marchio_chiave = chiave
+        cv.delete("marchio")
+        W, H, pw = chiave
+        if W < 300 or H < 200:
+            return
+        x1, y1 = W - 12 - (pw + 14 if pw else 0), H - 12
+        im = marchio.foto(self.fin, 40, FOGLIO)
+        if self.gpu:
+            cv.create_image(x1, y1, image=im, anchor="se", tags=("marchio",), fondo=True)
+        else:
+            cv.create_image(cv.canvasx(0) + x1, cv.canvasy(0) + y1, image=im, anchor="se", tags=("marchio",), state="disabled")
+            if cv.find_withtag("puntini"):
+                cv.tag_raise("marchio", "puntini")
+            else:
+                cv.tag_lower("marchio")
 
     def hud_su(self, ex, ey):
         """Il punto (coordinate della finestra della tela) e' sull'HUD? -> "testa", "corpo" o None."""
@@ -2041,6 +2076,8 @@ class TavoloCarte:
             return False
         self._fx, self._fy = fx, fy
         cv.move("fascia", dx, dy)
+        if not self.gpu:        # sulla scheda video il marchio sta nello strato di fondo, in coordinate della finestra
+            cv.move("marchio", dx, dy)
         tocca, rete = False, self._nomi_rete()
         for pl in self.pile:
             if pl["zona"] != "main":
@@ -2101,7 +2138,8 @@ class TavoloCarte:
             if not crea:
                 return
             cv.delete("puntini")
-            cv.create_image(x0, y0, image=DG.puntini(chiave[1], chiave[2], passo, PUNTINO, FOGLIO), anchor="nw", tags=("puntini",))
+            # sulla scheda video nello strato sotto (sotto=True): sopra di lui il marchio, fermo nella finestra, poi le carte (16 nov 2026)
+            cv.create_image(x0, y0, image=DG.puntini(chiave[1], chiave[2], passo, PUNTINO, FOGLIO), anchor="nw", tags=("puntini",), **(dict(sotto=True) if self.gpu else {}))
             cv.tag_lower("puntini")
             self._puntini = (chiave, x0, y0)
         except Exception:       # noqa: BLE001 - senza puntini il foglio resta del suo colore
@@ -2893,6 +2931,7 @@ class TavoloCarte:
         legate = {n for p_, c_, _f in self.rete.legami({v["nome"] for v in self.voci.values()}) for n in (p_, c_)}      # le carte coperte con una freccia hanno il pallino piccolo
         tot = conti["main"] + conti["side"]
         self.disegna_info(conti, tot)
+        self.disegna_marchio()
         for pl in sorted(self.pile, key=lambda q: q["zona"] != "main"):       # prima il mazzo, poi la fascia sopra
             if pl["zona"] != "main" and self.nascosta():        # la fascia chiusa: le sue carte non ci sono piu'
                 continue
@@ -6667,6 +6706,31 @@ def prova():
     bb_t = tO.cv.bbox(tO.cv.find_withtag("hud_testa")[0])
     vis_ = (bb_t[0] - (0 if tO.gpu else tO.cv.canvasx(0)), bb_t[1] - (0 if tO.gpu else tO.cv.canvasy(0)))
     casi.append(("spostato il foglio, l'HUD resta nell'angolo della finestra", (tO.cv.canvasx(0), tO.cv.canvasy(0)) != v0_ and abs(vis_[0] - r_h[0]) < 1.5 and abs(vis_[1] - r_h[1]) < 1.5))
+
+    def marchio_vista(t_):
+        """Dove sta il marchio nella finestra della tela (il suo angolo in basso a destra), e se e' sotto le carte e sopra i puntini."""
+        mi_ = t_.cv.find_withtag("marchio")
+        if not mi_:
+            return None, False
+        bb_ = t_.cv.bbox(mi_[0])
+        v_ = (bb_[2] - (0 if t_.gpu else t_.cv.canvasx(0)), bb_[3] - (0 if t_.gpu else t_.cv.canvasy(0)))
+        ordine_ = list(t_.cv.find_all())
+        carte_ = [i_ for i_ in ordine_ if any(g_[:1] == "c" and g_[1:].isdigit() for g_ in t_.cv.gettags(i_))]
+        if t_.gpu:
+            sotto_ = t_.cv.el[mi_[0]]["obj"][0].batch is t_.cv.batch_fondo and t_.cv.el[t_.cv.find_withtag("puntini")[0]]["obj"][0].batch is t_.cv.batch_sotto
+        else:
+            pu_ = t_.cv.find_withtag("puntini")
+            sotto_ = bool(carte_) and ordine_.index(pu_[0]) < ordine_.index(mi_[0]) < min(ordine_.index(c_) for c_ in carte_)
+        return v_, sotto_
+    W_m, H_m, pw_m = tO.chiave_marchio()
+    v_m, sotto_m = marchio_vista(tO)
+    casi.append(("il marchio di 3 Steps Ahead in basso a destra, a sinistra dei comandi, fermo nella finestra dopo lo spostamento del foglio, sopra i puntini e sotto le "
+                 "carte", v_m is not None and pw_m > 0 and abs(v_m[0] - (W_m - 12 - pw_m - 14)) < 2.5 and abs(v_m[1] - (H_m - 12)) < 2.5 and sotto_m))
+    if tO.gpu:
+        casi.append(("negativa: il marchio non si prende col mouse (fuori dalla ricerca sul foglio)", not any("marchio" in tO.cv.gettags(i_) for i_ in
+                     tO.cv.find_overlapping(tO.cv.canvasx(W_m - 120), tO.cv.canvasy(H_m - 30), tO.cv.canvasx(W_m - 20), tO.cv.canvasy(H_m - 14)))))
+    else:
+        casi.append(("negativa: il marchio non si prende col mouse (disabled)", tO.cv.itemcget(tO.cv.find_withtag("marchio")[0], "state") == "disabled"))
     ET = lambda x_, y_: type("E", (), dict(x=x_, y=y_, state=0))()
     n_sel = len(tO.sel)
     tO.premi_tela(ET(r_h[0] + 40, r_h[1] + 8)); tO.rilascia(ET(r_h[0] + 40, r_h[1] + 8))
@@ -6676,6 +6740,13 @@ def prova():
     tO.premi_tela(ET(r_h[0] + 40, r_h[1] + 60)); tO.trascina(ET(r_h[0] - 200, r_h[1] + 260)); tO.rilascia(ET(r_h[0] - 200, r_h[1] + 260))
     casi.append(("negativa: un clic sul corpo dell'HUD non arriva al foglio (niente riquadro, niente carta)", tO.banda is None and len(tO.sel) == n_sel and tO.drag is None))
     tO.apri_comandi(True)
+    fine_ = _t.time() + 0.4
+    while _t.time() < fine_:
+        root.update(); _t.sleep(0.01)
+    W_m2, H_m2, pw_m2 = tO.chiave_marchio()
+    v_m2, sotto_m2 = marchio_vista(tO)
+    casi.append(("aperti i comandi, il marchio si sposta a sinistra della finestrella piu' larga", pw_m2 > pw_m and v_m2 is not None
+                 and abs(v_m2[0] - (W_m2 - 12 - pw_m2 - 14)) < 2.5 and sotto_m2))
     tO.apri_comandi(False); tO.apri_outliner(False); root.update()
     chiusi_ = tO.f_comandi.winfo_manager() == "" and tO.out_corpo.winfo_manager() == "" and tO.b_out.cget("text") == "▶" and tO.b_comandi.cget("text") == "▸"
     tO.salva_tutto(); tO.chiudi()

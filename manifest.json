@@ -1,6 +1,6 @@
 {
- "version": "0.1.121",
+ "version": "0.1.122",
  "date": "2026-11-16",
- "notes": "Replayer: Moments now built from Every action (reliable stack and combat order), your playable cards lit up, buffs and their end animated, planeswalker powers with their text, what Arena asked you (attackers, blockers, targets, options), turns passed with plays left, exact mulligans, marked damage, opponent's hovered cards, Flameshape cards playable only with a Wizard, and many sequence fixes",
+ "notes": "The 3 Steps Ahead logo and name in the bottom right of deck windows, the deck builder and the Board (fixed while you pan and zoom, always behind the cards)",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

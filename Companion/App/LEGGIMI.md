@@ -86,6 +86,16 @@ Mockup approvati e regole in `Note/Redesign_Grafico/LEGGIMI.md` (solo lo stile c
 - La barra in alto e' una: logo e nome, le linguette con la riga azzurra sotto quella aperta, l'account col pallino verde (l'unica aggiunta approvata), il
   saldo coi loghi veri e i numeri in Bahnschrift.
 
+## Il marchio di 3 Steps Ahead
+
+`Comune/marchio.py` (16 nov 2026, Autore: «aggiungiamo i loghi di 3 step ahead: in basso a destra delle schede mazzo anche editor / in basso a destra
+della board e board editor, posizione fissa anche se la board trasla o zooma e sempre dietro le carte»): le tre carte del logo, «3 STEPS AHEAD» e il sito,
+disegnati a 4x. Nella finestra del mazzo e nel builder e' la riga in fondo a destra (`marchio.piede`); nel Board (`TavoloCarte.disegna_marchio`) sta a
+sinistra della finestrella dei comandi, ferma nella finestra: sulla scheda video nello strato di fondo della tela (`fondo=True`, coordinate della finestra,
+disegnato dopo il foglio a puntini, che sta nello strato `sotto=True`, e prima delle carte), con la tela di Tk subito sopra i puntini e spostato con la
+fascia. Non si prende col mouse. Il tappeto del replayer ha il suo, stampato sul feltro, con le stesse carte (`marchio.logo_carte`). Prove: `marchio.py
+--prova`, `tela_gpu.py --prova` (lo strato di fondo coi pixel), `tavolo_carte.py --prova`, `Prove/prova_sezioni.py`.
+
 ## L'icona nel tray
 
 `Comune/tray.py` (Shell_NotifyIcon via ctypes, un filo, coda di comandi) e i metodi `_tray_avvia`, `_tray_giro`, `mostra_dal_tray`, `chiudi_x`, `esci` di `Finestra`. La X nasconde la finestra; l'icona la riporta o chiude l'app. Preferenza in `Log_Arena/tray.json`. Dove non c'e' icona la X chiude come prima. Prove: `tray.py --prova`, `Prove/prova_tray.py`.

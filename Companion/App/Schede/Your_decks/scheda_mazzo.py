@@ -221,7 +221,11 @@ class SchedaMazzo:
         tk.Frame(dentro, bg=C["filo"], height=1).pack(fill="x")
         # a sinistra la lista, in due colonne (Autore, 7 nov 2026: «la lista a sx le terre in una sotto lista e la side a sx / tutto piu' piccolo e meglio organizzato»), a destra i dati dall'alto in basso
         # staccata dal fondo della finestra (12 nov 2026, Autore: «i pulsanti in fondo sono troppo bassi alziamoli un po'»)
-        corpo = tk.Frame(dentro, bg=C["scheda"]); corpo.pack(fill="both", expand=True, padx=10, pady=(8, 22))
+        corpo = tk.Frame(dentro, bg=C["scheda"]); corpo.pack(fill="both", expand=True, padx=10, pady=(8, 0))
+        # il marchio di 3 Steps Ahead in basso a destra (16 nov 2026, Autore: «in basso a destra delle schede mazzo anche editor»): la riga in fondo
+        # prende il posto dei 22 pixel d'aria, cosi' i pulsanti restano staccati dal fondo
+        import marchio
+        self.piede_marchio = marchio.piede(tk, dentro, C["scheda"]); self.piede_marchio.pack(side="bottom", fill="x", before=corpo)
         corpo.columnconfigure(0, weight=11, uniform="det"); corpo.columnconfigure(1, weight=10, uniform="det"); corpo.rowconfigure(0, weight=1)
         sx_l = tk.Frame(corpo, bg=C["scheda"]); sx_l.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
         dx_d = tk.Frame(corpo, bg=C["scheda"]); dx_d.grid(row=0, column=1, sticky="nsew")
