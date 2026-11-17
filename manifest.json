@@ -1,6 +1,6 @@
 {
- "version": "0.1.122",
- "date": "2026-11-16",
- "notes": "The 3 Steps Ahead logo and name in the bottom right of deck windows, the deck builder and the Board (fixed while you pan and zoom, always behind the cards)",
+ "version": "0.1.123",
+ "date": "2026-11-17",
+ "notes": "Leak Finder: the leak for an instant or flash creature cast on your turn now names the card, and spree cards like Three Steps Ahead count the cost of their cheapest mode",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

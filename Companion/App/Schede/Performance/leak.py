@@ -74,7 +74,7 @@ NOMI = {"l1": "You skipped a land drop", "l2": "You left mana unused with a crea
         "l8": "You tapped the wrong lands", "l9": "You didn't attack when nothing could block",
         # il Leak Finder (15 nov 2026, Autore: «cambia anche il nome della scheda, da ora non si chiama più performance ma leak finder, deve essere un leak
         # finder a tutti gli effetti»): i leak della pagella dell'enciclopedia e quelli di un leak finder per Magic (mulligan, sequenza delle pescate, mana tenuto)
-        "l10": "You cast an instant on your own turn for no reason", "l11": "You missed lethal", "l12": "You kept a hand you should have mulliganed",
+        "l10": "You cast an instant or a flash creature on your own turn for no reason", "l11": "You missed lethal", "l12": "You kept a hand you should have mulliganed",
         "l13": "You mulliganed a hand you should have kept", "l14": "You played your land before your card draw",
         "l15": "You held mana open and never used it"}
 ORDINE = ("l1", "l2", "l3", "l4", "l5", "l6", "l7", "l8", "l9", "l10", "l11", "l12", "l13", "l14", "l15")
@@ -232,6 +232,7 @@ def per_partita(x):
     for dec in _blocchi(x, d, seat):
         l4.append(dec)
     l2, l3, l5, l6, l8 = [], [], [], [], []
+    carte_l6 = {}
     magie_t, terre_t = {}, {}
     for t, s_, cosa, g_, _tp in d.get("azioni") or []:
         if cosa == "magia" and s_ == seat:
@@ -300,6 +301,7 @@ def per_partita(x):
                 sue_terre = [c for c in (f_prima.get("c") or [[], []])[b] if _terra(c[0])]
                 if sue_terre and all(c[1] for c in sue_terre):
                     l6.append(t)
+                    carte_l6.setdefault(t, []).append(n)
     import decisioni as DEC
     for dec in DEC.per_partita(dict(x, vinta=x.get("vinta"), quando=x.get("quando"))):
         if dec["persi_miei"] and dec["persi_suoi"]:         # uno scambio: muoiono creature da tutte e due le parti
@@ -340,12 +342,16 @@ def per_partita(x):
             l9.append(w["t"])
     # i leak del Leak Finder (15 nov 2026)
     import tempismo as TM
-    l10 = list((TM.per_partita(x) or {}).get("perso") or [])
+    tm_ = TM.per_partita(x) or {}
+    l10 = list(tm_.get("perso") or [])
     l11 = [w["t"] for w in MA.letali_mancati(d, seat) or []]
     l12, l13 = mulligan(x)       # qui la riga non ha ancora la mano: valore() li rifa' sulla riga intera
     l14, l15 = _sequenza(d, seat, mom), _mana_tenuto(d, seat, mom)
     return dict(l1=sorted(set(l1)), l2=sorted(set(l2)), l3=sorted(set(l3)), l4=sorted(set(l4)), l5=sorted(set(l5)), l6=sorted(set(l6)), l7=l7,
-                l8=sorted(set(l8)), l9=sorted(set(l9)), l10=sorted(set(l10)), l11=sorted(set(l11)), l12=bool(l12), l13=bool(l13), l14=l14, l15=l15)
+                l8=sorted(set(l8)), l9=sorted(set(l9)), l10=sorted(set(l10)), l11=sorted(set(l11)), l12=bool(l12), l13=bool(l13), l14=l14, l15=l15,
+                # le carte di ogni leak, dove si sa (17 nov 2026, Autore: «al mazzo azorius richiama come leak l'aver lanciato un incantesimo scambiandolo
+                # per istantaneo»: il leak era della creatura con flash lanciata nello stesso turno, ma la riga non diceva quale): {leak: {turno: [nomi]}}
+                carte=dict(l6=carte_l6, l10=dict(tm_.get("carte") or {})))
 
 
 # L3 e le sinergie (15 nov 2026, Autore: «alcuni leak non tengono conto di sinergie, per esempio creature che entrano prima della fase di combattimento
@@ -492,7 +498,7 @@ def _sequenza(d, seat, mom):
                 visto_terra = True
             elif visto_terra:
                 n = _nome(g_)
-                c_ = (_carta(n) or {}).get("cmc") if n else None
+                c_ = costo_vero(n) if n else None
                 if c_ is not None and c_ <= prima and _guarda(n):
                     out.append(t)
                     break
@@ -551,18 +557,41 @@ def _carta(n):
     return DA._carta(n or "") or {}
 
 
+def _simboli(simboli):
+    out = []
+    for sym in simboli:
+        if sym.isdigit():
+            out += ["1"] * int(sym)
+        elif sym and sym not in ("X", "Y", "Z"):
+            out.append(sym)
+    return out
+
+
+RX_SPREE = re.compile(r"\+ \{([^}]*)\}")
+
+
 def _costo(n):
-    """Il costo in simboli («1», «W», «W/U»...) senza X; None se la carta non si conosce."""
+    """Il costo in simboli («1», «W», «W/U»...) senza X; None se la carta non si conosce. Una carta spree costa il suo costo piu' la modalita' piu' economica
+    (17 nov 2026, Autore: «dichiara alcune carte come giocabili ma non è vero, per esempio three steps ahead che è vero che può essere giocata a un mana ma
+    poi chiede costi aggiuntivi»): Three Steps Ahead {U} + {2} = 3 mana, come lo scrive Arena nelle azioni disponibili (manaCost di ActionsAvailableReq)."""
     c = _carta(n)
     if not c:
         return None
-    out = []
-    for sym in c.get("costo") or []:
-        if sym.isdigit():
-            out += ["1"] * int(sym)
-        elif sym not in ("X", "Y", "Z"):
-            out.append(sym)
+    out = _simboli(c.get("costo") or [])
+    testo = c.get("testo") or ""
+    if testo.startswith("Spree"):
+        modi = [_simboli(m.split("o")) for m in RX_SPREE.findall(testo)]
+        if modi:
+            out += min(modi, key=lambda m: (len(m), sum(s != "1" for s in m)))      # a parita' quella senza colori, come Arena
     return out
+
+
+def costo_vero(n):
+    """Il mana che serve davvero per lanciare la carta (il valore di mana se il costo non si conosce): quello che i leak confrontano con le terre."""
+    cc = _carta(n) if n else {}
+    if not cc.get("costo"):         # senza i simboli del costo (una carta che il database non scrive, una prova): il valore di mana
+        return cc.get("cmc")
+    return len(_costo(n))
 
 
 def _colori_terra(g):
@@ -967,6 +996,10 @@ def prova():
     finally:
         DA._MANA.clear(); DA._MANA.update(salva)
         DA._NOMI_GRP.clear(); DA._NOMI_GRP.update(nomi)
+    # il costo vero delle spree (17 nov 2026, Three Steps Ahead): il costo piu' la modalita' piu' economica, a parita' quella senza colori, come Arena
+    if _carta("Three Steps Ahead"):
+        casi.append(("una spree costa anche la modalita' piu' economica: Three Steps Ahead {U} + {2} = 3 (Arena: manaCost U + 2); negativa: Opt resta 1",
+                     _costo("Three Steps Ahead") == ["U", "1", "1"] and costo_vero("Three Steps Ahead") == 3 and costo_vero("Opt") == 1))
     for n, ok in casi:
         print(("ok    " if ok else "ROSSO ") + n)
     print(f"{sum(1 for _n, ok in casi if ok)}/{len(casi)}")

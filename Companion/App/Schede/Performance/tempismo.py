@@ -48,7 +48,8 @@ def _info(g):
     import leak as LK
     n = LK._nome(g)
     c = LK._carta(n) if n else {}
-    return n, (c.get("tipo") or ""), (c.get("testo") or ""), c.get("cmc")
+    # il mana vero (17 nov 2026): una spree costa anche la modalita' piu' economica (LK.costo_vero), non solo il costo stampato
+    return n, (c.get("tipo") or ""), (c.get("testo") or ""), (LK.costo_vero(n) if c.get("cmc") is not None else None)
 
 
 # Le sinergie (15 nov 2026, Autore: «alcuni leak non tengono conto di sinergie»): un istantaneo o un flash lanciato in Main 1 del turno in cui attacchi
@@ -89,7 +90,7 @@ def per_partita(x):
     fine = {m[1]: m[3] for m in mom if m[0] == "fine" and isinstance(m[3], dict)}
     magie = [m for m in mom if m[0] == "spell" and m[4] and not m[4].get("ab")]
     fasi = d.get("fasi") or []
-    out = dict(nel_mio=[], aspetta=[], perso=[])
+    out = dict(nel_mio=[], aspetta=[], perso=[], carte={})       # carte: {turno: [le carte che hanno perso valore]} (17 nov 2026, per il replayer)
     for i, (t, s_, g, fase) in enumerate(fasi):
         if s_ != seat or attivo.get(t) != seat:
             continue
@@ -126,6 +127,7 @@ def per_partita(x):
             perso = g not in [c[0] for c in (fine[t + 2].get("c") or [[], []])[a]]
         if perso:
             out["perso"].append(t)
+            out["carte"].setdefault(t, []).append(n)
     _MEMO[firma] = out
     return out
 
@@ -153,13 +155,13 @@ def prova():
             return per_partita(dict(partita=chiave, seat=1))
         fine1 = ["fine", 1, 1, dict(c=[[], []], m=[[], []]), None]
         p = partita([[1, 1, 801, "Phase_Main2"]], [fine1], "tm1")
-        casi.append(("Opt nel tuo turno in Main 2: lanciato nel tuo turno e poteva aspettare", p == dict(nel_mio=[1], aspetta=[1], perso=[])))
+        casi.append(("Opt nel tuo turno in Main 2: lanciato nel tuo turno e poteva aspettare", p == dict(nel_mio=[1], aspetta=[1], perso=[], carte={})))
         p = partita([[1, 1, 801, "Phase_Combat"]], [fine1], "tm2")
-        casi.append(("negativa: in combattimento non poteva aspettare", p == dict(nel_mio=[1], aspetta=[], perso=[])))
+        casi.append(("negativa: in combattimento non poteva aspettare", p == dict(nel_mio=[1], aspetta=[], perso=[], carte={})))
         p = partita([[1, 2, 804, "Phase_Main1"], [1, 1, 801, "Phase_Main1"]], [fine1], "tm3")
         casi.append(("negativa: la sua magia prima nella stessa fase, la tua e' una risposta", p["aspetta"] == []))
         p = partita([[2, 2, 804, "Phase_Main1"]], [["fine", 2, 2, None, None]], "tm4")
-        casi.append(("negativa: nel suo turno non conta", p == dict(nel_mio=[], aspetta=[], perso=[])))
+        casi.append(("negativa: nel suo turno non conta", p == dict(nel_mio=[], aspetta=[], perso=[], carte={})))
         # mana bloccato: a fine turno 1 hai in mano Grizzly Bears (2), una terra stappata, Opt costava 1 → con Opt in mano avresti avuto 2 mana
         terra = [[999, 0, 0, None, None, 1]]
         DA_e = DA.e_terra
@@ -174,7 +176,8 @@ def prova():
         # flash esposto: Ambush Viper lanciata nel tuo turno, sparita a fine del tuo turno dopo
         mom = [["fine", 1, 1, dict(c=[[[803, 0, 0, 2, 1, 5]], []], m=[[], []]), None], ["fine", 3, 1, dict(c=[[], []], m=[[], []]), None]]
         p = partita([[1, 1, 803, "Phase_Main1"]], mom, "tm7")
-        casi.append(("flash esposto: la Viper lanciata nel tuo turno non c'e' piu' due turni dopo", p["perso"] == [1]))
+        casi.append(("flash esposto: la Viper lanciata nel tuo turno non c'e' piu' due turni dopo; il leak dice la carta (17 nov 2026: la riga del replayer "
+                     "la nomina, cosi' non si scambia per un incantesimo dello stesso turno)", p["perso"] == [1] and p["carte"] == {1: ["Ambush Viper"]}))
         DA.e_terra = DA_e
         # le sinergie (15 nov 2026): Opt in Main 1 del turno in cui attacchi con un prowess in campo serve all'attacco; negativa: senza il payoff aspetta
         nomi[805] = ("Monastery Swiftspear", "Creature — Human Monk", "Haste\nProwess", 1)

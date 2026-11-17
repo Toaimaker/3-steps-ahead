@@ -2537,9 +2537,12 @@ class PaginaPerformance:
         lk = x_.get("leak") or {}
         out = {}
         if lk:
-            def metti(i, k):
-                if i is not None:
-                    out.setdefault(i, []).append(LK.NOMI[k])
+            carte_ = lk.get("carte") or {}
+
+            def metti(i, k, T=None):
+                if i is not None:       # con la carta, dove il leak la sa (17 nov 2026): «... · Cathar Commando»
+                    cc_ = (carte_.get(k) or {}).get(T) or []
+                    out.setdefault(i, []).append(LK.NOMI[k] + (" · " + ", ".join(dict.fromkeys(cc_)) if cc_ else ""))
             for k in LK.ORDINE:     # ogni leak sul suo turno di Arena: sul combattimento (L4, L5), sull'ultimo passo del turno (gli altri), L7 sull'ultimo
                 if k == "l7":
                     if lk.get("l7") and ps:
@@ -2552,9 +2555,9 @@ class PaginaPerformance:
                 for T in lk.get(k) or []:
                     cand = [i for i, p_ in enumerate(ps) if p_[2] == T]
                     if k in ("l4", "l5"):
-                        metti(next((i for i in cand if p_is_comb(ps[i])), cand[-1] if cand else None), k)
+                        metti(next((i for i in cand if p_is_comb(ps[i])), cand[-1] if cand else None), k, T)
                     else:
-                        metti(cand[-1] if cand else None, k)
+                        metti(cand[-1] if cand else None, k, T)
         b["_leak_k"], b["_leak_i"] = k_, out
         return out
 
