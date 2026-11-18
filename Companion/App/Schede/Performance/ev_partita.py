@@ -518,6 +518,26 @@ def _mappa_turni(base):
     return _MAPPE[k]
 
 
+_INDICI = {}
+
+
+def _turni_di(base, partita):
+    """I turni (col loro scarto) di una partita dalla mappa delle partite base: un indice per partita, ricordato con la mappa (la tabella delle partite
+    lo chiede per ogni riga)."""
+    mappa = _mappa_turni(base)
+    ind = _INDICI.get(id(mappa))
+    if ind is None or ind[0] is not mappa:
+        per = collections.defaultdict(list)
+        for (p, _t), z in mappa.items():
+            per[p].append(z)
+        for v in per.values():
+            v.sort(key=lambda z: z["t"])
+        if len(_INDICI) > 8:
+            _INDICI.clear()
+        ind = _INDICI[id(mappa)] = (mappa, per)
+    return ind[1].get(partita, [])
+
+
 _EVENTI = {}
 
 
@@ -560,7 +580,8 @@ def carte(r, base, quante=40, minimo=5):
         for k in ev:
             if k["pedina"]:
                 continue
-            fino = k["esce"] if k["esce"] is not None else max((t for (p, t) in mappa if p == x.get("partita")), default=k["entra"])
+            tt_ = _turni_di(base, x.get("partita"))
+            fino = k["esce"] if k["esce"] is not None else (tt_[-1]["t"] if tt_ else k["entra"])
             pm = sum((mappa.get((x.get("partita"), t)) or {}).get("scarto", 0.0) for t in range(k["entra"], fino + 1))
             a = acc.setdefault(k["nome"], dict(nome=k["nome"], copie=0, in_campo=0.0, ev_meriti=0.0, conta=collections.Counter(), partite={},
                                                ctx=collections.defaultdict(list)))
@@ -724,7 +745,136 @@ def giocate(r, base, quante=40, minimo=5):
     return out[:quante]
 
 
+# ---------------------------------------------------------------- l'Opponent: le sue carte e il meta dai nostri dati
+#
+# Autore, 18 nov 2026: «potremmo comunque dedurre le carte e l'ev delle carte dai mazzi che incontriamo», «possiamo provare a ricostruire un meta anche
+# se abbiamo poche carte». Lo stesso conto girato dal suo lato: la partita vista dal suo posto (specchio), la sua P e' lo specchio della tua, quindi il
+# plus-minus delle sue carte e' lo scarto dei turni col segno cambiato. Si vede solo cio' che arriva in campo: e' deduttivo, una traccia.
+
+
+def specchio(x):
+    """La riga di una partita vista dal posto dell'Opponent: posto, risultato, chi comincia girati; le sue magie lanciate al posto delle tue."""
+    if x.get("seat") not in (1, 2):
+        return dict(x)
+    return dict(x, seat=3 - x["seat"], vinta=None if x.get("vinta") is None else not x["vinta"],
+                inizia=None if x.get("inizia") is None else not x["inizia"], mie_lanciate=x.get("sue_lanciate") or [])
+
+
+def carte_sue(r, base, quante=40, minimo=5):
+    """Le carte dell'Opponent nelle partite r col loro EV per lui (le righe di Cards, come `carte` dal suo lato): il plus-minus dei turni in cui erano in
+    campo (per lui: lo scarto dell'Hero col segno cambiato), i controfattuali dei loro meriti, quante volte sopravvivono. Le partite di una carta sono
+    quelle in cui l'ha lanciata (il filtro «Card the opponent cast»); win rate e record restano dell'Hero, come in tutta la cartella."""
+    mappa = _mappa_turni(base)
+    acc = {}
+    for x in r:
+        xs = specchio(x)
+        ev = _eventi(xs)
+        sopr_qui = collections.defaultdict(bool)
+        tt_ = _turni_di(base, x.get("partita"))
+        fino_p = tt_[-1]["t"] if tt_ else None
+        for k in ev:
+            if k["pedina"]:
+                continue
+            fino = k["esce"] if k["esce"] is not None else (fino_p if fino_p is not None else k["entra"])
+            pm = -sum((mappa.get((x.get("partita"), t)) or {}).get("scarto", 0.0) for t in range(k["entra"], fino + 1))
+            a = acc.setdefault(k["nome"], dict(nome=k["nome"], copie=0, in_campo=0.0, ev_meriti=0.0, conta=collections.Counter(), partite={}))
+            a["copie"] += 1
+            a["in_campo"] += pm
+            for mer, _t, _f, v_ in k["eventi"]:
+                a["conta"][mer] += 1
+                a["ev_meriti"] += v_ or 0.0
+            sopr_qui[k["nome"]] |= k["esce"] is None
+        for nome in set(x.get("sue_lanciate") or []):
+            if DA.e_terra(nome):
+                continue
+            a = acc.setdefault(nome, dict(nome=nome, copie=0, in_campo=0.0, ev_meriti=0.0, conta=collections.Counter(), partite={}))
+            a["partite"][x.get("partita")] = (bool(x.get("vinta")), bool(sopr_qui.get(nome)))
+    tot = len(r) or 1
+    out = []
+    for a in acc.values():
+        pp = a["partite"]
+        n = len(pp)
+        if not n or not a["copie"]:
+            continue
+        vinte = sum(1 for v, _s in pp.values() if v)
+        sopr = [v for v, s_ in pp.values() if s_]
+        non = [v for v, s_ in pp.values() if not s_]
+        out.append(dict(nome=a["nome"], n=n, vinte=vinte, perse=n - vinte, wr=round(100 * vinte / n, 1), quota=round(100 * n / tot, 1), copie=a["copie"],
+                        in_campo=round(a["in_campo"] / a["copie"], 2), ev_meriti=round(a["ev_meriti"] / a["copie"], 2), conta=dict(a["conta"]),
+                        sopr=len(sopr), wr_sopr=round(100 * sum(sopr) / len(sopr)) if sopr else None,
+                        n_non=len(non), wr_non=round(100 * sum(non) / len(non)) if non else None,
+                        poche=a["copie"] < minimo, sua=True, filtro=("sue_lanciate", a["nome"])))
+    out.sort(key=lambda c: (c["poche"], -c["in_campo"]))
+    return out[:quante]
+
+
+def liste_composite(r, quante=8, minimo=3):
+    """Il meta dai nostri dati: per ogni archetipo dell'Opponent (matchup_log, «suo») incontrato in almeno `minimo` partite, le carte che ha mostrato
+    (lanciate o viste) con la frequenza, cioe' in quante delle partite contro quell'archetipo; dalle carte piu' frequenti. Da poche carte per partita si
+    ricompone il mazzo. -> [dict(archetipo, partite, vinte, carte=[(nome, partite, quota)])], dagli archetipi piu' incontrati."""
+    per = collections.defaultdict(list)
+    for x in r:
+        if x.get("suo"):
+            per[x["suo"]].append(x)
+    out = []
+    for arch, xx in per.items():
+        if len(xx) < minimo or arch == "Unknown":      # senza magie viste non c'e' un mazzo da ricomporre
+            continue
+        c = collections.Counter(n for x in xx for n in set((x.get("sue_lanciate") or []) + (x.get("sue_viste") or [])) if not DA.e_terra(n))
+        out.append(dict(archetipo=arch, partite=len(xx), vinte=sum(1 for x in xx if x.get("vinta")),
+                        carte=[(n, q, round(100 * q / len(xx))) for n, q in c.most_common(40)]))
+    out.sort(key=lambda a: -a["partite"])
+    return out[:quante]
+
+
 MORTI_COMB = ("scambio", "perde", "chump", "salva")
+
+
+def finestra_spot(x, filtri):
+    """La finestra dello spot dei filtri in una partita: (t0, tw), dal primo turno di un filtro acceso alla fine del primo turno dell'Opponent dopo (o del
+    suo ultimo turno fra gli spot); None senza uno spot o senza le foto."""
+    d = DA._MANA.get(x.get("partita")) or {}
+    seat = x.get("seat")
+    sp = [z for z in DA.spot_filtri(x, filtri) if z.get("t")] if filtri else []
+    if not sp or seat not in (1, 2) or not d.get("foto"):
+        return None
+    chi_di = {t: att for t, att, _f in d["foto"]}
+    if d.get("ultima"):
+        chi_di.setdefault(d["ultima"][0], d["ultima"][1])
+    t0 = min(z["t"] for z in sp)
+    suoi = sorted(t for t, att in chi_di.items() if att != seat and t > t0)
+    if not suoi:
+        return None
+    tardi = [z["t"] for z in sp if chi_di.get(z["t"]) not in (None, seat) and z["t"] > t0]
+    return t0, (max(tardi) if tardi else suoi[0])
+
+
+def ev_spot_partita(x, filtri, base):
+    """L'EV dello spot in una partita (la colonna SPOT EV della tabella sotto il grafico): lo scarto dei turni della finestra dello spot; senza uno spot, lo
+    scarto di tutta la partita. -> (valore, e' uno spot?) o (None, False) senza il conto."""
+    fs = finestra_spot(x, filtri)
+    tt = _turni_di(base, x.get("partita"))
+    if not tt:
+        return None, False
+    if fs is None:
+        return round(sum(z["scarto"] for z in tt), 2), False
+    return round(sum(z["scarto"] for z in tt if fs[0] <= z["t"] <= fs[1]), 2), True
+
+
+def carte_ev_partita(x, base):
+    """Le carte dell'Hero in una partita col loro EV in campo (il plus-minus dei turni in cui c'erano), dalla piu' alta: [(nome, ev)]. Le pedine no; una
+    carta in piu' copie tiene la copia migliore."""
+    mappa = _mappa_turni(base)
+    tt = _turni_di(base, x.get("partita"))
+    fino_p = tt[-1]["t"] if tt else None
+    out = {}
+    for k in _eventi(x):
+        if k["pedina"]:
+            continue
+        fino = k["esce"] if k["esce"] is not None else (fino_p if fino_p is not None else k["entra"])
+        pm = sum((mappa.get((x.get("partita"), t)) or {}).get("scarto", 0.0) for t in range(k["entra"], fino + 1))
+        out[k["nome"]] = max(out.get(k["nome"], pm), pm)
+    return sorted(((n, round(v, 2)) for n, v in out.items()), key=lambda t: -t[1])
 
 
 def esito_spot(r, filtri, base):
@@ -738,20 +888,10 @@ def esito_spot(r, filtri, base):
     esiti, rimozioni = collections.Counter(), collections.Counter()
     partite, ev_t = 0, []
     for x in r:
-        d = DA._MANA.get(x.get("partita")) or {}
-        seat = x.get("seat")
-        sp = [z for z in DA.spot_filtri(x, filtri) if z.get("t")]
-        if not sp or seat not in (1, 2) or not d.get("foto"):
+        fs = finestra_spot(x, filtri)
+        if fs is None:
             continue
-        chi_di = {t: att for t, att, _f in d["foto"]}
-        if d.get("ultima"):
-            chi_di.setdefault(d["ultima"][0], d["ultima"][1])
-        t0 = min(z["t"] for z in sp)
-        suoi = sorted(t for t, att in chi_di.items() if att != seat and t > t0)
-        if not suoi:
-            continue
-        tardi = [z["t"] for z in sp if chi_di.get(z["t"]) not in (None, seat) and z["t"] > t0]
-        tw = max(tardi) if tardi else suoi[0]
+        t0, tw = fs
         ev = [k for k in _eventi(x) if k["creatura"] and not k["pedina"]]
         seguite = [k for k in ev if k["entra"] == t0] or [k for k in ev if k["entra"] <= t0 and (k["esce"] is None or k["esce"] > t0)]
         if not seguite:
@@ -904,6 +1044,19 @@ def prova_carte():
             casi.append(("negativa: senza un filtro con un turno (nessuno spot) niente risposta", esito_spot([x1], {}, [x1, x2]) is None))
         finally:
             DA.spot_filtri = vero_sp
+        # le carte dell'Opponent dal suo lato e i suoi mazzi ricomposti
+        y1 = dict(x1, sue_lanciate=["Card 110"], suo="Rakdos")
+        y2 = dict(x2, sue_lanciate=["Card 110", "Card 111"], suo="Rakdos")
+        cs = {c_["nome"]: c_ for c_ in carte_sue([y1, y2], [y1, y2], minimo=1)}
+        casi.append(("le sue carte: la sua 10 (Card 110) in tutte e due le partite, una copia per partita, dal suo lato; il filtro e' «Card the opponent cast»; "
+                     "negativa: la tua Card 101 non c'e'", "Card 110" in cs and cs["Card 110"]["n"] == 2 and cs["Card 110"]["copie"] == 2
+                     and cs["Card 110"]["sua"] and cs["Card 110"]["filtro"] == ("sue_lanciate", "Card 110") and "Card 101" not in cs))
+        sp_ = specchio(y2)
+        casi.append(("lo specchio: posto, risultato, chi comincia girati, le sue magie al posto delle tue", sp_["seat"] == 2 and sp_["vinta"] is True
+                     and sp_["inizia"] is False and sp_["mie_lanciate"] == ["Card 110", "Card 111"]))
+        lc = liste_composite([y1, y2, dict(y2, partita="g9", suo="Unknown")], minimo=2)
+        casi.append(("il mazzo ricomposto: Rakdos in 2 partite, Card 110 nel 100%, Card 111 nel 50%; negativa: Unknown (senza magie viste) non si ricompone",
+                     len(lc) == 1 and lc[0]["archetipo"] == "Rakdos" and lc[0]["carte"][0] == ("Card 110", 2, 100) and ("Card 111", 1, 50) in lc[0]["carte"]))
         lk = leak_ev([dict(x1, leak={"l1": [3], "l7": True})], [x1, x2])
         casi.append(("i leak dentro gli scarti: L1 al turno 3 ha il suo scarto; negativa: L7 (di tutta la partita) non ha un turno", "l1" in lk
                      and lk["l1"]["n"] == 1 and "l7" not in lk))

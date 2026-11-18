@@ -304,6 +304,26 @@ def per_turno(match_id, seat, inizia, turni, grezzo=False):
             # per tipo carta 1-2-3, se faccio t1 creature e t2 creature è ovvio che sono state castate 2 creature - se faccio t3 istant - istant ovviamente ho
             # lanciato 2 istant / complichiamo le cose ma rendiamole semplici»; prima c'erano anche le voci col costo, «Instant · 1»)
             out[k].extend(NOMI_TIPO[c] for c in dict.fromkeys(tipi or "") if c in NOMI_TIPO)
+    # la fase di ogni magia (VERSIONE 14 di mana_aperto): le «fasi» sono nello stesso ordine delle magie lanciate, una per magia; si appaiano per turno,
+    # posto e carta, cosi' una riga che manca non sposta le altre
+    coda = collections.defaultdict(list)
+    for t, s_, g_, f_ in d.get("fasi") or []:
+        coda[(t, s_, g_)].append(f_)
+    for t, s_, cosa, g_, tipi in d["azioni"]:
+        if cosa != "magia":
+            continue
+        fq = coda.get((t, s_, g_))
+        fase = FASE_ARENA.get(fq.pop(0)) if fq else None
+        if fase is None:
+            continue
+        chi = "io" if s_ == seat else "lui"
+        k = f"{chi}{(t + 1) // 2}" if di_turno(t) == chi else f"{chi}x{(t + 1) // 2}"
+        if k not in out:
+            continue
+        out.setdefault(f"k{fase}{k}", []).extend(NOMI_TIPO[c] for c in dict.fromkeys(tipi or "") if c in NOMI_TIPO)
+        nome = nome_intero(nome_grp(g_) or "") if g_ not in SENZA_FACCIA else ""
+        if nome:
+            out.setdefault(f"k{fase}n{k}", []).append(nome)
     for kind, t, att, _f, info in d.get("momenti") or []:
         if kind != "comb" or not info or not info.get("att"):
             continue
@@ -547,6 +567,12 @@ def ruoli_turno(d, seat, di_turno, turni):
     return out
 
 
+# la fase del lancio (18 nov 2026, Autore: «quando indichiamo i turni sulle tendine negli advanced filters credo che dovremo mettere una tendina successiva
+# che chiede la fase in cui vogliamo esplorare il turno», «fai solo la tendina per ora»): le famiglie «k{fase}{chi}{x}{n}» (i tipi) e «k{fase}n{chi}{x}{n}»
+# (la carta) di per_turno, dalle «fasi» di mana_aperto; a = prima fase principale (con l'inizio del turno), c = combattimento, z = seconda fase principale
+# (con la fine del turno)
+FASI_LANCIO = (("a", "main phase 1"), ("c", "combat"), ("z", "main phase 2"))
+FASE_ARENA = {"Phase_Beginning": "a", "Phase_Main1": "a", "Phase_Combat": "c", "Phase_Main2": "z", "Phase_Ending": "z"}
 FAMIGLIE_TURNO = ("{c}", "{c}x", "a{c}", "d{c}", "m{c}", "p{c}", "p{c}x", "q{c}", "u{c}")      # u: il mana lasciato      # le famiglie turno per turno di per_turno (q: la scelta d'attacco)
 CAMPI_TURNO = tuple(str(n) for n in range(1, TURNI_FILTRO + 1)) + ("L", "A")           # i turni dei filtri, «dal turno 11» (L) e «qualunque turno» (A)
 
@@ -835,7 +861,7 @@ def spot_filtri(x, filtri):
                     continue
                 padrone = altro[chi] if (ics or fam in ("d", "nd")) else chi        # di chi e' il turno: il suo, o quello dell'altro («x»; la difesa e' nel suo attacco)
                 t = 2 * n - 1 if padrone == primo else 2 * n
-                aggiungi(t, DOVE_FAMIGLIA.get(fam, "inizio"), chi == "io", fase=_fase_lancio(x, t, seat if chi == "io" else 3 - seat, voglio) if fam in ("", "r", "n", "nr") else None)
+                aggiungi(t, DOVE_FAMIGLIA.get(fam, "inizio"), chi == "io", fase=_fase_lancio(x, t, seat if chi == "io" else 3 - seat, voglio) if fam in ("", "r", "n", "nr") or re.fullmatch(r"k[acz]n?", fam) else None)
         elif re.fullmatch(r"leak_l\d+", k) and v == "Yes":
             l_ = k[5:]
             if l_ in ("l12", "l13"):
@@ -917,7 +943,7 @@ def ordine_lancio(v):
 def multipla(k):
     """Le chiavi a scelta multipla: le giocate turno per turno («t_io2», «t_luix3»). Il filtro e' una lista di voci, e una partita passa se in quel turno ha
     tutte le voci scelte, ripetizioni comprese (una creatura e due istantanei)."""
-    return bool(re.fullmatch(r"t_(io|lui)x?(\d+|[AL])", k))
+    return bool(re.fullmatch(r"t_(?:k[acz])?(io|lui)x?(\d+|[AL])", k))
 
 
 ENTRO = tuple(range(3, 13))         # «la partita finita entro il tuo turno N»
@@ -1884,6 +1910,10 @@ for _n_ in CAMPI_TURNO:
             ORDINE_VALORI[f"t_r{_ch}{_x}{_n_}"] = ORDINE_RUOLI
             NOME[f"t_n{_ch}{_x}{_n_}"] = NOME[f"t_nr{_ch}{_x}{_n_}"] = f"{_Tu} · {_di} {_tn} · the card cast"
             NOME[f"t_np{_ch}{_x}{_n_}"] = f"{_Tu} · {_di} {_tn} · the card drawn"
+            for _c, _fn in FASI_LANCIO:         # la fase del lancio (18 nov 2026)
+                NOME[f"t_k{_c}{_ch}{_x}{_n_}"] = f"{_Tu} · {_di} {_tn} · cast in {_fn}"
+                ORDINE_VALORI[f"t_k{_c}{_ch}{_x}{_n_}"] = tuple(v_ for v_ in ORDINE_TIPI if v_ != "Nothing")
+                NOME[f"t_k{_c}n{_ch}{_x}{_n_}"] = f"{_Tu} · {_di} {_tn} · the card cast in {_fn}"
             for _a, _nm, _voci in BOARD_AREE:
                 if _a in AREE_CON_CARTE:
                     NOME[f"t_nb{_a}{_ch}{_x}{_n_}"] = f"{_Tu} · {_nm.lower()} at the start of {_quando(_di)} · the card"
@@ -1896,7 +1926,7 @@ for _n_ in CAMPI_TURNO:
                 ORDINE_VALORI[f"t_b{_a}vio{_x}{_n_}"] = ORDINE_AVANTI
 DOVE_FAMIGLIA.update({f"b{_a}": "inizio" for _a, _n, _v in BOARD_AREE})
 DOVE_FAMIGLIA.update({f"b{_a}v": "inizio" for _a in BOARD_AVANTI})
-DOVE_FAMIGLIA.update(r="magia", n="magia", nr="magia")
+DOVE_FAMIGLIA.update(r="magia", n="magia", nr="magia", **{f"k{_c}": "magia" for _c, _f in FASI_LANCIO}, **{f"k{_c}n": "magia" for _c, _f in FASI_LANCIO})
 DOVE_FAMIGLIA.update(np="inizio", na="comb", nd="comb", **{f"nb{_a}": "inizio" for _a in AREE_CON_CARTE})
 # Hero e Opponent nei nomi dei filtri turno per turno (16 nov 2026, Autore: «you che poi deve essere Hero Player al posto di you ovunque», «non usare
 # theyr mai più si usa opponent»)
@@ -1974,7 +2004,7 @@ def valori_di(k, x):
         return x.get("in_mano") or []
     if k == "rim_valore":       # C13: le Pairs della riga delle rimozioni, sulle magie lanciate
         return x.get("mie_lanciate") or []
-    if k == "minacce":          # C15: la riga delle minacce, sulle sue magie lanciate
+    if k in ("minacce", "ev_sue"):      # C15 e l'EV delle sue carte: sulle sue magie lanciate
         return x.get("sue_lanciate") or []
     if k in ("in_mano", "sue_lanciate", "bloccate", "lanc_t4", "finisher") or re.fullmatch(r"pesc\d", k):      # le altre righe della cartella Cards
         return x.get(k) or []
@@ -2233,11 +2263,14 @@ RIGHE_CARTE = [("in_mano", "MOST FOUND IN YOUR HAND · opening hand and draws"),
                # il lettore di EV (18 nov 2026, ev_partita): le carte e le giocate, i due livelli piu' micro della spina
                ("ev_carte", "EV IN PLAY · win-probability points the turns gave above or below the usual while the card was on your battlefield; "
                             "Merits ›: what each kind of deed is worth"),
+               ("ev_sue", "THEIR CARDS · EV IN PLAY FOR THE OPPONENT: the points their turns gave them while the card was on their battlefield (red: it hurt "
+                          "you); Lists ›: their decks rebuilt from the cards you saw"),
                ("ev_giocate", "EV AT CAST · every spell you cast and land you played: how much the win chance moved from that moment to the next "
                               "(a land: with it against without it), against the same card in all your games")]
-CAMPO_CARTE = {"ev_carte": "mie_lanciate", "ev_giocate": "mie_lanciate", "lanciate": "mie_lanciate", "iwd": "in_mano", "rim_valore": "mie_lanciate", "minacce": "sue_lanciate"}
+CAMPO_CARTE = {"ev_sue": "sue_lanciate", "ev_carte": "mie_lanciate", "ev_giocate": "mie_lanciate", "lanciate": "mie_lanciate", "iwd": "in_mano", "rim_valore": "mie_lanciate", "minacce": "sue_lanciate"}
 NOME["iwd"] = "Card drawn (IWD)"
 NOME["ev_carte"] = NOME["ev_giocate"] = "Your card cast"
+NOME["ev_sue"] = "Their card cast"
 NOME["rim_valore"] = "Your removal cast"
 NOME["minacce"] = "Their threat cast"       # la chiave del filtro -> il campo della riga (le altre si chiamano uguali)
 
@@ -2246,9 +2279,9 @@ def riga_carte(r, chiave, quante=40, minimo=5, base=None):
     """Una riga della cartella Cards: le carte della chiave nelle partite r, ognuna una volta per partita, dalla piu' comune; per «bloccate» dalla piu'
     bloccata (le partite in cui e' rimasta in mano sulle partite in cui l'avevi in mano, da `minimo` partite in mano), col win rate di quelle partite.
     -> [dict(nome, n, vinte, perse, wr, quota[, mano, bloccata])]."""
-    if chiave in ("ev_carte", "ev_giocate"):       # il lettore di EV: l'atteso dalle partite base (di solito tutte quelle del tipo)
+    if chiave in ("ev_carte", "ev_giocate", "ev_sue"):       # il lettore di EV: l'atteso dalle partite base (di solito tutte quelle del tipo)
         import ev_partita as EV_
-        return (EV_.carte if chiave == "ev_carte" else EV_.giocate)(r, base if base is not None else r, quante=quante)
+        return {"ev_carte": EV_.carte, "ev_giocate": EV_.giocate, "ev_sue": EV_.carte_sue}[chiave](r, base if base is not None else r, quante=quante)
     if chiave == "finisher":
         return finisher_coppie(r, quante)
     if chiave == "iwd":     # C4 (variabili_c.iwd)
@@ -2814,7 +2847,7 @@ def salva_numeri(chiavi):
     _scrivi_in(NUMERI_SCELTI, [k for k, _n, _d in NP.CATALOGO if k in chiavi][:NP.MASSIMO])
 
 
-RIGHE_NUOVE = ("ev_carte", "ev_giocate")        # le righe del lettore di EV (18 nov 2026): accese anche per chi aveva gia' scelto le sue
+RIGHE_NUOVE = ("ev_carte", "ev_giocate", "ev_sue")        # le righe del lettore di EV (18 nov 2026): accese anche per chi aveva gia' scelto le sue
 
 
 def salva_righe_carte(chiavi):

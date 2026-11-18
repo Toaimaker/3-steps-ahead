@@ -155,15 +155,20 @@ class CartaCompleta:
                 self.metti_testo(self.scelta)
 
 
+FASE_QUALSIASI = "Any phase"
+
+
 class Righe:
     def __init__(self, tk, F, padre, righe, campi, nome_campo, voci_di, on_cambio, bg=None, larga_campo=190, larga_voce=170, dopo=None, una_voce=False,
-                 carte=None):
+                 carte=None, fasi=None):
         """righe: la lista [[campo, [voci]]] (la modifica); campi: le chiavi del campo; nome_campo(k) come si legge; voci_di(k): le voci di quel campo;
         on_cambio(righe): dopo ogni cambio; dopo: il testo fra il campo e le voci (es. «cast»); una_voce: una voce sola per riga, niente + (le famiglie
         turno per turno con un valore per turno: l'attacco, la difesa, le pescate); carte: una tendina in piu' in fondo alla riga col nome della carta,
         facoltativa (16 nov 2026, Autore: «in ogni tendina in cui possiamo dire di aver castato qualcosa dobbiamo avere una tendina in piu' per inserire il
         nome specifico della carta se vogliamo»): la riga diventa [campo, [voci], carta o None]."""
-        self.una_voce, self.carte = una_voce, carte
+        # fasi (18 nov 2026, Autore: «una tendina successiva che chiede la fase in cui vogliamo esplorare il turno»): [(codice, nome)]; la riga diventa
+        # [campo, [voci], carta, fase]; None = Any phase
+        self.una_voce, self.carte, self.fasi = una_voce, carte, fasi
         self.tk, self.F, self.righe, self.campi = tk, F, righe, list(campi)
         self.nome_campo, self.voci_di, self.on_cambio, self.dopo = nome_campo, voci_di, on_cambio, dopo
         self.bg = bg or C["scheda"]
@@ -207,6 +212,15 @@ class Righe:
                 tc = CartaCompleta(tk, F, riga, self.carte, carta, lambda v_, i=i: self.metti_carta(i, v_))
                 tc.fr.pack(side="left", padx=(2, 0))
                 self.tendine.append((i, "carta", tc))
+            if self.fasi:       # la fase del turno, dopo il resto della riga
+                tk.Label(riga, text="in", bg=self.bg, fg=C["grigio"], font=F(8)).pack(side="left", padx=(10, 2))
+                tf = self._tendina(riga, 150)
+                tf.opzioni([FASE_QUALSIASI] + [c_ for c_, _n in self.fasi], lambda v_, i=i: self.metti_fase(i, v_),
+                           etichette={FASE_QUALSIASI: FASE_QUALSIASI, **dict(self.fasi)})
+                fase = self.righe[i][3] if len(self.righe[i]) > 3 else None
+                tf.set(fase if fase else FASE_QUALSIASI)
+                tf.fr.pack(side="left", padx=(2, 0))
+                self.tendine.append((i, "fase", tf))
             via = tk.Label(riga, text="✕", bg=self.bg, fg=C["grigio"], font=F(9, True), cursor="hand2")
             via.pack(side="left", padx=(10, 0))
             via.bind("<Button-1>", lambda e, i=i: self.togli_riga(i))
@@ -247,6 +261,12 @@ class Righe:
         self.righe[i][2] = None if v in (QUALSIASI, VUOTA) else v
         self.cambiato()
 
+    def metti_fase(self, i, v):
+        while len(self.righe[i]) < 4:
+            self.righe[i].append(None)
+        self.righe[i][3] = None if v in (FASE_QUALSIASI, VUOTA) else v
+        self.cambiato()
+
     def aggiungi_voce(self, i):
         self.righe[i][1] = list(self.righe[i][1] or [None]) + [None]
         self.cambiato()
@@ -258,7 +278,7 @@ class Righe:
     def aggiungi_riga(self):
         usati = {r[0] for r in self.righe}
         nuovo = next((k for k in self.campi if k not in usati), None)
-        self.righe.append([nuovo, [None]] + ([None] if self.carte is not None else []))
+        self.righe.append([nuovo, [None]] + ([None] if self.carte is not None or self.fasi else []) + ([None] if self.fasi else []))
         self.cambiato()
 
 
@@ -291,6 +311,17 @@ def prova():
     r2.metti_carta(0, "Opt")
     casi.append(("scelta una carta, la riga la porta; negativa: rimessa «Any card» torna None", rc[0][2] == "Opt"
                  and (r2.metti_carta(0, "Any card") or rc[0][2] is None)))
+    # la tendina della fase (18 nov 2026): dopo la riga, «Any phase» di partenza; scelta una fase la riga la porta (quarto posto); Add line ha il posto
+    rf = [["2", ["Creature"], None, None]]
+    r3 = Righe(tk, F, root, rf, ["1", "2"], lambda k: f"Your T{k}", lambda k: ["Creature", "Instant"], lambda rr: None, carte=["Shock"],
+               fasi=[("a", "main phase 1"), ("c", "combat"), ("z", "main phase 2")])
+    r3.fr.pack(); root.update()
+    casi.append(("la tendina della fase c'e', «Any phase» di partenza", [t_.get() for _i, j_, t_ in r3.tendine if j_ == "fase"] == ["Any phase"]))
+    r3.metti_fase(0, "c")
+    r3.aggiungi_riga()
+    casi.append(("scelta Combat la riga la porta; Add line ha quattro posti; negativa: rimessa Any phase torna None", rf[0][3] == "c" and len(rf[1]) == 4
+                 and (r3.metti_fase(0, "Any phase") or rf[0][3] is None)))
+    r3.fr.destroy()
     # l'autocompletamento (16 nov 2026): «sh» trova Shock, «o» trova prima Opt (comincia) e poi Shock (contiene); Invio la sceglie; una scritta che non e' una
     # carta non diventa un filtro; svuotata, qualunque carta
     scelte = []

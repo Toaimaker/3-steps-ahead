@@ -17,6 +17,9 @@ import dati_analizzatore as DA  # noqa: E402
 
 PARTENZA = ("wr", "record", "turni", "mull", "play", "draw")
 CATALOGO = (("wr", "Win rate", "with its 95% interval"),
+            # l'EV dello scenario (18 nov 2026, Autore: «inseriamo anche EV value per convertire i pti ev degli scenari filtrati in una conversione a %
+            # positiva o negativa di successo e valutare se e' una situazione che vale la pena o che dobbiamo evitare»)
+            ("ev", "EV value · vs usual", "the points of win chance this spot adds or takes away, per game, and whether it is worth it"),
             ("record", "Record · W-L", "wins and losses, and the gap from all your games"),
             ("partite", "Games", "how many, from the first to the last day"),
             ("turni", "Game length · avg turns", "the length of your wins and your losses"),
@@ -46,7 +49,7 @@ def _wr(xs):
     return 100 * sum(1 for x in xs if x["vinta"]) / len(xs) if xs else None
 
 
-def valori(r, tutte):
+def valori(r, tutte, filtri=None):
     import decisioni as DEC
     k = DA.conti(r)
     tot = DA.conti(tutte)
@@ -95,6 +98,7 @@ def valori(r, tutte):
         tono = "vuoto" if g_ is None else "neutro" if gb is None or len(r) == len(tutte) else ("su" if g_ > gb else "giu")
         out[kk] = (f"{g_:+.1f}" if g_ is not None else "-", tono, f"{c_['n']} combats" + (f" · all {gb:+.1f}" if gb is not None and len(r) != len(tutte) else ""))
     k5 = DA.contro_il_caso(r)["turni"].get(5)
+    out["ev"] = valore_ev(r, tutte, filtri)
     out["fortuna"] = (f"{k5['x'] - k5['e']:+.1f}" if k5 else "-", "vuoto" if not k5 else "neutro" if k5["p"] >= 0.05 else ("su" if k5["x"] > k5["e"] else "giu"),
                       f"in {k5['partite']} games · p {k5['p']:.2f}" if k5 else "")
     mm = [x["minuti"] for x in r if x.get("minuti")]
@@ -108,6 +112,24 @@ def valori(r, tutte):
     dec = [x for x in vinte if x.get("finisher")]
     out["finisher"] = (pc(100 * len(dec) / len(vinte)) if vinte else "-", "neutro", f"{len(dec)} of {len(vinte)} wins")
     return out
+
+
+def valore_ev(r, tutte, filtri=None):
+    """La tessera EV VALUE: l'EV dello scenario (la finestra dello spot dei filtri, se no la partita intera) contro il solito, in media per partita, in punti
+    percentuali di probabilita' di vincere (ev_partita.ev_spot_partita, l'atteso da tutte le partite del tipo). Il verdetto: «worth it» o «avoid» quando la
+    media sta oltre due errori standard dallo zero, se no «too close to call»; sotto 10 partite «a hint»."""
+    import ev_partita as EV_
+    vv = [v for v, _s in (EV_.ev_spot_partita(x, filtri or {}, tutte) for x in r) if v is not None]
+    if not vv:
+        return ("-", "vuoto", "no games with the turn-by-turn board here")
+    spot = any(EV_.ev_spot_partita(x, filtri or {}, tutte)[1] for x in r[:20])
+    n = len(vv)
+    m = sum(vv) / n
+    se = math.sqrt(sum((v - m) ** 2 for v in vv) / (n - 1) / n) if n > 1 else None
+    regge = se is not None and abs(m) > 2 * se and n >= 10
+    verdetto = ("worth it" if m > 0 else "avoid") if regge else ("a hint" if n < 10 else "too close to call")
+    tono = ("su" if m > 0 else "giu") if regge else "neutro"
+    return (f"{m:+.1f}%", tono, f"{verdetto} · {'this spot' if spot else 'whole game'} · {n} games")
 
 
 def prova():
@@ -128,6 +150,19 @@ def prova():
     casi.append(("C11: 70 su 100 non e' una moneta (p sotto 5%, azzurro); negativa: 50 su 100 si', neutro",
                  valori(r60, r60)["quota_play"][1] == "su" and "not a coin flip" in valori(r60, r60)["quota_play"][2]
                  and valori(r60[20:70] + r60[70:] + r60[70:90], r60)["quota_play"][1] == "neutro"))
+    import ev_partita as EV_
+    vero_ = EV_.ev_spot_partita
+    try:
+        EV_.ev_spot_partita = lambda x, f, t: ({"x1": 6.0, "x2": 5.0, "x3": 7.0}.get(x["partita"]), True)
+        r12 = [dict(r[i % 3], partita=["x1", "x2", "x3"][i % 3]) for i in range(12)]
+        e_ = valore_ev(r12, r12, {"t_io2": ["Creature"]})
+        casi.append(("EV value: +6 di media su 12 partite, sopra due errori standard: «worth it», tono su, «this spot»", e_[0] == "+6.0%" and e_[1] == "su"
+                     and e_[2].startswith("worth it · this spot")))
+        EV_.ev_spot_partita = lambda x, f, t: ({"x1": 6.0, "x2": -5.0, "x3": -1.0}.get(x["partita"]), False)
+        e2 = valore_ev(r12, r12)
+        casi.append(("negativa: +6, -5, -1 non reggono: «too close to call», neutro, «whole game»", e2[1] == "neutro" and e2[2].startswith("too close to call · whole game")))
+    finally:
+        EV_.ev_spot_partita = vero_
     v0 = valori([], r)
     casi.append(("negativa: senza partite i numeri sono vuoti, non sbagliati", v0["wr"][0] == "-" and v0["wr_mull"][0] == "-" and v0["veloci"][0] == "-"))
     for n, ok in casi:

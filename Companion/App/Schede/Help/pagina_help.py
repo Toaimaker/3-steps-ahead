@@ -215,7 +215,18 @@ SEZIONI = (
              "saved you from lethal, chump blocked, drew a removal, died for nothing). In Leaks, EV IN THOSE TURNS: the turns with that leak against the "
              "usual. In the replayer, the EV of the turn of each step and of its phases. In Advanced filters, under the answer: from the spot to what came next, "
              "your creatures of the first filtered turn through the Opponent's next turn (survived, removed, died in combat), the removal spells one by one, "
-             "and the EV of those turns against the usual"),
+             "and the EV of those turns against the usual. THEIR CARDS in Cards: the Opponent's cards with their EV for them while on their battlefield (red: "
+             "they hurt you), and Lists ›: their decks rebuilt from the cards you saw, each card with how often it showed up. In the replayer the key "
+             "moments (the diamonds on the timeline) are the phases that gained or lost the most EV against the usual; leaks stay as a line in the story"),
+      ("Games in this situation", "the table under the chart: date, your deck, the opponent, start, mulligan, turns, then SPOT EV (the EV of your "
+                                   "filtered spot in that game against the usual, green gained and red lost; with no filter that has a moment it is GAME EV, "
+                                   "the whole game), MOST EV CARD and LOWEST EV CARD (your cards that made the most and the least EV while on the "
+                                   "battlefield in that game; hover them to see the card) and the result last. Click a game to open its replay"),
+      ("EV value", "one of the numbers on top (⚙): the win chance your filtered spot adds or takes away per game against the usual, as a percentage, "
+                   "with a verdict: worth it or avoid when the average is clear of chance, too close to call when it is not, a hint under 10 games"),
+      ("The phase of a turn", "in Advanced filters, every «cast» line (by type, for the Hero and the Opponent, in their own turn or in the other's) ends with "
+                              "a phase: Any phase, main phase 1 (with the start of the turn), combat, main phase 2 (with the end of the turn). With a phase "
+                              "the spot is that part of the turn, not the whole turn"),
       ("Luck", "is the shuffle against you? Your draws tested against chance: the lands you drew by your turn 3, 5 and 7 against what your library "
                "gave (the deck minus your first 7), in total with a z test and game by game: screw and flood are the 5% tails, fewer and more the 25% "
                "tails, each next to what chance would give; click one to keep only those games. Below, your first 7 cards against one random hand "

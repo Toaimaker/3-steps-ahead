@@ -72,7 +72,9 @@ PRESET = (
 ORDINI_PARTITE = {"data": lambda x: x["quando"], "mio": lambda x: (x.get("mio") or "").strip().lower() or None,
                   "suo": lambda x: (len(v), "WUBRG".index(v[0]) if v[0] in "WUBRG" else 5, v) if (v := DA.vs_di(x)) else None,
                   "via": lambda x: x.get("partenza"), "mull": lambda x: x.get("mulligan"), "esito": lambda x: 1 if x["vinta"] else 0,
-                  "turni": lambda x: x.get("turno"), "mano": lambda x: x.get("terre")}
+                  "turni": lambda x: x.get("turno"), "spotev": lambda x: _SPOT_EV.get(x.get("partita"))}
+# l'EV dello spot di ogni partita della tabella (18 nov 2026): lo riempie disegna_partite coi filtri di adesso, prima di ordinare
+_SPOT_EV = {}
 SPOT_MODI = (("preset", "Preset searches"), ("auto", "Auto spots"))
 # il Leak Finder (15 nov 2026, Autore: «da ora non si chiama più performance ma leak finder, deve essere un leak finder a tutti gli effetti»): i leak sono
 # la vista d'apertura
@@ -524,10 +526,13 @@ class PaginaPerformance:
         if getattr(self, "_anim_in_corso", False):          # mai mentre il replayer anima
             self.fr.after(400, lambda: self.scalda_decisioni(righe, da, a_volta))
             return
+        import ev_partita as EV_
         for x in righe[da:da + a_volta]:
             try:
                 DEC.per_partita(x)
                 DEC.per_partita_magie(x)
+                EV_._eventi(x)                  # i meriti delle carte dei due lati (il lettore di EV, 18 nov 2026): la prima apertura di Cards non aspetta
+                EV_._eventi(EV_.specchio(x))
             except Exception:      # noqa: BLE001 - una partita senza dati si salta
                 pass
         self.fr.after(30, lambda: self.scalda_decisioni(righe, da + a_volta, a_volta))
@@ -1256,7 +1261,7 @@ class PaginaPerformance:
             c.create_text(xd, 14, text="under 30 games: a hint, not a fact", anchor="e", fill=C["arancio"], font=F(7, True))
         # i numeri scelti con la rotellina (13 nov 2026, Autore: «in alto a dx creiamo una rotellina di impostazioni con i 6 dati che vogliamo avere su
         # questa tabella»): numeri_partite.CATALOGO, la scelta in dati_analizzatore.numeri_scelti
-        val = NP.valori(r, [x for x in self.righe if x["tipo"] == self.tipo])
+        val = NP.valori(r, [x for x in self.righe if x["tipo"] == self.tipo], self.filtri)
         toni = {"su": C["azzurro"], "giu": C["rosso"], "neutro": C["testo"], "vuoto": C["muto"]}
         tess = [(NP.NOMI[k_].upper(), val[k_][0], toni[val[k_][1]], val[k_][2]) for k_ in DA.numeri_scelti() if k_ in val]
         # la rotellina, in alto a destra
@@ -1609,14 +1614,20 @@ class PaginaPerformance:
     # holdem manager, sotto al grafico si dovrebbe generare una tabella che ci permette di vedere la nostra mano in una colonna e il board in un'altra colonna:
     # premendo su quello specifico dato si apre una board dedicata che ci mostra le carte in quello spot in mano o sul tavolo»)
     def colonne_partite(self, W):
-        """Le colonne della tabella delle partite: (chiave, titolo, x, larghezza); mano e board si dividono quel che resta."""
-        fisse = (("data", "DATE", 96), ("mio", "YOUR DECK", 150), ("suo", "OPPONENT", 150), ("via", "START", 60), ("mull", "MULLIGAN", 76), ("esito", "RESULT", 64), ("turni", "TURNS", 56))
+        """Le colonne della tabella delle partite: (chiave, titolo, x, larghezza). Dal 18 nov 2026 (Autore: «spot EV lo mettiamo al posto di your
+        opening hand con verde se in guadagno e rosso se in perdita per lo specifico spot / al posto di board at the end ... most ev card e dopo lowest ev
+        card», «result alla fine»): l'EV dello spot, la carta che ha generato piu' EV e quella che ne ha generato meno si dividono quel che resta; il
+        risultato in fondo."""
+        spot = any(v not in (None, [], "") for k_, v in self.filtri.items() if k_.startswith(("t_", "sit:", "s_", "leak_")))      # un filtro con un momento
+        fisse = (("data", "DATE", 96), ("mio", "YOUR DECK", 150), ("suo", "OPPONENT", 150), ("via", "START", 60), ("mull", "MULLIGAN", 76), ("turni", "TURNS", 56),
+                 ("spotev", "SPOT EV" if spot else "GAME EV", 84))
         out, x = [], 8
         for k, t, w in fisse:
             out.append((k, t, x, w)); x += w
-        resto = max(300, W - x - 8)
-        out.append(("mano", "YOUR OPENING HAND", x, resto * 0.45)); x += resto * 0.45
-        out.append(("board", "THE BOARD AT THE END · you / opponent", x, resto * 0.55))
+        resto = max(300, W - x - 8 - 72)
+        out.append(("best", "MOST EV CARD", x, resto * 0.5)); x += resto * 0.5
+        out.append(("worst", "LOWEST EV CARD", x, resto * 0.5)); x += resto * 0.5
+        out.append(("esito", "RESULT", x, 64))
         return out
 
     def fai_tabella(self, padre):
@@ -1648,7 +1659,7 @@ class PaginaPerformance:
         lista.bind("<Configure>", lambda e: self.disegna_partite(e.widget))
         lista.bind("<MouseWheel>", lambda e: (e.widget.yview_scroll(-2 if e.delta > 0 else 2, "units"), self.righe_partite(e.widget)))
         lista.bind("<Motion>", self.sopra_partita)
-        lista.bind("<Leave>", lambda e: e.widget.delete("sopra"))
+        lista.bind("<Leave>", lambda e: (e.widget.delete("sopra"), self.via_hover_carte()))
         lista.bind("<Button-1>", self.clic_partita)
         return lista
 
@@ -1738,7 +1749,17 @@ class PaginaPerformance:
             return
         F = self.F
         k_o, cresce = self.ord_partite
+        if k_o not in ORDINI_PARTITE:       # una colonna che non c'e' piu' (la mano, prima del 18 nov 2026): si torna alla data
+            self.ord_partite = k_o, cresce = ("data", False)
         chiave = ORDINI_PARTITE[k_o]
+        # l'EV dello spot di ogni partita, coi filtri di adesso (l'atteso da tutte le partite del tipo)
+        import ev_partita as EV_
+        base_ = [x for x in self.righe if x["tipo"] == self.tipo]
+        _SPOT_EV.clear()
+        for x in self.scelte():
+            v_, _s = EV_.ev_spot_partita(x, self.filtri, base_)
+            if v_ is not None:
+                _SPOT_EV[x.get("partita")] = v_
         nulli = [x for x in self.scelte() if chiave(x) is None]
         c._partite = sorted([x for x in self.scelte() if chiave(x) is not None], key=chiave, reverse=not cresce) + nulli       # chi non ha il dato in fondo
         c._col = self.colonne_partite(max(c.winfo_width(), 700))
@@ -1746,7 +1767,7 @@ class PaginaPerformance:
         t.delete("all")
         Wt = max(t.winfo_width(), 700)
         t.create_text(2, 10, text=f"GAMES IN THIS SITUATION · {len(c._partite)}", anchor="w", fill=C["muto"], font=F(7, True))
-        t.create_text(Wt - 40, 10, text="click a hand or a board: it opens the table of that game, turn by turn", anchor="e",
+        t.create_text(Wt - 40, 10, text="click a game: it opens its replay · Spot EV: green gained, red lost against the usual", anchor="e",
                       fill=C["muto"], font=F(7))
         d = DG.Disegno(28, 22)       # il segno per staccarla (o rimetterla sotto il grafico), come le cartelle
         _segno_stacca(d, 14, 11, C["accento"] if self.partite_fuori else C["grigio"], bool(self.partite_fuori))
@@ -1809,18 +1830,20 @@ class PaginaPerformance:
                     n_ = x_.get("mulligan")
                     testo = "-" if n_ is None else str(n_)
                     col = C["muto"] if not n_ else C["arancio"]
-                elif k == "mano":
-                    testo, col = self.testo_mano(fo), C["titolo"] if fo else C["muto"]
-                elif k == "board":
-                    testo, col = self.testo_board(fo), C["titolo"] if fo else C["muto"]
-                    if fo and "  /  " in testo:     # la parte dell'avversario in grigio (redesign del 14 nov 2026): lo stesso testo, due colori
-                        a_, b_ = testo.split("  /  ", 1)
-                        i_a = c.create_text(x, y + ALTO_PARTITA / 2, text=corto(a_, int((w - 10) / 6.2)), anchor="w", fill=col, font=font, tags="riga")
-                        resto_ = int((w - 10) / 6.2) - len(corto(a_, int((w - 10) / 6.2)))
-                        if resto_ > 3:
-                            c.create_text((c.bbox(i_a) or (0, 0, x, 0))[2], y + ALTO_PARTITA / 2, text=corto("  /  " + b_, resto_), anchor="w",
-                                          fill=C["muto"], font=font, tags="riga")
-                        continue
+                elif k == "spotev":     # l'EV dello spot: verde se guadagnato, rosso se perso, contro il solito
+                    v_ = _SPOT_EV.get(x_.get("partita"))
+                    testo = "-" if v_ is None else f"{v_:+.1f}"
+                    col = C["muto"] if v_ is None or abs(v_) < 0.05 else (C["verde"] if v_ > 0 else C["rosso"])
+                    font = F(8, True)
+                elif k in ("best", "worst"):        # la carta che ha generato piu' EV, e quella che ne ha generato meno
+                    import ev_partita as EV_
+                    cc_ = EV_.carte_ev_partita(x_, [z for z in self.righe if z["tipo"] == x_.get("tipo")])
+                    if not cc_:
+                        testo, col = "not in the logs" if not fo else "-", C["muto"]
+                    else:
+                        nome_, v_ = cc_[0] if k == "best" else cc_[-1]
+                        testo = f"{nome_}  {v_:+.1f}"
+                        col = C["verde"] if v_ > 0 else C["rosso"] if v_ < 0 else C["testo"]
                 c.create_text(x, y + ALTO_PARTITA / 2, text=corto(testo, int((w - 10) / 6.2)), anchor="w", fill=col, font=font, tags="riga")
 
     def testo_mano(self, fo):
@@ -1853,11 +1876,33 @@ class PaginaPerformance:
         k = next((k for k, _t, x, w in getattr(c, "_col", []) if x <= e.x < x + w), None)
         return partite[i], k
 
+    def carta_ev_riga(self, x_, k):
+        """La carta della colonna MOST EV CARD o LOWEST EV CARD di una partita della tabella, o None."""
+        if k not in ("best", "worst") or x_ is None:
+            return None
+        import ev_partita as EV_
+        cc_ = EV_.carte_ev_partita(x_, [z for z in self.righe or [] if z["tipo"] == x_.get("tipo")])
+        return (cc_[0] if k == "best" else cc_[-1])[0] if cc_ else None
+
     def sopra_partita(self, e):
         c = e.widget
         c.delete("sopra")
         x_, k = self.partita_a(c, e)
         c.configure(cursor="hand2" if x_ is not None else "")
+        # la carta grande al passaggio sopra MOST EV CARD e LOWEST EV CARD (18 nov 2026, Autore: «dammi la possibilita' di vedere la carta in hover»):
+        # la stessa finestrella della cartella Cards
+        n_ = self.carta_ev_riga(x_, k)
+        if n_ != getattr(self, "_hc_nome", None):
+            self.via_hover_carte()
+            img = self.immagine_grande(DA.nome_intero(n_)) if n_ else None
+            if img is not None:
+                h = self._hc = self.tk.Toplevel(c.winfo_toplevel())
+                h.overrideredirect(True)
+                h.configure(bg="#0b0e14")
+                self.tk.Label(h, image=img, bg="#0b0e14", bd=0).pack(padx=2, pady=2)
+                self._hc_nome = n_
+        if n_ and getattr(self, "_hc", None) is not None:
+            self.metti_hover_carte(e)
         if x_ is None:
             return
         # la riga si schiarisce appena, senza cornice e trasparente (12 nov 2026, Autore: «togli la cornice di selezione blu ... evidenziala
@@ -1866,7 +1911,7 @@ class PaginaPerformance:
         W = max(c.winfo_width(), 700)
         d = DG.Disegno(W, ALTO_PARTITA)
         d.rett(0, 0, W, ALTO_PARTITA, riempi=(255, 255, 255, 18))
-        if k in ("mano", "board"):
+        if k in ("best", "worst", "spotev"):
             x, w = next((x, w) for k_, _t, x, w in c._col if k_ == k)
             d.rett(x - 6, 0, x + w - 4, ALTO_PARTITA, riempi=(255, 255, 255, 14), raggio=3)
         c._img_sopra = d.foto(veloce=True)
@@ -2277,7 +2322,6 @@ class PaginaPerformance:
             d.poligono(pts, riempi="#ffd23f")
         d.linea([(0, ALTO_GRAF), (W, ALTO_GRAF)], "#1d222b", 1)
         d.linea([(t0, cy), (t1, cy)], "#2c3340", 4)
-        leak_i = self.leak_passi(b)
         chiave_i = self.chiave_passi(b)
         for i, p_ in enumerate(b["passi"]):
             nome = p_[0]
@@ -2286,8 +2330,7 @@ class PaginaPerformance:
             if i in chiave_i:   # un momento chiave (R7): il rombo sopra, azzurro se il vantaggio sale per te, arancio se per lui
                 col_k = "#2f9bff" if chiave_i[i] > 0 else "#f0ad4e"
                 d.poligono([(pos(i), cy - 15), (pos(i) + 5, cy - 10), (pos(i), cy - 5), (pos(i) - 5, cy - 10)], riempi=col_k)
-            if i in leak_i:     # un leak in questo momento: il triangolino rosso sotto la timeline (13 nov 2026, R5)
-                d.poligono([(pos(i), cy + 7), (pos(i) - 5, cy + 15), (pos(i) + 5, cy + 15)], riempi="#ff5d5d")
+            # i leak non sono piu' segni sulla timeline (18 nov 2026, il lettore di EV): restano come spiegazione nel racconto e col salto «Leak ›»
             if i == sv:
                 d.cerchio(pos(i), cy, 5.5, bordo="#ffd23f", larghezza=1.6)
         # il punto di svolta e la velocita'
@@ -2529,12 +2572,53 @@ class PaginaPerformance:
         k_ = (id(b["passi"]), chi)
         if b.get("_chiave_k") == k_:
             return b["_chiave_i"]
+        ev_ = self.chiave_ev(b, chi)
+        if ev_ is not None:         # il lettore di EV (18 nov 2026): i momenti chiave sono le fasi con lo scarto di EV piu' grande
+            b["_chiave_k"], b["_chiave_i"] = k_, ev_
+            return ev_
         m = self.momenti(b["passi"])
         salti = [(i, m[i]["vantaggio"] - m[i - 1]["vantaggio"]) for i in range(1, len(m))]
         salti = [(i, d) for i, d in salti if abs(d) >= self.SOGLIA_CHIAVE and (chi == "both" or (d > 0) == (chi == "mine"))]
         out = dict(sorted(sorted(salti, key=lambda z: -abs(z[1]))[:self.PIU_CHIAVE]))
         b["_chiave_k"], b["_chiave_i"] = k_, out
         return out
+
+    SOGLIA_EV = 5.0         # una fase e' un momento chiave da 5 punti di P sopra o sotto il solito
+
+    def chiave_ev(self, b, chi="both"):
+        """I momenti chiave dall'EV (18 nov 2026, Autore: «nei replayer quindi non vogliamo piu' i punti di leak ma i punti salienti di ev value»): le fasi
+        della partita (prima principale, combattimento, seconda, dell'Hero e dell'Opponent) con lo scarto dal solito piu' grande, al massimo PIU_CHIAVE e
+        di almeno SOGLIA_EV punti di P; ognuna sul primo passo di quella fase nel replayer. -> {indice: scarto} (positivo: per l'Hero), o None senza il conto
+        della partita (si torna al vantaggio)."""
+        import ev_partita as EV_
+        x_ = b["x"]
+        base = [y for y in self.righe or [] if y["tipo"] == x_.get("tipo")]
+        mappa = EV_._mappa_turni(base)
+        turni = [z for (pp, _t), z in sorted(mappa.items(), key=lambda kv: kv[0][1]) if pp == x_.get("partita")]
+        if not turni:
+            return None
+        fasi = [(z["t"], ph["f"], ph["scarto"]) for z in turni for ph in z.get("fasi") or []]
+        fasi = [f_ for f_ in fasi if abs(f_[2]) >= self.SOGLIA_EV and (chi == "both" or (f_[2] > 0) == (chi == "mine"))]
+        ps = b["passi"]
+
+        def passo(t, f):
+            del_t = [i for i, p_ in enumerate(ps) if p_[2] == t]
+            if not del_t:
+                return None
+            nomi = [(i, (ps[i][0] or "").lower()) for i in del_t]
+            comb_ = lambda n_: any(w in n_ for w in ("combat", "attack", "block", "damage"))
+            # ogni fase sul suo passo: due fasi diverse non finiscono mai sullo stesso passo (una fase senza un passo suo non ha il rombo)
+            if f == "comb":
+                return next((i for i, n_ in nomi if comb_(n_)), None)
+            if f == "main2":
+                return next((i for i, n_ in nomi if "main2" in n_ or n_.split("·")[-1].strip() in ("end", "end of turn")), None) or                     next((i for i, n_ in reversed(nomi) if not comb_(n_)), None)
+            return next((i for i, n_ in nomi if not comb_(n_)), None)
+        out = {}
+        for t, f, sc in sorted(fasi, key=lambda f_: -abs(f_[2]))[:self.PIU_CHIAVE]:
+            i = passo(t, f)
+            if i is not None and i not in out:
+                out[i] = sc
+        return dict(sorted(out.items()))
 
     def costi_passi(self, b):
         """R8 nel replayer: {indice del passo: decisione col costo} per i tuoi attacchi, blocchi e magie di questa partita (contro tutte le partite del
@@ -3194,7 +3278,9 @@ class PaginaPerformance:
             y = (cc.bbox(i_e) or (0, 0, 0, y + 14))[3] + 6
         sk_ = self.chiave_passi(b).get(b["i"])
         if sk_ is not None:     # R7: un momento chiave, col salto del vantaggio
-            i_k = cc.create_text(x0_r + 14, y, text=f"◆ KEY MOMENT · {abs(sk_):.0f} points of advantage to {'you' if sk_ > 0 else 'the opponent'}", anchor="nw",
+            i_k = cc.create_text(x0_r + 14, y, text=(f"◆ KEY MOMENT · {abs(sk_):.1f} win-probability points {'gained' if sk_ > 0 else 'lost'} against the usual"
+                                                    if self.chiave_ev(b) is not None else
+                                                    f"◆ KEY MOMENT · {abs(sk_):.0f} points of advantage to {'you' if sk_ > 0 else 'the opponent'}"), anchor="nw",
                                  fill="#2f9bff" if sk_ > 0 else "#f0ad4e", font=F(8, True), width=larga_r - 28)
             y = (cc.bbox(i_k) or (0, 0, 0, y + 14))[3] + 6
         for _c, nf_ in self.filtro_passi(b).get(b["i"], []):     # i filtri accesi veri in questo momento (15 nov 2026)
@@ -6723,15 +6809,25 @@ class PaginaPerformance:
         t = re.sub(r"\b(you|they) (have)\b", lambda m: ("Hero" if m.group(1) == "you" else "Opponent") + " has", t)
         return hero_txt(t).replace("Opponent's lands", "Opponent's lands")
 
+    FASE_RIGHE = ("t_io", "t_iox", "t_lui", "t_luix")       # le righe dei tipi lanciati: la tendina della fase (18 nov 2026)
+
+    @staticmethod
+    def chiavi_fase(pre, fase):
+        """Le chiavi di una riga con la fase: (tipi, carta). Senza fase quelle di sempre («t_io3», «t_nio3»), con la fase «t_kcio3», «t_kcnio3»."""
+        if not fase:
+            return pre, PaginaPerformance.chiave_carta(pre)
+        return f"t_k{fase}{pre[2:]}", f"t_k{fase}n{pre[2:]}"
+
     def _da_righe(self, pre, righe):
-        """I filtri di un gruppo dalle sue righe: {«t_io3»: [voci]} (le righe dello stesso turno si uniscono)."""
+        """I filtri di un gruppo dalle sue righe: {«t_io3»: [voci]} (le righe dello stesso turno e della stessa fase si uniscono)."""
         nuovi = {}
-        kc = self.chiave_carta(pre)
         for r_ in righe:
             campo, voci = r_[0], r_[1]
+            fase = r_[3] if len(r_) > 3 and pre in self.FASE_RIGHE else None
+            kt, kc = self.chiavi_fase(pre, fase)
             vv = [v for v in voci or [] if v]
             if campo and vv:        # le voci ripetute contano (due Instant = due istantanei); le righe dello stesso turno si sommano
-                k = f"{pre}{campo}"
+                k = f"{kt}{campo}"
                 nuovi[k] = sorted(nuovi.get(k, []) + vv, key=DA.ordine_lancio)
             if campo and kc and len(r_) > 2 and r_[2]:      # la carta scelta (16 nov 2026): una lista, come i tipi
                 nuovi[f"{kc}{campo}"] = nuovi.get(f"{kc}{campo}", []) + [r_[2]]
@@ -6740,29 +6836,27 @@ class PaginaPerformance:
     def righe_av(self, pre):
         """Le righe del costruttore di un gruppo: quelle a video (con le tendine ancora vuote) se dicono ancora i filtri accesi, se no rifatte dai filtri (Clear
         all, la x di un pezzo della domanda, un tuo filtro salvato); di partenza il turno 1 vuoto."""
-        ora = {}
-        for n in DA.CAMPI_TURNO:
-            v = self.filtri.get(f"{pre}{n}")
-            if v:
-                ora[f"{pre}{n}"] = sorted(v if isinstance(v, list) else [v], key=DA.ordine_lancio)
+        con_fase = pre in self.FASE_RIGHE
         kc = self.chiave_carta(pre)
-        carte = {}
-        if kc:
+        ora, righe = {}, []
+        for fase in ([None] + [c_ for c_, _n in DA.FASI_LANCIO] if con_fase else [None]):
+            kt, kcf = self.chiavi_fase(pre, fase)
+            tipi, carte = {}, {}
             for n in DA.CAMPI_TURNO:
-                v = self.filtri.get(f"{kc}{n}")
+                v = self.filtri.get(f"{kt}{n}")
                 if v:
-                    carte[n] = list(v) if isinstance(v, list) else [v]
-                    ora[f"{kc}{n}"] = carte[n]
+                    tipi[n] = ora[f"{kt}{n}"] = sorted(v if isinstance(v, list) else [v], key=DA.ordine_lancio)
+                if kcf:
+                    v = self.filtri.get(f"{kcf}{n}")
+                    if v:
+                        carte[n] = ora[f"{kcf}{n}"] = list(v) if isinstance(v, list) else [v]
+            for n in sorted(set(tipi) | set(carte), key=DA.CAMPI_TURNO.index):
+                for j, c_ in enumerate(carte.get(n) or [None]):
+                    righe.append([n, list(tipi.get(n, [None])) if j == 0 else [None]] + ([c_] if kc else []) + ([fase] if con_fase else []))
         ui = self.__dict__.setdefault("_righe_ui", {}).get(pre)
         if ui and self._da_righe(pre, ui) == ora:
-            return [[r_[0], list(r_[1])] + list(r_[2:3]) for r_ in ui]
-        turni_ = sorted({k[len(pre):] for k in ora if k.startswith(pre) and k[len(pre):] in DA.CAMPI_TURNO} | set(carte), key=DA.CAMPI_TURNO.index)
-        righe = []
-        for n in turni_:
-            cc = carte.get(n) or [None]
-            for j, c_ in enumerate(cc):
-                righe.append([n, list(ora.get(f"{pre}{n}", [None])) if j == 0 else [None]] + ([c_] if kc else []))
-        return righe or [["1", [None]] + ([None] if kc else [])]
+            return [[r_[0], list(r_[1])] + list(r_[2:4]) for r_ in ui]
+        return righe or [["1", [None]] + ([None] if kc else []) + ([None] if con_fase else [])]
 
     def righe_avanzate(self, ca, pre, y, tutte):
         """Il costruttore delle righe di un gruppo dentro la tela di Advanced filters, a y. -> la y sotto."""
@@ -6780,7 +6874,8 @@ class PaginaPerformance:
                                         if re.fullmatch(kc[2:] + r"(\d+)", k_) for c_ in v_)
             carte = [c_ for c_, _n in conta.most_common()]
         b = R_F.Righe(tk, F, ca, self.righe_av(pre), list(DA.CAMPI_TURNO), lambda n: self.campo_riga(nome, n), voci,
-                      lambda rr, pre=pre: self.metti_righe_av(pre, rr), dopo=dopo, larga_campo=170, larga_voce=200, una_voce=bool(una), carte=carte)
+                      lambda rr, pre=pre: self.metti_righe_av(pre, rr), dopo=dopo, larga_campo=170, larga_voce=200, una_voce=bool(una), carte=carte,
+                      fasi=list(DA.FASI_LANCIO) if pre in self.FASE_RIGHE else None)
         self._costruttori_av[pre] = b
         ca.create_window(8, y, window=b.fr, anchor="nw")
         b.fr.update_idletasks()
@@ -6852,13 +6947,14 @@ class PaginaPerformance:
 
     def metti_righe_av(self, pre, righe):
         """Dalle righe ai filtri del gruppo; le righe restano come sono a video (anche le tendine ancora vuote)."""
-        kc = self.chiave_carta(pre)
-        for n in DA.CAMPI_TURNO:
-            self.filtri.pop(f"{pre}{n}", None)
-            if kc:
-                self.filtri.pop(f"{kc}{n}", None)
+        for fase in [None] + ([c_ for c_, _n in DA.FASI_LANCIO] if pre in self.FASE_RIGHE else []):
+            kt, kc = self.chiavi_fase(pre, fase)
+            for n in DA.CAMPI_TURNO:
+                self.filtri.pop(f"{kt}{n}", None)
+                if kc:
+                    self.filtri.pop(f"{kc}{n}", None)
         self.filtri.update(self._da_righe(pre, righe))
-        self.__dict__.setdefault("_righe_ui", {})[pre] = [[r_[0], list(r_[1] or [None])] + list(r_[2:3]) for r_ in righe]
+        self.__dict__.setdefault("_righe_ui", {})[pre] = [[r_[0], list(r_[1] or [None])] + list(r_[2:4]) for r_ in righe]
         self.fr.after_idle(self.disegna)
 
     def barra_av(self, a, b):
@@ -7241,7 +7337,8 @@ class PaginaPerformance:
             c.create_text(14, y + 14, text=titolo, anchor="w", fill=C["azzurro"], font=F(8, True))
             # le coppie della riga si aprono in una finestra a parte (13 nov 2026, Autore: «non aggiungere le coppie come righe ma come finestre extra che
             # si aprono dalla riga e mostrano le coppie»)
-            i_ = c.create_text(W - 14, y + 14, text="Answers ›" if chiave == "minacce" else "Merits ›" if chiave == "ev_carte" else "Pairs ›", anchor="e",
+            i_ = c.create_text(W - 14, y + 14, text="Answers ›" if chiave == "minacce" else "Merits ›" if chiave == "ev_carte" else "Lists ›" if chiave == "ev_sue"
+                               else "Pairs ›", anchor="e",
                                fill=C["accento"], font=F(8, True))
             bb = c.bbox(i_)
             c._box_coppie.append((bb[0] - 6, bb[1] - 4, bb[2] + 6, bb[3] + 4, chiave, titolo))
@@ -7257,6 +7354,8 @@ class PaginaPerformance:
             y += hc + 50
         if getattr(self, "fin_meriti", None) is not None and self.fin_meriti.winfo_exists():      # la finestra dei meriti segue i filtri
             self.apri_meriti(alza=False)
+        if getattr(self, "fin_liste", None) is not None and self.fin_liste.winfo_exists():        # e quella dei mazzi ricomposti
+            self.apri_liste(alza=False)
         c.configure(scrollregion=(0, 0, W, y + 6))
 
     def metti_carta(self, c, x, y, cc, chiave, base):
@@ -7284,7 +7383,11 @@ class PaginaPerformance:
         poche = cc["n"] < 5
         col = C["muto"] if poche or base is None else (C["azzurro"] if cc["wr"] > base else C["rosso"] if cc["wr"] < base else C["testo"])
         xc = x + larga_c / 2
-        if "in_campo" in cc:        # l'EV di una carta in campo (18 nov 2026): il plus-minus dei turni in cui c'era, e chi sopravvive
+        if cc.get("sua"):           # una carta dell'Opponent: il suo EV in campo per lui (rosso se ti ha fatto male), il tuo win rate in quelle partite
+            col_v = C["muto"] if cc["poche"] else (C["rosso"] if cc["in_campo"] >= 1 else C["azzurro"] if cc["in_campo"] <= -1 else C["testo"])
+            c.create_text(xc, y + hc + 12, text=f"{cc['in_campo']:+.1f} EV for them", fill=col_v, font=F(9, True))
+            c.create_text(xc, y + hc + 29, text=f"stayed {cc['sopr']}/{cc['n']} · you won {cc['wr']:.0f}%", fill=C["grigio"], font=F(7))
+        elif "in_campo" in cc:        # l'EV di una carta in campo (18 nov 2026): il plus-minus dei turni in cui c'era, e chi sopravvive
             col_v = C["muto"] if cc["poche"] else (C["azzurro"] if cc["in_campo"] >= 1 else C["rosso"] if cc["in_campo"] <= -1 else C["testo"])
             c.create_text(xc, y + hc + 12, text=f"{cc['in_campo']:+.1f} EV in play", fill=col_v, font=F(9, True))
             sopr_ = (f"survived {cc['sopr']}/{cc['n']}" + (f" · won {cc['wr_sopr']}%" if cc["wr_sopr"] is not None else "")
@@ -8468,6 +8571,8 @@ class PaginaPerformance:
         if bc is not None:
             if bc[4] == "ev_carte":             # la gerarchia dei meriti (18 nov 2026, il lettore di EV)
                 return self.apri_meriti()
+            if bc[4] == "ev_sue":               # i mazzi dell'Opponent ricomposti dalle carte viste
+                return self.apri_liste()
             if isinstance(bc[4], tuple):        # Pairs o Trios nella finestra delle coppie
                 self.coppie_k = bc[4][1]
                 self.disegna_coppie()
@@ -8480,6 +8585,49 @@ class PaginaPerformance:
         self.filtri[fk] = None if self.filtri.get(fk) == fv else fv
         self.disegna()
         return fv
+
+    def apri_liste(self, alza=True):
+        """Il meta dai nostri dati (18 nov 2026, Autore: «possiamo provare a ricostruire un meta anche se abbiamo poche carte»): per ogni archetipo
+        dell'Opponent incontrato nella situazione, le carte che ha mostrato con la frequenza (in quante partite contro di lui), dalle piu' frequenti; il tuo
+        record contro di lui. Deduttivo: si vede solo cio' che arriva in campo o si rivela. Una finestra sola, segue i filtri."""
+        import ev_partita as EV_
+        tk, F = self.tk, self.F
+        f = getattr(self, "fin_liste", None)
+        if f is None or not f.winfo_exists():
+            f = self.fin_liste = tk.Toplevel(self.fr)
+            f.title("Leak Finder · Their decks")
+            f.configure(bg=C["scheda"])
+            f.bind("<Escape>", lambda e: f.destroy())
+            f.cv = tk.Canvas(f, bg=C["scheda"], highlightthickness=0, width=980, height=640)
+            sb = tk.Scrollbar(f, orient="vertical", command=f.cv.yview)
+            f.cv.configure(yscrollcommand=sb.set)
+            sb.pack(side="right", fill="y")
+            f.cv.pack(fill="both", expand=True)
+            f.cv.bind("<MouseWheel>", lambda e: f.cv.yview_scroll(-2 if e.delta > 0 else 2, "units"))
+        c = f.cv
+        c.delete("all")
+        ll = EV_.liste_composite(self.scelte())
+        c.create_text(16, 18, text=f"THEIR DECKS, REBUILT FROM WHAT YOU SAW · {self.tipo.upper()}", anchor="w", fill=C["titolo"], font=F(11, True))
+        c.create_text(16, 40, text=("For each deck you met, the cards it showed (cast or revealed) and in how many of your games against it. A few cards a game "
+                                    "add up to the deck. It only sees what reached the battlefield or was revealed: cards kept in hand stay hidden."),
+                      anchor="nw", fill=C["grigio"], font=F(8), width=940)
+        y = 80
+        if not ll:
+            c.create_text(16, y, text="No deck met in at least 3 of these games.", anchor="w", fill=C["grigio"], font=F(9))
+        colw = 310
+        for a in ll:
+            c.create_text(16, y, text=f"{a['archetipo']} · {a['partite']} games · you {a['vinte']}-{a['partite'] - a['vinte']}", anchor="w",
+                          fill=C["azzurro"], font=F(9, True))
+            y += 20
+            for j, (nome, _q, pc) in enumerate(a["carte"][:24]):
+                col_, riga_ = j % 3, j // 3
+                c.create_text(16 + col_ * colw, y + riga_ * 18, text=f"{pc:3d}%  {nome}", anchor="w", fill=C["testo"] if pc >= 30 else C["grigio"],
+                              font=F(8))
+            y += ((min(len(a["carte"]), 24) + 2) // 3) * 18 + 16
+        c.configure(scrollregion=(0, 0, 980, y + 20))
+        if alza:
+            f.lift()
+        return f
 
     def apri_meriti(self, alza=True):
         """La gerarchia dei meriti delle carte in campo (18 nov 2026, Autore: «stabilire una gerarchia di punti che ogni carta ambisce a vincere», «il

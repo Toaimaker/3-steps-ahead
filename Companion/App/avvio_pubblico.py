@@ -88,12 +88,48 @@ def manutenzione(ogni=1800):
     threading.Thread(target=lavoro, daemon=True).start()
 
 
+def pulisci_tk():
+    """La schermata di prepara() ha un suo tk.Tk(): chiusa, resta in un ciclo di riferimenti finche' il garbage collector non la raccoglie. Se la raccoglie un
+    filo (la condivisione, la manutenzione, i dati delle schede), Tcl cancella l'interprete dal filo sbagliato e si ferma: «Tcl_AsyncDelete: async handler
+    deleted by the wrong thread», Windows fatal exception 0x80000003, l'app si chiude appena aperta. Il primo crash di un beta tester, 18 nov 2026 (quattro
+    avvii, sempre il GC nel filo di condividi.accoda). Qui la si raccoglie nel filo principale, prima che parta qualunque altro filo."""
+    import gc
+    gc.collect()
+
+
+def prova():
+    """La prepara() vera (fuori schermo, i passi del primo avvio finti) in un processo a parte, poi il GC in un filo, come la condivisione: con pulisci_tk
+    niente crash; negativa: senza, il crash di Tcl. Misurato il 18 nov 2026: dopo prepara() restano in un ciclo il Tk, due immagini e la Schermata."""
+    import subprocess
+    codice = ("import sys, gc, threading, time\n"
+              "sys.argv.append('--fuori-schermo')\n"
+              "sys.path.insert(0, %r)\n"
+              "import avvio_pubblico as A\n"
+              "import primo_avvio\n"
+              "primo_avvio.esegui = lambda avviso=print, root=None: (time.sleep(0.3), {})[1]\n"
+              "A.prepara()\n"
+              "if sys.argv[1] == 'si': A.pulisci_tk()\n"
+              "t = threading.Thread(target=gc.collect); t.start(); t.join()\n"
+              "print('ok')\n") % os.path.dirname(os.path.abspath(__file__))
+    casi = []
+    for modo, atteso in (("si", True), ("no", False)):
+        r = subprocess.run([sys.executable, "-I", "-X", "utf8", "-c", codice, modo], capture_output=True, text=True, timeout=60,
+                           **piattaforma.flag("muto"))
+        casi.append((("con pulisci_tk il GC in un filo non ferma l'app" if atteso else "negativa: senza, il crash di Tcl dal filo sbagliato"),
+                     (r.returncode == 0 and "ok" in r.stdout) == atteso))
+    for nome, ok in casi:
+        print(("  ok  " if ok else "  NO  ") + nome)
+    print(f"{sum(ok for _, ok in casi)}/{len(casi)}")
+    return 0 if all(ok for _, ok in casi) else 1
+
+
 def main():
     import tkinter as tk
     from tema import id_app
     from ambiente import PRODOTTO
     id_app(PRODOTTO)        # il logo nella barra delle applicazioni, gia' dalla finestrella del primo avvio
     prepara()
+    pulisci_tk()
     if "--senza-finestra" in sys.argv:
         return
     manutenzione()
@@ -103,4 +139,6 @@ def main():
 
 
 if __name__ == "__main__":
+    if "--prova" in sys.argv:
+        sys.exit(prova())
     main()
