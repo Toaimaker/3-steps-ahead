@@ -214,7 +214,7 @@ class Righe:
                 self.tendine.append((i, "carta", tc))
             if self.fasi:       # la fase del turno, dopo il resto della riga
                 tk.Label(riga, text="in", bg=self.bg, fg=C["grigio"], font=F(8)).pack(side="left", padx=(10, 2))
-                tf = self._tendina(riga, 150)
+                tf = self._tendina(riga, 175)
                 tf.opzioni([FASE_QUALSIASI] + [c_ for c_, _n in self.fasi], lambda v_, i=i: self.metti_fase(i, v_),
                            etichette={FASE_QUALSIASI: FASE_QUALSIASI, **dict(self.fasi)})
                 fase = self.righe[i][3] if len(self.righe[i]) > 3 else None

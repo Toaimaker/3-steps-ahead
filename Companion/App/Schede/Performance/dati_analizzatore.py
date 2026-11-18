@@ -306,24 +306,27 @@ def per_turno(match_id, seat, inizia, turni, grezzo=False):
             out[k].extend(NOMI_TIPO[c] for c in dict.fromkeys(tipi or "") if c in NOMI_TIPO)
     # la fase di ogni magia (VERSIONE 14 di mana_aperto): le «fasi» sono nello stesso ordine delle magie lanciate, una per magia; si appaiano per turno,
     # posto e carta, cosi' una riga che manca non sposta le altre
-    coda = collections.defaultdict(list)
+    coda, coda_p = collections.defaultdict(list), collections.defaultdict(list)
     for t, s_, g_, f_ in d.get("fasi") or []:
         coda[(t, s_, g_)].append(f_)
+    for t, s_, g_, p_ in d.get("passi_lanci") or []:      # il passo (mana_aperto VERSIONE 22)
+        coda_p[(t, s_, g_)].append(p_)
     for t, s_, cosa, g_, tipi in d["azioni"]:
         if cosa != "magia":
             continue
-        fq = coda.get((t, s_, g_))
+        fq, pq = coda.get((t, s_, g_)), coda_p.get((t, s_, g_))
         fase = FASE_ARENA.get(fq.pop(0)) if fq else None
-        if fase is None:
-            continue
+        passo = PASSO_ARENA.get(pq.pop(0)) if pq else None
+        codici = [c_ for c_ in (fase, passo) if c_]          # una magia nel combattimento e' in «c» e nel suo passo
         chi = "io" if s_ == seat else "lui"
         k = f"{chi}{(t + 1) // 2}" if di_turno(t) == chi else f"{chi}x{(t + 1) // 2}"
-        if k not in out:
+        if k not in out or not codici:
             continue
-        out.setdefault(f"k{fase}{k}", []).extend(NOMI_TIPO[c] for c in dict.fromkeys(tipi or "") if c in NOMI_TIPO)
         nome = nome_intero(nome_grp(g_) or "") if g_ not in SENZA_FACCIA else ""
-        if nome:
-            out.setdefault(f"k{fase}n{k}", []).append(nome)
+        for fc in dict.fromkeys(codici):
+            out.setdefault(f"k{fc}{k}", []).extend(NOMI_TIPO[c] for c in dict.fromkeys(tipi or "") if c in NOMI_TIPO)
+            if nome:
+                out.setdefault(f"k{fc}n{k}", []).append(nome)
     for kind, t, att, _f, info in d.get("momenti") or []:
         if kind != "comb" or not info or not info.get("att"):
             continue
@@ -571,8 +574,14 @@ def ruoli_turno(d, seat, di_turno, turni):
 # che chiede la fase in cui vogliamo esplorare il turno», «fai solo la tendina per ora»): le famiglie «k{fase}{chi}{x}{n}» (i tipi) e «k{fase}n{chi}{x}{n}»
 # (la carta) di per_turno, dalle «fasi» di mana_aperto; a = prima fase principale (con l'inizio del turno), c = combattimento, z = seconda fase principale
 # (con la fine del turno)
-FASI_LANCIO = (("a", "main phase 1"), ("c", "combat"), ("z", "main phase 2"))
-FASE_ARENA = {"Phase_Beginning": "a", "Phase_Main1": "a", "Phase_Combat": "c", "Phase_Main2": "z", "Phase_Ending": "z"}
+# poi, stesso giorno («in fasi metti le fasi nel dettaglio almeno le main: upkeep ecc»): ogni passo di Arena col suo codice; «combat» resta, ed e' qualunque
+# passo del combattimento. Il codice e' una lettera sola (le famiglie si leggono con [a-z])
+FASI_LANCIO = (("u", "upkeep"), ("w", "draw step"), ("a", "main phase 1"), ("c", "combat (any step)"), ("b", "beginning of combat"),
+               ("t", "declare attackers"), ("l", "declare blockers"), ("g", "combat damage"), ("e", "end of combat"), ("z", "main phase 2"),
+               ("f", "end step"))
+FASE_ARENA = {"Phase_Beginning": None, "Phase_Main1": "a", "Phase_Combat": "c", "Phase_Main2": "z", "Phase_Ending": "f"}
+PASSO_ARENA = {"Step_Upkeep": "u", "Step_Draw": "w", "Step_BeginCombat": "b", "Step_DeclareAttack": "t", "Step_DeclareBlock": "l",
+               "Step_CombatDamage": "g", "Step_FirstStrikeDamage": "g", "Step_EndCombat": "e", "Step_End": "f", "Step_Cleanup": "f"}
 FAMIGLIE_TURNO = ("{c}", "{c}x", "a{c}", "d{c}", "m{c}", "p{c}", "p{c}x", "q{c}", "u{c}")      # u: il mana lasciato      # le famiglie turno per turno di per_turno (q: la scelta d'attacco)
 CAMPI_TURNO = tuple(str(n) for n in range(1, TURNI_FILTRO + 1)) + ("L", "A")           # i turni dei filtri, «dal turno 11» (L) e «qualunque turno» (A)
 
@@ -861,7 +870,7 @@ def spot_filtri(x, filtri):
                     continue
                 padrone = altro[chi] if (ics or fam in ("d", "nd")) else chi        # di chi e' il turno: il suo, o quello dell'altro («x»; la difesa e' nel suo attacco)
                 t = 2 * n - 1 if padrone == primo else 2 * n
-                aggiungi(t, DOVE_FAMIGLIA.get(fam, "inizio"), chi == "io", fase=_fase_lancio(x, t, seat if chi == "io" else 3 - seat, voglio) if fam in ("", "r", "n", "nr") or re.fullmatch(r"k[acz]n?", fam) else None)
+                aggiungi(t, DOVE_FAMIGLIA.get(fam, "inizio"), chi == "io", fase=_fase_lancio(x, t, seat if chi == "io" else 3 - seat, voglio) if fam in ("", "r", "n", "nr") or re.fullmatch(r"k[a-z]n?", fam) else None)
         elif re.fullmatch(r"leak_l\d+", k) and v == "Yes":
             l_ = k[5:]
             if l_ in ("l12", "l13"):
@@ -943,7 +952,7 @@ def ordine_lancio(v):
 def multipla(k):
     """Le chiavi a scelta multipla: le giocate turno per turno («t_io2», «t_luix3»). Il filtro e' una lista di voci, e una partita passa se in quel turno ha
     tutte le voci scelte, ripetizioni comprese (una creatura e due istantanei)."""
-    return bool(re.fullmatch(r"t_(?:k[acz])?(io|lui)x?(\d+|[AL])", k))
+    return bool(re.fullmatch(r"t_(?:k[a-z])?(io|lui)x?(\d+|[AL])", k))
 
 
 ENTRO = tuple(range(3, 13))         # «la partita finita entro il tuo turno N»

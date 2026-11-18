@@ -24,7 +24,7 @@ import re  # noqa: E402
 
 from ambiente import LOGDIR  # noqa: E402
 
-VERSIONE = 21       # 21 (18 nov 2026, le giocate del lettore di EV): «lanci», ogni terra giocata e ogni magia lanciata di tutti e due con la foto di quel momento, [turno, posto, "terra"|"magia", grpId, foto, stato], e lo stato in fondo ai confini (l'ordine dentro il turno); 20 (18 nov 2026, il Leak Finder lettore di EV, le fasi del turno): «confini», la foto alla prima riga della fase di combattimento (la fine della prima fase principale) e della seconda fase principale (la fine del combattimento) di ogni turno, [turno, chi e' di turno, "comb"|"m2", foto]; 19 (14 nov 2026): anche «surveil», le carte mandate al cimitero col surveil (ZoneTransfer, categoria Surveil; se le tieni sopra Arena non scrive niente); 18 (14 nov 2026, la pagella dell'enciclopedia): nelle azioni anche «scarta» (di chi era la carta), «contrastata» (di chi era la magia) e «scry» ([turno, chi, "scry", carte sopra, "carte sotto"]); 17 (14 nov 2026): la foto della magia in pila col pagamento (ManaPaid arriva nel messaggio dopo il lancio); 16 (14 nov 2026, Autore: «quando a una carta vengono aggiunti segnalini rendiamolo visibilmente piu' chiaro»): il settimo elemento di ogni carta in campo, i segnalini {tipo: quanti} (o None); 15 (13 nov 2026, Autore: «Sì, aggiungilo», la Reliquia rotta dopo il suo draw step): «attivate», ogni abilita' attivata (non di mana) di tutti e due, [turno, posto, grpId della carta, fase, step, chi e' di turno]; 14 (i leak L3 e L6): «fasi», la fase di ogni tua e sua magia lanciata ([turno, posto, grpId, fase di Arena]); 2: le foto della partita; 3: cimitero, esilio, forza e costituzione; 4: i momenti del combattimento e delle magie coi bersagli;
+VERSIONE = 22       # 22 (18 nov 2026, le fasi nel dettaglio di Advanced filters): «passi_lanci», il passo di Arena di ogni magia lanciata, [turno, posto, grpId, passo] (Step_Upkeep, Step_Draw, Step_BeginCombat, Step_DeclareAttack, Step_DeclareBlock, Step_CombatDamage, Step_FirstStrikeDamage, Step_EndCombat, Step_End, Step_Cleanup; vuoto nelle fasi principali); 21 21 (18 nov 2026, le giocate del lettore di EV): «lanci», ogni terra giocata e ogni magia lanciata di tutti e due con la foto di quel momento, [turno, posto, "terra"|"magia", grpId, foto, stato], e lo stato in fondo ai confini (l'ordine dentro il turno); 20 (18 nov 2026, il Leak Finder lettore di EV, le fasi del turno): «confini», la foto alla prima riga della fase di combattimento (la fine della prima fase principale) e della seconda fase principale (la fine del combattimento) di ogni turno, [turno, chi e' di turno, "comb"|"m2", foto]; 19 (14 nov 2026): anche «surveil», le carte mandate al cimitero col surveil (ZoneTransfer, categoria Surveil; se le tieni sopra Arena non scrive niente); 18 (14 nov 2026, la pagella dell'enciclopedia): nelle azioni anche «scarta» (di chi era la carta), «contrastata» (di chi era la magia) e «scry» ([turno, chi, "scry", carte sopra, "carte sotto"]); 17 (14 nov 2026): la foto della magia in pila col pagamento (ManaPaid arriva nel messaggio dopo il lancio); 16 (14 nov 2026, Autore: «quando a una carta vengono aggiunti segnalini rendiamolo visibilmente piu' chiaro»): il settimo elemento di ogni carta in campo, i segnalini {tipo: quanti} (o None); 15 (13 nov 2026, Autore: «Sì, aggiungilo», la Reliquia rotta dopo il suo draw step): «attivate», ogni abilita' attivata (non di mana) di tutti e due, [turno, posto, grpId della carta, fase, step, chi e' di turno]; 14 (i leak L3 e L6): «fasi», la fase di ogni tua e sua magia lanciata ([turno, posto, grpId, fase di Arena]); 2: le foto della partita; 3: cimitero, esilio, forza e costituzione; 4: i momenti del combattimento e delle magie coi bersagli;
 #                    5: ogni istantaneo e stregoneria in pila (anche senza bersagli) e i permanenti che ha tolto dal campo (i board wipe);
 #                    6: per le partite lette dagli archivi, dove stanno («dove»: archivio, byte di inizio e di fine), per il replay azione per azione;
 #                    7: debug del 12 nov 2026: le cancellazioni, chi e' in campo dalle zone, le vite a 0, l'annullamento, emblemi e inneschi, i riassunti;
@@ -137,7 +137,7 @@ def leggi(righe):
     zown, zids, vite = {}, {}, {}
     pers = {}           # le annotazioni persistenti: i segnalini (VERSIONE 16)
     # ogni cosa annotata porta lo stato del gioco in cui e' nata, cosi' un annullamento la toglie: [(stato, elemento)]
-    st = dict(attacchi=[], fine=[], foto=[], momenti=[], mano0=None, pend=None, azioni=[], fasi=[], attivate=[], confini=[], lanci=[])
+    st = dict(attacchi=[], fine=[], foto=[], momenti=[], mano0=None, pend=None, azioni=[], fasi=[], attivate=[], confini=[], lanci=[], passi_lanci=[])
     riassunti = 0
     visti_ts = {}               # {id dell'annotazione TargetSpec: stato}
     # i momenti in ordine (12 nov 2026, Autore: «una freccia che definisce quali carte interagiscono con quali altre, per vedere come si e' bloccato in
@@ -199,7 +199,7 @@ def leggi(righe):
 
     def annulla(fino):
         """L'annullamento di Arena: via quello che e' nato da questo stato in poi (lo stato Full che segue lo rimanda)."""
-        for k in ("attacchi", "fine", "foto", "momenti", "azioni", "fasi", "attivate", "confini", "lanci"):
+        for k in ("attacchi", "fine", "foto", "momenti", "azioni", "fasi", "attivate", "confini", "lanci", "passi_lanci"):
             st[k] = [x for x in st[k] if x[0] < fino]
         for dd in (mom_di, in_pila):
             for k in [k for k, v in dd.items() if v[0] >= fino]:
@@ -339,6 +339,7 @@ def leggi(righe):
                         st["lanci"].append((sid, [t, o["controllerSeatId"], "terra" if cat == "PlayLand" else "magia", grp_vero(o, obj) or 0, foto(), sid]))
                         if cat == "CastSpell":      # la fase in cui e' stata lanciata (VERSIONE 14): prima o dopo il combattimento, nel turno di chi
                             st["fasi"].append((sid, [t, o["controllerSeatId"], grp_vero(o, obj) or 0, ti.get("phase") or ti.get("step") or ""]))
+                            st["passi_lanci"].append((sid, [t, o["controllerSeatId"], grp_vero(o, obj) or 0, ti.get("step") or ""]))
             attaccanti = [o for o in sul if o.get("attackState") in ("AttackState_Declared", "AttackState_Attacking")]
             if t not in {a[1][0] for a in st["attacchi"]} and any(o.get("controllerSeatId") == att for o in attaccanti):
                 difende = 2 if att == 1 else 1
@@ -420,7 +421,7 @@ def leggi(righe):
     ultima = [ti.get("turnNumber"), ti.get("activePlayer"), foto()] if ti.get("turnNumber") else None
     via = lambda lst: [x[1] for x in lst]
     return dict(azioni=via(st["azioni"]), fasi=via(st["fasi"]), attivate=via(st["attivate"]), attacchi=via(st["attacchi"]), fine=via(st["fine"]), mano0=st["mano0"][1] if st["mano0"] else None, foto=via(st["foto"]), ultima=ultima,
-                momenti=via(st["momenti"]), confini=via(st["confini"]), lanci=via(st["lanci"]), riassunti=riassunti)
+                momenti=via(st["momenti"]), confini=via(st["confini"]), lanci=via(st["lanci"]), passi_lanci=via(st["passi_lanci"]), riassunti=riassunti)
 
 
 _INDICE = {}        # {file partita.json: matchId}: un pezzo di log non cambia, si legge una volta per processo (13 nov 2026: 450 file a ogni rilettura)

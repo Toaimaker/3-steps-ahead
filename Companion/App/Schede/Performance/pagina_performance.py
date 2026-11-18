@@ -197,6 +197,7 @@ FASI = (("BEFORE THE GAME", ()),      # senza + more (13 nov 2026, Autore: «sez
         ("THE END OF THE GAME", ("fine", "sit:io_morti", "sit:lui_morti", "leak_l7")),
         ("WHEN", ("giorno", "pausa", "dopo", "serie_prima", "stagione")))      # i filtri in piu' di ogni fase, nel suo +
 LARGA_FASE = 780
+LARGA_RIGHE_AV = 960            # la tela delle righe di Advanced filters (le righe «cast» con la carta e la fase)
 # i filtri della finestra Advanced filters (13 nov 2026): due schede, You e Opponent, e dentro ognuna le fasi (stesso giorno, Autore: «nei filtri avanzati
 # ci mancano le giocate nel turno avversario, le sue nei nostri turni, le fasi di attacco di entrambi e di difesa di entrambi quindi ci devono essere in you e
 # opponent delle sotto schede di fasi e you e opponent diventano le macro schede»). {scheda: ((fase, ((titolo, chiavi), ...)), ...)}
@@ -6516,7 +6517,9 @@ class PaginaPerformance:
             # i filtri scorrono (13 nov 2026, Autore: «caso mai mettiamo uno scroller per scendere alle voci in fondo»): la rotella su tutta la finestra e una
             # barra sottile a destra, da cliccare o trascinare
             corpo = tk.Frame(f, bg=C["scheda"]); corpo.pack(padx=8, pady=(4, 12))
-            self.cv_av = tk.Canvas(corpo, bg=C["scheda"], highlightthickness=0, bd=0, width=LARGA_FASE, height=200)
+            # piu' larga della testa (18 nov 2026, Autore: «sposta la barra di scroll di advanced filters piu' a destra»): le righe con la carta e la
+            # fase arrivano a ~900 pixel e la ✕ finiva sotto la barra
+            self.cv_av = tk.Canvas(corpo, bg=C["scheda"], highlightthickness=0, bd=0, width=LARGA_RIGHE_AV, height=200)
             self.cv_av.pack(side="left")
             self.cv_av.bind("<Button-1>", self.clic_avanzati)
             self.cv_barra_av = tk.Canvas(corpo, bg=C["scheda"], highlightthickness=0, bd=0, width=10, height=200, cursor="hand2")

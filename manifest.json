@@ -1,6 +1,6 @@
 {
- "version": "0.1.125",
+ "version": "0.1.126",
  "date": "2026-11-18",
- "notes": "Leak Finder: expected against actual EV, by game, turn, phase and card, with EV value, what came after a spot, the opponent's decks rebuilt and the phase of a turn in Advanced filters",
+ "notes": "Advanced filters: the phase of a turn in detail (upkeep, draw, each combat step, end step), and no line cut off by the scroll bar",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }
