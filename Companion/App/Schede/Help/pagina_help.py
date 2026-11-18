@@ -199,6 +199,23 @@ SEZIONI = (
       ("Decision filters", "in Decisions: a window like Advanced filters, only your decisions (your attacks: turn, their untapped lands, with everything, "
                            "your spell before damage; your blocks: turn, your untapped lands, you blocked, with how many, your spell before damage); a "
                            "line is a filter and its values (one is enough), Add line adds a filter (all are needed); Reset clears that tab"),
+      ("EV vs expected", "a metric of the chart, next to Win rate and Games: for each game, the win-probability points its turns made above or below "
+             "what the same turns usually give (same turn, same side, same situation from far behind to far ahead, in all your games of that type). "
+             "Cumulative is the running sum: a line that climbs means those games gain more than usual, one that falls means they leave value on the table; "
+             "with Split by, one line per deck or opponent. EV of picks the turns or the phase: the Hero's or the Opponent's turns, the Hero's main phase 1, "
+             "combat (the attack), main phase 2, the Opponent's combat (your defense), the Opponent's main phases. A difference is not a mistake: a good "
+             "choice can meet a bad outcome. The win chance comes from the suggester's model (17Lands public replays, CC BY 4.0, Limited); in Constructed it "
+             "compares moments"),
+      ("EV of cards and plays", "in Cards, two rows: EV IN PLAY, for each of your cards the points the turns gave above or below the usual while it was on your "
+             "battlefield, how often it survived to the end and your win rate then and otherwise, and the context: entered with a partner in play (from the card "
+             "text) or alone, cast at once or after waiting in hand; EV AT CAST, every spell you cast and land you played, how much the win chance moved from "
+             "that moment to the next (a land: with it against without it) against the same card in all your games, and the assist a spell gave to your "
+             "creature's combat. Merits › shows what each deed of a card is worth, "
+             "measured on your games: the board after the deed against the same board without it (won a combat, traded, hit unblocked, dealt the lethal, "
+             "saved you from lethal, chump blocked, drew a removal, died for nothing). In Leaks, EV IN THOSE TURNS: the turns with that leak against the "
+             "usual. In the replayer, the EV of the turn of each step and of its phases. In Advanced filters, under the answer: from the spot to what came next, "
+             "your creatures of the first filtered turn through the Opponent's next turn (survived, removed, died in combat), the removal spells one by one, "
+             "and the EV of those turns against the usual"),
       ("Luck", "is the shuffle against you? Your draws tested against chance: the lands you drew by your turn 3, 5 and 7 against what your library "
                "gave (the deck minus your first 7), in total with a z test and game by game: screw and flood are the 5% tails, fewer and more the 25% "
                "tails, each next to what chance would give; click one to keep only those games. Below, your first 7 cards against one random hand "

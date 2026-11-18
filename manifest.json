@@ -1,6 +1,6 @@
 {
- "version": "0.1.123",
- "date": "2026-11-17",
- "notes": "Leak Finder: the leak for an instant or flash creature cast on your turn now names the card, and spree cards like Three Steps Ahead count the cost of their cheapest mode",
+ "version": "0.1.124",
+ "date": "2026-11-18",
+ "notes": "Website: a new News & updates section, with an article for each update (RSS feed included); the privacy notice now points to Settings for data sharing",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

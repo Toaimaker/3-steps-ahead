@@ -1968,7 +1968,7 @@ def valori_di(k, x):
         return x.get("sue_viste") or []
     if k in ("ab_io", "ab_lui"):        # le abilita' attivate, «Carta · quando» (attivate_partita)
         return list((x.get("abil") or {}).get(k[3:]) or [])
-    if k == "lanciate":         # le tue magie lanciate (la cartella Cards, 13 nov 2026)
+    if k in ("lanciate", "ev_carte", "ev_giocate"):     # le tue magie lanciate (Cards, 13 nov 2026; le righe EV del 18 nov filtrano allo stesso modo)
         return x.get("mie_lanciate") or []
     if k == "iwd":              # la riga IWD di Cards (C4): una carta pescata o tenuta, come «in_mano»
         return x.get("in_mano") or []
@@ -2229,17 +2229,26 @@ RIGHE_CARTE = [("in_mano", "MOST FOUND IN YOUR HAND · opening hand and draws"),
                ("bloccate", "HARDER TO CAST · in your hand and never cast"),
                ("minacce", "THE THREATS THAT BEAT YOU · their cards in more of your losses than your wins; Answers ›: what in your collection removes them"),
                ("rim_valore", "YOUR REMOVAL · ON WHAT: the average mana value of what it removed (a token 0), and how often a token or a card cheaper than it"),
-               ("iwd", "DRAWN VS NOT DRAWN · IWD: your win rate when the card came to your hand minus when it stayed in the deck (grey under 15 games)")]
-CAMPO_CARTE = {"lanciate": "mie_lanciate", "iwd": "in_mano", "rim_valore": "mie_lanciate", "minacce": "sue_lanciate"}
+               ("iwd", "DRAWN VS NOT DRAWN · IWD: your win rate when the card came to your hand minus when it stayed in the deck (grey under 15 games)"),
+               # il lettore di EV (18 nov 2026, ev_partita): le carte e le giocate, i due livelli piu' micro della spina
+               ("ev_carte", "EV IN PLAY · win-probability points the turns gave above or below the usual while the card was on your battlefield; "
+                            "Merits ›: what each kind of deed is worth"),
+               ("ev_giocate", "EV AT CAST · every spell you cast and land you played: how much the win chance moved from that moment to the next "
+                              "(a land: with it against without it), against the same card in all your games")]
+CAMPO_CARTE = {"ev_carte": "mie_lanciate", "ev_giocate": "mie_lanciate", "lanciate": "mie_lanciate", "iwd": "in_mano", "rim_valore": "mie_lanciate", "minacce": "sue_lanciate"}
 NOME["iwd"] = "Card drawn (IWD)"
+NOME["ev_carte"] = NOME["ev_giocate"] = "Your card cast"
 NOME["rim_valore"] = "Your removal cast"
 NOME["minacce"] = "Their threat cast"       # la chiave del filtro -> il campo della riga (le altre si chiamano uguali)
 
 
-def riga_carte(r, chiave, quante=40, minimo=5):
+def riga_carte(r, chiave, quante=40, minimo=5, base=None):
     """Una riga della cartella Cards: le carte della chiave nelle partite r, ognuna una volta per partita, dalla piu' comune; per «bloccate» dalla piu'
     bloccata (le partite in cui e' rimasta in mano sulle partite in cui l'avevi in mano, da `minimo` partite in mano), col win rate di quelle partite.
     -> [dict(nome, n, vinte, perse, wr, quota[, mano, bloccata])]."""
+    if chiave in ("ev_carte", "ev_giocate"):       # il lettore di EV: l'atteso dalle partite base (di solito tutte quelle del tipo)
+        import ev_partita as EV_
+        return (EV_.carte if chiave == "ev_carte" else EV_.giocate)(r, base if base is not None else r, quante=quante)
     if chiave == "finisher":
         return finisher_coppie(r, quante)
     if chiave == "iwd":     # C4 (variabili_c.iwd)
@@ -2536,13 +2545,17 @@ def confronta_17lands(a):
                 fuori=len(a) - len(dentro), set=sorted({s_ for s_, _c in celle}))
 
 
-METRICHE = (("wr", "Win rate"), ("n", "Games"), ("turni", "Avg turns"), ("mull", "Mulligan rate"))
+# «EV vs expected» (18 nov 2026, Autore: «deve esprimersi sul grafico come games o win rate ... dobbiamo avere un grafico che ci parla delle giocate EV»):
+# per ogni partita i punti di probabilita' di vincere che i suoi turni hanno generato sopra o sotto l'atteso (ev_partita.scarti); cumulativa e' la somma
+METRICHE = (("wr", "Win rate"), ("ev", "EV vs expected"), ("n", "Games"), ("turni", "Avg turns"), ("mull", "Mulligan rate"))
 FINESTRE = (("cum", "Cumulative"), ("10", "Last 10 games"), ("20", "Last 20 games"), ("50", "Last 50 games"))
 
 
-def serie(r, metrica="wr", asse="games", finestra="20", posto=None):
+def serie(r, metrica="wr", asse="games", finestra="20", posto=None, base=None, ev_di="all"):
     """Una linea: [(x, y)]. asse «games»: x = 1..n (o la posizione della partita fra tutte, posto: {id della partita: posizione}, cosi' le linee divise stanno
-    sull'asse di tutte); «date»: x = il giorno (ordinale). finestra: «cum» cumulativa, o le ultime N partite (le partite: per giorno)."""
+    sull'asse di tutte); «date»: x = il giorno (ordinale). finestra: «cum» cumulativa, o le ultime N partite (le partite: per giorno).
+    metrica «ev»: lo scarto della partita dall'EV atteso, con l'atteso dalle partite base (di solito tutte quelle del tipo); cumulativa e' la somma che sale,
+    con una finestra la media delle ultime N."""
     r = sorted(r, key=lambda x: x["quando"])
     if not r:
         return []
@@ -2552,8 +2565,16 @@ def serie(r, metrica="wr", asse="games", finestra="20", posto=None):
             return [(px(i, x), i + 1) for i, x in enumerate(r)]
         per = collections.Counter(x["quando"].date().toordinal() for x in r)
         return sorted(per.items())
-    val = {"wr": lambda x: 100.0 if x["vinta"] else 0.0, "turni": lambda x: x.get("turno"), "mull": lambda x: 100.0 if x["mulligan"] else 0.0}[metrica]
+    if metrica == "ev":
+        import ev_partita as EV_
+        sc_ = EV_.scarti(base if base is not None else r)
+        # ev_di: di quali turni e fasi (ev_partita.EV_DI); una partita che non ha quella fase conta zero, una senza il conto non conta
+        val = lambda x: (None if x.get("partita") not in sc_ else sc_[x["partita"]]["scarto"] if ev_di == "all"
+                         else sc_[x["partita"]]["per"].get(ev_di, 0.0))
+    else:
+        val = {"wr": lambda x: 100.0 if x["vinta"] else 0.0, "turni": lambda x: x.get("turno"), "mull": lambda x: 100.0 if x["mulligan"] else 0.0}[metrica]
     N = None if finestra == "cum" else int(finestra)
+    somma = metrica == "ev" and N is None
     out, coda, tot, cnt = [], collections.deque(), 0.0, 0
     for i, x in enumerate(r):
         y = val(x)
@@ -2565,7 +2586,7 @@ def serie(r, metrica="wr", asse="games", finestra="20", posto=None):
         if N is not None and cnt < min(N, 5):       # le prime partite di una finestra mobile sono rumore: si comincia da 5
             continue
         xx = px(i, x) if asse == "games" else x["quando"].date().toordinal()
-        yy = round(tot / cnt, 2)
+        yy = round(tot if somma else tot / cnt, 2)
         if asse == "date" and out and out[-1][0] == xx:
             out[-1] = (xx, yy)
         else:
@@ -2573,17 +2594,17 @@ def serie(r, metrica="wr", asse="games", finestra="20", posto=None):
     return out
 
 
-def linee(r, metrica, asse, finestra, dividi=None, quante=5, extra=None):
+def linee(r, metrica, asse, finestra, dividi=None, quante=5, extra=None, base=None, ev_di="all"):
     """Le linee del grafico: [(nome, punti)]. Con dividi una per valore (i piu' giocati, al massimo quante), piu' All. extra = (nome, partite): una linea in
     piu' sulle partite di una decisione di Decisions, sull'asse di tutte (13 nov 2026, Autore: «li dobbiamo vedere anche sul grafico aggiungendo una linea
     sul grafico vs quella totale ... tipo holdem manager»)."""
     posto = {x.get("partita") or id(x): i + 1 for i, x in enumerate(sorted(r, key=lambda x: x["quando"]))}
-    out = [("All", serie(r, metrica, asse, finestra))]
+    out = [("All", serie(r, metrica, asse, finestra, base=base, ev_di=ev_di))]
     for nome_, ids_ in ([extra] if extra and isinstance(extra[0], str) else extra or []):
-        out.append((nome_, serie([x for x in r if x.get("partita") in ids_], metrica, asse, finestra, posto=posto)))
+        out.append((nome_, serie([x for x in r if x.get("partita") in ids_], metrica, asse, finestra, posto=posto, base=base, ev_di=ev_di)))
     if dividi:
         for v, _n in sorted(valori(r, dividi), key=lambda t: -t[1])[:quante]:
-            out.append((etichetta(dividi, v), serie([x for x in r if v in valori_di(dividi, x)], metrica, asse, finestra, posto=posto)))
+            out.append((etichetta(dividi, v), serie([x for x in r if v in valori_di(dividi, x)], metrica, asse, finestra, posto=posto, base=base, ev_di=ev_di)))
     return out
 
 
@@ -2768,8 +2789,8 @@ def righe_carte_scelte():
     try:
         with open(CARTE_SCELTE, encoding="utf-8") as f:
             d = json.load(f)
-        if isinstance(d, list):
-            return [k for k, _t in RIGHE_CARTE if k in d]
+        if isinstance(d, list):     # una riga nata dopo l'ultima scelta (RIGHE_NUOVE) si vede finche' non la togli («-chiave» nel file)
+            return [k for k, _t in RIGHE_CARTE if k in d or (k in RIGHE_NUOVE and f"-{k}" not in d)]
     except (OSError, ValueError):
         pass
     return [k for k, _t in RIGHE_CARTE]
@@ -2793,8 +2814,11 @@ def salva_numeri(chiavi):
     _scrivi_in(NUMERI_SCELTI, [k for k, _n, _d in NP.CATALOGO if k in chiavi][:NP.MASSIMO])
 
 
+RIGHE_NUOVE = ("ev_carte", "ev_giocate")        # le righe del lettore di EV (18 nov 2026): accese anche per chi aveva gia' scelto le sue
+
+
 def salva_righe_carte(chiavi):
-    _scrivi_in(CARTE_SCELTE, [k for k, _t in RIGHE_CARTE if k in chiavi])
+    _scrivi_in(CARTE_SCELTE, [k for k, _t in RIGHE_CARTE if k in chiavi] + [f"-{k}" for k in RIGHE_NUOVE if k not in chiavi])
 
 
 def segnalibri():

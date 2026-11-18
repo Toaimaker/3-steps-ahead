@@ -1,6 +1,6 @@
 # Privacy notice · 3 Steps Ahead (beta)
 
-_Last updated: 2026-11-17. Data controller: Francesco Latini. Contact: fun4graphic@gmail.com._
+_Last updated: 2026-11-18. Data controller: Francesco Latini. Contact: fun4graphic@gmail.com._
 
 ## What the app does on your PC
 
@@ -19,7 +19,7 @@ collection and your games from Untapped.gg. These requests go from your PC to th
 ## Sharing game data (off by default)
 
 On first start the app asks whether you want to share game data to help improve it. If you say no, nothing is sent.
-You can change your choice any time in the Help tab.
+You can change your choice any time in Settings, with the Data sharing switch.
 
 If you say yes, for each finished game the app sends:
 

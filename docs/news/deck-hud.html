@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Deck HUD: both decks on top of MTG Arena · 3 Steps Ahead</title>
+<meta name="description" content="A slim list on each edge of MTG Arena: your deck with the odds of the next draw, and the opponent&#x27;s most likely deck. Decks, never players.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800;900&family=Inter:wght@400;500;600&family=Poppins:wght@500;600;700&display=swap">
+<link rel="canonical" href="https://toaimaker.github.io/3-steps-ahead/news/deck-hud.html">
+<meta property="og:url" content="https://toaimaker.github.io/3-steps-ahead/news/deck-hud.html">
+<link rel="alternate" type="application/rss+xml" title="3 Steps Ahead News" href="https://toaimaker.github.io/3-steps-ahead/news/feed.xml">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#101014">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="icon" href="../favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="3 Steps Ahead">
+<meta property="og:title" content="Deck HUD: both decks on top of MTG Arena · 3 Steps Ahead">
+<meta property="og:description" content="A slim list on each edge of MTG Arena: your deck with the odds of the next draw, and the opponent&#x27;s most likely deck. Decks, never players.">
+<meta property="og:image" content="https://toaimaker.github.io/3-steps-ahead/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Deck HUD: both decks on top of MTG Arena · 3 Steps Ahead">
+<meta name="twitter:description" content="A slim list on each edge of MTG Arena: your deck with the odds of the next draw, and the opponent&#x27;s most likely deck. Decks, never players.">
+<meta name="twitter:image" content="https://toaimaker.github.io/3-steps-ahead/og.png">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "3 Steps Ahead", "item": "https://toaimaker.github.io/3-steps-ahead/"}, {"@type": "ListItem", "position": 2, "name": "News", "item": "https://toaimaker.github.io/3-steps-ahead/news/"}, {"@type": "ListItem", "position": 3, "name": "Deck HUD: both decks on the edges of Arena", "item": "https://toaimaker.github.io/3-steps-ahead/news/deck-hud.html"}]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "Deck HUD: both decks on the edges of Arena", "description": "A slim list on each edge of MTG Arena: your deck with the odds of the next draw, and the opponent's most likely deck. Decks, never players.", "image": "https://toaimaker.github.io/3-steps-ahead/og.png", "url": "https://toaimaker.github.io/3-steps-ahead/news/deck-hud.html", "mainEntityOfPage": "https://toaimaker.github.io/3-steps-ahead/news/deck-hud.html", "inLanguage": "en", "datePublished": "2026-11-13", "dateModified": "2026-11-13", "author": {"@type": "Organization", "name": "3 Steps Ahead"}, "publisher": {"@type": "Organization", "name": "3 Steps Ahead", "logo": {"@type": "ImageObject", "url": "https://toaimaker.github.io/3-steps-ahead/logo.svg"}}}</script>
+<meta property="article:published_time" content="2026-11-13">
+<style>
+/* News & updates: the same palette and type as the home page and the guide; article cards, one reading column per article. Dark-first like the app. */
+:root {
+  --bg: #101014; --panel: #18181c; --raised: #202024; --line: #303034;
+  --fg: #bebec2; --title: #ffffff; --muted: #8b8b94;
+  --accent: #24baff; --link: #61cdff; --good: #5cb85c; --bad: #d9534f; --warn: #f0ad4e;
+  --f-display: "Archivo", "Arial Black", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Inter", "Segoe UI", system-ui, sans-serif;
+  --f-data: "Poppins", "Segoe UI", system-ui, sans-serif;
+  --f-code: Consolas, "Courier New", monospace;
+  --pattern: rgba(97, 205, 255, 0.045);
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) {
+  --bg: #f5f6f8; --pattern: rgba(10, 80, 130, 0.05); --panel: #ffffff; --raised: #eef0f3; --line: #d9dce2;
+  --fg: #33363d; --title: #101014; --muted: #6b6f78;
+  --accent: #0a8fd0; --link: #0a7ab3; --good: #2f8a3a; --bad: #c0392b; --warn: #b9770e; color-scheme: light } }
+:root[data-theme="light"] {
+  --bg: #f5f6f8; --pattern: rgba(10, 80, 130, 0.05); --panel: #ffffff; --raised: #eef0f3; --line: #d9dce2;
+  --fg: #33363d; --title: #101014; --muted: #6b6f78;
+  --accent: #0a8fd0; --link: #0a7ab3; --good: #2f8a3a; --bad: #c0392b; --warn: #b9770e; color-scheme: light }
+
+* { box-sizing: border-box }
+html { scroll-padding-top: 76px }
+body { background: var(--bg); color: var(--fg); font: 400 15.5px/1.7 var(--f-body); margin: 0 }
+.sfondo { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; display: block }
+header.top, .page, footer { position: relative; z-index: 1 }
+a { color: var(--link) }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px }
+.wrap { max-width: 1180px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)) }
+
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg) }
+header.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line) }
+header.top .wrap { display: flex; align-items: center; gap: 16px; padding-block: 12px }
+.brand { display: flex; align-items: center; gap: 10px; color: var(--title); font: 800 15px var(--f-display); text-transform: uppercase; letter-spacing: .01em; text-decoration: none }
+.brand svg { width: 28px; height: 28px; border-radius: 7px }
+.brand small { font: 600 10px/1 var(--f-data); letter-spacing: .14em; color: var(--accent); margin-left: 2px }
+nav.top { margin-left: auto; display: flex; gap: 18px; font-size: 13px; align-items: center }
+nav.top a { color: var(--fg); text-decoration: none }
+nav.top a:hover { color: var(--title) }
+nav.top a.dl { font: 700 11px var(--f-data); letter-spacing: .08em; text-transform: uppercase; background: var(--accent); color: #0b1016; padding: 8px 12px }
+
+
+.page .wrap { padding-block: 36px 72px }
+.crumbs { font: 500 12px var(--f-data); color: var(--muted); margin-bottom: 14px }
+.crumbs a { color: var(--muted); text-decoration: none }
+.crumbs a:hover { color: var(--title) }
+.news-h { max-width: 780px }
+.news-h h1, .doc h1 { font: 900 clamp(32px, 5vw, 52px)/.95 var(--f-display); text-transform: uppercase; color: var(--title); margin: 0; letter-spacing: -0.005em; text-wrap: balance }
+.news-h .lead, .doc .lead { font-size: 18px; color: var(--fg); margin: 18px 0 0; max-width: 62ch }
+.rss { display: inline-flex; align-items: center; gap: 6px; margin-top: 16px; font: 600 11px var(--f-data); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); text-decoration: none }
+.rss:hover { color: var(--title) }
+.rss svg { width: 13px; height: 13px; fill: var(--warn) }
+
+.meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font: 500 12px/1 var(--f-data); color: var(--muted); margin: 0 }
+.meta .t { font: 700 10px/1 var(--f-data); letter-spacing: .14em; text-transform: uppercase; color: #0b1016; background: var(--accent); padding: 5px 8px }
+.meta .t.data { background: var(--good) }
+.meta .t.launch { background: var(--warn) }
+.meta .t.fix { background: var(--muted) }
+.meta .v { font-family: var(--f-code); font-size: 12px; color: var(--fg) }
+
+.cov { position: relative; margin: 0; aspect-ratio: 16 / 9; overflow: hidden; background: var(--raised); border-bottom: 1px solid var(--line); max-width: 100% }
+.cov img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top left }
+.cov.vuoto { display: grid; place-items: center; background: radial-gradient(120% 90% at 85% 15%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 60%), var(--panel) }
+.cov.vuoto svg { width: 30%; max-width: 120px; height: auto }
+.cov .k { position: absolute; left: 14px; bottom: 12px; font: 800 13px/1 var(--f-display); text-transform: uppercase; letter-spacing: .04em; color: var(--title) }
+
+.lista { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-top: 36px }
+.card { display: flex; flex-direction: column; min-width: 0; text-decoration: none; color: var(--fg); background: var(--panel); border: 1px solid var(--line); transition: border-color .15s, transform .15s }
+.card:hover { border-color: var(--accent); transform: translateY(-2px) }
+.card .body { display: grid; gap: 10px; padding: 16px 18px 18px; flex: 1; align-content: start }
+.card h2 { font: 800 20px/1.1 var(--f-display); text-transform: uppercase; color: var(--title); margin: 2px 0 0; text-wrap: balance }
+.card p.s { font-size: 14px; color: var(--muted); margin: 0 }
+.card .more { margin-top: auto; padding-top: 4px; font: 600 11px var(--f-data); letter-spacing: .1em; text-transform: uppercase; color: var(--link) }
+.card.big { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) }
+.card.big .cov { aspect-ratio: auto; min-height: 300px; border-bottom: 0; border-right: 1px solid var(--line) }
+.card.big .body { padding: 26px 28px; align-content: center }
+.card.big h2 { font-size: clamp(24px, 3vw, 34px) }
+.card.big p.s { font-size: 15.5px; color: var(--fg) }
+
+article.doc { max-width: 760px; margin: 0 auto; min-width: 0 }
+.doc > .meta { margin: 0 0 16px }
+.doc .cov { margin: 28px 0 8px; border: 1px solid var(--line) }
+.doc h2 { font: 800 clamp(21px, 2.6vw, 27px)/1.1 var(--f-display); text-transform: uppercase; color: var(--title); margin: 46px 0 14px; text-wrap: balance }
+.doc h3 { font: 600 16.5px/1.35 var(--f-body); color: var(--title); margin: 28px 0 8px }
+.doc p { margin: 0 0 14px; max-width: 68ch }
+.doc ul, .doc ol { margin: 0 0 16px; padding-left: 22px; max-width: 66ch }
+.doc li { margin: 5px 0 }
+.doc li::marker { color: var(--accent) }
+.doc b, .doc strong { color: var(--title); font-weight: 600 }
+.doc code { font: 400 13.5px var(--f-code); background: var(--raised); padding: 1px 6px }
+.doc figure { margin: 22px 0 26px; min-width: 0 }
+.doc figure img { display: block; width: 100%; height: auto; border: 1px solid var(--line); background: var(--raised) }
+.doc figcaption { font-size: 13px; color: var(--muted); margin-top: 8px }
+.note { border-left: 3px solid var(--accent); background: var(--panel); padding: 12px 16px; margin: 18px 0 22px; font-size: 14.5px; max-width: 68ch }
+.note.limit { border-left-color: var(--warn) }
+.note b:first-child { font: 600 10px/1 var(--f-data); letter-spacing: .14em; text-transform: uppercase; display: block; margin-bottom: 6px; color: var(--accent) }
+.note.limit b:first-child { color: var(--warn) }
+.note p:last-child { margin-bottom: 0 }
+.ui { font: 600 13px var(--f-data); color: var(--title); white-space: nowrap }
+kbd { font: 600 12px var(--f-data); color: var(--title); background: var(--raised); border: 1px solid var(--line); border-bottom-width: 2px; padding: 1px 6px; white-space: nowrap }
+.cta-g { display: inline-block; margin-top: 8px; font: 600 12px var(--f-data); letter-spacing: .06em; text-transform: uppercase; color: var(--link); text-decoration: none; border: 1px solid var(--line); padding: 10px 14px }
+.cta-g:hover { border-color: var(--accent) }
+
+.altre { margin-top: 64px; padding-top: 26px; border-top: 1px solid var(--line) }
+.altre .rail-t { font: 600 10px/1 var(--f-data); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin: 0 }
+.altre .lista { margin-top: 16px }
+.pn { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; margin-top: 46px; padding-top: 22px; border-top: 1px solid var(--line) }
+.pn a { text-decoration: none; border: 1px solid var(--line); padding: 12px 16px; display: block; min-width: 0 }
+.pn a:hover { border-color: var(--accent) }
+.pn span { display: block; font: 600 10px/1 var(--f-data); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px }
+.pn b { color: var(--title); font-weight: 600 }
+.pn .next { text-align: right; grid-column: 2 }
+
+footer { border-top: 1px solid var(--line) }
+footer .wrap { padding-block: 28px; font-size: 12px; color: var(--muted); display: grid; gap: 8px }
+
+
+@media (max-width: 900px) {
+  .page .wrap { padding-block: 20px 56px }
+  nav.top a:not(.dl) { display: none }
+  .lista { grid-template-columns: repeat(2, minmax(0, 1fr)) }
+  .card.big { grid-template-columns: minmax(0, 1fr) }
+  .card.big .cov { min-height: 0; aspect-ratio: 16 / 9; border-right: 0; border-bottom: 1px solid var(--line) }
+  .card.big .body { padding: 18px }
+}
+@media (max-width: 560px) {
+  .lista { grid-template-columns: minmax(0, 1fr) }
+  .pn { grid-template-columns: minmax(0, 1fr) }
+  .pn .next { grid-column: 1 }
+}
+@media (prefers-reduced-motion: reduce) { .card, .card:hover { transition: none; transform: none } }
+</style>
+</head>
+<body>
+
+<canvas class="sfondo" aria-hidden="true"></canvas>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="../" aria-label="3 Steps Ahead home">
+      <svg viewBox="0 0 150 150" aria-hidden="true"><rect width="150" height="150" rx="28" fill="#101014"/><rect x="26" y="56" width="44" height="62" rx="6" fill="#18181c" stroke="#3a3a42" stroke-width="5"/><rect x="48" y="42" width="44" height="62" rx="6" fill="#18181c" stroke="#6a6a74" stroke-width="5"/><rect x="70" y="28" width="44" height="62" rx="6" fill="#18181c" stroke="#24baff" stroke-width="5"/></svg>
+      3 Steps Ahead <small>News</small>
+    </a>
+    <nav class="top" aria-label="Site">
+      <a href="../">Home</a><a href="../guide/">Guide</a><a href="./">News</a><a href="../#faq">FAQ</a><a class="dl" href="https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe">Download</a>
+    </nav>
+  </div>
+</header>
+<div class="page">
+  <div class="wrap">
+<article class="doc">
+<nav class="crumbs" aria-label="Breadcrumb"><a href="../">Home</a> › <a href="./">News</a> › Deck HUD: both decks on the edges of Arena</nav>
+<p class="meta"><span class="t ">Feature</span><time datetime="2026-11-13">13 November 2026</time><span class="v">v0.1.40</span></p>
+<h1>Deck HUD: both decks on the edges of Arena</h1>
+<p class="lead">While you play, 3 Steps Ahead now shows a slim list on each edge of MTG Arena: on the left your own deck card by card, on the right what the opponent's deck most likely is. It reads decks, never players.</p>
+<figure class="cov"><img src="../img/anim_hud.webp" alt="The Deck HUD on both edges of the Arena window during a game" loading="lazy"></figure>
+
+<h2>Your deck, on the left</h2>
+<p>Every card of your deck with the copies still in the library, the chance to draw it with your next draw, and the lands at the bottom. Cards you have run out of fade out. The numbers update as you draw and play.</p>
+
+<h2>The opponent's deck, on the right</h2>
+<p>From the spells the opponent has shown, the HUD names the most likely archetype of the format with how confident it is, the cards that deck usually plays, the spells already cast, and the instants their open mana can pay for right now. Decks outside the meta are named by their colours.</p>
+
+<h2>Out of the way</h2>
+<ul>
+<li>Clicks pass through the lists, and they never take the focus from Arena.</li>
+<li>An eye on each list hides it and brings it back; when no game is on, a small <span class="ui">READY</span> badge says the HUD is on.</li>
+<li>The <span class="ui">DECK HUD</span> pill in the app's tab bar turns each side on or off.</li>
+</ul>
+
+<h2>The deck, never the player</h2>
+<p>No opponent name or id is shown, saved or shared. The HUD stays off in sanctioned competitive events, where outside assistance is not allowed, and against Sparky. It needs Windows: on Mac the overlay does not exist yet.</p>
+<a class="cta-g" href="../guide/deck-hud.html">Read the guide: Deck HUD →</a>
+
+<nav class="pn" aria-label="Newer and older"><a class="prev" href="shared-games-live.html"><span>← Newer</span><b>Shared games are live</b></a><a class="next" href="open-beta.html"><span>Older →</span><b>3 Steps Ahead is out: free, in open beta</b></a></nav>
+</article>
+<section class="altre" aria-label="More news"><p class="rail-t">More news</p><div class="lista"><a class="card" href="leak-finder-board-filters.html"><figure class="cov"><img src="../img/hero_performance.jpg" alt="" loading="lazy"></figure><div class="body"><p class="meta"><span class="t ">Feature</span><time datetime="2026-11-17">17 November 2026</time><span class="v">v0.1.123</span></p><h2>Leak Finder: ask about the table</h2><p class="s">A Board tab in Advanced filters, spell roles before or after combat, replays that open on your spot, and Filters from here.</p><span class="more">Read the article →</span></div></a><a class="card" href="replayer-every-action.html"><figure class="cov"><img src="../img/hero_replayer.jpg" alt="" loading="lazy"></figure><div class="body"><p class="meta"><span class="t ">Feature</span><time datetime="2026-11-16">16 November 2026</time><span class="v">v0.1.121</span></p><h2>The replayer, rebuilt action by action</h2><p class="s">One action at a time on a play mat: the stack, combat duels, mana, emblems, and every sequence checked against the log and the rules.</p><span class="more">Read the article →</span></div></a><a class="card" href="meet-the-leak-finder.html"><figure class="cov"><img src="../img/hero_analysis.jpg" alt="" loading="lazy"></figure><div class="body"><p class="meta"><span class="t ">Feature</span><time datetime="2026-11-15">15 November 2026</time><span class="v">v0.1.114</span></p><h2>Meet the Leak Finder</h2><p class="s">Performance becomes the Leak Finder: the mistakes that cost you games, ranked by what they cost, with the replay on each one.</p><span class="more">Read the article →</span></div></a></div></section>
+  </div>
+</div>
+<footer>
+  <div class="wrap">
+    <p>3 Steps Ahead is unofficial Fan Content permitted under the Fan Content Policy. Not approved or endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.</p>
+    <p>Card data and images from Scryfall. Not affiliated with Scryfall, Untapped.gg or 17Lands. Screens and animations recorded from the real app on one player's account.</p>
+  </div>
+</footer>
+<script>
+(function () {
+  var tela = document.querySelector(".sfondo");
+  if (!tela || !tela.getContext) return;
+  var ctx = tela.getContext("2d"), dpr = 1, L = 0, A = 0, colore = "", attesa = false;
+  var fermo = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function misura() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    L = window.innerWidth; A = window.innerHeight;
+    tela.width = Math.round(L * dpr); tela.height = Math.round(A * dpr);
+    colore = getComputedStyle(document.documentElement).getPropertyValue("--pattern").trim() || "rgba(97,205,255,.1)";
+    disegna();
+  }
+  function disegna() {
+    attesa = false;
+    var fase = fermo ? 0 : (window.scrollY || 0) * 0.0035;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, L, A);
+    ctx.strokeStyle = colore; ctx.lineWidth = 1;
+    var passo = 26, n = Math.ceil(A / passo) + 4;
+    for (var i = -2; i < n; i++) {
+      var y0 = i * passo;
+      ctx.beginPath();
+      for (var x = -20; x <= L + 20; x += 14) {
+        var y = y0 + 9 * Math.sin(x * 0.006 + i * 0.42 + fase) + 5 * Math.sin(x * 0.017 - fase * 1.6 + i * 0.9);
+        if (x === -20) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+  }
+  window.addEventListener("resize", misura);
+  if (!fermo) window.addEventListener("scroll", function () { if (!attesa) { attesa = true; requestAnimationFrame(disegna); } }, { passive: true });
+  if (window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", misura);
+  misura();
+})();
+</script>
+
+</body>
+</html>
