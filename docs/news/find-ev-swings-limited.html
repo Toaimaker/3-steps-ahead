@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Find your biggest EV swings in Limited · 3 Steps Ahead</title>
+<meta name="description" content="A step-by-step guide to the Leak Finder: find the games where a Limited deck gained or lost the most EV, open the key moment, and compare similar spots on the chart.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800;900&family=Inter:wght@400;500;600&family=Poppins:wght@500;600;700&display=swap">
+<link rel="canonical" href="https://toaimaker.github.io/3-steps-ahead/news/find-ev-swings-limited.html">
+<meta property="og:url" content="https://toaimaker.github.io/3-steps-ahead/news/find-ev-swings-limited.html">
+<link rel="alternate" type="application/rss+xml" title="3 Steps Ahead News" href="https://toaimaker.github.io/3-steps-ahead/news/feed.xml">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#101014">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="icon" href="../favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="3 Steps Ahead">
+<meta property="og:title" content="Find your biggest EV swings in Limited · 3 Steps Ahead">
+<meta property="og:description" content="A step-by-step guide to the Leak Finder: find the games where a Limited deck gained or lost the most EV, open the key moment, and compare similar spots on the chart.">
+<meta property="og:image" content="https://toaimaker.github.io/3-steps-ahead/img/ev-limited-2.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Find your biggest EV swings in Limited · 3 Steps Ahead">
+<meta name="twitter:description" content="A step-by-step guide to the Leak Finder: find the games where a Limited deck gained or lost the most EV, open the key moment, and compare similar spots on the chart.">
+<meta name="twitter:image" content="https://toaimaker.github.io/3-steps-ahead/img/ev-limited-2.jpg">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "3 Steps Ahead", "item": "https://toaimaker.github.io/3-steps-ahead/"}, {"@type": "ListItem", "position": 2, "name": "News", "item": "https://toaimaker.github.io/3-steps-ahead/news/"}, {"@type": "ListItem", "position": 3, "name": "Find where your Limited deck gains and loses EV", "item": "https://toaimaker.github.io/3-steps-ahead/news/find-ev-swings-limited.html"}]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "Find where your Limited deck gains and loses the most EV", "description": "A step-by-step guide to the Leak Finder: find the games where a Limited deck gained or lost the most EV, open the key moment, and compare similar spots on the chart.", "image": "https://toaimaker.github.io/3-steps-ahead/img/ev-limited-2.jpg", "url": "https://toaimaker.github.io/3-steps-ahead/news/find-ev-swings-limited.html", "mainEntityOfPage": "https://toaimaker.github.io/3-steps-ahead/news/find-ev-swings-limited.html", "inLanguage": "en", "datePublished": "2026-11-18", "dateModified": "2026-11-18", "author": {"@type": "Organization", "name": "3 Steps Ahead"}, "publisher": {"@type": "Organization", "name": "3 Steps Ahead", "logo": {"@type": "ImageObject", "url": "https://toaimaker.github.io/3-steps-ahead/logo.svg"}}}</script>
+<meta property="article:published_time" content="2026-11-18">
+<style>
+/* News & updates: the same palette and type as the home page and the guide; article cards, one reading column per article. Dark-first like the app. */
+:root {
+  --bg: #101014; --panel: #18181c; --raised: #202024; --line: #303034;
+  --fg: #bebec2; --title: #ffffff; --muted: #8b8b94;
+  --accent: #24baff; --link: #61cdff; --good: #5cb85c; --bad: #d9534f; --warn: #f0ad4e;
+  --f-display: "Archivo", "Arial Black", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Inter", "Segoe UI", system-ui, sans-serif;
+  --f-data: "Poppins", "Segoe UI", system-ui, sans-serif;
+  --f-code: Consolas, "Courier New", monospace;
+  --pattern: rgba(97, 205, 255, 0.045);
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) {
+  --bg: #f5f6f8; --pattern: rgba(10, 80, 130, 0.05); --panel: #ffffff; --raised: #eef0f3; --line: #d9dce2;
+  --fg: #33363d; --title: #101014; --muted: #6b6f78;
+  --accent: #0a8fd0; --link: #0a7ab3; --good: #2f8a3a; --bad: #c0392b; --warn: #b9770e; color-scheme: light } }
+:root[data-theme="light"] {
+  --bg: #f5f6f8; --pattern: rgba(10, 80, 130, 0.05); --panel: #ffffff; --raised: #eef0f3; --line: #d9dce2;
+  --fg: #33363d; --title: #101014; --muted: #6b6f78;
+  --accent: #0a8fd0; --link: #0a7ab3; --good: #2f8a3a; --bad: #c0392b; --warn: #b9770e; color-scheme: light }
+
+* { box-sizing: border-box }
+html { scroll-padding-top: 76px }
+body { background: var(--bg); color: var(--fg); font: 400 15.5px/1.7 var(--f-body); margin: 0 }
+.sfondo { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; display: block }
+header.top, .page, footer { position: relative; z-index: 1 }
+a { color: var(--link) }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px }
+.wrap { max-width: 1180px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)) }
+
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg) }
+header.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line) }
+header.top .wrap { display: flex; align-items: center; gap: 16px; padding-block: 12px }
+.brand { display: flex; align-items: center; gap: 10px; color: var(--title); font: 800 15px var(--f-display); text-transform: uppercase; letter-spacing: .01em; text-decoration: none }
+.brand svg { width: 28px; height: 28px; border-radius: 7px }
+.brand small { font: 600 10px/1 var(--f-data); letter-spacing: .14em; color: var(--accent); margin-left: 2px }
+nav.top { margin-left: auto; display: flex; gap: 18px; font-size: 13px; align-items: center }
+nav.top a { color: var(--fg); text-decoration: none }
+nav.top a:hover { color: var(--title) }
+nav.top a.dl { font: 700 11px var(--f-data); letter-spacing: .08em; text-transform: uppercase; background: var(--accent); color: #0b1016; padding: 8px 12px }
+
+
+.page .wrap { padding-block: 36px 72px }
+.crumbs { font: 500 12px var(--f-data); color: var(--muted); margin-bottom: 14px }
+.crumbs a { color: var(--muted); text-decoration: none }
+.crumbs a:hover { color: var(--title) }
+.news-h { max-width: 780px }
+.news-h h1, .doc h1 { font: 900 clamp(32px, 5vw, 52px)/.95 var(--f-display); text-transform: uppercase; color: var(--title); margin: 0; letter-spacing: -0.005em; text-wrap: balance }
+.news-h .lead, .doc .lead { font-size: 18px; color: var(--fg); margin: 18px 0 0; max-width: 62ch }
+.rss { display: inline-flex; align-items: center; gap: 6px; margin-top: 16px; font: 600 11px var(--f-data); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); text-decoration: none }
+.rss:hover { color: var(--title) }
+.rss svg { width: 13px; height: 13px; fill: var(--warn) }
+
+.meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font: 500 12px/1 var(--f-data); color: var(--muted); margin: 0 }
+.meta .t { font: 700 10px/1 var(--f-data); letter-spacing: .14em; text-transform: uppercase; color: #0b1016; background: var(--accent); padding: 5px 8px }
+.meta .t.data { background: var(--good) }
+.meta .t.launch { background: var(--warn) }
+.meta .t.fix { background: var(--muted) }
+.meta .v { font-family: var(--f-code); font-size: 12px; color: var(--fg) }
+
+.cov { position: relative; margin: 0; aspect-ratio: 16 / 9; overflow: hidden; background: var(--raised); border-bottom: 1px solid var(--line); max-width: 100% }
+.cov img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top left }
+.cov.vuoto { display: grid; place-items: center; background: radial-gradient(120% 90% at 85% 15%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 60%), var(--panel) }
+.cov.vuoto svg { width: 30%; max-width: 120px; height: auto }
+.cov .k { position: absolute; left: 14px; bottom: 12px; font: 800 13px/1 var(--f-display); text-transform: uppercase; letter-spacing: .04em; color: var(--title) }
+
+.lista { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-top: 36px }
+.card { display: flex; flex-direction: column; min-width: 0; text-decoration: none; color: var(--fg); background: var(--panel); border: 1px solid var(--line); transition: border-color .15s, transform .15s }
+.card:hover { border-color: var(--accent); transform: translateY(-2px) }
+.card .body { display: grid; gap: 10px; padding: 16px 18px 18px; flex: 1; align-content: start }
+.card h2 { font: 800 20px/1.1 var(--f-display); text-transform: uppercase; color: var(--title); margin: 2px 0 0; text-wrap: balance }
+.card p.s { font-size: 14px; color: var(--muted); margin: 0 }
+.card .more { margin-top: auto; padding-top: 4px; font: 600 11px var(--f-data); letter-spacing: .1em; text-transform: uppercase; color: var(--link) }
+.card.big { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) }
+.card.big .cov { aspect-ratio: auto; min-height: 300px; border-bottom: 0; border-right: 1px solid var(--line) }
+.card.big .body { padding: 26px 28px; align-content: center }
+.card.big h2 { font-size: clamp(24px, 3vw, 34px) }
+.card.big p.s { font-size: 15.5px; color: var(--fg) }
+
+article.doc { max-width: 760px; margin: 0 auto; min-width: 0 }
+.doc > .meta { margin: 0 0 16px }
+.doc .cov { margin: 28px 0 8px; border: 1px solid var(--line) }
+.doc h2 { font: 800 clamp(21px, 2.6vw, 27px)/1.1 var(--f-display); text-transform: uppercase; color: var(--title); margin: 46px 0 14px; text-wrap: balance }
+.doc h3 { font: 600 16.5px/1.35 var(--f-body); color: var(--title); margin: 28px 0 8px }
+.doc p { margin: 0 0 14px; max-width: 68ch }
+.doc ul, .doc ol { margin: 0 0 16px; padding-left: 22px; max-width: 66ch }
+.doc li { margin: 5px 0 }
+.doc li::marker { color: var(--accent) }
+.doc b, .doc strong { color: var(--title); font-weight: 600 }
+.doc code { font: 400 13.5px var(--f-code); background: var(--raised); padding: 1px 6px }
+.doc figure { margin: 22px 0 26px; min-width: 0 }
+.doc figure img { display: block; width: 100%; height: auto; border: 1px solid var(--line); background: var(--raised) }
+.doc figcaption { font-size: 13px; color: var(--muted); margin-top: 8px }
+.note { border-left: 3px solid var(--accent); background: var(--panel); padding: 12px 16px; margin: 18px 0 22px; font-size: 14.5px; max-width: 68ch }
+.note.limit { border-left-color: var(--warn) }
+.note b:first-child { font: 600 10px/1 var(--f-data); letter-spacing: .14em; text-transform: uppercase; display: block; margin-bottom: 6px; color: var(--accent) }
+.note.limit b:first-child { color: var(--warn) }
+.note p:last-child { margin-bottom: 0 }
+.ui { font: 600 13px var(--f-data); color: var(--title); white-space: nowrap }
+kbd { font: 600 12px var(--f-data); color: var(--title); background: var(--raised); border: 1px solid var(--line); border-bottom-width: 2px; padding: 1px 6px; white-space: nowrap }
+.cta-g { display: inline-block; margin-top: 8px; font: 600 12px var(--f-data); letter-spacing: .06em; text-transform: uppercase; color: var(--link); text-decoration: none; border: 1px solid var(--line); padding: 10px 14px }
+.cta-g:hover { border-color: var(--accent) }
+
+.altre { margin-top: 64px; padding-top: 26px; border-top: 1px solid var(--line) }
+.altre .rail-t { font: 600 10px/1 var(--f-data); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin: 0 }
+.altre .lista { margin-top: 16px }
+.pn { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; margin-top: 46px; padding-top: 22px; border-top: 1px solid var(--line) }
+.pn a { text-decoration: none; border: 1px solid var(--line); padding: 12px 16px; display: block; min-width: 0 }
+.pn a:hover { border-color: var(--accent) }
+.pn span { display: block; font: 600 10px/1 var(--f-data); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px }
+.pn b { color: var(--title); font-weight: 600 }
+.pn .next { text-align: right; grid-column: 2 }
+
+footer { border-top: 1px solid var(--line) }
+footer .wrap { padding-block: 28px; font-size: 12px; color: var(--muted); display: grid; gap: 8px }
+
+
+@media (max-width: 900px) {
+  .page .wrap { padding-block: 20px 56px }
+  nav.top a:not(.dl) { display: none }
+  .lista { grid-template-columns: repeat(2, minmax(0, 1fr)) }
+  .card.big { grid-template-columns: minmax(0, 1fr) }
+  .card.big .cov { min-height: 0; aspect-ratio: 16 / 9; border-right: 0; border-bottom: 1px solid var(--line) }
+  .card.big .body { padding: 18px }
+}
+@media (max-width: 560px) {
+  .lista { grid-template-columns: minmax(0, 1fr) }
+  .pn { grid-template-columns: minmax(0, 1fr) }
+  .pn .next { grid-column: 1 }
+}
+@media (prefers-reduced-motion: reduce) { .card, .card:hover { transition: none; transform: none } }
+</style>
+</head>
+<body>
+
+<canvas class="sfondo" aria-hidden="true"></canvas>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="../" aria-label="3 Steps Ahead home">
+      <svg viewBox="0 0 150 150" aria-hidden="true"><rect width="150" height="150" rx="28" fill="#101014"/><rect x="26" y="56" width="44" height="62" rx="6" fill="#18181c" stroke="#3a3a42" stroke-width="5"/><rect x="48" y="42" width="44" height="62" rx="6" fill="#18181c" stroke="#6a6a74" stroke-width="5"/><rect x="70" y="28" width="44" height="62" rx="6" fill="#18181c" stroke="#24baff" stroke-width="5"/></svg>
+      3 Steps Ahead <small>News</small>
+    </a>
+    <nav class="top" aria-label="Site">
+      <a href="../">Home</a><a href="../guide/">Guide</a><a href="./">News</a><a href="../#faq">FAQ</a><a class="dl" href="https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe">Download</a>
+    </nav>
+  </div>
+</header>
+<div class="page">
+  <div class="wrap">
+<article class="doc">
+<nav class="crumbs" aria-label="Breadcrumb"><a href="../">Home</a> › <a href="./">News</a> › Find where your Limited deck gains and loses EV</nav>
+<p class="meta"><span class="t ">Feature</span><time datetime="2026-11-18">18 November 2026</time><span class="v">v0.1.126</span></p>
+<h1>Find where your Limited deck gains and loses the most EV</h1>
+<p class="lead">A step-by-step guide, on a real draft deck. You will set the Leak Finder to show the games where you gained or lost the most win chance, open the worst one on the exact moment it turned, and then ask the same tool a bigger question: how often does a situation like that happen, and how does it change your win rate?</p>
+<figure class="cov"><img src="../img/ev-limited-2.jpg" alt="The Leak Finder chart set to EV vs expected, in Limited" loading="lazy"></figure>
+
+<h2>Before you start</h2>
+<p>This guide reads your games in <b>EV</b>, expected value: the win chance a turn, a phase or a card added or took away, compared with what the same spot usually gives in your games. If the word is new, read <a href="why-ev.html">why the Leak Finder thinks in EV</a> first, and <a href="expected-vs-actual-ev.html">expected against actual EV</a> for the full list of what it measures. The short version: a negative number is not a mistake, it is a place worth looking at.</p>
+<p>The screenshots below come from one Limited log of ours, 59 draft games at a 41% win rate, taken as they are. Yours will look different; the steps are the same.</p>
+
+<h2>1 · Switch to Limited</h2>
+<p>The pill at the top of the Leak Finder switches the whole page between <span class="ui">CONSTRUCTED</span> and <span class="ui">LIMITED</span>. Press <span class="ui">LIMITED</span>: the numbers, the chart and the games below now are your draft games only.</p>
+<figure><img src="../img/ev-limited-1.jpg" alt="The Leak Finder switched to Limited, with the win rate chart" loading="lazy"><figcaption>The switch in the top bar. Everything on the page follows it, Advanced filters included.</figcaption></figure>
+
+<h2>2 · Draw the chart in EV</h2>
+<p>Under the numbers, pick the <span class="ui">EV vs expected</span> button, and set <span class="ui">Window</span> to <span class="ui">Cumulative</span>. The chart now adds up, game after game, the win-probability points your games made above or below the usual. A line that climbs is a stretch where you gained more than the same spots usually give; a line that falls is a stretch where value slipped away.</p>
+<figure><img src="../img/ev-limited-2.jpg" alt="EV vs expected, cumulative, over 59 Limited games" loading="lazy"><figcaption>Circles 1 and 2: the metric and the window. The dip in the middle is where this deck lost the most.</figcaption></figure>
+
+<h2>3 · Choose whose turns you are measuring</h2>
+<p>A new menu, <span class="ui">EV of</span>, appears next to the metric buttons. It decides which part of each game the line adds up.</p>
+<figure><img src="../img/ev-limited-3.jpg" alt="EV of Hero's turns" loading="lazy"><figcaption><b>Hero's turns</b>: only what happened on your own turns, your plays and your attacks. This deck ends at −11.</figcaption></figure>
+<p><b>Opponent's turns</b> is the other side of the table. Their turns can only take points from you or give some back, so this is where you read <b>when the opponent lost EV against you</b>: a line that climbs here means that on their turns you came out better than usual, because their play gave less than it normally does, you blocked well or your removal answered a threat in time. A line that falls means their turns cost you.</p>
+<figure><img src="../img/ev-limited-4.jpg" alt="EV of Opponent's turns" loading="lazy"><figcaption>The same 59 games, on the opponent's turns only. It ends at −28, against −11 on your own turns: in this deck more value left while the opponent was playing.</figcaption></figure>
+<p>You can cut even finer. <span class="ui">Opponent · combat (defense)</span> adds up only their attacks, so it is the number to look at if you suspect your blocks.</p>
+<figure><img src="../img/ev-limited-5.jpg" alt="EV of Opponent combat (defense)" loading="lazy"><figcaption>Their combat on its own ends near −5, so it is not where this deck loses. The other entries split your own turns the same way: main phase 1, combat, main phase 2.</figcaption></figure>
+
+<h2>4 · Find the games where it happened</h2>
+<p>Under the chart, the table lists every game. The <span class="ui">GAME EV</span> column is the EV of the whole game: green when it gained, red when it lost. Click the title to sort it. Worst first:</p>
+<figure><img src="../img/ev-limited-6.jpg" alt="Games sorted by game EV, worst first" loading="lazy"><figcaption>The worst game of this deck: −52 points of win chance against the usual. Next to it, the cards that made the most and the least EV in that game.</figcaption></figure>
+<p>Click again for the best first. Comparing the two ends is useful by itself: what does your best game have that your worst does not?</p>
+<figure><img src="../img/ev-limited-7.jpg" alt="Games sorted by game EV, best first" loading="lazy"><figcaption>The best game: +67. Green on top, the games where everything fell your way, or where you played better than usual.</figcaption></figure>
+
+<h2>5 · Open the game on the moment that turned it</h2>
+<p>Click a row and the replayer opens on that game. The <span class="ui">Key ›</span> button at the top jumps to the key moments: the phases that gained or lost the most EV against the usual. The story on the right says it in words, for example «8.5 win-probability points lost against the usual».</p>
+<figure><img src="../img/ev-limited-8.jpg" alt="The replayer on a key moment" loading="lazy"><figcaption>Key › lands on the phase that moved the game most. Step forward and back to see what led to it.</figcaption></figure>
+
+<h2>6 · Ask: has this happened before?</h2>
+<p>One game is a story. To know whether it is a pattern, you need the games that look like it. That is what <span class="ui">Filters from here</span> is for. Press it, with the replayer on the moment you care about, and choose how wide the search should be.</p>
+<figure><img src="../img/ev-limited-9.jpg" alt="The Filters from this moment menu with the number of games next to each choice" loading="lazy"><figcaption>Each choice shows how many of your games it finds. Start with the widest: the more details you copy, the fewer games match.</figcaption></figure>
+<ul>
+<li><b>Start, creatures and lands</b>: play or draw, mulligans, and how many creatures and lands each side had at the start of this turn. The widest.</li>
+<li><b>+ what was cast this turn</b>: the spells of both sides in this turn, by role.</li>
+<li><b>+ one turn before and after</b>: the turn before and the turn after too.</li>
+<li><b>+ the whole board</b>: hands, life, other permanents, graveyards. Usually it finds only the game you came from.</li>
+</ul>
+
+<h2>7 · Read the question the tool wrote</h2>
+<p><span class="ui">Advanced filters</span> opens with that moment written as filters, one piece each, every piece with its own <b>x</b>. Remove the pieces that do not matter to you and the search widens; add pieces and it narrows. Under the question, the answer: the win rate and the games behind it, how many times each piece was true, <span class="ui">WHAT HAPPENED NEXT</span> (how often your creatures survived the opponent's next turn, and what removed them) and <span class="ui">EV OF THE SPOT</span>.</p>
+<figure><img src="../img/ev-limited-10.jpg" alt="Advanced filters with the moment written as filters" loading="lazy"><figcaption>The moment as a question: on the play, no mulligan, two creatures for you and one for them on turn 3. 7 games match.</figcaption></figure>
+
+<h2>8 · Put the spot on the chart</h2>
+<p>Close the window. The whole page now follows your filters: the numbers on top, the chart, the table of games. Back on the <span class="ui">Chart</span>, tick <span class="ui">vs filter</span> under it: a blue line, <b>This filter</b>, is drawn next to the line of all your games. With Win rate selected you see the difference at a glance.</p>
+<figure><img src="../img/ev-limited-11.jpg" alt="Win rate of all games against the games that match the spot" loading="lazy"><figcaption>All games 41%, the games like this spot 29%. Under the numbers, the 7 games themselves, each one a click away from its replay.</figcaption></figure>
+<p>Read it with care. Seven games is a hint, not a fact: the tool says it in orange (<i>under 30 games: a hint, not a fact</i>) and shows the 95% interval, 8 to 64%, wide enough to include the usual 41%. What it gives you is a place to keep watching. Play more, and the line either settles on the average or stays away from it.</p>
+
+<h2>9 · And in EV?</h2>
+<p>Switch the metric to <span class="ui">EV vs expected</span> with <span class="ui">vs filter</span> still ticked. Win rate only knows who won; EV knows how the game went, so it moves with far fewer games.</p>
+<figure><img src="../img/ev-limited-12.jpg" alt="EV vs expected: all games against the games that match the spot" loading="lazy"><figcaption>The blue line adds up only 7 games, the white one all 59. Both end near −40: about 6 points lost per game in the spot, against less than 1 per game across the deck.</figcaption></figure>
+
+<h2>What this analysis is worth</h2>
+<ul>
+<li><b>It finds your games without you guessing.</b> You do not scroll fifty replays: the worst and best games are one click away.</li>
+<li><b>It separates your turns from theirs.</b> You learn whether the value leaves on your plays or on your defense, and whether the opponent's turns are giving you points or taking them.</li>
+<li><b>It turns one game into a question.</b> Filters from here describes the moment so you can count how often it happens, and the chart shows what it does to your win rate and to your EV.</li>
+<li><b>It tells you how sure it is.</b> Few games, a hint; more games, a fact. The page says so on every number.</li>
+</ul>
+<p>When a spot looks worth following, press <span class="ui">Save as my filter</span> in the left column to keep it, and check it again after your next draft.</p>
+<div class="note">A negative EV is not a mistake: a good choice can meet a bad outcome. The win chance comes from a model trained on public 17Lands replays (CC BY 4.0) of Limited games, and every number is yours, computed on your own games. Seven games, as in this example, are not enough to conclude anything.</div>
+<a class="cta-g" href="../guide/performance.html">Read the guide: Leak Finder →</a>
+
+<nav class="pn" aria-label="Newer and older"><a class="prev" href="why-ev.html"><span>← Newer</span><b>Why the Leak Finder thinks in EV</b></a><a class="next" href="expected-vs-actual-ev.html"><span>Older →</span><b>Leak Finder: expected against actual EV</b></a></nav>
+</article>
+<section class="altre" aria-label="More news"><p class="rail-t">More news</p><div class="lista"><a class="card" href="why-ev.html"><figure class="cov"><img src="../img/hero_performance.jpg" alt="" loading="lazy"></figure><div class="body"><p class="meta"><span class="t data">Data</span><time datetime="2026-11-18">18 November 2026</time><span class="v">v0.1.126</span></p><h2>Why the Leak Finder thinks in EV</h2><p class="s">What EV is, why we stopped calling plays mistakes, and how the Leak Finder reasons from your side of the table.</p><span class="more">Read the article →</span></div></a><a class="card" href="expected-vs-actual-ev.html"><figure class="cov"><img src="../img/hero_performance.jpg" alt="" loading="lazy"></figure><div class="body"><p class="meta"><span class="t ">Feature</span><time datetime="2026-11-18">18 November 2026</time><span class="v">v0.1.125</span></p><h2>Leak Finder: expected against actual EV</h2><p class="s">EV vs expected on the chart, by turn and phase; what each card and each deed is worth; from a spot to what came next.</p><span class="more">Read the article →</span></div></a><a class="card" href="leak-finder-board-filters.html"><figure class="cov"><img src="../img/hero_performance.jpg" alt="" loading="lazy"></figure><div class="body"><p class="meta"><span class="t ">Feature</span><time datetime="2026-11-17">17 November 2026</time><span class="v">v0.1.123</span></p><h2>Leak Finder: ask about the table</h2><p class="s">A Board tab in Advanced filters, spell roles before or after combat, replays that open on your spot, and Filters from here.</p><span class="more">Read the article →</span></div></a></div></section>
+  </div>
+</div>
+<footer>
+  <div class="wrap">
+    <p>3 Steps Ahead is unofficial Fan Content permitted under the Fan Content Policy. Not approved or endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.</p>
+    <p>Card data and images from Scryfall. Not affiliated with Scryfall, Untapped.gg or 17Lands. Screens and animations recorded from the real app on one player's account.</p>
+  </div>
+</footer>
+<script>
+(function () {
+  var tela = document.querySelector(".sfondo");
+  if (!tela || !tela.getContext) return;
+  var ctx = tela.getContext("2d"), dpr = 1, L = 0, A = 0, colore = "", attesa = false;
+  var fermo = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function misura() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    L = window.innerWidth; A = window.innerHeight;
+    tela.width = Math.round(L * dpr); tela.height = Math.round(A * dpr);
+    colore = getComputedStyle(document.documentElement).getPropertyValue("--pattern").trim() || "rgba(97,205,255,.1)";
+    disegna();
+  }
+  function disegna() {
+    attesa = false;
+    var fase = fermo ? 0 : (window.scrollY || 0) * 0.0035;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, L, A);
+    ctx.strokeStyle = colore; ctx.lineWidth = 1;
+    var passo = 26, n = Math.ceil(A / passo) + 4;
+    for (var i = -2; i < n; i++) {
+      var y0 = i * passo;
+      ctx.beginPath();
+      for (var x = -20; x <= L + 20; x += 14) {
+        var y = y0 + 9 * Math.sin(x * 0.006 + i * 0.42 + fase) + 5 * Math.sin(x * 0.017 - fase * 1.6 + i * 0.9);
+        if (x === -20) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+  }
+  window.addEventListener("resize", misura);
+  if (!fermo) window.addEventListener("scroll", function () { if (!attesa) { attesa = true; requestAnimationFrame(disegna); } }, { passive: true });
+  if (window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", misura);
+  misura();
+})();
+</script>
+
+</body>
+</html>
