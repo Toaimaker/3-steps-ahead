@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tune a Constructed deck with the Leak Finder · 3 Steps Ahead</title>
+<meta name="description" content="A step-by-step guide to the Leak Finder on a real Standard deck: where it loses, which cards carry it, which get stuck, and what answers the threats that beat you.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800;900&family=Inter:wght@400;500;600&family=Poppins:wght@500;600;700&display=swap">
+<link rel="canonical" href="https://toaimaker.github.io/3-steps-ahead/news/tune-a-constructed-deck.html">
+<meta property="og:url" content="https://toaimaker.github.io/3-steps-ahead/news/tune-a-constructed-deck.html">
+<link rel="alternate" type="application/rss+xml" title="3 Steps Ahead News" href="https://toaimaker.github.io/3-steps-ahead/news/feed.xml">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#101014">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="icon" href="../favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="3 Steps Ahead">
+<meta property="og:title" content="Tune a Constructed deck with the Leak Finder · 3 Steps Ahead">
+<meta property="og:description" content="A step-by-step guide to the Leak Finder on a real Standard deck: where it loses, which cards carry it, which get stuck, and what answers the threats that beat you.">
+<meta property="og:image" content="https://toaimaker.github.io/3-steps-ahead/img/deck-tuning-4.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Tune a Constructed deck with the Leak Finder · 3 Steps Ahead">
+<meta name="twitter:description" content="A step-by-step guide to the Leak Finder on a real Standard deck: where it loses, which cards carry it, which get stuck, and what answers the threats that beat you.">
+<meta name="twitter:image" content="https://toaimaker.github.io/3-steps-ahead/img/deck-tuning-4.jpg">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "3 Steps Ahead", "item": "https://toaimaker.github.io/3-steps-ahead/"}, {"@type": "ListItem", "position": 2, "name": "News", "item": "https://toaimaker.github.io/3-steps-ahead/news/"}, {"@type": "ListItem", "position": 3, "name": "Tune a Constructed deck: what to cut, what to add", "item": "https://toaimaker.github.io/3-steps-ahead/news/tune-a-constructed-deck.html"}]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "Tune a Constructed deck with the Leak Finder: what to cut, what to add", "description": "A step-by-step guide to the Leak Finder on a real Standard deck: where it loses, which cards carry it, which get stuck, and what answers the threats that beat you.", "image": "https://toaimaker.github.io/3-steps-ahead/img/deck-tuning-4.jpg", "url": "https://toaimaker.github.io/3-steps-ahead/news/tune-a-constructed-deck.html", "mainEntityOfPage": "https://toaimaker.github.io/3-steps-ahead/news/tune-a-constructed-deck.html", "inLanguage": "en", "datePublished": "2026-11-19", "dateModified": "2026-11-19", "author": {"@type": "Organization", "name": "3 Steps Ahead"}, "publisher": {"@type": "Organization", "name": "3 Steps Ahead", "logo": {"@type": "ImageObject", "url": "https://toaimaker.github.io/3-steps-ahead/logo.svg"}}}</script>
+<meta property="article:published_time" content="2026-11-19">
+<style>
+/* News & updates: the same palette and type as the home page and the guide; article cards, one reading column per article. Dark-first like the app. */
+:root {
+  --bg: #101014; --panel: #18181c; --raised: #202024; --line: #303034;
+  --fg: #bebec2; --title: #ffffff; --muted: #8b8b94;
+  --accent: #24baff; --link: #61cdff; --good: #5cb85c; --bad: #d9534f; --warn: #f0ad4e;
+  --f-display: "Archivo", "Arial Black", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Inter", "Segoe UI", system-ui, sans-serif;
+  --f-data: "Poppins", "Segoe UI", system-ui, sans-serif;
+  --f-code: Consolas, "Courier New", monospace;
+  --pattern: rgba(97, 205, 255, 0.045);
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) {
+  --bg: #f5f6f8; --pattern: rgba(10, 80, 130, 0.05); --panel: #ffffff; --raised: #eef0f3; --line: #d9dce2;
+  --fg: #33363d; --title: #101014; --muted: #6b6f78;
+  --accent: #0a8fd0; --link: #0a7ab3; --good: #2f8a3a; --bad: #c0392b; --warn: #b9770e; color-scheme: light } }
+:root[data-theme="light"] {
+  --bg: #f5f6f8; --pattern: rgba(10, 80, 130, 0.05); --panel: #ffffff; --raised: #eef0f3; --line: #d9dce2;
+  --fg: #33363d; --title: #101014; --muted: #6b6f78;
+  --accent: #0a8fd0; --link: #0a7ab3; --good: #2f8a3a; --bad: #c0392b; --warn: #b9770e; color-scheme: light }
+
+* { box-sizing: border-box }
+html { scroll-padding-top: 76px }
+body { background: var(--bg); color: var(--fg); font: 400 15.5px/1.7 var(--f-body); margin: 0 }
+.sfondo { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; display: block }
+header.top, .page, footer { position: relative; z-index: 1 }
+a { color: var(--link) }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px }
+.wrap { max-width: 1180px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)) }
+
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg) }
+header.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line) }
+header.top .wrap { display: flex; align-items: center; gap: 16px; padding-block: 12px }
+.brand { display: flex; align-items: center; gap: 10px; color: var(--title); font: 800 15px var(--f-display); text-transform: uppercase; letter-spacing: .01em; text-decoration: none }
+.brand svg { width: 28px; height: 28px; border-radius: 7px }
+.brand small { font: 600 10px/1 var(--f-data); letter-spacing: .14em; color: var(--accent); margin-left: 2px }
+nav.top { margin-left: auto; display: flex; gap: 18px; font-size: 13px; align-items: center }
+nav.top a { color: var(--fg); text-decoration: none }
+nav.top a:hover { color: var(--title) }
+nav.top a.dl { font: 700 11px var(--f-data); letter-spacing: .08em; text-transform: uppercase; background: var(--accent); color: #0b1016; padding: 8px 12px }
+
+
+.page .wrap { padding-block: 36px 72px }
+.crumbs { font: 500 12px var(--f-data); color: var(--muted); margin-bottom: 14px }
+.crumbs a { color: var(--muted); text-decoration: none }
+.crumbs a:hover { color: var(--title) }
+.news-h { max-width: 780px }
+.news-h h1, .doc h1 { font: 900 clamp(32px, 5vw, 52px)/.95 var(--f-display); text-transform: uppercase; color: var(--title); margin: 0; letter-spacing: -0.005em; text-wrap: balance }
+.news-h .lead, .doc .lead { font-size: 18px; color: var(--fg); margin: 18px 0 0; max-width: 62ch }
+.rss { display: inline-flex; align-items: center; gap: 6px; margin-top: 16px; font: 600 11px var(--f-data); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); text-decoration: none }
+.rss:hover { color: var(--title) }
+.rss svg { width: 13px; height: 13px; fill: var(--warn) }
+
+.meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font: 500 12px/1 var(--f-data); color: var(--muted); margin: 0 }
+.meta .t { font: 700 10px/1 var(--f-data); letter-spacing: .14em; text-transform: uppercase; color: #0b1016; background: var(--accent); padding: 5px 8px }
+.meta .t.data { background: var(--good) }
+.meta .t.launch { background: var(--warn) }
+.meta .t.fix { background: var(--muted) }
+.meta .v { font-family: var(--f-code); font-size: 12px; color: var(--fg) }
+
+.cov { position: relative; margin: 0; aspect-ratio: 16 / 9; overflow: hidden; background: var(--raised); border-bottom: 1px solid var(--line); max-width: 100% }
+.cov img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top left }
+.cov.vuoto { display: grid; place-items: center; background: radial-gradient(120% 90% at 85% 15%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 60%), var(--panel) }
+.cov.vuoto svg { width: 30%; max-width: 120px; height: auto }
+.cov .k { position: absolute; left: 14px; bottom: 12px; font: 800 13px/1 var(--f-display); text-transform: uppercase; letter-spacing: .04em; color: var(--title) }
+
+.lista { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-top: 36px }
+.card { display: flex; flex-direction: column; min-width: 0; text-decoration: none; color: var(--fg); background: var(--panel); border: 1px solid var(--line); transition: border-color .15s, transform .15s }
+.card:hover { border-color: var(--accent); transform: translateY(-2px) }
+.card .body { display: grid; gap: 10px; padding: 16px 18px 18px; flex: 1; align-content: start }
+.card h2 { font: 800 20px/1.1 var(--f-display); text-transform: uppercase; color: var(--title); margin: 2px 0 0; text-wrap: balance }
+.card p.s { font-size: 14px; color: var(--muted); margin: 0 }
+.card .more { margin-top: auto; padding-top: 4px; font: 600 11px var(--f-data); letter-spacing: .1em; text-transform: uppercase; color: var(--link) }
+.card.big { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) }
+.card.big .cov { aspect-ratio: auto; min-height: 300px; border-bottom: 0; border-right: 1px solid var(--line) }
+.card.big .body { padding: 26px 28px; align-content: center }
+.card.big h2 { font-size: clamp(24px, 3vw, 34px) }
+.card.big p.s { font-size: 15.5px; color: var(--fg) }
+
+article.doc { max-width: 760px; margin: 0 auto; min-width: 0 }
+.doc > .meta { margin: 0 0 16px }
+.doc .cov { margin: 28px 0 8px; border: 1px solid var(--line) }
+.doc h2 { font: 800 clamp(21px, 2.6vw, 27px)/1.1 var(--f-display); text-transform: uppercase; color: var(--title); margin: 46px 0 14px; text-wrap: balance }
+.doc h3 { font: 600 16.5px/1.35 var(--f-body); color: var(--title); margin: 28px 0 8px }
+.doc p { margin: 0 0 14px; max-width: 68ch }
+.doc ul, .doc ol { margin: 0 0 16px; padding-left: 22px; max-width: 66ch }
+.doc li { margin: 5px 0 }
+.doc li::marker { color: var(--accent) }
+.doc b, .doc strong { color: var(--title); font-weight: 600 }
+.doc code { font: 400 13.5px var(--f-code); background: var(--raised); padding: 1px 6px }
+.doc figure { margin: 22px 0 26px; min-width: 0 }
+.doc figure img { display: block; width: 100%; height: auto; border: 1px solid var(--line); background: var(--raised) }
+.doc figcaption { font-size: 13px; color: var(--muted); margin-top: 8px }
+.note { border-left: 3px solid var(--accent); background: var(--panel); padding: 12px 16px; margin: 18px 0 22px; font-size: 14.5px; max-width: 68ch }
+.note.limit { border-left-color: var(--warn) }
+.note b:first-child { font: 600 10px/1 var(--f-data); letter-spacing: .14em; text-transform: uppercase; display: block; margin-bottom: 6px; color: var(--accent) }
+.note.limit b:first-child { color: var(--warn) }
+.note p:last-child { margin-bottom: 0 }
+.ui { font: 600 13px var(--f-data); color: var(--title); white-space: nowrap }
+kbd { font: 600 12px var(--f-data); color: var(--title); background: var(--raised); border: 1px solid var(--line); border-bottom-width: 2px; padding: 1px 6px; white-space: nowrap }
+.cta-g { display: inline-block; margin-top: 8px; font: 600 12px var(--f-data); letter-spacing: .06em; text-transform: uppercase; color: var(--link); text-decoration: none; border: 1px solid var(--line); padding: 10px 14px }
+.cta-g:hover { border-color: var(--accent) }
+
+.altre { margin-top: 64px; padding-top: 26px; border-top: 1px solid var(--line) }
+.altre .rail-t { font: 600 10px/1 var(--f-data); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin: 0 }
+.altre .lista { margin-top: 16px }
+.pn { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; margin-top: 46px; padding-top: 22px; border-top: 1px solid var(--line) }
+.pn a { text-decoration: none; border: 1px solid var(--line); padding: 12px 16px; display: block; min-width: 0 }
+.pn a:hover { border-color: var(--accent) }
+.pn span { display: block; font: 600 10px/1 var(--f-data); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px }
+.pn b { color: var(--title); font-weight: 600 }
+.pn .next { text-align: right; grid-column: 2 }
+
+footer { border-top: 1px solid var(--line) }
+footer .wrap { padding-block: 28px; font-size: 12px; color: var(--muted); display: grid; gap: 8px }
+
+
+@media (max-width: 900px) {
+  .page .wrap { padding-block: 20px 56px }
+  nav.top a:not(.dl) { display: none }
+  .lista { grid-template-columns: repeat(2, minmax(0, 1fr)) }
+  .card.big { grid-template-columns: minmax(0, 1fr) }
+  .card.big .cov { min-height: 0; aspect-ratio: 16 / 9; border-right: 0; border-bottom: 1px solid var(--line) }
+  .card.big .body { padding: 18px }
+}
+@media (max-width: 560px) {
+  .lista { grid-template-columns: minmax(0, 1fr) }
+  .pn { grid-template-columns: minmax(0, 1fr) }
+  .pn .next { grid-column: 1 }
+}
+@media (prefers-reduced-motion: reduce) { .card, .card:hover { transition: none; transform: none } }
+</style>
+</head>
+<body>
+
+<canvas class="sfondo" aria-hidden="true"></canvas>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="../" aria-label="3 Steps Ahead home">
+      <svg viewBox="0 0 150 150" aria-hidden="true"><rect width="150" height="150" rx="28" fill="#101014"/><rect x="26" y="56" width="44" height="62" rx="6" fill="#18181c" stroke="#3a3a42" stroke-width="5"/><rect x="48" y="42" width="44" height="62" rx="6" fill="#18181c" stroke="#6a6a74" stroke-width="5"/><rect x="70" y="28" width="44" height="62" rx="6" fill="#18181c" stroke="#24baff" stroke-width="5"/></svg>
+      3 Steps Ahead <small>News</small>
+    </a>
+    <nav class="top" aria-label="Site">
+      <a href="../">Home</a><a href="../guide/">Guide</a><a href="./">News</a><a href="../#faq">FAQ</a><a class="dl" href="https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe">Download</a>
+    </nav>
+  </div>
+</header>
+<div class="page">
+  <div class="wrap">
+<article class="doc">
+<nav class="crumbs" aria-label="Breadcrumb"><a href="../">Home</a> › <a href="./">News</a> › Tune a Constructed deck: what to cut, what to add</nav>
+<p class="meta"><span class="t ">Feature</span><time datetime="2026-11-19">19 November 2026</time><span class="v">v0.1.127</span></p>
+<h1>Tune a Constructed deck with the Leak Finder: what to cut, what to add</h1>
+<p class="lead">A step-by-step guide on a real Standard deck. You will point the Leak Finder at one deck and one queue, read where it loses, find the cards that pull their weight and the ones that don't, check a suspect card by itself, and look for the answers to what beats you, in your collection or to craft.</p>
+<figure class="cov"><img src="../img/deck-tuning-4.jpg" alt="The Cards folder of the Leak Finder with the DRAWN VS NOT DRAWN and EV IN PLAY rows" loading="lazy"></figure>
+
+<h2>Before you start</h2>
+<p>The deck in the screenshots is a white-blue bounce deck from our own log, <b>UW Bouncer</b>: 132 games of Standard Bo1, 54 won and 78 lost, a 41% win rate. Those games were all played in the Play queue. If you are climbing the ladder, pick the Ranked queue instead; the steps are the same.</p>
+<p>Two things to keep in mind all the way through. First, the tool compares cards <b>inside your deck</b>: it can tell you which of your cards do less than the others, but it cannot tell you how a card you have never played would do in your list. Second, numbers on a handful of games are hints. The tool greys out the cards under its minimum number of games, and you should treat them the same way.</p>
+
+<h2>1 · Constructed, format and queue</h2>
+<p>Switch the pill at the top to <span class="ui">CONSTRUCTED</span>. In the Smart filters on the left, set <span class="ui">Format</span> to Standard and <span class="ui">Event</span> to the queue you are tuning for: Standard · Ranked · Bo1 for the ladder. Bo1 and Bo3 are different games, with different sideboards and different opponents, so don't mix them.</p>
+<figure><img src="../img/deck-tuning-1.jpg" alt="The Constructed switch and the Format and Event filters" loading="lazy"><figcaption>Circles 1 to 3: the switch, the format, the queue. The numbers on top are now all your games in that queue.</figcaption></figure>
+
+<h2>2 · Choose your deck</h2>
+<p>Press <span class="ui">Choose your deck</span>. On the left, your decks with their win rate; pick the one you want to tune. On the right leave <span class="ui">vs all</span>: you want the deck against everybody first. The table below already gives you a first read, by color: here UW Bouncer goes 2-8 against three-color decks and 2-7 against Dimir colors.</p>
+<figure><img src="../img/deck-tuning-2.jpg" alt="The Choose your deck window with UW Bouncer selected, vs all" loading="lazy"><figcaption>From now on every number on the page is compared with this deck, not with all your games.</figcaption></figure>
+<p>On top, the deck at a glance: 41% (the 95% interval goes from 33 to 49%), <span class="ui">EV VALUE</span> −11.6%, marked <i>avoid</i>. The deck loses win chance against the usual of your games. Something has to change.</p>
+
+<h2>3 · Matchups: where it loses</h2>
+<p>Open the <span class="ui">Matchups</span> folder. One row for every deck you met, with games, record, win rate and EV per game. Sort by any column.</p>
+<figure><img src="../img/deck-tuning-3.jpg" alt="The Matchups folder for UW Bouncer" loading="lazy"><figcaption>The worst lines: Mono-Black Demons 1-4 (−33.5 a game), Dimir 1-4 (−25.4), Gruul Landfall 1-4 (−24.4). Five games each: a direction, not a verdict.</figcaption></figure>
+<p>Two questions decide what kind of change you need. Does the deck lose to everyone a little? Then it needs better cards. Does it lose hard to two or three decks? Then it needs answers to those decks. Click a row and the whole page follows only the games against that deck, so every step below can be repeated for your worst matchup.</p>
+
+<h2>4 · Cards: the cards that pull their weight</h2>
+<p>Open <span class="ui">Cards</span>, sub-tab <span class="ui">By games</span>. The gear on the left chooses which rows you read. For tuning, start with two of them.</p>
+<ul>
+<li><b>DRAWN VS NOT DRAWN</b>: your win rate when the card came to your hand minus when it stayed in the deck. The cleanest single number for a card in a deck.</li>
+<li><b>EV IN PLAY</b>: the win-probability points your turns made above or below the usual while the card was on your battlefield. Under each card: how often it survived, the win rate with and without it, and whether it did better with a partner or alone.</li>
+</ul>
+<figure><img src="../img/deck-tuning-4.jpg" alt="DRAWN VS NOT DRAWN and EV IN PLAY rows for UW Bouncer" loading="lazy"><figcaption>The Mountain-king's Return: +22 points of win rate when drawn, in 90 games. Settle the Wreckage +12 in 81, Nurturing Pixie and Elspeth, Storm Slayer +12 in 71. These stay.</figcaption></figure>
+<p>The rows put the strongest cards first, and they show as many as fit the width of the window. In this deck the cards at the bottom, Cathar Commando (−8 when drawn, 64 games) and Stockpiling Celebrant (−6, 73 games), don't fit on the row. The next steps find them from the other side.</p>
+
+<h2>5 · The cards that get stuck</h2>
+<p>Switch the rows to <span class="ui">HARDER TO CAST</span> and <span class="ui">EV AT CAST</span>.</p>
+<figure><img src="../img/deck-tuning-5.jpg" alt="HARDER TO CAST and EV AT CAST rows" loading="lazy"><figcaption>Elrond, Moon-Reader stayed in hand 90% of the times you had it, Restoration Seminar 73% (in 48 games), Stockpiling Celebrant 60% (in 73).</figcaption></figure>
+<p>A card that sits in your hand is a card you are not playing. If it gets stuck in many games, the problem is the curve or the mana, not bad luck. <b>EV AT CAST</b> is the other half: when you do cast a spell, how much the win chance moved, against the same card in all your games. It is the row for the spells that don't stay on the battlefield, bounce and removal, which EV IN PLAY cannot see.</p>
+
+<h2>6 · The cards you must not cut</h2>
+<p>Before cutting anything, look at <span class="ui">WIN CONDITIONS</span> (the cards that dealt the lethal blow, or the most damage when they conceded) and <span class="ui">FINISHERS</span> (the decisive two-card play of your wins).</p>
+<figure><img src="../img/deck-tuning-6.jpg" alt="WIN CONDITIONS and FINISHERS rows" loading="lazy"><figcaption>Nurturing Pixie closed 10 wins, Sunpearl Kirin 8, Stockpiling Celebrant 5. Pixie with The Mountain-king's Return decided 4 wins.</figcaption></figure>
+<p>A card can be stuck in hand and still win games. Stockpiling Celebrant is both: it gets stuck often and it closes some wins. That is exactly the card to look at by itself.</p>
+
+<h2>7 · Card spot: one suspect under the lens</h2>
+<p>Switch to <span class="ui">Card spot</span> and write the card name (or right-click a card in any row). The page is about that card in this deck.</p>
+<figure><img src="../img/deck-tuning-7.jpg" alt="Card spot on Stockpiling Celebrant" loading="lazy"><figcaption>Stockpiling Celebrant: in all 132 lists, 2.6 copies on average, cast in 29 games, won 31% of those (the deck: 41%). On the battlefield +1.0 a copy, nearly nothing.</figcaption></figure>
+<p>Then <span class="ui">VERIFIED ON THE BATTLEFIELD</span>: the synergies the card text suggests, measured only when both cards were really in play together. With Nurturing Pixie the pair went 10-5 in 15 games and gained 16 points a game; with Elrond, Moon-Reader 0-2. The card is weak on its own and good next to a bounce creature: cutting it also weakens Pixie.</p>
+<figure><img src="../img/deck-tuning-8.jpg" alt="Card spot: the best partners and the games with the card" loading="lazy"><figcaption>Further down: its best and worst partners, and every game it was in. A click on a game opens the replay on it.</figcaption></figure>
+
+<h2>8 · What beats you</h2>
+<p>Back to <span class="ui">By games</span>, rows <span class="ui">THE THREATS THAT BEAT YOU</span> and <span class="ui">THEIR CARDS · WHEN AND ON WHAT</span>. The first lists the opponent's cards that appear in more of your losses than your wins; the second, on which turn they cast them and which of your cards they hit.</p>
+<figure><img src="../img/deck-tuning-9.jpg" alt="The threats that beat you and when and on what they land" loading="lazy"><figcaption>Unholy Annex // Ritual Chamber in 8 of your losses, Elspeth, Storm Slayer and Sapling Nursery in 5. Bitter Triumph arrives around their turn 6, and among its targets is Stockpiling Celebrant.</figcaption></figure>
+
+<h2>9 · What answers it: owned, or to craft</h2>
+<p>Press <span class="ui">Answers ›</span> on the threats row. For every threat, the cards in your deck's colors that read like an answer to it. Tick <span class="ui">Include craftable</span> to see also the ones you don't own, with the rarity of the wildcard they cost.</p>
+<figure><img src="../img/deck-tuning-10.jpg" alt="The Answers window with Include craftable" loading="lazy"><figcaption>Against the enchantments and Elspeth: Deconstruction Hammer and Giant's Boulder you already own, Boomerang Basics to craft with an uncommon.</figcaption></figure>
+<p>This is the list of what to add. The tool reads the answers from the card text: protection, ward and hexproof are not checked, so read the card before you put it in. And it cannot know how the new card will do in your deck: only playing it will tell.</p>
+
+<h2>10 · Check the suspect against the whole deck</h2>
+<p>Before you cut, one last check. In Cards, a click on a card keeps only the games where it was in your hand. Then go to <span class="ui">Chart</span> and tick <span class="ui">vs filter</span>: the blue line is those games, the white line all the games of the deck.</p>
+<figure><img src="../img/deck-tuning-11.jpg" alt="Win rate with Stockpiling Celebrant in hand against all UW Bouncer games" loading="lazy"><figcaption>With Stockpiling Celebrant in hand: 38% in 73 games (interval 28 to 50%), against 41% for all UW Bouncer games. On the play, 31% in 35 games.</figcaption></figure>
+<p>Three points below the deck, and an interval that contains the deck's win rate: the card is a candidate, not a proven cut. The EV value on top says the same: −11.6%, exactly like the whole deck. This is a typical result, and an honest one. A real cut usually shows up on several rows at once: stuck in hand, negative when drawn, little EV in play, no synergy that works.</p>
+
+<h2>The loop</h2>
+<ol>
+<li>Cut the card that is weak on several rows and has no partner it makes better.</li>
+<li>Put in the answer to the threat that beats you most, owned first, crafted only if the matchup is frequent.</li>
+<li>Play 20 to 30 games with the new list.</li>
+<li>Come back to steps 3, 4 and 10 and compare. Keep the same deck name in Arena: the old games and the new ones stay together, and the <span class="ui">Date</span> filter separates the list before the change from the list after.</li>
+</ol>
+<p>The Leak Finder will not build the deck for you. It tells you where your games go wrong, which of your cards carry the deck, and what to look for. The rest is still your choice, and a few more games.</p>
+
+<nav class="pn" aria-label="Newer and older"><a class="prev" href="two-second-opinions.html"><span>← Newer</span><b>Two second opinions on every choice</b></a><a class="next" href="why-ev.html"><span>Older →</span><b>Why the Leak Finder thinks in EV</b></a></nav>
+</article>
+<section class="altre" aria-label="More news"><p class="rail-t">More news</p><div class="lista"><a class="card" href="two-second-opinions.html"><figure class="cov"><img src="../img/motore-ev-2.jpg" alt="" loading="lazy"></figure><div class="body"><p class="meta"><span class="t ">Release</span><time datetime="2026-11-19">19 November 2026</time><span class="v">v0.1.127</span></p><h2>Two second opinions on every choice</h2><p class="s">The engine behind the Leak Finder now reads every card. Under your attacks and blocks: the best line a search found, and how strong players handle the same spot.</p><span class="more">Read the article →</span></div></a><a class="card" href="why-ev.html"><figure class="cov"><img src="../img/hero_performance.jpg" alt="" loading="lazy"></figure><div class="body"><p class="meta"><span class="t data">Data</span><time datetime="2026-11-18">18 November 2026</time><span class="v">v0.1.126</span></p><h2>Why the Leak Finder thinks in EV</h2><p class="s">What EV is, why we stopped calling plays mistakes, and how the Leak Finder reasons from your side of the table.</p><span class="more">Read the article →</span></div></a><a class="card" href="find-ev-swings-limited.html"><figure class="cov"><img src="../img/ev-limited-2.jpg" alt="" loading="lazy"></figure><div class="body"><p class="meta"><span class="t ">Feature</span><time datetime="2026-11-18">18 November 2026</time><span class="v">v0.1.126</span></p><h2>Find where your Limited deck gains and loses EV</h2><p class="s">Step by step on a real draft deck: the games with the biggest EV swings, the opponent&#x27;s side, the key moment, and how to find similar spots.</p><span class="more">Read the article →</span></div></a></div></section>
+  </div>
+</div>
+<footer>
+  <div class="wrap">
+    <p>3 Steps Ahead is unofficial Fan Content permitted under the Fan Content Policy. Not approved or endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.</p>
+    <p>Card data and images from Scryfall. Not affiliated with Scryfall, Untapped.gg or 17Lands. Screens and animations recorded from the real app on one player's account.</p>
+  </div>
+</footer>
+<script>
+(function () {
+  var tela = document.querySelector(".sfondo");
+  if (!tela || !tela.getContext) return;
+  var ctx = tela.getContext("2d"), dpr = 1, L = 0, A = 0, colore = "", attesa = false;
+  var fermo = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function misura() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    L = window.innerWidth; A = window.innerHeight;
+    tela.width = Math.round(L * dpr); tela.height = Math.round(A * dpr);
+    colore = getComputedStyle(document.documentElement).getPropertyValue("--pattern").trim() || "rgba(97,205,255,.1)";
+    disegna();
+  }
+  function disegna() {
+    attesa = false;
+    var fase = fermo ? 0 : (window.scrollY || 0) * 0.0035;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, L, A);
+    ctx.strokeStyle = colore; ctx.lineWidth = 1;
+    var passo = 26, n = Math.ceil(A / passo) + 4;
+    for (var i = -2; i < n; i++) {
+      var y0 = i * passo;
+      ctx.beginPath();
+      for (var x = -20; x <= L + 20; x += 14) {
+        var y = y0 + 9 * Math.sin(x * 0.006 + i * 0.42 + fase) + 5 * Math.sin(x * 0.017 - fase * 1.6 + i * 0.9);
+        if (x === -20) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+  }
+  window.addEventListener("resize", misura);
+  if (!fermo) window.addEventListener("scroll", function () { if (!attesa) { attesa = true; requestAnimationFrame(disegna); } }, { passive: true });
+  if (window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", misura);
+  misura();
+})();
+</script>
+
+</body>
+</html>
