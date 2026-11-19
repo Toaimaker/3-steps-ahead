@@ -1,6 +1,6 @@
 {
- "version": "0.1.127",
+ "version": "0.1.128",
  "date": "2026-11-19",
- "notes": "The win chance now reads every card on the table and in your hand; in the replayer, two new votes under your attacks and blocks: BEST LINE from a background search and STRONG PLAYERS from 17Lands",
+ "notes": "Leak Finder: player folders with All decks and deck folders with a deck; Leaks are now Habits, judged in EV; Cards rows by category with Weakest first; every limited event in the Event menu",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

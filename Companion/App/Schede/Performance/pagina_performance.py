@@ -47,7 +47,7 @@ PRESET = (
     ("ATTACK", "Attacked into a tapped-out opponent", "The opponent had no untapped land", {"sit:io_att_chiuso": "Yes"}, "chart", None),
     # gli attacchi mancati (14 nov 2026): una finestra in cui attaccare era sicuro, non un errore (non vede la mano di lui); il Watch › di L9 in Decisions › Leaks
     ("ATTACK", "Missed attack into an open board", "You had an attacker ready, the opponent was tapped out with no untapped blockers, and you did not attack · "
-     "a maximum, grade C · Watch it in Decisions › Leaks (L9)", {"sit:io_non_att_chiuso": "Yes"}, "chart", None),
+     "a maximum, grade C · Watch it in Decisions › Habits (L9)", {"sit:io_non_att_chiuso": "Yes"}, "chart", None),
     ("ATTACK", "Missed lethal on board", "Your power through their untapped blockers reached their life, and they survived the turn · a maximum, grade C", {"sit:io_letale_mancato": "Yes"}, "chart", None),
     ("ATTACK", "You attacked first", "The first attack of the game was yours", {"sit:io_primo": "Yes"}, "chart", None),
     ("DEFENSE", "On defense", "You defended more than you attacked", {"sit:io_difende": "Yes"}, "chart", None),
@@ -131,13 +131,20 @@ def nome_evento(ev, formato=None):
     import re as _re
     if not ev:
         return "Unknown event"
+    if ev.startswith("cal:"):       # un evento del calendario di Wizards senza il nome interno di Arena
+        return ev[4:]
     m = _re.fullmatch(r"(Traditional_)?([A-Za-z]+)_(Ladder|Play)", ev)
     if m and m.group(2) not in ("Traditional",):
         return f"{m.group(2).title()} · {'Ranked' if m.group(3) == 'Ladder' else 'Play'} · {'Bo3' if m.group(1) else 'Bo1'}"
     m = _re.match(r"(QuickDraft|PremierDraft|TradDraft|Sealed|TradSealed)_([A-Z0-9]+)", ev)
     if m:
+        try:            # col nome del set (19 nov 2026, la tendina con tutti gli eventi del gioco: «Quick Draft · Reality Fracture (FRA)»)
+            from icone import nome_set as _ns
+            n_set = _ns(m.group(2))
+        except Exception:      # noqa: BLE001
+            n_set = None
         return {"QuickDraft": "Quick Draft", "PremierDraft": "Premier Draft", "TradDraft": "Traditional Draft", "Sealed": "Sealed",
-                "TradSealed": "Traditional Sealed"}[m.group(1)] + " · " + m.group(2)
+                "TradSealed": "Traditional Sealed"}[m.group(1)] + " · " + (f"{n_set} ({m.group(2)})" if n_set and n_set != m.group(2) else m.group(2))
     base = BD_EVENTI.get(ev) or ev.replace("_", " ")
     if formato and formato not in ("limited", "precon") and ev in BD_EVENTI:
         return f"{formato.capitalize()} · {base}"
@@ -145,11 +152,11 @@ def nome_evento(ev, formato=None):
 
 
 # l'ordine delle cartelle (19 nov 2026, Autore: «riordina le schede: chart / match up / cards / e poi il resto»)
-VISTE = (("chart", "Chart"), ("report", "Matchups"), ("cards", "Cards"), ("leaks", "Leaks"), ("spots", "Spots"), ("compare", "Compare"), ("decisions", "Decisions"),
+VISTE = (("chart", "Chart"), ("report", "Matchups"), ("cards", "Cards"), ("leaks", "Habits"), ("spots", "Spots"), ("compare", "Compare"), ("decisions", "Decisions"),
          ("luck", "Luck"), ("mine", "My filters"))
 DISEGNI = {"leaks": "disegna_leaks", "chart": "disegna_grafico", "spots": "disegna_spot", "report": "disegna_report", "matchups": "disegna_matchup", "compare": "disegna_confronto",
            "mine": "disegna_miei", "cards": "disegna_carte", "decisions": "disegna_decisioni", "luck": "disegna_fortuna"}
-DEC_MODI = (("attacco", "Attacks"), ("blocco", "Blocks"), ("mull", "Mulligans"), ("costo", "Costliest"), ("leak", "Leaks"), ("cimitero", "Graveyard"))
+DEC_MODI = (("attacco", "Attacks"), ("blocco", "Blocks"), ("mull", "Mulligans"), ("costo", "Costliest"), ("leak", "Habits"), ("cimitero", "Graveyard"))
 RARITA_NOME = {"M": "mythic", "R": "rare", "U": "uncommon", "C": "common"}
 COLORI_COSTO = {"rosso": "#ff5d5d", "giallo": "#f0ad4e", "verde": "#5cb85c", "nd": "#7a7a80"}
 LARGA_CARTA = 112                               # le carte della cartella Cards
@@ -309,7 +316,7 @@ AVANZATI = {
                      ("CARDS · DISCARDS, SCRY AND SURVEIL", ("scarti_io", "scry_io", "scry_giu_io", "surveil_io")),
                      ("THE END", ("senza_crea", "fine_entro", "durata")),
                      ("MANA, REMOVAL AND CARDS LEFT", ("c2_t3", "rim_prima", "mano_io3", "mano_io5", "mano_io7")),
-                     ("LEAKS · CLUES FROM THE REPLAY, NOT VERDICTS", tuple(f"leak_l{i}" for i in range(1, 16))),
+                     ("HABITS · CLUES FROM THE REPLAY, NOT VERDICTS", tuple(f"leak_l{i}" for i in range(1, 16))),
                      ("GRAVEYARD AND EXILE · FROM THE CARD TEXT", ("rian_io", "esil_io", "odio_io")),
                      # la probabilita' di vincere nella partita (14 nov 2026, la pagella dell'enciclopedia: capitoli 15 e 22)
                      ("WIN CHANCE OVER THE GAME · FROM THE MODEL, GRADE C", ("p_max", "p_min", "forma", "svolta", "svolta_fase")))),
@@ -998,6 +1005,40 @@ class PaginaPerformance:
     def visibili(self):
         return {self.vista} | set(self.staccate)
 
+    # le cartelle del giocatore e del mazzo (19 nov 2026, Autore: «sul all decks non ha senso aprire altro che le cartelle che parlano solo del giocatore, in
+    # choose your deck invece vedro' solo le cartelle che parlano del mazzo»): nel Constructed, con All decks niente Matchups, Cards e Decisions (mischierebbero
+    # mazzi diversi), con un mazzo niente Luck (lo shuffler e' tuo, non del mazzo); Chart, Habits, Spots, Compare e My filters seguono la scelta. Nel Limited
+    # ogni draft e' un mazzo nuovo e il confronto e' gia' fra le partite dello stesso set: tutte le cartelle.
+    SOLO_MAZZO = ("report", "cards", "decisions")
+    SOLO_GIOCATORE = ("luck",)
+
+    def cartelle_attive(self):
+        if self.tipo != "Constructed":
+            return list(VISTE)
+        fuori = self.SOLO_GIOCATORE if self.filtri.get("mio") else self.SOLO_MAZZO
+        return [(k, n) for k, n in VISTE if k not in fuori]
+
+    def adegua_cartelle(self):
+        """Dopo un cambio di mazzo o di tipo: scelto un mazzo si apre Matchups; tolto, se la cartella aperta non c'e' piu' si torna a Chart. Una cartella
+        staccata che non c'e' piu' torna nel pannello."""
+        chiave = (self.tipo, self.filtri.get("mio"))
+        prima = getattr(self, "_mazzo_cartelle", None)
+        self._mazzo_cartelle = chiave
+        if prima is None or prima == chiave:
+            return
+        attive = {k for k, _n in self.cartelle_attive()}
+        for k in [k for k in self.staccate if k not in attive]:
+            self.riattacca(k)
+        if self.tipo == "Constructed" and chiave[1] and not prima[1]:
+            self.cambia_vista("report")
+        elif self.vista not in attive:
+            self.cambia_vista("chart")
+        else:
+            self.disegna_cartelle()
+
+    def nome_mazzo_habits(self):
+        return f" · {self.filtri['mio'].upper()}" if self.tipo == "Constructed" and self.filtri.get("mio") else (" · ALL DECKS" if self.tipo == "Constructed" else "")
+
     def disegna_vista(self, k):
         getattr(self, DISEGNI[k])()
 
@@ -1053,7 +1094,7 @@ class PaginaPerformance:
         sopra = getattr(self, "_tab_sopra", None)
         self._box_tab, att, testi, segni = [], None, [], []
         x = 0
-        for k, n in VISTE:
+        for k, n in self.cartelle_attive():
             x0, x1 = x, x + LARGA_TAB
             fuori = k in self.staccate
             top = 3 if k == self.vista else 8
@@ -1218,7 +1259,7 @@ class PaginaPerformance:
         self.filtri[k] = None if v == "Any" else v
         if k == "formato" and self.filtri.get("evento") and self.filtri["formato"]:     # un evento di un altro formato non resta acceso
             if self.filtri["evento"] not in EVENTI_ARENA.get(self.filtri["formato"], ()) and not any(
-                    x.get("evento") == self.filtri["evento"] and self.filtri["formato"] in DA.valori_di("formato", x) for x in self.righe or []):
+                    DA.evento_breve(x.get("evento")) == self.filtri["evento"] and self.filtri["formato"] in DA.valori_di("formato", x) for x in self.righe or []):
                 self.filtri["evento"] = None
         self.disegna()
 
@@ -1232,9 +1273,12 @@ class PaginaPerformance:
     PARTENZA = dict(ev_di="all", metrica="wr", asse="games", finestra="20", dividi=None, per="suo", per_col=None, ordina="n", basso="report", solo_meta=False, vista="chart", con="rest", vs_modo="all", dec_modo="attacco",
                     linea_dec=None)
 
+    deboli = frozenset()    # le righe di Cards lette dalla carta piu' debole (19 nov 2026)
+
     def reset(self):
         """Tutte le partite, come all'apertura: niente filtri ne' situazioni, il grafico e la cartella di partenza (le finestre staccate restano)."""
         self.filtri = {}
+        self.deboli = frozenset()
         for k, v in self.PARTENZA.items():
             setattr(self, k, v)
         self.dec_f, self.righe_dec, self._righe_ui = {"attacco": {}, "blocco": {}}, {"attacco": [], "blocco": []}, {}
@@ -1291,6 +1335,7 @@ class PaginaPerformance:
         if self.righe is None:
             return
         self.sporca = False
+        self.adegua_cartelle()
         tutte = [x for x in self.righe if x["tipo"] == self.tipo]
         if tutte:
             self.l_info.configure(text=f"{len(tutte):,} {self.tipo.lower()} games · {tutte[0]['quando']:%d %b} – {tutte[-1]['quando']:%d %b}")
@@ -1309,6 +1354,8 @@ class PaginaPerformance:
             elif k == "evento":         # le code del formato scelto (di tutti, senza formato) e gli eventi che hai giocato li'
                 fmt_ = self.filtri.get("formato")
                 note = [e_ for f_, ee in EVENTI_ARENA.items() if (fmt_ is None and f_ in FORMATI_ARENA.get(self.tipo, ())) or f_ == fmt_ for e_ in ee]
+                if self.tipo == "Limited":      # tutti gli eventi limited del gioco, dal calendario (DA.eventi_limited_gioco), anche quelli mai giocati
+                    note = [v_ for v_, _d in DA.eventi_limited_gioco()]
                 giocati = [v for v, _n in DA.valori([x for x in tutte_t if fmt_ is None or DA.valori_di("formato", x) == [fmt_]
                                                      or fmt_ in DA.valori_di("formato", x)], k)]
                 vv = [(v, 0) for v in dict.fromkeys(note + giocati)]
@@ -8131,9 +8178,13 @@ class PaginaPerformance:
         for chiave, titolo in DA.RIGHE_CARTE:
             if chiave not in scelte_r:      # solo le righe spuntate nella rotella
                 continue
-            carte = DA.riga_carte(r, chiave, quante=per_coppie if chiave == "finisher" else per_riga, base=tutte_t)
+            deboli = chiave in self.deboli
+            if deboli:      # le piu' deboli per prime: tutta la riga, poi le ultime (DA.deboli_prima)
+                carte = DA.deboli_prima(DA.riga_carte(r, chiave, quante=999, base=tutte_t), chiave, per_riga)
+            else:
+                carte = DA.riga_carte(r, chiave, quante=per_coppie if chiave == "finisher" else per_riga, base=tutte_t)
             c.create_line(14, y, W - 14, y, fill="#252b36")
-            c.create_text(14, y + 14, text=titolo, anchor="w", fill=C["azzurro"], font=F(8, True))
+            t_titolo = c.create_text(14, y + 14, text=titolo, anchor="w", fill=C["azzurro"], font=F(8, True))
             # le coppie della riga si aprono in una finestra a parte (13 nov 2026, Autore: «non aggiungere le coppie come righe ma come finestre extra che
             # si aprono dalla riga e mostrano le coppie»)
             i_ = c.create_text(W - 14, y + 14, text="Answers ›" if chiave == "minacce" else "Merits ›" if chiave == "ev_carte" else "Lists ›" if chiave == "ev_sue"
@@ -8141,6 +8192,14 @@ class PaginaPerformance:
                                fill=C["accento"], font=F(8, True))
             bb = c.bbox(i_)
             c._box_coppie.append((bb[0] - 6, bb[1] - 4, bb[2] + 6, bb[3] + 4, chiave, titolo))
+            if chiave in DA.VALORE_RIGA:        # il verso della riga: le migliori o le piu' deboli per prime
+                ip = c.create_text(bb[0] - 26, y + 14, text="⇅ Weakest first" if deboli else "⇅ Strongest first", anchor="e",
+                                   fill=C["accento"] if deboli else C["grigio"], font=F(8, True))
+                bp = c.bbox(ip)
+                c.create_rectangle(bp[0] - 7, bp[1] - 3, bp[2] + 7, bp[3] + 3, outline=C["accento"] if deboli else "#3a4250")
+                c.tag_raise(ip)
+                c._box_coppie.append((bp[0] - 7, bp[1] - 3, bp[2] + 7, bp[3] + 3, ("verso", chiave), None))
+                c.itemconfigure(t_titolo, width=max(200, bp[0] - 30))
             y += 28
             if not carte:
                 c.create_text(14, y + 10, text=("no cards here: these games have no replay data" if r else "no games in this situation"), anchor="w",
@@ -8672,17 +8731,19 @@ class PaginaPerformance:
                 return 3
             return {"confermato": 0, "contrario": 2}.get(e_["verdetto"], 1)
         tr.sort(key=lambda t: (gruppo(t), -((cl.get(t["k"]) or {}).get("costo") or -99)))
-        c.create_text(14, 14, text=f"YOUR LEAKS · {self.tipo.upper()} · the mistakes we can spot in the replays of your {n} games, the costliest in EV first",
+        c.create_text(14, 14, text=f"YOUR HABITS · {self.tipo.upper()}{self.nome_mazzo_habits()} · what we can spot in the replays of your {n} games, weighed in EV",
                       anchor="w", fill=C["muto"], font=F(8, True))
-        c.create_text(14, 32, text=("A leak is a small mistake that keeps coming back. Its cost is in EV: how many win-probability points it takes from you on "
-                                    "average per game, from the turns with it against your other turns. Click a leak to keep only the games where it happened "
-                                    "(again to see all); Watch › opens them in the replayer, right on the mistake. Clues from the replay, not verdicts."),
+        c.create_text(14, 32, text=("A habit is something you do again and again, read from the replay: a land you kept in hand, mana left open, a concession. EV judges "
+                                    "it: the turns with it against your other turns, in win-probability points per game. When those turns go worse, it is costing "
+                                    "you EV: a leak, most likely, though the situation may have forced it. When they go better, it works for you. Click a habit to "
+                                    "keep only the games where it happened (again to see all); Watch › opens them in the replayer, right on the moment."),
                       anchor="nw", fill=C["grigio"], font=F(7), width=W - 30)
         y = 66
         LX = 120        # le etichette a sinistra, il testo da LX in poi
-        TITOLI = {0: ("LEAKS THAT COST YOU · your games confirm them", C["rosso"]), 1: ("NOT DECIDED YET · too close to call, or too few turns", C["grigio"]),
-                  2: ("CHOICES THAT WORK · the turns with them go better than your others: in your games they are not mistakes", C["azzurro"]),
-                  3: ("NEVER HAPPENED IN THESE GAMES", C["verde"])}
+        TITOLI = {0: ("COSTING YOU EV · the turns with them go worse than your others, beyond chance: the likely leaks", C["rosso"]),
+                  1: ("NOT DECIDED YET · too close to call, or too few turns", C["grigio"]),
+                  2: ("WORKING FOR YOU · the turns with them go better than your others: in your games they are not mistakes", C["verde"]),
+                  3: ("NEVER HAPPENED IN THESE GAMES", C["muto"])}
         gr_prima = None
         for i, t in enumerate(tr):
             on = self.filtri.get(f"leak_{t['k']}") == "Yes"
@@ -8732,7 +8793,7 @@ class PaginaPerformance:
             altri, col_altri = self.confronto_leak(t["k"], t["tasso"] if t["con"] else 0.0)
             if e_:
                 cosa_ = "turns" if e_["livello"] == "turno" else "games"
-                ev_t = (f"The {e_['n']} {cosa_[:-1] if e_['n'] == 1 else cosa_} with this leak gave {e_['scarto']:+.1f} win-probability points against what the "
+                ev_t = (f"The {e_['n']} {cosa_[:-1] if e_['n'] == 1 else cosa_} with this habit gave {e_['scarto']:+.1f} win-probability points against what the "
                         f"same {cosa_} usually give" + (f"; your other {cosa_} {e_['altri']:+.1f}." if e_["altri"] is not None else ".")
                         + (f" A hint: under {EV_.MINIMO} {cosa_}." if e_["n"] < EV_.MINIMO else ""))
                 ver_ = e_.get("verdetto")
@@ -8775,7 +8836,7 @@ class PaginaPerformance:
             y += 40
             c.create_text(14, y, text=(f"Other players: {d17['fonte']}, {d17['gruppi']['tutti']['partite']:,} games read on {d17['data']} (Mythic: the players "
                                        "ranked Mythic). Their data has the same turns as yours but not which lands were tapped or the phase of each spell, so 7 "
-                                       "leaks of 15 can be measured there; a «close rule» says what changes. Not endorsed by 17Lands."),
+                                       "habits of 15 can be measured there; a «close rule» says what changes. Not endorsed by 17Lands."),
                           anchor="nw", fill=C["grigio"], font=F(7), width=W - 30)
         c.configure(scrollregion=(0, 0, W, y + 60))
 
@@ -8794,7 +8855,7 @@ class PaginaPerformance:
         myth = (d17["gruppi"].get("mythic") or {}).get("leak", {}).get(k) or {}
         loro = tutti.get("tasso")
         if loro is None:
-            return ("No number from 17Lands for this leak.", C["grigio"])
+            return ("No number from 17Lands for this habit.", C["grigio"])
         testo = f"17Lands players: in {loro:.0f}% of their games" + (f" (Mythic players {myth['tasso']:.0f}%)" if myth.get("tasso") is not None else "")
         testo += f"; you: {tuo:.0f}%."
         if loro > 0 and tuo > 0:
@@ -9266,7 +9327,8 @@ class PaginaPerformance:
         return None
 
     def apri_righe_carte(self):
-        """La finestrella dei filtri di Cards: una spunta per riga, All e None; si applica subito e resta (DA.salva_righe_carte)."""
+        """La finestrella delle righe di Cards: una spunta per riga, raggruppate per categoria (DA.GRUPPI_CARTE: prima il valore delle tue carte, in fondo
+        l'Opponent); il clic sulla categoria le accende o le spegne tutte; All e None; si applica subito e resta (DA.salva_righe_carte)."""
         tk = self.tk
         f = getattr(self, "fin_righe", None)
         if f is None or not f.winfo_exists():
@@ -9275,11 +9337,12 @@ class PaginaPerformance:
             f.configure(bg=C["scheda"])
             f.resizable(False, False)
             f.bind("<Escape>", lambda e: f.destroy())
-            c = self.cv_righe = tk.Canvas(f, bg=C["scheda"], highlightthickness=0, bd=0, width=560, height=40 + 30 * len(DA.RIGHE_CARTE) + 50)
+            alto = 44 + sum(34 + 26 * len(kk) for _g, kk in DA.GRUPPI_CARTE) + 44
+            c = self.cv_righe = tk.Canvas(f, bg=C["scheda"], highlightthickness=0, bd=0, width=620, height=alto)
             c.pack(padx=8, pady=8)
             c.bind("<Button-1>", self.clic_righe_carte)
             try:
-                f.geometry(f"+{self.fr.winfo_pointerx() - 120}+{self.fr.winfo_pointery() + 16}")
+                f.geometry(f"+{self.fr.winfo_pointerx() - 120}+{max(0, self.fr.winfo_pointery() - 200)}")
             except Exception:      # noqa: BLE001
                 pass
         self.disegna_righe_carte()
@@ -9291,21 +9354,31 @@ class PaginaPerformance:
         if c is None or not c.winfo_exists():
             return
         F = self.F
+        W = int(c.cget("width"))
         c.delete("all")
         c._box = []
         scelte_r = set(DA.righe_carte_scelte())
-        c.create_text(12, 16, text="THE ROWS OF CARDS · tick the ones you want to see", anchor="w", fill=C["azzurro"], font=F(8, True))
+        c.create_text(12, 16, text="THE ROWS OF CARDS · tick the ones you want to see", anchor="w", fill=C["titolo"], font=F(9, True))
         y = 40
-        for k, titolo in DA.RIGHE_CARTE:
-            on = k in scelte_r
-            c.create_image(14, y + 10, image=DG.spunta(14, on, C["azzurro"], C["fondo"], C["grigio"], C["fondo"]), anchor="w")
-            nome, _s, resto = titolo.partition(" · ")
-            i_ = c.create_text(38, y + 10, text=nome, anchor="w", fill=C["titolo"] if on else C["grigio"], font=F(9, True))
-            if resto:
+        for gruppo, kk in DA.GRUPPI_CARTE:
+            n_on = sum(1 for k in kk if k in scelte_r)
+            c.create_rectangle(6, y, W - 6, y + 26, fill="#161b25", outline="")
+            c.create_rectangle(6, y, 9, y + 26, fill=C["azzurro"], outline="")
+            c.create_image(18, y + 13, image=DG.spunta(14, n_on == len(kk), C["azzurro"], C["fondo"], C["grigio"], C["fondo"]), anchor="w")
+            c.create_text(42, y + 13, text=gruppo, anchor="w", fill=C["azzurro"], font=F(8, True))
+            c.create_text(W - 14, y + 13, text=f"{n_on}/{len(kk)}", anchor="e", fill=C["grigio"], font=F(8, True))
+            c._box.append((6, y, W - 6, y + 26, ("gruppo", kk)))
+            y += 32
+            for k in kk:
+                on = k in scelte_r
+                nome, resto = DA.BREVI_CARTE[k]
+                c.create_image(34, y + 10, image=DG.spunta(14, on, C["azzurro"], C["fondo"], C["grigio"], C["fondo"]), anchor="w")
+                i_ = c.create_text(58, y + 10, text=nome, anchor="w", fill=C["titolo"] if on else C["grigio"], font=F(9, True))
                 bb = c.bbox(i_)
                 c.create_text(bb[2] + 8, y + 10, text=resto, anchor="w", fill=C["muto"], font=F(7))
-            c._box.append((6, y, 552, y + 22, k))
-            y += 30
+                c._box.append((26, y, W - 6, y + 22, k))
+                y += 26
+            y += 2
         y += 8
         for x0, testo, k in ((14, "All", "*"), (84, "None", "-")):
             c.create_rectangle(x0, y, x0 + 60, y + 26, fill="#161b25", outline="#2a303b")
@@ -9323,6 +9396,9 @@ class PaginaPerformance:
             scelte_r = {k_ for k_, _t in DA.RIGHE_CARTE}
         elif k == "-":
             scelte_r = set()
+        elif isinstance(k, tuple):      # la categoria: tutte accese se ne manca una, se no tutte spente
+            kk = set(k[1])
+            scelte_r = scelte_r - kk if kk <= scelte_r else scelte_r | kk
         else:
             scelte_r ^= {k}
         DA.salva_righe_carte(scelte_r)
@@ -9675,6 +9751,10 @@ class PaginaPerformance:
                 return self.apri_meriti()
             if bc[4] == "ev_sue":               # i mazzi dell'Opponent ricomposti dalle carte viste
                 return self.apri_liste()
+            if isinstance(bc[4], tuple) and bc[4][0] == "verso":       # le migliori o le piu' deboli per prime
+                self.deboli ^= {bc[4][1]}
+                self.disegna_carte()
+                return bc[4]
             if isinstance(bc[4], tuple) and bc[4][0] == "craft":       # Answers: anche le carte da craftare
                 self.risposte_craft = bc[4][1]
                 self.disegna_coppie()
@@ -9714,11 +9794,11 @@ class PaginaPerformance:
         c.delete("all")
         ll = EV_.liste_composite(self.scelte(), base=[x for x in self.righe or [] if x["tipo"] == self.tipo])
         c.create_text(16, 18, text=f"THEIR DECKS, REBUILT FROM WHAT YOU SAW · {self.tipo.upper()}", anchor="w", fill=C["titolo"], font=F(11, True))
-        c.create_text(16, 40, text=("For each deck you met, the cards it showed (cast or revealed) and in how many of your games against it. A few cards a game "
-                                    "add up to the deck. On the right, what the card was worth to the opponent in that deck (win-probability points per copy on the battlefield; "
-                                    "grey under 15 copies). It only sees what reached the battlefield or was revealed: cards kept in hand stay hidden."),
-                      anchor="nw", fill=C["grigio"], font=F(8), width=940)
-        y = 80
+        i_d = c.create_text(16, 40, text=("For each deck you met, the cards it showed (cast or revealed) and in how many of your games against it. A few cards a game "
+                                          "add up to the deck. On the right, what the card was worth to the opponent in that deck (win-probability points per copy on the "
+                                          "battlefield; grey under 15 copies). It only sees what reached the battlefield or was revealed: cards kept in hand stay hidden."),
+                            anchor="nw", fill=C["grigio"], font=F(8), width=940)
+        y = max(80, (c.bbox(i_d) or (0, 0, 0, 62))[3] + 22)        # la descrizione va a capo: il primo mazzo sotto di lei, mai sopra (19 nov 2026)
         if not ll:
             c.create_text(16, y, text="No deck met in at least 3 of these games.", anchor="w", fill=C["grigio"], font=F(9))
         colw = 310

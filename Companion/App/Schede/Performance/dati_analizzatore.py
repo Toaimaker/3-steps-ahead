@@ -1780,9 +1780,65 @@ def _tutte(chiave):
     return lambda x, v: x.get(chiave) == v
 
 
+def evento_breve(ev):
+    """Un evento limited senza la data dell'apertura: «QuickDraft_FRA_20261008» e «QuickDraft_FRA_20261027» sono lo stesso evento, «QuickDraft_FRA» (19 nov
+    2026: la tendina Event del Limited elenca gli eventi del gioco, non le loro riaperture). Le code del Constructed restano come sono."""
+    m = re.fullmatch(r"([A-Za-z]+)_([A-Z0-9]{2,5})_\d{8}", ev or "")
+    return f"{m.group(1)}_{m.group(2)}" if m else ev
+
+
+# gli eventi limited del gioco (19 nov 2026, Autore: «nella tendina event dobbiamo avere tutti gli eventi di limited», «non solo i miei»; la regola n.1):
+# dal calendario di Wizards (Regole/calendario_eventi.json, aperti e in arrivo, e Regole/calendario_set.json, anche i passati), il set dal suo nome
+# (Companion/Grafica/set/nomi.json). Un tipo col nome interno di Arena verificato sui log diventa il suo codice (QuickDraft_FRA): le tue partite ci cadono
+# dentro; gli altri (Pick-Two, Cube, Arena Direct, Contender...) restano col nome del calendario, «cal:...», finche' non se ne vede uno nei log.
+PREFISSI_LIMITED = {"Quick Draft": "QuickDraft", "Premier Draft": "PremierDraft", "Flashback Premier Draft": "PremierDraft", "Traditional Draft": "TradDraft",
+                    "Sealed": "Sealed"}
+_CAL_SET = {"quick": "Quick Draft", "premier": "Premier Draft", "trad": "Traditional Draft", "sealed": "Sealed", "trad_sealed": "Traditional Sealed"}
+_ORDINE_TIPI = ("QuickDraft", "PremierDraft", "TradDraft", "Sealed")
+
+
+def eventi_limited_gioco():
+    """Gli eventi limited del gioco, dal calendario: [(valore del filtro, data d'inizio)], i codici di Arena prima per tipo, poi gli altri; i piu' nuovi
+    prima."""
+    nomi = {}
+    try:
+        with open(os.path.join(percorsi.ROOT, "Companion", "Grafica", "set", "nomi.json"), encoding="utf-8") as f:
+            nomi = {v.lower(): k for k, v in json.load(f).items()}
+    except (OSError, ValueError):
+        pass
+    voci = []           # (tipo, titolo, codice del set o None, inizio)
+    try:
+        with open(os.path.join(percorsi.ROOT, "Regole", "calendario_set.json"), encoding="utf-8") as f:
+            for cod, d in (json.load(f).get("set") or {}).items():
+                for k_, tipo in _CAL_SET.items():
+                    for a, _b in d.get(k_) or []:
+                        voci.append((tipo, d.get("nome") or cod, cod, a))
+    except (OSError, ValueError):
+        pass
+    try:
+        with open(os.path.join(percorsi.ROOT, "Regole", "calendario_eventi.json"), encoding="utf-8") as f:
+            for e in json.load(f).get("eventi") or []:
+                tit = (e.get("titolo") or "").strip()
+                cod = nomi.get(re.sub(r"\s*\(.*\)$", "", tit).lower()) if tit else None
+                voci.append((e.get("tipo") or "", tit, cod, e.get("inizio") or ""))
+    except (OSError, ValueError):
+        pass
+    out = {}
+    for tipo, tit, cod, inizio in voci:
+        if tipo in PREFISSI_LIMITED and cod:
+            v = f"{PREFISSI_LIMITED[tipo]}_{cod}"
+        else:
+            v = "cal:" + (f"{tipo} · {tit}" if tit else tipo)
+        if v not in out or inizio < out[v]:
+            out[v] = inizio
+    chiave = lambda kv: (_ORDINE_TIPI.index(kv[0].split("_")[0]) if not kv[0].startswith("cal:") and kv[0].split("_")[0] in _ORDINE_TIPI else 9,
+                         "".join(chr(0x10FFFF - ord(c)) for c in kv[1]))
+    return sorted(out.items(), key=chiave)
+
+
 VARIABILI = [       # (chiave, nome, come si legge il valore dalla riga, test personalizzato o None)
     ("formato", "Format", lambda x: NOMI_FMT.get(x["formato"], x["formato"].title())),
-    ("evento", "Event", lambda x: x.get("evento")),
+    ("evento", "Event", lambda x: evento_breve(x.get("evento"))),
     ("mio", "My deck", lambda x: x.get("mio")),
     ("suo", "Opponent", lambda x: x.get("suo")),
     ("colori", "Opponent colors (contains)", None),
@@ -2467,6 +2523,34 @@ RIGHE_CARTE = [("in_mano", "MOST FOUND IN YOUR HAND · opening hand and draws"),
                           "you); Lists ›: their decks rebuilt from the cards you saw"),
                ("ev_giocate", "EV AT CAST · every spell you cast and land you played: how much the win chance moved from that moment to the next "
                               "(a land: with it against without it), against the same card in all your games")]
+# le righe per categoria, dalle piu' importanti per chi vuole migliorare il proprio mazzo fino a quelle sull'Opponent (19 nov 2026, Autore: «la rotella del
+# row: organizza meglio al suo interno e per categorie i flag delle row: partiamo dalle categorie piu' importanti per noi in alto e scendiamo per quelle vs
+# oppo»). Questo e' anche l'ordine in cui la cartella Cards disegna le righe.
+GRUPPI_CARTE = (("WHAT YOUR CARDS ARE WORTH", ("ev_carte", "iwd", "ev_giocate")),
+                ("WHAT WINS YOUR GAMES", ("win_cond", "finisher")),
+                ("WHAT HOLDS YOU BACK", ("bloccate",)),
+                ("YOUR HAND AND YOUR DRAWS", ("in_mano", "pesc1", "pesc2", "pesc3", "pesc4")),
+                ("WHAT YOU CAST", ("lanciate", "lanc_t4", "rim_valore")),
+                ("THE OPPONENT", ("minacce", "ev_sue", "sue_quando", "sue_lanciate")))
+BREVI_CARTE = {"ev_carte": ("EV in play", "points the turns gave while the card was on your battlefield"),
+               "iwd": ("Drawn vs not drawn", "your win rate when you drew it minus when it stayed in the deck"),
+               "ev_giocate": ("EV at cast", "how much the win chance moved when you cast it"),
+               "win_cond": ("Win conditions", "the cards that dealt the lethal blow"),
+               "finisher": ("Finishers", "the decisive two-card plays of your wins"),
+               "bloccate": ("Harder to cast", "in your hand and never cast"),
+               "in_mano": ("Most found in your hand", "opening hand and draws"),
+               "pesc1": ("Your turn 1", "the opening hand and the first draw"), "pesc2": ("Your turn 2", "drawn on it"),
+               "pesc3": ("Your turn 3", "drawn on it"), "pesc4": ("Your turn 4", "drawn on it"),
+               "lanciate": ("Your most cast spells", "when you first cast them and how long they waited"),
+               "lanc_t4": ("Cast by your turn 4", "what you played together early"),
+               "rim_valore": ("Your removal, on what", "the mana value of what it removed"),
+               "minacce": ("The threats that beat you", "and the answers you own or can craft"),
+               "ev_sue": ("Their cards, EV for them", "and their decks rebuilt from what you saw"),
+               "sue_quando": ("Their cards, when and on what", "their turn and which of your cards they hit"),
+               "sue_lanciate": ("Their most played cards", "in these games")}
+_ORDINE_CARTE = [k for _g, kk in GRUPPI_CARTE for k in kk]
+assert sorted(_ORDINE_CARTE) == sorted(k for k, _t in RIGHE_CARTE) and set(BREVI_CARTE) == set(_ORDINE_CARTE)
+RIGHE_CARTE = sorted(RIGHE_CARTE, key=lambda kt: _ORDINE_CARTE.index(kt[0]))
 CAMPO_CARTE = {"win_cond": "mie_lanciate", "sue_quando": "sue_lanciate", "ev_sue": "sue_lanciate", "ev_carte": "mie_lanciate", "ev_giocate": "mie_lanciate", "lanciate": "mie_lanciate", "iwd": "in_mano", "rim_valore": "mie_lanciate", "minacce": "sue_lanciate"}
 NOME["iwd"] = "Card drawn (IWD)"
 NOME["ev_carte"] = NOME["ev_giocate"] = "Your card cast"
@@ -2476,6 +2560,24 @@ NOME["minacce"] = "Their threat cast"
 NOME["win_cond"] = "Your card cast"
 NOME["sue_quando"] = "Their card cast"       # la chiave del filtro -> il campo della riga (le altre si chiamano uguali)
 
+
+# le righe di Cards che hanno un verso (19 nov 2026, Autore: «Sì, aggiungilo», dall'articolo «Tune a Constructed deck»): le righe mettono le carte
+# migliori per prime e ne mostrano quante stanno nella larghezza, quindi le peggiori restavano fuori (UW Bouncer: Cathar Commando -7,7 quando pescata).
+# «Weakest first» le mette in testa; quelle sotto il minimo di partite restano in fondo in tutti e due i versi.
+VALORE_RIGA = {"iwd": "iwd", "ev_carte": "in_campo", "ev_giocate": "ev"}
+
+
+def deboli_prima(carte, chiave, quante):
+    """Le carte della riga dalla piu' debole: prima quelle con abbastanza partite, dal valore piu' basso. -> le prime `quante`."""
+    k = VALORE_RIGA[chiave]
+    minimo = MINIMO_DEBOLI.get(chiave, 0)
+    poche = lambda c: bool(c.get("poche")) or (c.get("n") or 0) < minimo
+    return sorted(carte, key=lambda c: (poche(c), c.get(k) if c.get(k) is not None else 0.0))[:quante]
+
+
+# le partite che servono perche' una carta stia in testa fra le piu' deboli: col minimo delle righe (il totale delle partite in IWD, le copie nelle righe
+# EV) una carta pescata in 5 partite su 130 (Day of Judgment, -36) o lanciata una volta (Elrond, -18,6) saliva prima di quelle con 60 partite
+MINIMO_DEBOLI = {"iwd": 15, "ev_carte": 5, "ev_giocate": 5}
 
 def riga_carte(r, chiave, quante=40, minimo=5, base=None):
     """Una riga della cartella Cards: le carte della chiave nelle partite r, ognuna una volta per partita, dalla piu' comune; per «bloccate» dalla piu'
@@ -3730,6 +3832,18 @@ def prova():
     finally:
         _NOMI_GRP.clear()
         _NOMI_GRP.update(salva_nomi)
+    # gli eventi limited del gioco (19 nov 2026): le riaperture sono lo stesso evento, il calendario da' anche quelli mai giocati; negativa: le code non cambiano
+    casi.append(("evento_breve: QuickDraft_FRA_20261008 e _20261027 sono QuickDraft_FRA", evento_breve("QuickDraft_FRA_20261008") == "QuickDraft_FRA"
+                 == evento_breve("QuickDraft_FRA_20261027")))
+    casi.append(("negativa: le code del Constructed restano come sono", evento_breve("Traditional_Ladder") == "Traditional_Ladder" and evento_breve(None) is None))
+    eg_ = [v_ for v_, _d in eventi_limited_gioco()]
+    casi.append(("il catalogo dal calendario: Quick Draft FRA, Premier Draft TRK, un flashback e un evento senza nome interno", {"QuickDraft_FRA", "PremierDraft_TRK",
+                 "PremierDraft_KHM"} <= set(eg_) and any(v_.startswith("cal:") for v_ in eg_) and len(eg_) == len(set(eg_))))
+    # le piu' deboli per prime (19 nov 2026): dal valore piu' basso, quelle con poche partite in fondo
+    rr_ = [dict(nome="A", n=60, iwd=-8.0), dict(nome="B", n=5, iwd=-36.0), dict(nome="C", n=70, iwd=12.0), dict(nome="D", n=40, iwd=-2.0, poche=True)]
+    casi.append(("Weakest first: A (-8 in 60) prima di C, B (5 partite) e D (poche) in fondo",
+                 [c_["nome"] for c_ in deboli_prima(rr_, "iwd", 4)] == ["A", "C", "B", "D"]))
+    casi.append(("negativa: una carta pescata in 5 partite non sale in testa anche a -36", deboli_prima(rr_, "iwd", 1)[0]["nome"] != "B"))
     for n, ok in casi:
         print(("ok    " if ok else "ROSSO ") + n)
     print(f"{sum(1 for _n, ok in casi if ok)}/{len(casi)}")

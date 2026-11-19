@@ -158,10 +158,16 @@ SEZIONI = (
                 "the pairs that decided the most wins, with the average swing); Your removal · on what (the average mana value of what each removal "
                 "took, a token 0, and how often a token or a card cheaper than it); The threats that beat you (their cards in more of your losses than "
                 "your wins: Answers › shows the removal you own, in your decks' colors, that reads like it removes each one; from the card text, a clue)"),
-      ("Leaks (the folder after Chart, also in Decisions)", "a leak is a small mistake that keeps coming back. Its cost is in EV: how many win-probability "
-                "points it takes from you on average per game, from the turns with it against your other turns (the whole game for the mulligan and the "
-                "concession). Three groups: LEAKS THAT COST YOU (your games confirm them, beyond twice their error), NOT DECIDED YET, and CHOICES THAT "
-                "WORK (the turns with them go better than your others: in your games they are not mistakes); the costliest first. Each leak is a card: "
+      ("Your games or your deck", "in Constructed, Choose your deck decides which folders you see. With All decks, the folders about you as a "
+                "player: Chart (your win rate and rank), Habits, Spots, Compare, Luck and My filters; Matchups, Cards and Decisions would mix different "
+                "decks, so they are not there. With a deck, the folders about that deck: Matchups (it opens there), Cards, Decisions, Chart, Habits, "
+                "Spots, Compare and My filters; Luck is about the shuffler, not the deck. In Limited every folder is there"),
+      ("Habits (the folder after Cards, also in Decisions)", "a habit is something you do again and again, read from the replay: a land kept in hand, "
+                "mana left open, a concession. EV judges it: how many win-probability "
+                "points the turns with it take or give on average per game, against your other turns (the whole game for the mulligan and the "
+                "concession). Three groups: COSTING YOU EV (beyond twice their error: the likely leaks, though the situation may have forced them), "
+                "NOT DECIDED YET, and WORKING FOR YOU (the turns with them go better than your others: in your games they are not mistakes); the "
+                "costliest first. With a deck chosen, the habits of that deck. Each habit is a card: "
                 "its name in plain words, what happened in your games (how often, how many points each time and a game, whether it is getting better), "
                 "then WHAT IT IS, WHY IT COSTS, an EXAMPLE and HOW TO FIX. Click a leak to keep only its games, Watch › opens them "
                 "in the replayer right on the mistake. OTHER PLAYERS: in Limited, how often the same leak happens to 17Lands players (all of them and Mythic), "
@@ -182,7 +188,7 @@ SEZIONI = (
                 "first-pack picks in your deck's colors, the cards of your colors that wheeled in the first pack (a signal that they were open), your first "
                 "pick in the deck or not, the rares you took and the ones you passed, and how often you took a different card from the Drafter's pick. In "
                 "Constructed the section says so"),
-      ("Missed attacks", "Spots › Attack › Missed attack into an open board, also in Advanced filters, and L9 in Decisions › Leaks "
+      ("Missed attacks", "Spots › Attack › Missed attack into an open board, also in Advanced filters, and L9 in Decisions › Habits "
                 "with Watch ›: turns where you had an attacker ready, the opponent was tapped out with no untapped blockers, and you did not attack. It counts "
                 "windows where attacking was safe, not real mistakes: it cannot see their hand, a bluff, or a creature you kept home on purpose, so the number is a "
                 "maximum (grade C)"),
@@ -191,7 +197,7 @@ SEZIONI = (
                 "for you and for the opponent, with the games, the win rate with and without, the difference; click a row to keep its games. Also in "
                 "Advanced filters › Game. Read from the card text; measured on your games they do not predict wins beyond life and power, so they are "
                 "situations to look at, not a weight in the decision cost"),
-      ("Playlists", "open a game from the table under the chart, double-click a Report row or a Matchups cell, or press Watch › on a leak: the games "
+      ("Playlists", "open a game from the table under the chart, double-click a Report row or a Matchups cell, or press Watch › on a habit: the games "
                 "come one after the other in the replayer (◀ Game, Game ▶, keys P and N), and the jumps (Combat ›, Spell ›, Key ›, Leak ›) go on into the "
                 "next game when this one has no more"),
       ("★ MARK", "while you play, next to DECK HUD: one click marks the spot (the game and the turn); it waits in My filters › Bookmarked spots and opens "
@@ -218,9 +224,10 @@ SEZIONI = (
              "battlefield, how often it survived to the end and your win rate then and otherwise, and the context: entered with a partner in play (from the card "
              "text) or alone, cast at once or after waiting in hand; EV AT CAST, every spell you cast and land you played, how much the win chance moved from "
              "that moment to the next (a land: with it against without it) against the same card in all your games, and the assist a spell gave to your "
-             "creature's combat. Merits › shows what each deed of a card is worth, "
+             "creature's combat. These rows and DRAWN VS NOT DRAWN show the strongest cards first; «⇅ Weakest first» on the row turns it around, so the "
+             "cards that do the least come first (the ones with few games stay at the end). Merits › shows what each deed of a card is worth, "
              "measured on your games: the board after the deed against the same board without it (won a combat, traded, hit unblocked, dealt the lethal, "
-             "saved you from lethal, chump blocked, drew a removal, died for nothing). In Leaks, EV IN THOSE TURNS: the turns with that leak against the "
+             "saved you from lethal, chump blocked, drew a removal, died for nothing). In Habits, EV IN THOSE TURNS: the turns with that habit against the "
              "usual. In the replayer, on top, WIN CHANCE · NOW: your chance to win against the opponent's at this step, and how it moved since the start. Then the EV vote of each phase: one row for everything that happened (green: points you gained, red: points you lost; the label says whose they are: your play, the opponent's mistake, the opponent's good play, a result), the phase total at the end of the phase against the usual; click a row to jump to its step. Under some of your plays, two more votes: BEST LINE, the best alternative our search found by playing every option in the same simulated worlds to the end of the opponent's next turn (green: yours was it; red: one was clearly better, with how many points of win chance; grey: about the same; only on games the search has gone through), and STRONG PLAYERS, how many 17Lands players with 60%+ win rate attack or block like you in the same situation (17Lands public replays, CC BY 4.0; Limited data, in Constructed a stretch). Under the phase total, the TOTAL VICTORY POINTS so far: your plays, the opponent's good plays, the opponent's mistakes, draws and results, and the total; a phase counts once it ends. In Advanced filters, under the answer: from the spot to what came next, "
              "your creatures of the first filtered turn through the Opponent's next turn (survived, removed, died in combat), the removal spells one by one, "
              "and the EV of those turns against the usual. THEIR CARDS in Cards: the Opponent's cards with their EV for them while on their battlefield (red: "
