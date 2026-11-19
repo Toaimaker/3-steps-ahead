@@ -29,8 +29,6 @@ from tema import CI as C, FN, RD
 from widget import ARANCIO, VERDE_P, Tendina, disegna_s3, pulsante_solido
 
 LINEE = ("#d8d8dc", "#2f9bff", "#f0ad4e", "#a58cff", "#5cb85c", "#ee8a87")      # All, poi i valori: lontani fra loro anche per i daltonici (come il resto dell'app)
-COLONNE = (("nome", "", 250), ("n", "GAMES", 70), ("wl", "W-L", 80), ("wr", "WIN RATE", 180), ("play", "PLAY", 70), ("draw", "DRAW", 70), ("mull", "MULL.", 70),
-           ("turni", "AVG T", 70), ("delta", "Δ VS ALL", 90))
 TIPI = ("Constructed", "Limited")
 # lo switch unico (15 nov 2026, Autore: «in alto alla scheda c'è il pulsante constructed e limited, quelli devono essere un unico switch universale»):
 # una pillola sola, il clic la gira; vale per tutta la pagina, Advanced filters compresi
@@ -39,9 +37,9 @@ SOLO_FASE = {"Draft": "Limited"}       # le fasi di Advanced filters che hanno s
 # le ricerche preimpostate di Spots (13 nov 2026, Autore: «spots ... deve dare una combo di filtri preimpostati per risolvere le ricerche fondamentali tra le
 # partite / ne schiaccio uno e tutti i filtri si combinano per quella ricerca»): (gruppo, nome, cosa cerca, filtri, vista che risponde, Group by del Report)
 PRESET = (
-    ("OPENING HAND", "Kept 7 · which cards win", "No mulligan · the Report by card in your opening hand", {"mull": "0"}, "report", "mano"),
-    ("OPENING HAND", "After a mulligan · which cards win", "One mulligan · the Report by card in your opening hand", {"mull": "1"}, "report", "mano"),
-    ("OPENING HAND", "Kept 7 on the draw", "No mulligan, on the draw · by card in hand", {"mull": "0", "partenza": "Draw"}, "report", "mano"),
+    ("OPENING HAND", "Kept 7 · which cards win", "No mulligan · Cards: the cards in your hand and their win rate", {"mull": "0"}, "cards", None),
+    ("OPENING HAND", "After a mulligan · which cards win", "One mulligan · Cards: the cards in your hand", {"mull": "1"}, "cards", None),
+    ("OPENING HAND", "Kept 7 on the draw", "No mulligan, on the draw · Cards: the cards in your hand", {"mull": "0", "partenza": "Draw"}, "cards", None),
     ("OPENING HAND", "You missed a land drop", "By your 4th turn", {"sit:io_terra": "Yes"}, "chart", None),
     ("OPENING HAND", "You curved out", "A spell on each of your turns 2, 3 and 4", {"sit:io_curva": "Yes"}, "chart", None),
     ("ATTACK", "All-in into open mana", "Everything attacked, the opponent had 2+ untapped lands", {"sit:io_tutto_aperto": "Yes"}, "chart", None),
@@ -72,19 +70,87 @@ PRESET = (
 ORDINI_PARTITE = {"data": lambda x: x["quando"], "mio": lambda x: (x.get("mio") or "").strip().lower() or None,
                   "suo": lambda x: (len(v), "WUBRG".index(v[0]) if v[0] in "WUBRG" else 5, v) if (v := DA.vs_di(x)) else None,
                   "via": lambda x: x.get("partenza"), "mull": lambda x: x.get("mulligan"), "esito": lambda x: 1 if x["vinta"] else 0,
-                  "turni": lambda x: x.get("turno"), "spotev": lambda x: _SPOT_EV.get(x.get("partita"))}
+                  "turni": lambda x: x.get("turno"), "spotev": lambda x: _SPOT_EV.get(x.get("partita")),
+                  # le carte di EV piu' alto e piu' basso di ogni partita, per il loro EV (18 nov 2026, Autore: «anche most ev card e lowest ev card devono
+                  # essere ordinabili cliccando sul titoletto, ordinabili per ev ovviamente»)
+                  "best": lambda x: (_CARTE_EV.get(x.get("partita")) or (None, None))[0],
+                  "worst": lambda x: (_CARTE_EV.get(x.get("partita")) or (None, None))[1]}
+# l'EV della carta migliore e peggiore di ogni partita (disegna_partite lo riempie quando la tabella si ordina per quelle colonne)
+_CARTE_EV = {}
 # l'EV dello spot di ogni partita della tabella (18 nov 2026): lo riempie disegna_partite coi filtri di adesso, prima di ordinare
 _SPOT_EV = {}
-SPOT_MODI = (("preset", "Preset searches"), ("auto", "Auto spots"))
+# 18 nov 2026 (Autore: «e spot? dovremmo ripensarle?», poi «Si', tutte e tre»): in testa dove guadagni e dove perdi EV, trovati da soli fra le situazioni di
+# prima e d'inizio partita; le ricerche preimpostate restano come domande di partenza
+SPOT_MODI = (("auto", "EV spots"), ("preset", "Starting questions"))
 # il Leak Finder (15 nov 2026, Autore: «da ora non si chiama più performance ma leak finder, deve essere un leak finder a tutti gli effetti»): i leak sono
 # la vista d'apertura
 # Leaks dopo Chart (15 nov 2026, Autore: «metti la scheda leaks dopo la scheda charts», poi «metti le schede in ordine: charts / leaks / spots»):
 # le cartelle in quest'ordine e si apre sulla prima, Chart
-VISTE = (("chart", "Chart"), ("leaks", "Leaks"), ("spots", "Spots"), ("report", "Report"), ("matchups", "Matchups"), ("compare", "Compare"), ("cards", "Cards"), ("decisions", "Decisions"),
+def nome_famiglia(f):
+    """Il nome in inglese di una famiglia delle sinergie (quello della rete del Board, rete_sinergie.NOMI)."""
+    try:
+        import rete_sinergie as RS
+        return RS.NOMI.get(f, f.replace("_", " "))
+    except Exception:      # noqa: BLE001
+        return f.replace("_", " ")
+
+
+VELOCITA = (0.5, 1.0, 2.0, 3.0)      # le velocita' del replayer (19 nov 2026, Autore: «aggiungi velocita' per 3 anche»)
+TESTA_TAB = "#1a2230"     # la fascia dietro i titoli delle colonne delle tabelle (19 nov 2026, i tre livelli)
+MU_MODI = (("matchups", "Matchups"), ("gemme", "Gem events"))      # le sotto-schede di Matchups (18 nov 2026)
+ALTO_SUB, LARGA_SUB = 30, 150       # le sotto-cartelle
+VITTORIE_CORSA = 7          # una corsa di un evento Bo1 finisce a 7 vittorie (il trofeo) o a 3 sconfitte
+SCONFITTE_CORSA = 3
+CARTE_MODI = (("games", "By games"), ("card", "Card spot"))     # le sotto-schede di Cards (18 nov 2026)
+# Report e Matchups in una scheda sola, Breakdown (18 nov 2026, Autore: «possiamo ridisegnare in maniera piu' intuitiva report e match up in un unica
+# scheda?», poi «Si', tutte e tre»): la chiave interna resta «report» (le ricerche preimpostate, la playlist, le finestre staccate)
+# Breakdown, il secondo giro (18 nov 2026, Autore: «break down da troppe opzioni: dovrebbe incrociare i mazzi di player vs quali mazzi incontra e in
+# quale categoria: es io voglio sapere quante volte incontro e vinco vs orzov life gain in evento standard best of one overall o quante volte lo stesso spot
+# con un mio mazzo specifico ma in lega ... però voglio un sistema di filtro intelligente»): quattro scelte, ognuna mostra solo cio' che c'e' date le altre
+BD_EVENTI = {"Ladder": "Ranked · Bo1", "Traditional_Ladder": "Ranked · Bo3", "Play": "Play · Bo1", "Traditional_Play": "Play · Bo3",
+             "DualColorPrecons": "Dual Color Precons"}
+# la colonna dei colori prima del nome (19 nov 2026, Autore: «in match ups prima del nome dei mazzi la colonna di colore/i di quel mazzo»)
+BD_COLONNE = (("col", "COLORS", 96), ("nome", "", 280), ("n", "MET", 150), ("wl", "W-L", 80), ("wr", "WIN RATE", 180), ("ev", "EV A GAME", 90), ("play", "ON THE PLAY", 100),
+              ("draw", "ON THE DRAW", 100), ("ultima", "LAST", 90))
+
+
+# tutti i formati e le loro code negli Smart filters (18 nov 2026, Autore: «modifichiamo smart filters in testa aggiungendo tutti i formati e tutti gli
+# eventi di quei formati cosi' matchup si auto filtra»): i formati di Arena (i nomi di DA.NOMI_FMT) e per ognuno le sue code, Ranked e Play, Bo1 e Bo3; le
+# code dei formati diversi dallo Standard sono quelle di /meta-periods/active di Untapped (Alchemy_Ladder, Explorer_Ladder, Historic_Ladder, Timeless_Ladder,
+# Brawl_Ladder e le Traditional_ in Bo3); in piu' gli eventi che hai giocato in quel formato
+FORMATI_ARENA = {"Constructed": ("Standard", "Alchemy", "Explorer", "Historic", "Timeless", "Brawl", "Standard Brawl", "Dual Color Precons", "Jump In"),
+                 "Limited": ("Limited",)}
+EVENTI_ARENA = {"Standard": ("Ladder", "Traditional_Ladder", "Play", "Traditional_Play"),
+                "Alchemy": ("Alchemy_Ladder", "Traditional_Alchemy_Ladder"), "Explorer": ("Explorer_Ladder", "Traditional_Explorer_Ladder"),
+                "Historic": ("Historic_Ladder", "Traditional_Historic_Ladder"), "Timeless": ("Timeless_Ladder", "Traditional_Timeless_Ladder"),
+                "Brawl": ("Brawl_Ladder",), "Dual Color Precons": ("DualColorPrecons",)}
+
+
+def nome_evento(ev, formato=None):
+    """L'evento detto come si legge: «Standard · Ranked · Bo1», «Historic · Ranked · Bo3», «Quick Draft · FRA», «Dual Color Precons»."""
+    import re as _re
+    if not ev:
+        return "Unknown event"
+    m = _re.fullmatch(r"(Traditional_)?([A-Za-z]+)_(Ladder|Play)", ev)
+    if m and m.group(2) not in ("Traditional",):
+        return f"{m.group(2).title()} · {'Ranked' if m.group(3) == 'Ladder' else 'Play'} · {'Bo3' if m.group(1) else 'Bo1'}"
+    m = _re.match(r"(QuickDraft|PremierDraft|TradDraft|Sealed|TradSealed)_([A-Z0-9]+)", ev)
+    if m:
+        return {"QuickDraft": "Quick Draft", "PremierDraft": "Premier Draft", "TradDraft": "Traditional Draft", "Sealed": "Sealed",
+                "TradSealed": "Traditional Sealed"}[m.group(1)] + " · " + m.group(2)
+    base = BD_EVENTI.get(ev) or ev.replace("_", " ")
+    if formato and formato not in ("limited", "precon") and ev in BD_EVENTI:
+        return f"{formato.capitalize()} · {base}"
+    return base
+
+
+# l'ordine delle cartelle (19 nov 2026, Autore: «riordina le schede: chart / match up / cards / e poi il resto»)
+VISTE = (("chart", "Chart"), ("report", "Matchups"), ("cards", "Cards"), ("leaks", "Leaks"), ("spots", "Spots"), ("compare", "Compare"), ("decisions", "Decisions"),
          ("luck", "Luck"), ("mine", "My filters"))
 DISEGNI = {"leaks": "disegna_leaks", "chart": "disegna_grafico", "spots": "disegna_spot", "report": "disegna_report", "matchups": "disegna_matchup", "compare": "disegna_confronto",
            "mine": "disegna_miei", "cards": "disegna_carte", "decisions": "disegna_decisioni", "luck": "disegna_fortuna"}
 DEC_MODI = (("attacco", "Attacks"), ("blocco", "Blocks"), ("mull", "Mulligans"), ("costo", "Costliest"), ("leak", "Leaks"), ("cimitero", "Graveyard"))
+RARITA_NOME = {"M": "mythic", "R": "rare", "U": "uncommon", "C": "common"}
 COLORI_COSTO = {"rosso": "#ff5d5d", "giallo": "#f0ad4e", "verde": "#5cb85c", "nd": "#7a7a80"}
 LARGA_CARTA = 112                               # le carte della cartella Cards
 ALTO_MIO = 58                                   # una riga dei filtri personali
@@ -102,7 +168,6 @@ ALTO_PARTITA = 30                               # una riga della tabella delle p
 ALTO_CTRL = 158                                 # la barra del replayer della board: il grafico della partita sopra, i comandi sotto
 SEGNO_FILTRO = C["accento"]                       # il segno degli spot dei filtri nel replayer (15 nov 2026; «C»: imbuto bianco sul quadratino blu)
 ALTO_GRAF = 92                                  # il grafico della partita nella barra
-COLPO = 0.82               # il tragitto di chi colpisce nel passo del danno: fino all'82% della strada verso il bersaglio, poi indietro (14 nov 2026)
 PASSI_SPINTA, PASSI_COLPO = 18, 26
 OMBRA_ALFA = 60             # l'ombra sulla meta' di chi non agisce (0-255; 14 nov 2026; «meno ombra»: era 92)
 OMBRA_SFUMA = 70            # la sfumatura dell'ombra, in pixel del progetto, per parte della linea di mezzo
@@ -205,9 +270,10 @@ AVANZATI = {
     # niente sezione del mazzo (14 nov 2026, Autore: «advanced filters > opening hand la parte di filtri dedicata al mazzo la trovo superflua poiché in
     # smart filters abbiamo i filtri by deck»): colori, classe, terre, creature, costo medio, magie da 2, rimozioni e rare del mazzo restano variabili
     # dell'analizzatore (Report › Group by, Split by, Spots), per confrontare i mazzi fra loro; un mazzo si sceglie con By deck
-    "io": (("Opening hand", (("YOUR OPENING HAND", ("crea_in_mano", "ist_mano", "str_mano", "art_mano", "inc_mano", "pw_mano", "bat_mano", "rim_mano", "c2_mano")),
-                              # la carta specifica (16 nov 2026): una casella che completa
-                              ("A SPECIFIC CARD", ("%mano",)),
+    # la mano iniziale descritta riga per riga (18 nov 2026, Autore: «quel tab va rivisto perche' da troppe opzioni, studia la migliore soluzione di quel tab
+    # affinche' possa descrivere una mano generica o specifica nel dettaglio di ogni carta»): «?mano_req» e' il costruttore (righe_mano); le tendine di prima
+    # per tipo (crea_in_mano, ist_mano...) e la carta specifica restano variabili dell'analizzatore (Split by, Group by, Spots), non piu' qui
+    "io": (("Opening hand", (("YOUR OPENING HAND · ONE LINE PER CARD OR GROUP OF CARDS: HOW MANY · WHAT · WHICH CARD · WHICH MANA VALUE", ("?mano_req",)),
                               # per formato (14 nov 2026): nel Limited la tabella misurata, nel Constructed la regola a 60 carte; si vede solo quella del formato
                               ("YOUR MULLIGAN DECISION", ("mull_tabella", "mull_60")))),
            # le pescate (13 nov 2026, Autore: «nei filtri di you e opponent aggiungiamo anche le pescate nel proprio e nel turno avversario più alcuni filtri
@@ -365,13 +431,6 @@ class _Nulla:
         return lambda *a, **kw: None
 
 
-def _colore_wr(w):
-    """Il fondo di una cella della matrice: dal rosso (sotto il 50%) all'azzurro (sopra), scuro vicino al 50."""
-    t = max(-1.0, min(1.0, (w - 50) / 25))
-    a, b = ((36, 186, 255) if t > 0 else (217, 83, 79)), (32, 32, 38)
-    k = abs(t) * 0.75
-    return "#%02x%02x%02x" % tuple(round(b[i] + (a[i] - b[i]) * k) for i in range(3))
-
 
 def modo_iniziale(draft, partite, aperto):
     """Da dove parte Performance: Limited con un draft aperto, se no il formato dell'ultima partita giocata (a pari merito o senza partite, Limited)."""
@@ -449,10 +508,14 @@ class PaginaPerformance:
         self.dec_modo = "attacco"       # Decisions: gli attacchi, i blocchi o i mulligan
         self.dec_f = {"attacco": {}, "blocco": {}}      # i filtri delle decisioni, per tipo: {chiave: [voci]} (solo le tue scelte)
         self.righe_dec = {"attacco": [], "blocco": []}  # le righe del costruttore dei filtri delle decisioni
-        self.mostra_vs_filtro = False   # sotto il grafico: la linea di tutte le partite contro quella filtrata
+        self.mostra_vs_filtro = False
+        self.mu_modo = "matchups"       # Matchups: i matchup del mazzo o i suoi eventi a gemme
+        self.gem_aperti = set()         # Gem events: gli eventi aperti (le loro partite sotto)
+        self.carte_modo = "games"       # Cards: «By games» (le righe) o «Card spot» (l'analisi di una carta)
+        self.analisi_di = None   # sotto il grafico: la linea di tutte le partite contro quella filtrata
         self.mostra_guadagno = False    # sotto il grafico: il guadagno delle decisioni contro la media
         self.linea_dec = None           # una riga di Decisions sul grafico: (tipo, nome della riga)
-        self.spot_modo = "preset"       # Spots: le ricerche preimpostate (di partenza) o gli spot automatici
+        self.spot_modo = "auto"         # Spots: gli spot in EV (di partenza) o le domande di partenza (le ricerche preimpostate)
         self._lavoro, self.l_carica = None, None
         self.scheda_av = "io"        # la scheda aperta della finestra Advanced filters
         self.playlist = None        # R15: le partite da guardare una dopo l'altra nel replayer (dict(partite, nome)), o None
@@ -534,6 +597,7 @@ class PaginaPerformance:
                 DEC.per_partita_magie(x)
                 EV_._eventi(x)                  # i meriti delle carte dei due lati (il lettore di EV, 18 nov 2026): la prima apertura di Cards non aspetta
                 EV_._eventi(EV_.specchio(x))
+                EV_._giocate_partita(x)         # e le giocate (EV AT CAST, 18 nov 2026): il modello della P su ogni lancio, una volta per partita
             except Exception:      # noqa: BLE001 - una partita senza dati si salta
                 pass
         self.fr.after(30, lambda: self.scalda_decisioni(righe, da + a_volta, a_volta))
@@ -581,7 +645,8 @@ class PaginaPerformance:
         rs = tk.Frame(sx, bg=C["scheda"]); rs.pack(fill="x", padx=12, pady=(10, 4))
         # «Smart filters» (12 nov 2026, Autore: «i filtri a sinistra potremmo chiamarli smart filters»); il pulsante Add filters (le situazioni) non c'e' piu':
         # le situazioni stanno nel + della loro fase
-        tk.Label(rs, text="SMART FILTERS", bg=C["scheda"], fg=C["grigio"], font=F(8, True)).pack(side="left")
+        tk.Frame(rs, bg=C["accento"], width=3, height=14).pack(side="left", padx=(0, 6))
+        tk.Label(rs, text="SMART FILTERS", bg=C["scheda"], fg=C["titolo"], font=F(9, True)).pack(side="left")
         # la colonna scorre: con la rotella sopra qualunque sua parte, e con la barra sottile a destra (fino al 12 nov la rotella andava solo sul fondo vuoto e
         # le ultime tendine e le situazioni salvate restavano tagliate in fondo: Autore, «la finestra degli smart filters e' tagliata sul fondo»)
         # la barra a destra non c'e' piu' (15 nov 2026, Autore: «togli la barra di scorrimento dalla destra di smart filters»): resta la rotella
@@ -623,7 +688,7 @@ class PaginaPerformance:
                 if k == "wr_rif":
                     self.riga_wr(griglia, riga_g)
                 elif k == "deck":
-                    self.b_deck = pulsante_solido(tk, F, griglia, "By deck  ·  all decks vs all", False, self.apri_deck, alto=28, bg=C["scheda"])
+                    self.b_deck = pulsante_solido(tk, F, griglia, "Choose your deck  ·  all decks vs all", False, self.apri_deck, alto=28, bg=C["scheda"])
                     self.b_deck.configure(width=262); self.b_deck.grid(row=riga_g, column=0, columnspan=2, sticky="ew", pady=(4, 2))
                 else:
                     self.riga_filtro(griglia, riga_g, k, nomi_var[k])
@@ -661,10 +726,11 @@ class PaginaPerformance:
         self.pan = pan = tk.Frame(bordo, bg=C["scheda"]); pan.pack(fill="both", expand=True, padx=1, pady=(0, 1))
         self.ospiti = {k: self.fai_vista(k, pan) for k, _n in VISTE}
         o = self.ospiti
-        self.cv_gr, self.cv_sp, self.cv_rp, self.cv_mt, self.cv_cf = (o[k]["tela"] for k in ("chart", "spots", "report", "matchups", "compare"))
+        self.cv_gr, self.cv_sp, self.cv_rp, self.cv_cf = (o[k]["tela"] for k in ("chart", "spots", "report", "compare"))
+        self.cv_mt = self.cv_rp     # i Matchups sono la matrice di Breakdown
         self.b_metr = o["chart"]["ctl"]["metr"]
         self.t_asse, self.t_fin, self.t_dividi = (o["chart"]["ctl"][k] for k in ("asse", "fin", "dividi"))
-        self.t_per, self.b_meta = o["report"]["ctl"]["per"], o["matchups"]["ctl"]["meta"]
+
         # la cartella che sta nella sua finestra: qui lo si dice, coi due pulsanti
         self.f_fuori = tk.Frame(pan, bg=C["scheda"])
         self.l_fuori = tk.Label(self.f_fuori, text="", bg=C["scheda"], fg=C["grigio"], font=F(10, True)); self.l_fuori.pack(pady=(70, 14))
@@ -683,7 +749,7 @@ class PaginaPerformance:
         le partite che insieme fanno quel win rate: dopo gli altri filtri, dalle piu' recenti all'indietro finche' regge (DA.finestra_wr; «filtra le partite
         che partecipano a costruire quel dato di wr»). Invio, l'uscita dalla casella o un attimo di pausa lo mettono; la casella vuota lo toglie."""
         tk, F = self.tk, self.F
-        lab = tk.Label(griglia, text="Win rate", bg=C["scheda"], fg=C["grigio"], font=F(9), anchor="w"); lab.grid(row=i, column=0, sticky="w", pady=2)
+        lab = tk.Label(griglia, text="Win rate", bg=C["scheda"], fg=C["testo"], font=F(9), anchor="w"); lab.grid(row=i, column=0, sticky="w", pady=2)
         self.lab_filtri = getattr(self, "lab_filtri", {}); self.lab_filtri["wr_rif"] = lab
         fr = tk.Frame(griglia, bg=C["scheda"]); fr.grid(row=i, column=1, sticky="w", pady=2)
         self.wr_segni = {}
@@ -755,7 +821,7 @@ class PaginaPerformance:
             acceso = getattr(self, "wr_" + chiave)
             b.configure(bg=C["accento"] if acceso else "#0b0e14", fg="#0b0e14" if acceso else C["grigio"],
                         highlightbackground=C["accento"] if acceso or on else "#2a303b")
-        self.lab_filtri["wr_rif"].configure(fg=C["accento"] if on else C["grigio"])
+        self.lab_filtri["wr_rif"].configure(fg=C["accento"] if on else C["testo"])
 
     def focus_wr(self):
         """La casella ha il fuoco (stai scrivendo: il testo non si tocca)?"""
@@ -769,7 +835,7 @@ class PaginaPerformance:
         tk, F = self.tk, self.F
         corto = {"Opponent colors (contains)": "Opp. colors", "Lands in opening hand": "Lands in hand", "Game length (your turns)": "Game length",
                  "Card in opening hand": "Card in hand", "Opponent card seen": "Opponent card"}.get(nome, nome)
-        lab = tk.Label(griglia, text=corto, bg=C["scheda"], fg=C["grigio"], font=F(9), anchor="w"); lab.grid(row=i, column=0, sticky="w", pady=2)      # come nel mockup del 14 nov 2026
+        lab = tk.Label(griglia, text=corto, bg=C["scheda"], fg=C["testo"], font=F(9), anchor="w"); lab.grid(row=i, column=0, sticky="w", pady=2)      # come nel mockup del 14 nov 2026
         self.lab_filtri = getattr(self, "lab_filtri", {}); self.lab_filtri[k] = lab
         t = Tendina(tk, griglia, "", F, larga=156, bg=C["scheda"])
         t.fr.winfo_children()[0].pack_forget()        # il nome sta a sinistra, sulla stessa riga
@@ -815,10 +881,16 @@ class PaginaPerformance:
                 b = pulsante_solido(tk, F, riga, n, m == self.spot_modo, lambda m=m: self.cambia_spot(m), alto=26, bg=C["scheda"], colori=GRIGI)
                 b.configure(width=130); b.pack(side="left", padx=(0, 6), anchor="s", pady=(0, 2))
                 ctl["smodo"][m] = b
-        elif k == "report":
-            ctl["per"] = Tendina(tk, riga, "Group by", F, larga=220, bg=C["scheda"]); ctl["per"].fr.pack(side="right")
-            ctl["per"].opzioni([k_ for k_, _n, _f in DA.VARIABILI if k_ != "data"] + ["vs"] + [k_ for k_, _n, _f in DA.EXTRA] + sit_k, lambda v: self.cambia("per", v), etichette=et_var)
-            ctl["per"].set(self.per)
+        elif k == "report":     # Matchups: nessuna scelta sua (le scelte stanno negli Smart filters), due sotto-schede (18 nov 2026, Autore: «una volta scelto il
+            # deck mi mostra i dati che gia' mostra adesso ma come prima sottoscheda / come seconda sotto scheda fa una analisi limitata agli eventi che si fanno
+            # per convertire gemme»)
+            # come sotto-cartelle, col disegno delle cartelle (Autore, stesso giorno: «le sotto schede non per pulsanti ma proprio come sotto cartelle
+            # anche come design»)
+            cs_ = tk.Canvas(riga, height=ALTO_SUB, bg=C["scheda"], highlightthickness=0, bd=0, cursor="hand2")
+            cs_.pack(side="left", fill="x", expand=True)
+            cs_.bind("<Configure>", lambda e, cs_=cs_: self.disegna_sottocartelle(cs_, MU_MODI, self.mu_modo))
+            cs_.bind("<Button-1>", lambda e, cs_=cs_: self.clic_sottocartella(cs_, e))
+            ctl["musub"] = cs_
         elif k == "decisions":       # attacchi, blocchi, mulligan (13 nov 2026), e i filtri delle decisioni
             ctl["dmodo"] = {}
             for m, n in DEC_MODI:
@@ -827,12 +899,26 @@ class PaginaPerformance:
                 ctl["dmodo"][m] = b
             ctl["dfin"] = pulsante_solido(tk, F, riga, "Decision filters", False, self.apri_filtri_dec, alto=26, bg=C["scheda"], colori=GRIGI)
             ctl["dfin"].configure(width=200); ctl["dfin"].pack(side="right", anchor="s", pady=(0, 2))
-        elif k == "cards":       # quali righe vedere: la finestrella dei filtri di Cards (13 nov 2026)
-            ctl["righe"] = pulsante_solido(tk, F, riga, "Rows", False, self.apri_righe_carte, alto=26, bg=C["scheda"], colori=GRIGI)
-            ctl["righe"].configure(width=170); ctl["righe"].pack(side="left", anchor="s", pady=(0, 2))
-        elif k == "matchups":
-            ctl["meta"] = pulsante_solido(tk, F, riga, "Meta decks only", self.solo_meta, self.cambia_meta, alto=26, bg=C["scheda"], colori=GRIGI)
-            ctl["meta"].configure(width=140); ctl["meta"].pack(side="right", anchor="s", pady=(0, 2))
+        elif k == "cards":
+            # 18 nov 2026 (Autore: «invece del pulsante rows anche qui sulla sinistra mettiamo la rotella con le spunte per le righe che vogliamo leggere»):
+            # a sinistra la rotella disegnata, come quella dei numeri; poi le sotto-schede (Autore: «la scheda cards deve avere delle sotto schede: Una per
+            # l'analisi specifica di una carta ... Altra scheda come adesso ma dedicata alle analisi delle carte dei mazzi selezionati o dai filtri»)
+            ro_ = tk.Canvas(riga, width=30, height=28, bg=C["scheda"], highlightthickness=0, bd=0, cursor="hand2")
+            ro_._img = DG.rotella(20, C["accento"], C["scheda"])
+            ro_.create_image(15, 14, image=ro_._img)
+            ro_.bind("<Button-1>", lambda e: self.apri_righe_carte())
+            ro_.pack(side="left", anchor="s", padx=(0, 10), pady=(0, 2))
+            ctl["rotella"] = ro_
+            ctl["cmodo"] = {}
+            for m, n in CARTE_MODI:
+                b = pulsante_solido(tk, F, riga, n, m == self.carte_modo, lambda m=m: self.cambia_carte_modo(m), alto=26, bg=C["scheda"], colori=GRIGI)
+                b.configure(width=120); b.pack(side="left", padx=(0, 6), anchor="s", pady=(0, 2))
+                ctl["cmodo"][m] = b
+            ctl["cerca_fr"] = tk.Frame(riga, bg=C["scheda"])
+            tk.Label(ctl["cerca_fr"], text="CARD", bg=C["scheda"], fg=C["grigio"], font=F(7, True)).pack(side="left", padx=(8, 6))
+            ctl["cerca"] = R_F.CartaCompleta(tk, F, ctl["cerca_fr"], self.carte_cercabili(), getattr(self, "analisi_di", None),
+                                             lambda v: self.apri_analisi_carta(None if v in (None, R_F.QUALSIASI) else v), larga=280)
+            ctl["cerca"].fr.pack(side="left")
         elif k == "compare":
             ctl["con"] = Tendina(tk, riga, "Compare A with (B)", F, larga=260, bg=C["scheda"]); ctl["con"].fr.pack(side="left")
             ctl["con"].opzioni(["rest"], lambda v: self.cambia("con", v), etichette={"rest": "Everything else"}); ctl["con"].set(self.con)
@@ -860,6 +946,10 @@ class PaginaPerformance:
                 corpo_.forget(sotto)
         else:
             c = tk.Canvas(fr, bg=C["scheda"], highlightthickness=0, bd=0, height=120)
+            if k == "report":       # Breakdown scorre: la barra a destra (18 nov 2026, Autore: «vedo dati tagliati e no scroll»)
+                sb_ = tk.Scrollbar(fr, orient="vertical", command=c.yview)
+                sb_.pack(side="right", fill="y", pady=(4, 6))
+                c.configure(yscrollcommand=sb_.set)
             c.pack(fill="both", expand=True, padx=8, pady=(4, 6))
         c.bind("<Configure>", lambda e, k=k: self.tela(k) is e.widget and self.disegna_vista(k))
         if k == "chart":
@@ -880,6 +970,7 @@ class PaginaPerformance:
             c.bind("<MouseWheel>", lambda e: e.widget.yview_scroll(-2 if e.delta > 0 else 2, "units"))
         elif k == "cards":
             c.bind("<Button-1>", self.clic_carte)
+            c.bind("<Button-3>", self.destro_carte)
             c.bind("<MouseWheel>", lambda e: (self.via_hover_carte(), e.widget.yview_scroll(-2 if e.delta > 0 else 2, "units")))
             c.bind("<Motion>", self.sopra_carte)
             c.bind("<Leave>", lambda e: self.via_hover_carte())
@@ -888,10 +979,6 @@ class PaginaPerformance:
             c.bind("<MouseWheel>", lambda e: e.widget.yview_scroll(-2 if e.delta > 0 else 2, "units"))
         elif k == "mine":
             c.bind("<Button-1>", self.clic_miei)
-            c.bind("<MouseWheel>", lambda e: e.widget.yview_scroll(-2 if e.delta > 0 else 2, "units"))
-        elif k == "matchups":
-            c.bind("<Button-1>", self.clic_matchup)
-            c.bind("<Double-Button-1>", lambda e: self.partite_numero("matchups"))
             c.bind("<MouseWheel>", lambda e: e.widget.yview_scroll(-2 if e.delta > 0 else 2, "units"))
         return dict(fr=fr, tela=c, ctl=ctl, lista=lista)
 
@@ -927,7 +1014,8 @@ class PaginaPerformance:
             if "dfin" in ctl:
                 n_ = sum(1 for t_ in ("attacco", "blocco") for v in self.dec_f.get(t_, {}).values() if v)
                 ctl["dfin"].metti(f"Decision filters · {n_} on" if n_ else "Decision filters", bool(n_))
-            for k, v in (("asse", self.asse), ("fin", self.finestra), ("dividi", self.dividi or "None"), ("per", self.per), ("con", self.con),
+            for k, v in (("asse", self.asse), ("fin", self.finestra), ("dividi", self.dividi or "None"),
+                         ("con", self.con),
                          ("evdi", self.ev_di)):
                 if k in ctl:
                     ctl[k].set(v)
@@ -936,11 +1024,23 @@ class PaginaPerformance:
                     ctl["evdi"].fr.pack(side="left", padx=(6, 0))
                 elif self.metrica != "ev" and ctl["evdi"].fr.winfo_manager():
                     ctl["evdi"].fr.pack_forget()
-            if "meta" in ctl:
-                ctl["meta"].metti("Meta decks only", self.solo_meta)
-            if "righe" in ctl:
-                n_, tot_ = len(DA.righe_carte_scelte()), len(DA.RIGHE_CARTE)
-                ctl["righe"].metti("Rows · all" if n_ == tot_ else f"Rows · {n_} of {tot_}", n_ < tot_)
+            if "musub" in ctl:
+                self.disegna_sottocartelle(ctl["musub"], MU_MODI, self.mu_modo)
+            for m, b in ctl.get("cmodo", {}).items():
+                b.metti(dict(CARTE_MODI)[m], m == self.carte_modo)
+            if "cerca_fr" in ctl:
+                if self.carte_modo == "card" and not ctl["cerca_fr"].winfo_ismapped():
+                    ctl["cerca_fr"].pack(side="left", anchor="s", pady=(0, 2))
+                elif self.carte_modo != "card" and ctl["cerca_fr"].winfo_manager():
+                    ctl["cerca_fr"].pack_forget()
+                # le carte della casella: nate quando le partite non erano ancora lette (lista vuota: «single card non mi mostra la carta inserita
+                # nel testo», 19 nov 2026); si rifanno quando cambiano le partite o il tipo
+                k_c = (id(self.righe), self.tipo)
+                if getattr(ctl["cerca"], "_chiave", None) != k_c and self.righe is not None:
+                    ctl["cerca"].carte, ctl["cerca"]._chiave = self.carte_cercabili(), k_c
+                if ctl["cerca"].scelta != getattr(self, "analisi_di", None):
+                    ctl["cerca"].scelta = getattr(self, "analisi_di", None)
+                    ctl["cerca"].metti_testo(ctl["cerca"].scelta)
 
     # ------------------------------------------------------------ le cartelle
     def disegna_cartelle(self):
@@ -962,8 +1062,8 @@ class PaginaPerformance:
             elif sopra and sopra[0] == k:       # redesign del 14 nov 2026: le cartelle chiuse sono solo testo, sotto il puntatore un velo appena chiaro
                 d.poligono(_cartella(x0, x1, top, H + 1, sl=0, r=4), riempi="#121722")
             su_segno = sopra == (k, "segno")
-            segni.append((x1 - 22, (top + H) / 2, C["titolo"] if su_segno else C["accento"] if fuori else C["muto"], fuori))
-            testi.append(((x0 + x1 - 26) / 2, (top + H) / 2 + 1, n + ("  ↗" if fuori else ""), k == self.vista))
+            segni.append((x1 - 22, (top + H) / 2 - 2, C["titolo"] if su_segno else C["accento"] if fuori else C["muto"], fuori))
+            testi.append(((x0 + x1 - 26) / 2, (top + H) / 2 - 1, n + ("  ↗" if fuori else ""), k == self.vista))
             self._box_tab.append((x0, top, x1, H, k, (x1 - 34, top, x1 - 6, H)))
             x = x1 + 3
         if att:
@@ -1116,6 +1216,10 @@ class PaginaPerformance:
 
     def metti_filtro(self, k, v):
         self.filtri[k] = None if v == "Any" else v
+        if k == "formato" and self.filtri.get("evento") and self.filtri["formato"]:     # un evento di un altro formato non resta acceso
+            if self.filtri["evento"] not in EVENTI_ARENA.get(self.filtri["formato"], ()) and not any(
+                    x.get("evento") == self.filtri["evento"] and self.filtri["formato"] in DA.valori_di("formato", x) for x in self.righe or []):
+                self.filtri["evento"] = None
         self.disegna()
 
     def pulisci(self):
@@ -1124,7 +1228,8 @@ class PaginaPerformance:
         self.disegna()
 
     ev_di = "all"           # di quali turni e fasi e' l'EV del grafico (18 nov 2026); la scelta di partenza anche prima di reset
-    PARTENZA = dict(ev_di="all", metrica="wr", asse="games", finestra="20", dividi=None, per="suo", ordina="n", basso="report", solo_meta=False, vista="chart", con="rest", vs_modo="all", dec_modo="attacco",
+    bd_ord = "n"            # e come sono ordinate
+    PARTENZA = dict(ev_di="all", metrica="wr", asse="games", finestra="20", dividi=None, per="suo", per_col=None, ordina="n", basso="report", solo_meta=False, vista="chart", con="rest", vs_modo="all", dec_modo="attacco",
                     linea_dec=None)
 
     def reset(self):
@@ -1151,6 +1256,8 @@ class PaginaPerformance:
             self.disegna_report()
 
     def cambia_vista(self, k):
+        if k == "matchups":       # i Matchups di prima sono Breakdown (18 nov 2026)
+            k = "report"
         self.vista = k
         if k in ("report", "matchups"):
             self.basso = k
@@ -1173,10 +1280,7 @@ class PaginaPerformance:
             self.ospiti[self.vista]["fr"].pack(fill="both", expand=True)
         self.disegna_cartelle()
 
-    def cambia_meta(self):
-        self.solo_meta = not self.solo_meta
-        self.sincronizza()
-        self.disegna_matchup()
+
 
     def scelte(self):
         """Le partite del tipo e della situazione."""
@@ -1200,6 +1304,14 @@ class PaginaPerformance:
             # avevano solo i valori rimasti sotto gli altri filtri, e con qualche filtro acceso Lands in hand perdeva le voci
             if k in VALORI_FISSI:
                 vv = [(v, 0) for v in VALORI_FISSI[k]]
+            elif k == "formato":        # tutti i formati di Arena, poi quelli che hai e non sono nella lista
+                vv = [(v, 0) for v in dict.fromkeys(list(FORMATI_ARENA.get(self.tipo, ())) + [v for v, _n in DA.valori(tutte_t, k)])]
+            elif k == "evento":         # le code del formato scelto (di tutti, senza formato) e gli eventi che hai giocato li'
+                fmt_ = self.filtri.get("formato")
+                note = [e_ for f_, ee in EVENTI_ARENA.items() if (fmt_ is None and f_ in FORMATI_ARENA.get(self.tipo, ())) or f_ == fmt_ for e_ in ee]
+                giocati = [v for v, _n in DA.valori([x for x in tutte_t if fmt_ is None or DA.valori_di("formato", x) == [fmt_]
+                                                     or fmt_ in DA.valori_di("formato", x)], k)]
+                vv = [(v, 0) for v in dict.fromkeys(note + giocati)]
             elif k in DA.ORDINE_VALORI:
                 vv = [(v, 0) for v in DA.ORDINE_VALORI[k]]
             else:
@@ -1210,7 +1322,8 @@ class PaginaPerformance:
                 voci.append(sc)
             # solo le voci, senza i conti (12 nov 2026, Autore: «nei menu a tendina non mettere anche i numeri solo le voci, i numeri li vogliamo come risultato
             # sui dati»): i valori restano quelli che hanno partite sotto gli altri filtri
-            t.opzioni(voci, lambda v, k=k: self.metti_filtro(k, v), etichette={"Any": "Any", **{v: DA.etichetta(k, v) for v, _n in vv}})
+            t.opzioni(voci, lambda v, k=k: self.metti_filtro(k, v), etichette={"Any": "Any", **{v: (nome_evento(v, "standard" if v in EVENTI_ARENA["Standard"] else None) if k == "evento" else DA.etichetta(k, v))
+                                                                                       for v, _n in vv}})
             t.set(sc if sc is not None else "Any")
             self.evidenzia(k, sc is not None)
         self.disegna_wr()
@@ -1239,7 +1352,7 @@ class PaginaPerformance:
         t.campo.bind("<Leave>", lambda e, b=bordo: t.campo.configure(highlightbackground=b))
         lab = getattr(self, "lab_filtri", {}).get(k)
         if lab is not None:
-            lab.configure(fg=C["accento"] if on else C["grigio"])
+            lab.configure(fg=C["accento"] if on else C["testo"])
 
     def disegna_numeri(self):
         c = self.cv_num
@@ -1248,22 +1361,25 @@ class PaginaPerformance:
             return
         F = self.F
         r = self.scelte()
-        tot = DA.conti([x for x in self.righe if x["tipo"] == self.tipo])
+        base_ = self.base_confronto()
+        tot = DA.conti(base_)
         k = DA.conti(r)
         W = max(c.winfo_width(), 600)
-        n_f = sum(1 for v in self.filtri.values() if v is not None)
+        n_f = sum(1 for k_, v in self.filtri.items() if v is not None and k_ != "mio")
+        n_t = sum(1 for v in self.filtri.values() if v is not None)
         dy = 0
-        c.create_text(16, 14, text=(f"THIS SITUATION · {k['n']} GAMES" if n_f else f"ALL {self.tipo.upper()} GAMES · {k['n']}"), anchor="w", fill=C["muto"], font=F(7, True))
+        c.create_text(16, 14, text=(f"THIS SITUATION · {k['n']} GAMES" if n_f else f"ALL GAMES WITH {str(self.filtri['mio']).upper()} · {k['n']}" if n_t
+                                    else f"ALL {self.tipo.upper()} GAMES · {k['n']}"), anchor="w", fill=C["azzurro"], font=F(8, True))
         xd = W - 46        # a destra la rotellina dei numeri
         if n_f:
-            i_ = c.create_text(xd, 14, text=f"vs all your {self.tipo.lower()} games: {tot['wr'] if tot['wr'] is not None else '-'}%", anchor="e", fill=C["grigio"], font=F(7))
+            i_ = c.create_text(xd, 14, text=f"vs {self.nome_base()} ({tot['n']}): {tot['wr'] if tot['wr'] is not None else '-'}%", anchor="e", fill=C["grigio"], font=F(7))
             xd = (c.bbox(i_) or (xd, 0, xd, 0))[0] - 14
         if k["n"] and k["n"] < 30:      # in alto, accanto: in fondo usciva dalla tela
             c.create_text(xd, 14, text="under 30 games: a hint, not a fact", anchor="e", fill=C["arancio"], font=F(7, True))
         # i numeri scelti con la rotellina (13 nov 2026, Autore: «in alto a dx creiamo una rotellina di impostazioni con i 6 dati che vogliamo avere su
         # questa tabella»): numeri_partite.CATALOGO, la scelta in dati_analizzatore.numeri_scelti
-        val = NP.valori(r, [x for x in self.righe if x["tipo"] == self.tipo], self.filtri)
-        toni = {"su": C["azzurro"], "giu": C["rosso"], "neutro": C["testo"], "vuoto": C["muto"]}
+        val = NP.valori(r, base_, self.filtri, atteso=[x for x in self.righe if x["tipo"] == self.tipo])
+        toni = {"su": C["verde"], "giu": C["rosso"], "neutro": C["testo"], "vuoto": C["muto"]}      # il positivo verde (19 nov 2026)
         tess = [(NP.NOMI[k_].upper(), val[k_][0], toni[val[k_][1]], val[k_][2]) for k_ in DA.numeri_scelti() if k_ in val]
         # la rotellina, in alto a destra
         i_r = c.create_image(W - 12, 14, image=DG.rotella(18, C["accento"], C["scheda"]), anchor="e")      # disegnata, nitida (disegni.rotella)
@@ -1290,12 +1406,22 @@ class PaginaPerformance:
             if i % per_riga:
                 c.create_line(x - 2, 34 + dy, x - 2, 96 + dy, fill=RD["filo2"], width=1)
             # il nome dice cosa misura (win rate, % delle partite, media: 13 nov 2026), quindi e' lungo: se non sta nella sua tessera si stringe
-            i_n = c.create_text(x + 12, 36 + dy, text=a, anchor="nw", fill=C["muto"], font=F(7, True), tags="nome_num")
-            for fn in (F(6, True), F(6)):
-                bb_n = c.bbox(i_n)
-                if bb_n and bb_n[2] - bb_n[0] <= cw - 16:
+            # i tre livelli (19 nov 2026, Autore: «strutturiamo i livelli di importanza visiva: i titoletti delle varie voci devono essere piu' visibili
+            # e attirare l'attenzione sul dato»): il titolo bianco con la barretta azzurra, la parte che dice l'unita' («· % of games») piu' chiara accanto
+            nome_a, _sep, unita_a = a.partition(" · ")
+            c.create_rectangle(x + 4, 37 + dy, x + 6, 49 + dy, fill=C["accento"], outline="")
+            i_n = c.create_text(x + 12, 36 + dy, text=nome_a, anchor="nw", fill=C["titolo"], font=F(8, True), tags="nome_num")
+            i_u = c.create_text((c.bbox(i_n) or (0, 0, x + 12, 0))[2] + 4, 37 + dy, text=("· " + unita_a.lower()) if unita_a else "", anchor="nw",
+                                fill=C["muto"], font=F(7), tags="nome_num")
+            for fn, fu in ((F(7, True), F(7)), (F(7, True), F(6)), (F(6, True), F(6))):
+                bb_u = c.bbox(i_u) if unita_a else c.bbox(i_n)
+                if bb_u and bb_u[2] - x <= cw - 8:
                     break
                 c.itemconfigure(i_n, font=fn)
+                c.itemconfigure(i_u, font=fu)
+                c.coords(i_u, (c.bbox(i_n) or (0, 0, x + 12, 0))[2] + 4, 37 + dy)
+            if unita_a and (c.bbox(i_u) or (0, 0, 0, 0))[2] - x > cw - 8:     # non ci sta neanche cosi': l'unita' va sotto il titolo
+                c.coords(i_u, x + 12, 50 + dy)
             # il numero in Bahnschrift, l'unita' (%) piu' piccola accanto (redesign del 14 nov 2026)
             unita = "%" if isinstance(v, str) and v.endswith("%") and len(v) > 1 else ""
             i_v = c.create_text(x + 12, 66 + dy, text=v[:-1] if unita else v, anchor="w", fill=col, font=FN(22))
@@ -1458,6 +1584,18 @@ class PaginaPerformance:
         c.create_text((x0 + x1) / 2, y0 - 12, text=titolo, anchor="n", fill=C["grigio"], font=F(7))
         return sx, sy
 
+    def base_confronto(self):
+        """Le partite contro cui si confronta la situazione (18 nov 2026, Autore: «quando seleziono un mazzo, il nuovo totale dei game deve partire dalla conta
+        delle partite totali con il mazzo selezionato ... vs filter flag deve darmi le partite con quel filtro vs le partite totali del mazzo selezionato»):
+        tutte le partite del tipo, o con un mazzo scelto in By deck solo quelle del mazzo. L'atteso dell'EV resta su tutte le partite del tipo."""
+        tutte = [x for x in (self.righe or []) if x["tipo"] == self.tipo]
+        mio = self.filtri.get("mio")
+        return [x for x in tutte if DA.passa(x, {"mio": mio})] if mio is not None else tutte
+
+    def nome_base(self):
+        mio = self.filtri.get("mio")
+        return f"all games with {mio}" if mio is not None else f"all your {self.tipo.lower()} games"
+
     def disegna_grafico(self):
         c = self.tela("chart")
         c.delete("all")
@@ -1469,9 +1607,9 @@ class PaginaPerformance:
         extra = []
         # vs filter (13 nov 2026, Autore: «sotto mettici il flag per "vs filter" che confronta il filtrato vs la main line con una nuova linea colorata di
         # azzurro»): la linea principale diventa tutte le partite del tipo, e le partite filtrate sono la linea azzurra, sullo stesso asse
-        n_f = sum(1 for v in self.filtri.values() if v is not None)
+        n_f = sum(1 for k_, v in self.filtri.items() if v is not None and k_ != "mio")
         vs = self.mostra_vs_filtro and n_f
-        base_g = [x for x in self.righe if x["tipo"] == self.tipo] if vs else r
+        base_g = self.base_confronto() if vs else r
         if vs:
             extra.append(("This filter", {x.get("partita") for x in r}))
         if self.linea_dec:          # la riga di Decisions scelta: le sue partite come linea in piu' (ricalcolata coi filtri di adesso)
@@ -1482,7 +1620,7 @@ class PaginaPerformance:
         lin = [(n, p) for n, p in DA.linee(base_g, self.metrica, self.asse, self.finestra, None if vs else self.dividi, extra=extra, base=tutte_t,
                                            ev_di=self.ev_di) if p]
         if vs and lin:
-            lin[0] = ("All games", lin[0][1])
+            lin[0] = (("All games" if self.filtri.get("mio") is None else f"All {self.filtri['mio']}"), lin[0][1])
         tit = {"wr": "win rate", "n": "games", "turni": "average length in your turns", "mull": "mulligan rate",
                "ev": "EV vs expected: win-probability points your turns made above or below what the same turns usually give"
                + ("" if self.ev_di == "all" else f" · {dict(__import__('ev_partita').EV_DI)[self.ev_di].lower()}")}[self.metrica]
@@ -1761,24 +1899,32 @@ class PaginaPerformance:
             v_, _s = EV_.ev_spot_partita(x, self.filtri, base_)
             if v_ is not None:
                 _SPOT_EV[x.get("partita")] = v_
+        if k_o in ("best", "worst"):
+            _CARTE_EV.clear()
+            for x in self.scelte():
+                cc_ = EV_.carte_ev_partita(x, base_)
+                if cc_:
+                    _CARTE_EV[x.get("partita")] = (cc_[0][1], cc_[-1][1])
         nulli = [x for x in self.scelte() if chiave(x) is None]
         c._partite = sorted([x for x in self.scelte() if chiave(x) is not None], key=chiave, reverse=not cresce) + nulli       # chi non ha il dato in fondo
         c._col = self.colonne_partite(max(c.winfo_width(), 700))
         t = c.testa
         t.delete("all")
         Wt = max(t.winfo_width(), 700)
-        t.create_text(2, 10, text=f"GAMES IN THIS SITUATION · {len(c._partite)}", anchor="w", fill=C["muto"], font=F(7, True))
+        t.create_rectangle(0, 4, 2, 16, fill=C["accento"], outline="")
+        t.create_text(8, 10, text=f"GAMES IN THIS SITUATION · {len(c._partite)}", anchor="w", fill=C["titolo"], font=F(8, True))
         t.create_text(Wt - 40, 10, text="click a game: it opens its replay · Spot EV: green gained, red lost against the usual", anchor="e",
                       fill=C["muto"], font=F(7))
         d = DG.Disegno(28, 22)       # il segno per staccarla (o rimetterla sotto il grafico), come le cartelle
         _segno_stacca(d, 14, 11, C["accento"] if self.partite_fuori else C["grigio"], bool(self.partite_fuori))
         c._img_segno = d.foto()
         t.create_image(Wt - 30, 0, image=c._img_segno, anchor="nw")
+        t.create_rectangle(0, 23, max(t.winfo_width(), 700), 43, fill=TESTA_TAB, outline="")
         for k_, tit, x, _w in c._col:
             on = k_ == k_o
             t.create_text(x, 33, text=tit + (("  ↑" if cresce else "  ↓") if on else ""), anchor="w",
-                          fill=C["accento"] if on else C["titolo"] if k_ in ORDINI_PARTITE else C["muto"], font=F(7, True))
-        t.create_line(0, 43, max(t.winfo_width(), 700), 43, fill=C["filo"])
+                          fill=C["accento"] if on else C["titolo"] if k_ in ORDINI_PARTITE else C["testo"], font=F(8, True))
+        t.create_line(0, 43, max(t.winfo_width(), 700), 43, fill=C["accento"], width=2)
         c.configure(scrollregion=(0, 0, max(c.winfo_width(), 700), max(1, len(c._partite)) * ALTO_PARTITA))
         self.righe_partite(c)
 
@@ -1820,7 +1966,7 @@ class PaginaPerformance:
                         testo, col = "Unknown", C["muto"]
                 elif k == "esito":      # dopo il mulligan, e accanto i turni della partita (12 nov 2026, Autore: «result dopo mulligan e dopo result il numero
                     testo = "Won" if x_["vinta"] else "Lost"        # di turni partita»)
-                    col, font = (C["azzurro"] if x_["vinta"] else C["rosso"]), F(8, True)
+                    col, font = (C["verde"] if x_["vinta"] else C["rosso"]), F(8, True)
                     c.create_image(x + 3, y + ALTO_PARTITA / 2, image=DG.punto(6, col), tags="riga")       # il pallino del risultato (redesign del 14 nov 2026)
                     x, w = x + 12, w - 12
                 elif k == "turni":
@@ -1857,15 +2003,6 @@ class PaginaPerformance:
         terre = len(mano) - len(magie)
         return ", ".join(magie) + (f"  ·  {terre} land{'s' if terre != 1 else ''}" if terre or not magie else "")
 
-    def testo_board(self, fo):
-        """La board all'ultimo stato: le tue magie in campo, poi quante sue."""
-        if not fo or not fo["ultima"] or not fo["ultima"][2]:
-            return "not in the logs"
-        import mazzi_salvati as MS
-        f = fo["ultima"][2]
-        mie = [c_[0] for c_ in f["mio"] if not MS.e_terra(c_[0])]
-        sue = [c_[0] for c_ in f["suo"] if not MS.e_terra(c_[0])]
-        return (", ".join(mie) or "no permanents") + f"  /  opponent: {len(sue)} permanent{'s' if len(sue) != 1 else ''}"
 
     def partita_a(self, c, e):
         """(partita, colonna) sotto il puntatore, o (None, None)."""
@@ -1963,6 +2100,38 @@ class PaginaPerformance:
             out.append(dict(vite=(vm, vs), forza=(fm, fs), vantaggio=(vm - vs) + 2 * (fm - fs)))
         return out
 
+    def curva_p(self, b):
+        """La curva della partita (18 nov 2026, Autore: «procedi con 1 2 3 4», la 4: la probabilita' di vincere sulla timeline): [(indice del passo,
+        P in percentuale, scarto del turno che finisce li')], dal conto della partita di ev_partita (la P a inizio partita, poi a fine di ogni turno sull'ultimo
+        passo di quel turno). None senza il conto. Una volta per partita e modo."""
+        k_ = (id(b["passi"]),)
+        if b.get("_curva_k") == k_:
+            return b["_curva"]
+        out = None
+        try:
+            import ev_partita as EV_
+            x = b["x"]
+            base = [y for y in self.righe or [] if y["tipo"] == x.get("tipo")]
+            tt = EV_._turni_di(base, x.get("partita")) if base else []
+            ultimo = {}
+            for i, p_ in enumerate(b["passi"]):
+                ultimo[p_[2]] = i
+            pts = []
+            for z in tt:
+                i = ultimo.get(z["t"])
+                if i is None or z.get("p1") is None:
+                    continue
+                if not pts and z.get("p0") is not None:
+                    pts.append((0, z["p0"], None))
+                if pts and i <= pts[-1][0]:
+                    continue
+                pts.append((i, z["p1"], z.get("scarto")))
+            out = pts if len(pts) >= 2 else None
+        except Exception:       # noqa: BLE001 - senza il conto della partita il grafico resta quello delle vite
+            out = None
+        b["_curva_k"], b["_curva"] = k_, out
+        return out
+
     def svolta(self, passi, vinta):
         """Il punto di svolta: il momento in cui il vantaggio cambia di piu' verso chi ha vinto (None con meno di 3 momenti)."""
         m = self.momenti(passi)
@@ -1987,11 +2156,15 @@ class PaginaPerformance:
 
     CHIUSE_AVVIO = True
     MODO_AVVIO = "azioni"
-    PASSO_PLAY = 1050           # ms a 1x (14 nov 2026, Autore: «la nuova velocita' 1x deve essere 0,5x attuale»: era 1600; poi «tutto piu' lento»: 3200, 4200;
+    MOMENTI_VISIBILI = False        # Moments nel replayer: tolto per adesso (19 nov 2026)
+    PASSO_PLAY = 800            # ms a 1x (18 nov 2026, Autore: «rendi x1 l'attuale x2 e x2 il doppio»: il 2x di prima durava 800 ms a passo, perche' la
+    # pausa dopo i voli (800 ms) non seguiva la velocita' e copriva i 525 ms del passo; ora 1x = 800 e la pausa si divide per la velocita', cosi' il 2x
+    # dimezza davvero; le due attese a meta')
+    # prima: ms a 1x (14 nov 2026, Autore: «la nuova velocita' 1x deve essere 0,5x attuale»: era 1600; poi «tutto piu' lento»: 3200, 4200;
     # la sera «la nuova velocita' x1 deve essere l'attuale x2»: 2100, e le attese dopo l'attacco e la magia in pila dimezzate; a notte, di nuovo «la nuova
     # velocita' 1 deve essere l'attuale velocita' 2»: 1050, e le due attese ancora a meta')
-    ATTESA_ATTACCO = 375        # in piu' dopo la dichiarazione degli attaccanti, prima dei bloccanti (era 750)
-    ATTESA_MAGIA = 650          # la magia in pila: il tempo di vederla prima che si risolva (era 1300)
+    ATTESA_ATTACCO = 188        # in piu' dopo la dichiarazione degli attaccanti, prima dei bloccanti (era 750)
+    ATTESA_MAGIA = 325          # la magia in pila: il tempo di vederla prima che si risolva (era 1300)
 
     def apri_board(self, x_, dove="inizio"):
         """La board di una partita: in alto i momenti (la mano tenuta, la fine di ogni turno, la fine), sotto la tavola: le sue carte in campo, le tue, la tua
@@ -2014,6 +2187,8 @@ class PaginaPerformance:
         if f is None or not f.winfo_exists():
             # il replayer parte con tutte le sezioni espandibili chiuse (14 nov 2026, Autore: «il replayer deve partire con tutte le sezioni espandibili
             # chiuse»): la striscia dei turni, le due liste dei mazzi ai lati, il grafico sopra la timeline; si aprono con le loro linguette
+            if not self.MOMENTI_VISIBILI:
+                self._modo_board = "azioni"
             if self.MODO_AVVIO:         # parte da Every action (14 nov 2026, Autore: «fai partire il replayer da every action»)
                 self._modo_board = self.MODO_AVVIO
             if self.CHIUSE_AVVIO:       # le prove di prima del 14 nov 2026 lo spengono: guardano le sezioni aperte
@@ -2073,7 +2248,9 @@ class PaginaPerformance:
                 f.bind(f"<{tasto}>", lambda e, k_=k_: self.salta(k_))
                 f.bind(f"<{tasto.upper()}>", lambda e, k_=k_: self.salta(k_, -1))
             f.bind("<b>", lambda e: self.segna_board())
-            for k_, n_ in (("azioni", "Every action"), ("momenti", "Moments")):
+            # Moments tolto per adesso (19 nov 2026, Autore: «togli moments per adesso dal replayer»): il replayer va solo azione per azione; il codice resta
+            # poi anche Every action (stesso giorno: «a questo punto togli anche every action, il replayer sara' solo every action»): con un modo solo niente pulsanti
+            for k_, n_ in ((("azioni", "Every action"), ("momenti", "Moments")) if self.MOMENTI_VISIBILI else ()):
                 b_ = pulsante_solido(tk, F, testa_b, n_, False, lambda k_=k_: self.cambia_modo_board(k_), alto=26, bg=C["cap"], colori=GRIGI)
                 b_.configure(width=120); b_.pack(side="right", padx=(0, 8), pady=8)
                 self.b_modi[k_] = b_
@@ -2147,7 +2324,7 @@ class PaginaPerformance:
         if idx_m:
             self._board["azioni_passi"], self._board["mom_idx"] = az_, idx_m
         self._board["svolta"] = self.svolta(passi, x_["vinta"])
-        if getattr(self, "_modo_board", "momenti") == "azioni":      # resta la scelta dell'ultima volta
+        if getattr(self, "_modo_board", "momenti") == "azioni" or not self.MOMENTI_VISIBILI:      # resta la scelta dell'ultima volta (senza Moments: sempre)
             self.cambia_modo_board("azioni", ridisegna=False)
             if dove != "fine":      # in Every action dalla prima azione
                 self._board["i"] = 0
@@ -2222,7 +2399,7 @@ class PaginaPerformance:
         dei bloccanti."""
         b = self._board
         ms = int(self.PASSO_PLAY / b["vel"])
-        ms = max(ms, getattr(self, "_durata_anim", 0) + 800)      # «tutto piu' lento» (14 nov 2026): era mezzo secondo
+        ms = max(ms, getattr(self, "_durata_anim", 0) + int(800 / b["vel"]))      # «tutto piu' lento» (14 nov 2026): era mezzo secondo; dal 18 nov segue la velocita'
         rel = b["passi"][b["i"]][3] if b["passi"] else None
         if rel and rel.get("tipo") == "comb" and not rel.get("blocchi"):
             ms += int(self.ATTESA_ATTACCO / b["vel"])
@@ -2312,7 +2489,19 @@ class PaginaPerformance:
                 d.rett(pos(i) - larga_b - 0.5, f1 - hm, pos(i) - 0.5, f1, riempi=(36, 186, 255, 150))
             if hs:
                 d.rett(pos(i) + 0.5, f1 - hs, pos(i) + larga_b + 0.5, f1, riempi=(240, 173, 78, 150))
-        if n > 1:
+        curva = self.curva_p(b)
+        if curva:
+            # la probabilita' di vincere (18 nov 2026): 0-100, la riga del 50%, ogni tratto verde dove il turno e' andato meglio del solito, rosso dove e'
+            # andato peggio, grigio dentro SOGLIA_PARLA; al posto delle vite (che stanno gia' sul tappeto)
+            py_ = lambda v: g1 - max(0.0, min(100.0, v)) / 100.0 * (g1 - g0)
+            for xx_ in range(int(t0), int(t1), 8):
+                d.linea([(xx_, py_(50)), (min(xx_ + 4, t1), py_(50))], "#3a4150", 1)
+            for (i_a, p_a, _s), (i_b, p_b, s_b) in zip(curva, curva[1:]):
+                col_ = "#5cb85c" if (s_b or 0) >= self.SOGLIA_PARLA else "#ff5d5d" if (s_b or 0) <= -self.SOGLIA_PARLA else "#9aa3b2"
+                d.linea([(pos(i_a), py_(p_a)), (pos(i_b), py_(p_b))], col_, 2.2)
+            for i_c, p_c, s_c in curva:
+                d.cerchio(pos(i_c), py_(p_c), 2.2, riempi="#e6e6ea")
+        elif n > 1:
             d.linea([(pos(i), sy(z["vite"][1])) for i, z in enumerate(m)], "#f0ad4e", 1.6)
             d.linea([(pos(i), sy(z["vite"][0])) for i, z in enumerate(m)], "#2f9bff", 1.8)
         if sv is not None:      # la stella del punto di svolta
@@ -2336,8 +2525,8 @@ class PaginaPerformance:
                 d.cerchio(pos(i), cy, 5.5, bordo="#ffd23f", larghezza=1.6)
         # il punto di svolta e la velocita'
         self._box_vel, self._box_svolta = [], None
-        vx = W - 150
-        for v in (0.5, 1.0, 2.0):
+        vx = W - 196
+        for v in VELOCITA:
             on = abs(b["vel"] - v) < 1e-9
             d.rett(vx, cy - 12, vx + 42, cy + 12, riempi="#0f86cc" if on else "#1a202b", bordo="#0f86cc" if on else "#2c3340", larghezza=1, raggio=4)
             self._box_vel.append((vx, vx + 42, v))
@@ -2380,11 +2569,13 @@ class PaginaPerformance:
         nome = b["passi"][b["i"]][0] + ("   ★" if b["i"] == sv else "")
         import tkinter.font as _tkf
         f9_ = _tkf.Font(font=F(9, True))
-        spazio_ = (W - 166) - (t1 + 12)
+        spazio_ = (W - 212) - (t1 + 12)
         while f9_.measure(nome) > spazio_ and len(nome) > 4:
             nome = nome[:-2].rstrip() + "…"
-        c.create_text(W - 166, cy - 7, text=nome, anchor="e", fill=bianco, font=F(9, True))
-        c.create_text(W - 166, cy + 10, text=f"{b['i'] + 1} / {n}", anchor="e", fill=grigio, font=F(7))
+        c.create_text(W - 212, cy - 7, text=nome, anchor="e", fill=bianco, font=F(9, True))
+        c.create_text(W - 212, cy + 10, text=f"{b['i'] + 1} / {n}", anchor="e", fill=grigio, font=F(7))
+        if self.curva_p(b) and not getattr(self, "_graf_chiuso", False):     # la curva e' la probabilita' di vincere: lo dice una scritta
+            c.create_text(t0 + 4, 4, text="YOUR CHANCE TO WIN · 50% dotted · green better than usual, red worse", anchor="nw", fill=grigio, font=F(7, True))
         # col grafico chiuso la tela si abbassa all'altezza dei comandi e mostra solo la loro riga (la linguetta HIDE CHART, 14 nov 2026)
         chiuso_ = getattr(self, "_graf_chiuso", False)
         c.configure(scrollregion=(0, 0, W, ALTO_CTRL))
@@ -2598,7 +2789,7 @@ class PaginaPerformance:
         turni = [z for (pp, _t), z in sorted(mappa.items(), key=lambda kv: kv[0][1]) if pp == x_.get("partita")]
         if not turni:
             return None
-        fasi = [(z["t"], ph["f"], ph["scarto"]) for z in turni for ph in z.get("fasi") or []]
+        fasi = [(z["t"], ph["f"], ph["scarto"]) for z in turni for ph in z.get("fasi") or [] if ph["f"] != "inizio"]       # il cambio di chi tocca: di nessuno
         fasi = [f_ for f_ in fasi if abs(f_[2]) >= self.SOGLIA_EV and (chi == "both" or (f_[2] > 0) == (chi == "mine"))]
         ps = b["passi"]
 
@@ -2620,6 +2811,290 @@ class PaginaPerformance:
             if i is not None and i not in out:
                 out[i] = sc
         return dict(sorted(out.items()))
+
+    SOGLIA_PARLA = 3.0      # il racconto parla dell'EV solo da 3 punti di P sopra o sotto il solito (18 nov 2026, «parlare solo quando conta»)
+
+    # il voto EV di ogni fase (19 nov 2026, Autore: «i voti EV li diamo alla fine di ogni fase: un voto per ogni cosa accaduta piu' i pti guadagnati dagli
+    # errori di oppo ... ogni voto cliccabile per andare al punto esatto della fase»): le etichette col loro colore, di chi e' il merito o il regalo
+    COLORI_VOTO = {"mio_su": "verde", "mio_giu": "rosso", "mio_pari": "muto", "suo_errore": "verde", "suo_buono": "rosso", "suo_pari": "muto",
+                   "risultato": "muto"}
+
+    def voto_fase(self, b):
+        """La fase del passo aperto col suo voto (ev_partita.righe_fasi), in Every action: dict(fase, righe fino al passo aperto, finita) o None."""
+        import ev_partita as EV_
+        x_ = b["x"]
+        base = [y for y in self.righe or [] if y["tipo"] == x_.get("tipo")]
+        v = EV_.righe_fasi(x_, b["passi"], base)
+        if not v:
+            return None
+        ch = v["del_passo"].get(b["i"])
+        if ch is None:      # un passo senza foto (l'inizio della partita): la fase dopo, se c'e'
+            return None
+        fz = next((f_ for f_ in v["fasi"] if f_["chiave"] == ch), None)
+        if fz is None:
+            return None
+        return dict(fase=fz, righe=[r_ for r_ in fz["righe"] if r_["i"] <= b["i"]], finita=b["i"] >= fz["ultimo"])
+
+    def disegna_win_chance(self, cc, b, x0, larga, y):
+        """In testa al racconto la probabilita' di vincere adesso, tua contro la sua (19 nov 2026, Autore: «dovremmo avere un totale di wr mio vs oppo per
+        capire meglio l'andamento ... mettiamo in testa win chance»): la barra (tu a sinistra in verde, l'Opponent in arancio), e la partenza della partita.
+        La stessa lettura del voto: «se il turno finisse qui». Il passo zero (prima del primo turno) e un passo senza foto: la partenza."""
+        import ev_partita as EV_
+        x_ = b["x"]
+        base = [z for z in self.righe or [] if z["tipo"] == x_.get("tipo")]
+        v = EV_.righe_fasi(x_, b["passi"], base) if b.get("modo") == "azioni" else None
+        cp = EV_.partita(x_)
+        p0 = cp["inizio"] if cp else None
+        pp = (v or {}).get("p_passo") or {}
+        p = next((pp[i] for i in range(b["i"], -1, -1) if i in pp), p0)
+        if p is None:
+            return y
+        F = self.F
+        cc.create_rectangle(x0 + 12, y + 1, x0 + 14, y + 13, fill=C["accento"], outline="")
+        cc.create_text(x0 + 19, y, text="WIN CHANCE · NOW", anchor="nw", fill=C["titolo"], font=F(8, True))
+        y += 18
+        W_ = larga - 28
+        xm = x0 + 14 + W_ * max(0.0, min(100.0, p)) / 100
+        cc.create_rectangle(x0 + 14, y, xm, y + 20, fill="#1c4d38", outline="")
+        cc.create_rectangle(xm, y, x0 + 14 + W_, y + 20, fill="#4a2f12", outline="")
+        cc.create_text(x0 + 20, y + 10, text=f"YOU {p:.0f}%", anchor="w", fill=C["verde"], font=F(9, True))
+        cc.create_text(x0 + 8 + W_, y + 10, text=f"{100 - p:.0f}% OPPONENT", anchor="e", fill=C["arancio"], font=F(9, True))
+        y += 24
+        if p0 is not None:
+            d_ = p - p0
+            cc.create_text(x0 + 14, y, text=f"start of the game {p0:.0f}% · since then", anchor="nw", fill=C["muto"], font=F(7))
+            cc.create_text(x0 + larga - 14, y - 1, text=f"{d_:+.1f}".replace("-", "−"), anchor="ne", fill=C["verde"] if d_ >= 1 else C["rosso"] if d_ <= -1 else C["muto"],
+                           font=F(8, True))
+            y += 16
+        return y + 8
+
+    def segnapunti(self, b):
+        """La somma dei voti delle fasi chiuse fino al passo aperto (19 nov 2026, Autore: «una somma dei victory points che si aggiorna a ogni ricalcolo
+        delle fasi mia e di oppo», posizione A): le tue scelte, le sue scelte buone (i punti che ti tolgono), i suoi errori (i punti che ti regala), pescate e
+        conseguenze di nessuno; net e' la somma, quanto e' cambiata la tua probabilita' di vincere. -> dict o None senza il voto."""
+        import ev_partita as EV_
+        x_ = b["x"]
+        base = [y for y in self.righe or [] if y["tipo"] == x_.get("tipo")]
+        v = EV_.righe_fasi(x_, b["passi"], base)
+        if not v:
+            return None
+        out = dict(mie=0.0, n_mie=0, buone=0.0, n_buone=0, errori=0.0, n_errori=0, altro=0.0, fino=None)
+        for fz in v["fasi"]:
+            if fz["ultimo"] > b["i"]:       # la fase non e' ancora chiusa: entra quando finisce
+                continue
+            out["fino"] = fz
+            out["altro"] += fz.get("resto", 0.0)
+            for r_ in fz["righe"]:
+                if r_["incluso"]:
+                    continue
+                if r_["tipo"] == "risultato":
+                    out["altro"] += r_["ev"]
+                elif r_["tipo"].startswith("mio"):
+                    out["mie"] += r_["ev"]; out["n_mie"] += 1
+                elif r_["ev"] < 0:
+                    out["buone"] += r_["ev"]; out["n_buone"] += 1
+                else:
+                    out["errori"] += r_["ev"]; out["n_errori"] += 1
+        out["net"] = out["mie"] + out["buone"] + out["errori"] + out["altro"]
+        return out
+
+    def disegna_segnapunti(self, cc, sp, x0, larga, y):
+        """Il segnapunti in testa al racconto: tre caselle (le tue scelte, le sue buone, i suoi errori), sotto pescate e conseguenze e il net."""
+        import ev_partita as EV_
+        F = self.F
+        fz = sp["fino"]
+        quando = (f"up to Hero T{fz['giro']} · {EV_.NOMI_FASI.get(fz['f'], fz['f'])}" if fz and fz["mio"] else
+                  f"up to Opponent T{fz['giro']} · {EV_.NOMI_FASI.get(fz['f'], fz['f'])}" if fz else "no phase closed yet")
+        cc.create_rectangle(x0 + 12, y + 1, x0 + 14, y + 13, fill=C["accento"], outline="")
+        cc.create_text(x0 + 19, y, text="TOTAL VICTORY POINTS", anchor="nw", fill=C["titolo"], font=F(8, True))
+        cc.create_text(x0 + 19, y + 15, text=quando, anchor="nw", fill=C["muto"], font=F(7), width=larga - 34)
+        y += 32
+        w = (larga - 28 - 8) / 3
+        segno = lambda v: f"{v:+.1f}".replace("-", "−")
+        col = lambda v: C["verde"] if v >= EV_.SOGLIA_RIGA else C["rosso"] if v <= -EV_.SOGLIA_RIGA else C["muto"]
+        for j, (tit, v, n, nome_n) in enumerate((("YOUR PLAYS", sp["mie"], sp["n_mie"], "plays"), ("OPP. GOOD PLAYS", sp["buone"], sp["n_buone"], "plays"),
+                                                 ("OPP. MISTAKES", sp["errori"], sp["n_errori"], "gifts"))):
+            xa = x0 + 14 + j * (w + 4)
+            cc.create_rectangle(xa, y, xa + w, y + 50, fill="#131720", outline="#232a37")
+            cc.create_rectangle(xa + 4, y + 6, xa + 6, y + 16, fill=C["accento"], outline="")
+            cc.create_text(xa + 10, y + 11, text=tit, anchor="w", fill=C["titolo"], font=F(6, True))
+            cc.create_text(xa + 6, y + 30, text=segno(v), anchor="w", fill=C["arancio"] if j == 2 and v >= EV_.SOGLIA_RIGA else col(v), font=F(12, True))
+            cc.create_text(xa + 6, y + 43, text=f"{n} {nome_n}", anchor="w", fill=C["muto"], font=F(6))
+        y += 56
+        cc.create_line(x0 + 14, y, x0 + larga - 14, y, fill="#232a37")
+        cc.create_text(x0 + 14, y + 9, text=f"DRAWS AND RESULTS {segno(sp['altro'])} · TOTAL", anchor="w", fill=C["muto"], font=F(7, True))
+        cc.create_text(x0 + larga - 14, y + 9, text=segno(sp["net"]), anchor="e", fill=col(sp["net"]), font=F(12, True))
+        return y + 28
+
+    def due_voti(self, x_, fz, r_):
+        """I due voti di una tua scelta (19 nov 2026, sessione Magic 22, il mockup: Autore «vai in ordine tutto»): [(testo, tono)].
+        BEST LINE: la migliore alternativa dell'IS-MCTS (Motore_EV/ismcts.py: le candidate negli stessi mondi fino alla fine del suo turno dopo), solo dove il
+        pilota e' passato; la prima azione della prima fase principale si confronta solo se e' la prima tua riga. STRONG PLAYERS: quanti giocatori forti di
+        17Lands (60%+ con 50+ partite) fanno come te nella stessa situazione (Motore_EV/forti.py), per attacchi e blocchi."""
+        try:
+            cart = os.path.join(DA.percorsi.ROOT, "Motore_EV")
+            import sys as _s
+            if cart not in _s.path:
+                _s.path.insert(0, cart)
+            import voti
+        except Exception:       # noqa: BLE001 - senza il motore dell'EV nessun voto in piu'
+            return []
+        testo = r_.get("testo") or ""
+        tl = testo.lower()
+        primo = next((z for z in fz["righe"] if z["mio"] and z["tipo"] != "risultato"), None)
+        if "attack" not in tl and "block" not in tl and not (fz["f"] == "main1" and primo is r_):
+            return []
+        try:
+            v = voti.della_scelta(x_, fz["t"], testo)
+        except Exception:       # noqa: BLE001
+            return []
+        out = []
+        ln = v.get("linea")
+        if ln:
+            if ln["stessa"]:
+                out.append(("BEST LINE · this was it", "verde"))
+            elif ln["meglio"]:
+                out.append((f"BEST LINE {ln['scarto']:+.1f} · {voti.inglese(ln['migliore'])}".replace("-", "−"), "rosso"))
+            else:
+                out.append((f"BEST LINE · about the same ({ln['scarto']:+.1f}) · {voti.inglese(ln['migliore'])}".replace("-", "−"), "muto"))
+        fo = v.get("forti")
+        if fo:
+            dove = " · Limited players" if v.get("constructed") else ""
+            out.append((f"STRONG PLAYERS {fo['come_te']:.0f}% do this · {voti.TESTO_FORTI.get(fo['piu_comune'], '')}{dove}", "azzurro"))
+        return out
+
+    def pillola_voto(self, cc, x, y, larga, testo, tono):
+        """Una pillola del voto: il testo nel colore del tono dentro un riquadro col filo dello stesso colore; va a capo, mai tagliata. -> la y sotto."""
+        F = self.F
+        col = C.get(tono, C["muto"])
+        it = cc.create_text(x + 8, y + 3, text=testo, anchor="nw", fill=col, font=F(7, True), width=max(60, larga - 16))
+        bb = cc.bbox(it) or (x, y, x + larga, y + 14)
+        r = cc.create_rectangle(x, y, min(x + larga, bb[2] + 8), bb[3] + 3, fill=C["scheda"], outline=col)
+        cc.tag_lower(r, it)
+        return bb[3] + 3
+
+    def disegna_voto_fase(self, cc, b, voto, x0, larga, y):
+        """Il voto della fase nel racconto: in testa chi e quale fase, poi una riga per ogni cosa accaduta (il numero, l'etichetta di chi e' il merito o il
+        regalo; le conseguenze, coi punti gia' nella riga sopra, senza numero); a fine fase il totale e il solito. Il clic su una riga porta al suo passo."""
+        import ev_partita as EV_
+        F = self.F
+        fz = voto["fase"]
+        chi = "HERO" if fz["mio"] else "OPPONENT"
+        cc.create_text(x0 + 14, y, text=f"{chi} T{fz['giro']} · {EV_.NOMI_FASI.get(fz['f'], fz['f']).upper()} · EV", anchor="nw", fill=C["azzurro"],
+                       font=F(8, True), width=larga - 28)
+        y += 20
+        self._box_voto = []
+        for r_ in voto["righe"]:
+            on = r_["i"] == b["i"]
+            col = C[self.COLORI_VOTO.get(r_["tipo"], "muto")]
+            y0 = y
+            i_t = cc.create_text(x0 + 24, y + 2, text=r_["testo"], anchor="nw", fill=C["titolo"] if r_["tipo"] != "risultato" else C["testo"],
+                                 font=F(8, r_["tipo"] != "risultato"), width=larga - 96)
+            yb = (cc.bbox(i_t) or (0, 0, 0, y + 14))[3]
+            if r_["incluso"]:
+                eti = "result · in the row above"
+            else:
+                eti = EV_.ETICHETTE.get(r_["tipo"], "")
+                cc.create_text(x0 + larga - 14, y + 2, text=f"{r_['ev']:+.1f}".replace("-", "−"), anchor="ne", fill=col, font=F(10, True))
+            col_e = C["arancio"] if r_["tipo"] in ("suo_errore", "suo_buono") else C["muto"]
+            cc.create_text(x0 + 24, yb + 1, text=eti, anchor="nw", fill=col_e, font=F(7, True))
+            y = yb + 16
+            if r_["mio"] and not r_["incluso"] and r_["tipo"] != "risultato":
+                for testo_, tono_ in self.due_voti(b["x"], fz, r_):
+                    y = self.pillola_voto(cc, x0 + 22, y, larga - 44, testo_, tono_) + 3
+            # la barretta di chi e' il voto e la riga accesa sul passo aperto
+            cc.create_rectangle(x0 + 12, y0 + 2, x0 + 15, y - 4, fill=col if not r_["incluso"] else "#2a3140", outline="")
+            if on:
+                it_ = cc.create_rectangle(x0 + 6, y0 - 2, x0 + larga - 6, y - 1, fill="#1f3446", outline=C["azzurro"])
+                cc.tag_lower(it_, i_t)      # sotto le scritte della riga, sopra il fondo della colonna
+            tag_ = f"voto_{r_['i']}"
+            cc.addtag_overlapping(tag_, x0 + 8, y0, x0 + larga - 8, y - 2)
+            cc.tag_bind(tag_, "<Button-1>", lambda _e, i_=r_["i"]: self.vai_board(i_))
+            cc.tag_bind(tag_, "<Enter>", lambda _e: cc.configure(cursor="hand2"))
+            cc.tag_bind(tag_, "<Leave>", lambda _e: cc.configure(cursor=""))
+            self._box_voto.append((x0 + 6, y0 - 2, x0 + larga - 6, y - 1, r_["i"]))
+            y += 4
+        if voto["finita"]:
+            cc.create_line(x0 + 12, y, x0 + larga - 12, y, fill="#2a3140")
+            y += 6
+            tot = fz["totale"]
+            col_t = C["verde"] if tot >= EV_.SOGLIA_RIGA else C["rosso"] if tot <= -EV_.SOGLIA_RIGA else C["muto"]
+            cc.create_text(x0 + 14, y, text="PHASE TOTAL", anchor="nw", fill=C["muto"], font=F(7, True))
+            cc.create_text(x0 + larga - 14, y - 2, text=f"{tot:+.1f}".replace("-", "−"), anchor="ne", fill=col_t, font=F(12, True))
+            y += 20
+            if fz.get("atteso") is not None:
+                sc_ = fz["scarto"]
+                poche = (fz.get("n") or 0) < EV_.MINIMO
+                col_s = C["muto"] if poche else C["verde"] if sc_ > 0 else C["rosso"]
+                cc.create_text(x0 + 14, y, text=f"usually {fz['atteso']:+.1f} ({fz.get('n') or 0} games) · vs usual", anchor="nw", fill=C["muto"], font=F(7))
+                cc.create_text(x0 + larga - 14, y - 1, text=f"{sc_:+.1f}".replace("-", "−"), anchor="ne", fill=col_s, font=F(9, True))
+                y += 18
+        else:
+            cc.create_text(x0 + 14, y, text="the vote comes at the end of the phase", anchor="nw", fill=C["muto"], font=F(7))
+            y += 16
+        return y + 8
+
+    def blocchi_ev(self, b, tutti=False):
+        """L'EV del passo aperto, dell'Hero soltanto (18 nov 2026 sera, Autore: «questi messaggi sono troppo difficili da capire ... facciamo cosi': solo ev
+        + e ev - e solo di hero / su ev- se vuoi puoi spiegare la perdita in un messaggio espandibile»): [dict(titolo, diff, n, perche=[righe])], la tua
+        giocata di questo momento (attacco, blocco, magia) e il tuo turno. diff e' lo scarto dal solito in punti di P, il numero che si vede; perche' sono le
+        righe della spiegazione (solo per l'EV negativo). Solo quando lo scarto arriva a SOGLIA_PARLA (tutti=True: sempre)."""
+        import ev_partita as EV_
+        out = []
+        dz_ = self.costi_passi(b).get(b["i"])
+        if dz_ is not None and dz_.get("costo") is not None:
+            out.append(dict(titolo="your play", diff=dz_["costo"], n=dz_.get("n_confronto") or 0, perche=self.perche_giocata(dz_)))
+        ze_ = self.ev_turno_passo(b)
+        if ze_ is not None and ze_.get("mio") and ze_.get("scarto") is not None:
+            fasi_ = [ph for ph in ze_.get("fasi") or [] if ph["f"] != "turn"]
+            perche_ = []
+            if ze_.get("p0") is not None and ze_.get("p1") is not None:
+                perche_.append(f"Your chance to win went from {ze_['p0']:.0f}% to {ze_['p1']:.0f}% in this turn.")
+            if ze_.get("atteso") is not None:
+                perche_.append(f"A turn like this usually moves it {ze_['atteso']:+.1f} points ({ze_.get('n') or 0} games); this one {ze_['ev']:+.1f}.")
+            if fasi_:
+                peggio = min(fasi_, key=lambda ph: ph["scarto"])
+                if peggio["scarto"] < 0:
+                    perche_.append(f"Most of it was lost in {EV_.NOMI_FASI.get(peggio['f'], 'the turn')} ({peggio['scarto']:+.1f}).")
+                perche_.append("By phase: " + " · ".join(f"{EV_.NOMI_FASI.get(ph['f'], ph['f'])} {ph['scarto']:+.1f}" for ph in fasi_) + ".")
+            out.append(dict(titolo=f"your turn {ze_['giro']}", diff=ze_["scarto"], n=ze_.get("n") or 0, perche=perche_))
+        return [z for z in out if tutti or abs(z["diff"]) >= self.SOGLIA_PARLA]
+
+    @staticmethod
+    def perche_giocata(dz_):
+        """Le righe che spiegano una tua giocata (per l'EV negativo): cosa e' successo, la probabilita' prima e dopo, il solito."""
+        r = []
+        tipo = dz_.get("tipo")
+        if tipo in ("attacco", "blocco"):
+            pm, ps, dn = dz_.get("persi_miei") or 0, dz_.get("persi_suoi") or 0, dz_.get("danno") or 0
+            if tipo == "attacco":
+                r.append(f"You attacked with {dz_.get('attaccanti') or 0}: you lost {pm} creature{'s' * (pm != 1)}, the opponent lost {ps}, "
+                         f"{dn} damage to the opponent." + (" The opponent had a trick." if dz_.get("trucco_suo") else ""))
+            else:
+                r.append(("You blocked" if dz_.get("bloccato") else "You didn't block") + f": you lost {pm} creature{'s' * (pm != 1)}, the opponent lost {ps}, "
+                         f"you took {dn} damage." + (" The opponent had a trick." if dz_.get("trucco_suo") else ""))
+        elif tipo == "magia":
+            r.append(f"You cast {dz_.get('nome') or 'a spell'}.")
+        if dz_.get("p_prima") is not None and dz_.get("p_dopo") is not None:
+            r.append(f"Your chance to win went from {dz_['p_prima']:.0f}% to {dz_['p_dopo']:.0f}%.")
+        if dz_.get("media") is not None and dz_.get("guadagno_r8") is not None:
+            r.append(f"A play like this usually moves it {dz_['media']:+.1f} points ({dz_.get('n_confronto') or 0} plays); this one {dz_['guadagno_r8']:+.1f}.")
+        return r
+
+    def tenuto_passo(self, b):
+        """(attaccanti, potevano) se il passo aperto e' il primo del combattimento di un turno in cui l'Opponent ha lasciato danni sul tavolo
+        (mana_aperto.tenuti_a_casa), se no None. Una volta per partita e modo."""
+        k_ = (id(b["passi"]),)
+        if b.get("_tenuti_k") != k_:
+            import mana_aperto as MA_
+            x_ = b["x"]
+            tt_ = MA_.tenuti_a_casa(DA._MANA.get(x_.get("partita")), x_.get("seat"))
+            primi = {}
+            for i, p_ in enumerate(b["passi"]):
+                if p_[2] in tt_ and p_[2] not in primi and p_is_comb(p_):
+                    primi[p_[2]] = i
+            b["_tenuti_k"], b["_tenuti_i"] = k_, {i: tt_[t] for t, i in primi.items()}
+        return b["_tenuti_i"].get(b["i"])
 
     def costi_passi(self, b):
         """R8 nel replayer: {indice del passo: decisione col costo} per i tuoi attacchi, blocchi e magie di questa partita (contro tutte le partite del
@@ -2865,7 +3340,10 @@ class PaginaPerformance:
             try:
                 import capsule
                 from PIL import Image, ImageEnhance, ImageTk
-                im = Image.open(capsule.file_mini(nome)).convert("RGBA")
+                f_ = capsule.file_mini(nome)
+                if not os.path.exists(f_):      # la meta' di una carta (un'avventura, un presagio): l'immagine e' quella della carta intera
+                    f_ = capsule.file_mini(DA.nome_intero(nome))
+                im = Image.open(f_).convert("RGBA")
                 im = im.resize((w, round(w * im.height / im.width)), Image.LANCZOS)
                 if grigia:
                     a_ = im.getchannel("A")
@@ -2974,33 +3452,6 @@ class PaginaPerformance:
                 cache[w] = None
         return cache[w]
 
-    def immagine_token(self, w, tappata):
-        """Il disegno di default delle pedine, che non hanno un'immagine loro (12 nov 2026, Autore: «i token nei replayer non hanno disegni associati,
-        attacca un disegno token di default»): una carta scura col bordo, la barra del nome, nel riquadro dell'arte un emblema d'oro (cerchio e stella a sei
-        punte) e sotto lo spazio per il nome; girata se tappata. Disegnata nitida (disegni), una volta per misura."""
-        cache = self.__dict__.setdefault("_img_token", {})
-        k = (w, tappata)
-        if k not in cache:
-            h = round(w * 279 / 200)
-            d = DG.Disegno(w, h)
-            d.rett(0, 0, w, h, riempi="#141a24", bordo="#8a8a94", larghezza=1.4, raggio=max(4, w * 0.06))
-            m = max(4, w * 0.06)
-            d.rett(m, m, w - m, m + h * 0.07, riempi="#222833", raggio=2)                       # la barra del nome
-            a0, a1 = m + h * 0.09, h * 0.66                                                     # il riquadro dell'arte
-            d.rett(m, a0, w - m, a1, riempi="#1b212b", bordo="#2c3340", larghezza=1, raggio=2)
-            cx, cy, r = w / 2, (a0 + a1) / 2, min(w, a1 - a0) * 0.30
-            d.cerchio(cx, cy, r, bordo="#c9a24a", larghezza=max(1.2, w * 0.018))
-            import math as _m
-            punte = lambda fase: [(cx + r * 0.78 * _m.cos(fase + i * 2 * _m.pi / 3), cy + r * 0.78 * _m.sin(fase + i * 2 * _m.pi / 3)) for i in range(3)]
-            d.poligono(punte(-_m.pi / 2), riempi="#c9a24a")
-            d.poligono(punte(_m.pi / 2), riempi="#a8853a")
-            d.rett(m, h * 0.69, w - m, h * 0.76, riempi="#222833", raggio=2)                   # la riga del tipo
-            im = d.immagine()
-            if tappata:
-                im = im.rotate(90, expand=True)
-            from PIL import ImageTk
-            cache[k] = ImageTk.PhotoImage(im)
-        return cache[k]
 
     def disegna_liste(self):
         """Le due liste del momento: a sinistra il tuo mazzo (DA.lista_mia: copie rimaste nel grimorio su copie nel mazzo, la probabilita' di pescarla alla
@@ -3260,23 +3711,66 @@ class PaginaPerformance:
             if txt_n:       # R3: le tue note, in testa al racconto
                 i_n = cc.create_text(x0_r + 14, y, text=f"✎ {tit_n} · {txt_n}", anchor="nw", fill="#e8d28a", font=F(8), width=larga_r - 28)
                 y = (cc.bbox(i_n) or (0, 0, 0, y + 14))[3] + 6
-        dz_ = self.costi_passi(b).get(b["i"])
-        if dz_ is not None:     # R8: la tua decisione di questo momento, col guadagno e lo scarto dalla tua media
-            col_d = COLORI_COSTO[dz_["colore"]]
-            txt_d = ("YOUR DECISION · not estimable" if dz_["costo"] is None else
-                     f"YOUR DECISION · win chance {dz_['guadagno_r8']:+.1f} pts · {dz_['costo']:+.1f} vs your average")
-            cc.create_rectangle(x0_r + 14, y + 2, x0_r + 24, y + 12, fill=col_d, outline="")
-            i_d = cc.create_text(x0_r + 30, y, text=txt_d, anchor="nw", fill=col_d, font=F(8, True), width=larga_r - 44)
-            y = (cc.bbox(i_d) or (0, 0, 0, y + 14))[3] + 6
-        ze_ = self.ev_turno_passo(b)
-        if ze_ is not None:     # il lettore di EV (18 nov 2026): l'EV del turno di questo passo contro il solito, e delle sue fasi
-            import ev_partita as EV_
-            col_e = C["azzurro"] if ze_["scarto"] >= 1 else C["rosso"] if ze_["scarto"] <= -1 else C["testo"]
-            fasi_ = " · ".join(f"{EV_.NOMI_FASI.get(ph['f'], 'whole turn')} {ph['scarto']:+.1f}" for ph in ze_.get("fasi") or [] if ph["f"] != "turn")
-            i_e = cc.create_text(x0_r + 14, y, text=(f"EV · {'Hero' if ze_['mio'] else 'Opponent'} T{ze_['giro']}: {ze_['ev']:+.1f} pts, usual "
-                                                    f"{ze_['atteso']:+.1f}, difference {ze_['scarto']:+.1f}" + (f" ({fasi_})" if fasi_ else "")),
-                                 anchor="nw", fill=col_e, font=F(8, True), width=larga_r - 28)
-            y = (cc.bbox(i_e) or (0, 0, 0, y + 14))[3] + 6
+        # l'EV della giocata e del turno, a elenco (18 nov 2026, Autore: «Mettiamo gli argomenti in elenco: EV Giocata e punteggio, poi sotto EV
+        # registrato nella media e infine sotto la differenza totale. EV giocata positiva sempre in verde e negativa sempre in rosso ... se la giocata ha una
+        # media di game di confronto bassa allora di colore grigio», «togli dai replayer you made an error non ragioniamo piu' cosi'»): niente giudizi
+        # poi semplificato (18 nov 2026, Autore: «stare dietro ai dati di ev e' davvero un inferno ... idee per semplificare», «procedi con 1 2 3 4»): una
+        # frase con la probabilita' di vincere prima e dopo, un bollino meglio / peggio del solito, i numeri solo col mouse sopra il bollino, e niente sotto
+        # SOGLIA_PARLA punti di scarto
+        # poi solo EV + e EV - dell'Hero (18 nov 2026 sera, «a your chance to win non funziona»): una riga col numero, verde o rosso (grigio con poche
+        # partite di confronto); sull'EV negativo «Why?» apre la spiegazione e sposta in giu' quello che c'e' sotto
+        import ev_partita as EV_
+        voto_ = self.voto_fase(b) if b.get("modo") == "azioni" else None
+        y = self.disegna_win_chance(cc, b, x0_r, larga_r, y)
+        if voto_ is not None:
+            # i punti della partita in un posto fisso, subito sotto la win chance (stesso giorno, Autore: «la tabellina di accumulo pti devi tenerla sotto il
+            # grafo di win chance o la vediamo andare su e giu' e diventiamo matti»: dopo PHASE TOTAL saltava con l'altezza del voto della fase)
+            sp_ = self.segnapunti(b)
+            if sp_ is not None:
+                y = self.disegna_segnapunti(cc, sp_, x0_r, larga_r, y)
+            y = self.disegna_voto_fase(cc, b, voto_, x0_r, larga_r, y)
+        for k_v, z in enumerate(self.blocchi_ev(b) if voto_ is None else []):
+            col_v = C["muto"] if z["n"] < EV_.MINIMO else C["verde"] if z["diff"] > 0 else C["rosso"]
+            i_v = cc.create_text(x0_r + 14, y, text=f"EV {z['diff']:+.1f}".replace("-", "−"), anchor="nw", fill=col_v, font=F(12, True))
+            bv_ = cc.bbox(i_v) or (x0_r + 14, y, x0_r + 90, y + 18)
+            cc.create_text(bv_[2] + 10, (bv_[1] + bv_[3]) / 2, text=z["titolo"], anchor="w", fill=C["muto"], font=F(8, True))
+            y = bv_[3] + 4
+            if z["diff"] < 0 and z["perche"]:
+                tag_w = f"ev_why_{k_v}"
+                i_w = cc.create_text(x0_r + 14, y, text="▸ Why?", anchor="nw", fill=C["accento"], font=F(8, True), tags=(tag_w,))
+                bw_ = cc.bbox(i_w) or (x0_r + 14, y, x0_r + 60, y + 14)
+                y = bw_[3] + 6
+                testo_w = "\n".join("• " + r_ for r_ in z["perche"])
+
+                def _apri(_e, cc=cc, i_w=i_w, tag_w=tag_w, testo_w=testo_w, x_=x0_r + 22, larga_=larga_r - 40, xc_=x0_r):
+                    aperti = cc.find_withtag(tag_w + "_testo")
+                    yb_ = (cc.bbox(i_w) or (0, 0, 0, 0))[3] + 4
+                    if aperti:      # chiudi: via il testo, su quello che c'e' sotto
+                        h_ = (cc.bbox(aperti[0]) or (0, 0, 0, 0))[3] - yb_ + 6
+                        cc.delete(tag_w + "_testo")
+                        for it_ in cc.find_all():
+                            bb_ = cc.bbox(it_)
+                            if bb_ and bb_[1] >= yb_ and bb_[0] >= xc_ - 2:
+                                cc.move(it_, 0, -h_)
+                        cc.itemconfigure(i_w, text="▸ Why?")
+                        return
+                    # solo la colonna del racconto (non staccato, la tela e' la stessa della tavola)
+                    sotto = [it_ for it_ in cc.find_all() if (cc.bbox(it_) or (0, -1, 0, 0))[1] >= yb_ and (cc.bbox(it_) or (-9, 0, 0, 0))[0] >= xc_ - 2]
+                    i_t = cc.create_text(x_, yb_, text=testo_w, anchor="nw", fill=C["testo"], font=F(8), width=larga_, tags=(tag_w + "_testo",))
+                    h_ = (cc.bbox(i_t) or (0, 0, 0, yb_))[3] - yb_ + 6
+                    for it_ in sotto:
+                        cc.move(it_, 0, h_)
+                    cc.itemconfigure(i_w, text="▾ Why?")
+                cc.tag_bind(tag_w, "<Button-1>", _apri)
+            y += 6
+        # l'Opponent che lascia danni sul tavolo (18 nov 2026, Autore: «quando oppo attacca con 2 creature su 3 e io ho board vuoto, oppo ha lasciato
+        # punti sul tavolo?»): sul primo passo del suo combattimento, se ha attaccato con una parte di chi poteva e tu non avevi creature stappate
+        tc_ = self.tenuto_passo(b)
+        if tc_ is not None:
+            i_h = cc.create_text(x0_r + 14, y, text=(f"▲ OPPONENT HELD BACK · attacked with {tc_[0]} of {tc_[1]} ready creatures while you had no untapped "
+                                                    "blocker: damage left on the table (a clue: the creature kept home may be guarding against your next turn)"),
+                                 anchor="nw", fill=C["verde"], font=F(8, True), width=larga_r - 28)
+            y = (cc.bbox(i_h) or (0, 0, 0, y + 14))[3] + 6
         sk_ = self.chiave_passi(b).get(b["i"])
         if sk_ is not None:     # R7: un momento chiave, col salto del vantaggio
             i_k = cc.create_text(x0_r + 14, y, text=(f"◆ KEY MOMENT · {abs(sk_):.1f} win-probability points {'gained' if sk_ > 0 else 'lost'} against the usual"
@@ -3288,9 +3782,6 @@ class PaginaPerformance:
             cc.create_image(x0_r + 14, y + 1, image=DG.spot_filtro(12, SEGNO_FILTRO, "#ffffff", becco=False), anchor="nw")
             i_fl = cc.create_text(x0_r + 32, y, text=f"YOUR FILTER · {nf_}", anchor="nw", fill=SEGNO_FILTRO, font=F(8, True), width=larga_r - 46)
             y = (cc.bbox(i_fl) or (0, 0, 0, y + 14))[3] + 6
-        for nl_ in self.leak_passi(b).get(b["i"], []):       # i leak di questo momento (leak.py): un indizio, non una sentenza
-            i_l = cc.create_text(x0_r + 14, y, text=f"▲ LEAK · {nl_}", anchor="nw", fill="#ff5d5d", font=F(8, True), width=larga_r - 28)
-            y = (cc.bbox(i_l) or (0, 0, 0, y + 14))[3] + 6
         for col_i, tx_i in self.righe_info(f):      # cosa Arena ti ha chiesto e detto in questo passo (16 nov 2026, «vai monta»)
             i_i = cc.create_text(x0_r + 14, y, text=tx_i, anchor="nw", fill=col_i, font=F(8, True), width=larga_r - 28)
             y = (cc.bbox(i_i) or (0, 0, 0, y + 14))[3] + 6
@@ -5755,22 +6246,6 @@ class PaginaPerformance:
             self._frecce_ids.append(tag_)
             self._frecce_firme.append(("rem", k_))
 
-    def icona_board(self, k):
-        """Le icone grigie della tavola: il cuore delle vite, due carte per la mano. Disegnate nitide, una volta."""
-        cache = self.__dict__.setdefault("_icone_board", {})
-        if k not in cache:
-            L = 20
-            d = DG.Disegno(L, L)
-            grigio = "#9a9aa2"
-            if k == "cuore":
-                d.cerchio(L * 0.31, L * 0.36, L * 0.24, riempi=grigio)
-                d.cerchio(L * 0.69, L * 0.36, L * 0.24, riempi=grigio)
-                d.poligono([(L * 0.09, L * 0.45), (L * 0.91, L * 0.45), (L * 0.5, L * 0.92)], riempi=grigio)
-            else:
-                d.rett(L * 0.10, L * 0.08, L * 0.62, L * 0.78, riempi="#2c3340", bordo=grigio, larghezza=1.3, raggio=2)
-                d.rett(L * 0.36, L * 0.20, L * 0.90, L * 0.92, riempi=grigio, bordo="#0d1016", larghezza=1.3, raggio=2)
-            cache[k] = d.foto()
-        return cache[k]
 
     def sopra_carta_board(self, e):
         """Il puntatore su una carta della tavola (o in cima a una pila): la carta grande accanto, come nelle liste dell'app (12 nov 2026, Autore: «lascia
@@ -5994,9 +6469,6 @@ class PaginaPerformance:
         for j, (t, col) in enumerate(righe):
             c.create_text(bx + 8, y0 + 27 + 15 * j, text=t, anchor="w", fill=col, font=self.F(7), tags="punta")
 
-    def disegna_basso(self):
-        """Report o Matchups, l'ultima delle due aperta (il nome di prima)."""
-        self.disegna_vista(self.basso)
 
     def cambia_spot(self, m):
         """Le ricerche preimpostate o gli spot automatici di prima (13 nov 2026)."""
@@ -6064,7 +6536,7 @@ class PaginaPerformance:
                 wr = k.get("wr")
                 pochi = len(r) < 15
                 c.create_text(x0 + larga - 12, y + 15, text=f"{wr:.0f}%" if wr is not None else "-", anchor="e",
-                              fill=C["muto"] if wr is None or pochi else (C["azzurro"] if wr >= 50 else C["rosso"]), font=F(11, True))
+                              fill=C["muto"] if wr is None or pochi else (C["verde"] if wr >= 50 else C["rosso"]), font=F(11, True))
                 c.create_text(x0 + larga - 12, y + 33, text=f"{len(r):,} games" + (" · a hint" if pochi and r else ""), anchor="e", fill=C["muto"], font=F(7))
                 c._dom_box.append((x0, y, x0 + larga, y + alto, p_))
                 y += alto + 6
@@ -6088,33 +6560,41 @@ class PaginaPerformance:
         F = self.F
         r = self.scelte()
         W, H = max(c.winfo_width(), 300), max(c.winfo_height(), 200)
-        alto = 38
-        affiancati = W >= 800        # a tutta larghezza: dove vinci a sinistra, dove perdi a destra
-        per_lista = max(1, int((H - 22 - 8) // (alto + 4))) if affiancati else max(1, int((H - 2 * 22 - 8) // 2 // (alto + 4)))
+        alto = 40
+        affiancati = W >= 800        # a tutta larghezza: dove guadagni a sinistra, dove perdi a destra
+        per_lista = max(1, int((H - 40 - 8) // (alto + 4))) if affiancati else max(1, int((H - 2 * 40 - 8) // 2 // (alto + 4)))
         minimo = 15 if len(r) >= 90 else max(6, len(r) // 6)
-        meglio, peggio = DA.spot(r, minimo=minimo, quanti=per_lista, gia=self.filtri)
-        base = DA.conti(r)["wr"]
+        # l'EV di ogni partita contro il solito (ev_partita.scarti, l'atteso da tutte le partite del tipo): la misura degli spot; solo le situazioni che si
+        # sanno prima o all'inizio della partita (DA.SPOT_EV)
+        import ev_partita as EV_
+        sc = {p_: v_["scarto"] for p_, v_ in EV_.scarti([x for x in self.righe if x["tipo"] == self.tipo]).items()}
+        meglio, peggio = DA.spot(r, minimo=minimo, quanti=per_lista, gia=self.filtri, ev=sc)
+        ev_qui = [sc[x["partita"]] for x in r if x.get("partita") in sc]
+        m_qui = sum(ev_qui) / len(ev_qui) if ev_qui else None
         corto = lambda t, n: t if len(t) <= n else t[:n - 1] + "…"
-        y = 2
+        c.create_text(4, 10, text=("Where your games gain and lose EV: the situations you know before or early in the game (your deck, the opponent, start, "
+                                   "mulligan, hand, the first turns, the session), each with the win-probability points its games made a game above or below "
+                                   "the usual. Click one: its filters."), anchor="nw", fill=C["grigio"], font=F(7), width=W - 8)
+        y = 40
         larga = (W - 12) / 2 if affiancati else W
-        for j_, (tit, lista, col) in enumerate((("WHERE YOU WIN MOST", meglio, C["azzurro"]), ("WHERE YOU LOSE MOST", peggio, C["rosso"]))):
+        for j_, (tit, lista, col) in enumerate((("WHERE YOU GAIN EV", meglio, C["verde"]), ("WHERE YOU LOSE EV", peggio, C["rosso"]))):
             x0 = j_ * (larga + 12) if affiancati else 0
             if affiancati:
-                y = 2
+                y = 40
             c.create_text(x0 + 4, y + 8, text=tit, anchor="w", fill=col, font=F(7, True))
-            c.create_text(x0 + larga - 4, y + 8, text=f"vs {base:.0f}% here" if base is not None else "", anchor="e", fill=C["muto"], font=F(7))
+            c.create_text(x0 + larga - 4, y + 8, text=f"these games {m_qui:+.1f} a game" if m_qui is not None else "", anchor="e", fill=C["muto"], font=F(7))
             y += 20
             if not lista:
-                c.create_text(x0 + 4, y + 12, text=f"nothing yet: no spot with {minimo}+ games that stands out", anchor="w", fill=C["grigio"], font=F(7))
+                c.create_text(x0 + 4, y + 12, text=f"nothing yet: no situation with {minimo}+ games that stands out", anchor="w", fill=C["grigio"], font=F(7))
                 y += 28
-            for s in lista:
-                c.create_rectangle(x0, y, x0 + larga - 1, y + alto, fill="#161b25", outline=col if s["forte"] else "#252b36")
-                c.create_text(x0 + 10, y + 12, text=corto(s["nome"], int((larga - 90) / 6.4)), anchor="w", fill=C["titolo"], font=F(8, True))
-                c.create_text(x0 + 10, y + 27, text=f"{s['n']} games · {s['vinte']}-{s['perse']} · 95% CI {s['ic'][0]}–{s['ic'][1]}%"
-                              + ("  ·  strong" if s["forte"] else "  ·  a hint"), anchor="w", fill=C["grigio"] if s["forte"] else C["muto"], font=F(7))
-                c.create_text(x0 + larga - 12, y + 12, text=f"{s['wr']:.0f}%", anchor="e", fill=col, font=F(11, True))
-                c.create_text(x0 + larga - 12, y + 28, text=f"{s['delta']:+.0f}", anchor="e", fill=col, font=F(7, True))
-                c._spot_box.append((x0, y, x0 + larga, y + alto, s))
+            for s_ in lista:
+                c.create_rectangle(x0, y, x0 + larga - 1, y + alto, fill="#161b25", outline=col if s_["forte"] else "#252b36")
+                c.create_text(x0 + 10, y + 12, text=corto(s_["nome"], int((larga - 110) / 6.4)), anchor="w", fill=C["titolo"], font=F(8, True))
+                c.create_text(x0 + 10, y + 28, text=f"{s_['n']} games · {s_['vinte']}-{s_['perse']} · {s_['wr']:.0f}% WR"
+                              + ("  ·  strong" if s_["forte"] else "  ·  a hint"), anchor="w", fill=C["grigio"] if s_["forte"] else C["muto"], font=F(7))
+                c.create_text(x0 + larga - 12, y + 13, text=f"{s_['ev']:+.1f}", anchor="e", fill=col if s_["forte"] else C["muto"], font=F(11, True))
+                c.create_text(x0 + larga - 12, y + 29, text="EV a game", anchor="e", fill=C["muto"], font=F(7))
+                c._spot_box.append((x0, y, x0 + larga, y + alto, s_))
                 y += alto + 4
             y += 6
 
@@ -6134,154 +6614,358 @@ class PaginaPerformance:
                 self.disegna()
                 return
 
-    def disegna_matchup(self):
-        """La matrice: i tuoi mazzi in riga, gli archetipi incontrati in colonna (o solo quelli del meta), in ogni cella win rate e partite."""
-        c = self.tela("matchups")
-        c.delete("all")
-        c._celle = []
-        if self.righe is None:
-            return
-        F = self.F
-        mazzi, archi, celle, per_m, per_a = DA.matrice(self.scelte(), solo_meta=self.solo_meta)
-        if not mazzi or not archi:
-            c.create_text(12, 30, text="No matchups in this situation" + (" against meta decks" if self.solo_meta else ""), anchor="w", fill=C["grigio"], font=F(8))
-            return
-        W = max(c.winfo_width(), 700)
-        x0, cw, rh = 230, max(70, min(120, (W - 230 - 90) / max(1, len(archi)))), 30
-        corto = lambda t, n: t if len(t) <= n else t[:n - 1] + "…"
-        for j, a in enumerate(archi):
-            x = x0 + j * cw
-            # il nome va a capo su due righe invece di tagliarsi (12 nov 2026, Autore: «qui i nomi vengono tagliati, sistema»)
-            c.create_text(x + cw / 2, 30, text=corto(a, 2 * int((cw - 8) / 6.2)), width=cw - 8, anchor="s", justify="center", fill=C["titolo"], font=F(7, True))
-            n, wr = per_a[a]
-            c.create_text(x + cw / 2, 42, text=f"{wr:.0f}% · {n}", anchor="center", fill=C["grigio"], font=F(7))
-        c.create_text(x0 + len(archi) * cw + 40, 30, text="ALL", anchor="s", fill=C["titolo"], font=F(7, True))
-        y = 54
-        for m in mazzi:
-            n, wr = per_m[m]
-            c.create_text(8, y + rh / 2 - 6, text=corto(m, 30), anchor="w", fill=C["titolo"], font=F(8, True))
-            c.create_text(8, y + rh / 2 + 7, text=f"{n} games · {wr:.0f}%", anchor="w", fill=C["grigio"], font=F(7))
-            for j, a in enumerate(archi):
-                x = x0 + j * cw
-                v = celle.get((m, a))
-                if v is None:
-                    c.create_rectangle(x + 2, y + 2, x + cw - 2, y + rh - 2, fill="#10141b", outline="#1d222b")
-                    continue
-                nn, _vv, w = v
-                poche = nn < 5
-                fondo = "#1d222b" if poche else _colore_wr(w)
-                c.create_rectangle(x + 2, y + 2, x + cw - 2, y + rh - 2, fill=fondo, outline="#1d222b")
-                c.create_text(x + cw / 2, y + rh / 2 - 5, text=f"{w:.0f}%", fill=C["muto"] if poche else C["titolo"], font=F(8, True))
-                c.create_text(x + cw / 2, y + rh / 2 + 8, text=f"{nn}", fill=C["muto"] if poche else "#d8d8dc", font=F(6))
-                c._celle.append((x, y, x + cw, y + rh, m, a))
-            c.create_text(x0 + len(archi) * cw + 40, y + rh / 2, text=f"{wr:.0f}%", fill=C["azzurro"] if wr >= 50 else C["rosso"], font=F(8, True))
-            y += rh + 2
-        c.create_text(8, y + 12, text="grey: under 5 games, a hint", anchor="w", fill=C["muto"], font=F(7))
-        c.configure(scrollregion=(0, 0, W, y + 26))
+    # ------------------------------------------------------------ Breakdown
+    def bd_partite(self):
+        """Le partite di Breakdown: quelle degli Smart filters."""
+        return self.scelte()
 
-    def clic_matchup(self, e):
-        """Una cella: il tuo mazzo e il suo archetipo fra i filtri."""
-        c = getattr(e, "widget", None) or self.tela("matchups")
-        y = c.canvasy(e.y)
-        for x0, y0, x1, y1, m, a in getattr(c, "_celle", []):
-            if x0 <= e.x <= x1 and y0 <= y <= y1:
-                self.filtri["mio"], self.filtri["suo"] = m, a
-                self.disegna()
-                return
+    def disegna_matchup(self):
+        """I Matchups di prima: sono Breakdown."""
+        return self.disegna_report()
+
+    def disegna_sottocartelle(self, c, voci, scelta):
+        """Le sotto-cartelle di una cartella (18 nov 2026: Matchups e Gem events), col disegno delle cartelle in alto: quella scelta con la riga azzurra in cima,
+        aperta sul contenuto sotto; le altre solo testo."""
+        c.delete("all")
+        F = self.F
+        W, H = max(c.winfo_width(), 400), ALTO_SUB
+        d = DG.Disegno(W, H)
+        c._box, att, testi = [], None, []
+        x = 0
+        for k, n in voci:
+            x0, x1 = x, x + LARGA_SUB
+            top = 3 if k == scelta else 8
+            if k == scelta:
+                att = (x0, x1)
+            testi.append(((x0 + x1) / 2, (top + H) / 2 - 1, n, k == scelta))
+            c._box.append((x0, 0, x1, H, k))
+            x = x1 + 3
+        if att:
+            x0, x1 = att
+            d.linea([(0, H - 0.5), (x0 + 0.5, H - 0.5)], C["filo"], 1.0)
+            d.linea([(x1 - 0.5, H - 0.5), (W, H - 0.5)], C["filo"], 1.0)
+            pts = _cartella(x0, x1, 3, H + 1, sl=0, r=4)
+            d.poligono(pts, riempi="#131720")
+            d.linea(pts, C["filo"], 1.0)
+            d.linea([(x0 + 3, 3.8), (x1 - 3, 3.8)], C["accento"], 2.0)
+        c._img = d.foto()
+        c.create_image(0, 0, image=c._img, anchor="nw")
+        for tx, ty, t, on in testi:
+            c.create_text(tx, ty, text=t, fill=C["titolo"] if on else C["grigio"], font=F(9, on))
+
+    def clic_sottocartella(self, c, e):
+        k = next((b[4] for b in getattr(c, "_box", []) if b[0] <= e.x <= b[2] and b[1] <= e.y <= b[3]), None)
+        if k is not None:
+            self.cambia_mu_modo(k)
+        return k
+
+    def cambia_mu_modo(self, m):
+        self.mu_modo = m
+        self.sincronizza()
+        if "report" in self.visibili():
+            self.disegna_report()
+
+    def disegna_vuoto_mazzo(self, c, W):
+        """Matchups senza un mazzo (18 nov 2026, Autore: «la prima cosa che deve apparire e' quel messaggio al centro della scheda che quindi sara' vuota»):
+        al centro il messaggio e il pulsante che apre Choose your deck."""
+        F = self.F
+        H = max(c.winfo_height(), 360)
+        cy = H / 2 - 40
+        c.create_text(W / 2, cy, text="Choose a deck to see its matchups", fill=C["titolo"], font=F(14, True))
+        c.create_text(W / 2, cy + 30, text=("Pick one of your decks in Choose your deck, on the left. Format, event and rank narrow it down;\nyou can also pick "
+                                            "the opponent's deck there."), fill=C["grigio"], font=F(9), justify="center")
+        disegna_s3(c, W / 2 - 90, cy + 58, W / 2 + 90, cy + 86, "Choose your deck", F(9, True))
+        c._bd_box.append((W / 2 - 90, cy + 58, W / 2 + 90, cy + 86, ("scegli",)))
+        c.configure(scrollregion=(0, 0, W, H))
+
+    def corse_eventi(self, r):
+        """Le iscrizioni agli eventi pagati del mazzo (18 nov 2026, Autore: «in events ogni evento pagato e' una riga con il suo risultato e data e nome
+        evento e se lo espando dentro ho i game»): dai log (premi_eventi) ogni iscrizione (EventPayEntry, il CourseId) col suo ingresso e il suo premio
+        (EventReward dello stesso CourseId); le partite del mazzo in quell'evento divise in corse in ordine di tempo (una corsa Bo1 finisce a 7 vittorie, il
+        trofeo, o a 3 sconfitte) e abbinate alle iscrizioni nello stesso ordine (le partite nel log non dicono il CourseId: grado C).
+        -> [dict(evento, data, partite, vinte, perse, trofeo, ingresso_gemme, ingresso_oro, gemme, oro, buste)], dalla piu' recente."""
+        mio = self.filtri.get("mio")
+        try:
+            import premi_eventi as PE
+            voci = PE.raccogli()
+        except Exception:      # noqa: BLE001 - senza i premi niente eventi pagati
+            voci = []
+        iscr, premi = collections.defaultdict(list), {}
+        for v in voci:
+            if v["fonte"] not in ("EventPayEntry", "EventReward") or (mio and v.get("mazzo") and v.get("mazzo").strip() != mio.strip()):
+                continue
+            if v["fonte"] == "EventPayEntry":
+                if v["id"] not in [z["id"] for z in iscr[v["evento"]]]:
+                    iscr[v["evento"]].append(dict(id=v["id"], ingresso_gemme=-min(v["gemme"], 0), ingresso_oro=-min(v["oro"], 0)))
+            else:
+                premi[v["id"]] = dict(gemme=max(v["gemme"], 0), oro=max(v["oro"], 0), buste=sum(n for _s, n in v["buste"]))
+        out = []
+        for ev, cc in iscr.items():
+            pp = sorted((x for x in r if x.get("evento") == ev), key=lambda x: x["quando"])
+            corse, cur, v_, p_ = [], [], 0, 0
+            for x in pp:
+                cur.append(x)
+                v_ += 1 if x["vinta"] else 0
+                p_ += 0 if x["vinta"] else 1
+                if v_ >= VITTORIE_CORSA or p_ >= SCONFITTE_CORSA:
+                    corse.append(cur)
+                    cur, v_, p_ = [], 0, 0
+            if cur:
+                corse.append(cur)
+            for j, z in enumerate(cc):
+                gg = corse[j] if j < len(corse) else []
+                vv = sum(1 for x in gg if x["vinta"])
+                pr = premi.get(z["id"], dict(gemme=0, oro=0, buste=0))
+                out.append(dict(evento=ev, id=z["id"], data=gg[0]["quando"] if gg else None, partite=gg, vinte=vv, perse=len(gg) - vv,
+                                trofeo=vv >= VITTORIE_CORSA, ingresso_gemme=z["ingresso_gemme"], ingresso_oro=z["ingresso_oro"], **pr))
+        out.sort(key=lambda z: (z["data"] is None, -(z["data"].timestamp() if z["data"] else 0)))
+        return out
+
+    def disegna_gemme(self, c, r, W, y):
+        """Gem events (18 nov 2026, Autore: «sopra i dati di che quel mazzo ha ottenuto dagli eventi: wr / conversione oro in gemme / ecc»; «ogni evento
+        pagato e' una riga con il suo risultato e data e nome evento e se lo espando dentro ho i game»): in testa i numeri del mazzo negli eventi pagati, sotto
+        una riga per iscrizione, aperta mostra le sue partite (il clic: il replay)."""
+        F = self.F
+        ev = self.corse_eventi(r)
+        if not ev:
+            c.create_text(14, y + 14, text="This deck hasn't played a paid event in your logs yet (the logs start on 22 Sep 2026).", anchor="w",
+                          fill=C["grigio"], font=F(9))
+            c.configure(scrollregion=(0, 0, W, y + 40))
+            return
+        n = sum(len(z["partite"]) for z in ev)
+        vinte = sum(z["vinte"] for z in ev)
+        oro_s, gem_s = sum(z["ingresso_oro"] for z in ev), sum(z["ingresso_gemme"] for z in ev)
+        gem_v = sum(z["gemme"] for z in ev)
+        conv = f"{round(1000 * gem_v / oro_s)} gems" if oro_s else "-"
+        netto = gem_v - gem_s
+        tessere = [("PAID EVENTS", str(len(ev)), f"{sum(1 for z in ev if z['trofeo'])} trophies (7 wins)", C["titolo"]),
+                   ("WON · LOST", f"{vinte}-{n - vinte}", f"{n} games", C["titolo"]),
+                   ("WIN RATE", f"{round(100 * vinte / n)}%" if n else "-", "in paid events", C["muto"] if not n else C["verde"] if vinte / n >= 0.5 else C["rosso"]),
+                   ("SPENT", " + ".join(t_ for t_ in ((f"{oro_s:,} gold" if oro_s else ""), (f"{gem_s:,} gems" if gem_s else "")) if t_) or "-", "entries",
+                    C["titolo"]),
+                   ("GEMS WON", f"{gem_v:,}", f"net {netto:+,} gems", C["verde"] if gem_v else C["muto"]),
+                   ("GOLD → GEMS", conv, "won for every 1,000 gold spent", C["arancio"] if oro_s else C["muto"]),
+                   ("PACKS", str(sum(z["buste"] for z in ev)), "from the prizes", C["titolo"])]
+        tw = (W - 28) / len(tessere)
+        for i, (t_, v_, sotto, col) in enumerate(tessere):
+            x0 = 14 + i * tw
+            c.create_rectangle(x0, y, x0 + tw - 8, y + 66, fill="#161b25", outline="#252b36")
+            c.create_rectangle(x0 + 4, y + 6, x0 + 6, y + 18, fill=C["accento"], outline="")
+            c.create_text(x0 + 10, y + 12, text=t_, anchor="w", fill=C["titolo"], font=F(8, True))
+            c.create_text(x0 + 10, y + 36, text=v_, anchor="w", fill=col, font=F(15, True))
+            c.create_text(x0 + 10, y + 56, text=sotto, anchor="w", fill=C["muto"], font=F(7), width=tw - 20)
+        y += 82
+        c.create_text(14, y + 8, text="EVERY PAID EVENT · click one: its games · click a game: its replay", anchor="w", fill=C["azzurro"], font=F(8, True))
+        y += 24
+        cols = (("DATE", 14), ("EVENT", 150), ("RESULT", 430), ("ENTRY", 540), ("GEMS WON", 680), ("PACKS", 790))
+        for t_, xc in cols:
+            c.create_text(xc, y + 6, text=t_, anchor="w", fill=C["titolo"], font=F(7, True))
+        y += 20
+        for i, z in enumerate(ev):
+            aperto = z["id"] in self.gem_aperti
+            c.create_rectangle(8, y - 2, W - 8, y + 26, fill="#1f3446" if aperto else ("#161b25" if i % 2 == 0 else "#131820"),
+                               outline=C["azzurro"] if aperto else "")
+            ingresso = " + ".join(t_ for t_ in ((f"{z['ingresso_gemme']:,} gems" if z["ingresso_gemme"] else ""),
+                                                (f"{z['ingresso_oro']:,} gold" if z["ingresso_oro"] else "")) if t_) or "-"
+            ris = f"{z['vinte']}-{z['perse']}" + ("  · trophy" if z["trofeo"] else "")
+            for t_, xc, col in (((("▾ " if aperto else "▸ ") + (f"{z['data']:%d %b %H:%M}" if z["data"] else "no games")), 14, C["titolo"]),
+                                (nome_evento(z["evento"])[:38], 150, C["titolo"]),
+                                (ris, 430, C["arancio"] if z["trofeo"] else (C["verde"] if z["vinte"] >= z["perse"] else C["rosso"])),
+                                (ingresso, 540, C["testo"]), (f"{z['gemme']:,}", 680, C["verde"] if z["gemme"] else C["muto"]),
+                                (str(z["buste"]), 790, C["testo"])):
+                c.create_text(xc, y + 12, text=t_, anchor="w", fill=col, font=F(9, True))
+            c._bd_box.append((8, y - 2, W - 8, y + 26, ("evento_gemme", z["id"])))
+            y += 30
+            if aperto:
+                for x in z["partite"]:
+                    c.create_rectangle(32, y - 2, W - 8, y + 20, fill="#131820", outline="")
+                    for t_, xc, col in ((f"{x['quando']:%d %b %H:%M}", 44, C["testo"]), ((x.get("suo") or "Unknown")[:30], 170, C["titolo"]),
+                                        ("on the play" if x.get("inizia") else "on the draw", 420, C["testo"]),
+                                        (f"T{x.get('turno')}" if x.get("turno") else "-", 540, C["testo"]),
+                                        ("Won" if x["vinta"] else "Lost", 620, C["verde"] if x["vinta"] else C["rosso"]),
+                                        ("▶ replay", 720, C["accento"])):
+                        c.create_text(xc, y + 9, text=t_, anchor="w", fill=col, font=F(8, True))
+                    c._bd_box.append((32, y - 2, W - 8, y + 20, ("partita", x)))
+                    y += 22
+                if not z["partite"]:
+                    c.create_text(44, y + 8, text="no games of this entry in your logs", anchor="w", fill=C["muto"], font=F(8))
+                    y += 22
+                y += 6
+        c.create_text(14, y + 10, text=("Entry and prizes are read from your Arena logs; the games are matched to each entry in time order (Bo1: an entry ends at 7 "
+                                        "wins or 3 losses). Gold → gems: the gems the prizes gave back for every 1,000 gold of entries."), anchor="nw",
+                      fill=C["muto"], font=F(7), width=W - 28)
+        c.configure(scrollregion=(0, 0, W, y + 40))
 
     def disegna_report(self):
+        """Breakdown (18 nov 2026, il terzo giro, Autore: «questa pagina si completa dalla selezione del deck in smart filters e parte gia' dai dati del deck
+        selezionato altrimenti da tutti i deck / il confronto va verso all a meno che in smart filters deck non abbiamo stabilito un colore avversario / e poi
+        la selezione di formato ed eventi», «immagina sempre che un player parta sapendo tutto e voglia andare in spot ... le informazioni non devono essere
+        ridondanti»): nessuna scelta sua. La domanda in testa la dicono gli Smart filters (il mazzo e il colore avversario di By deck, formato, evento, rango);
+        sotto la risposta (quante volte, vinte e perse, win rate, EV a partita, on the play e on the draw, l'ultima volta) e una riga per ogni mazzo
+        avversario incontrato (con un colore avversario in By deck, solo quelli di quel colore). Il clic su un avversario lo mette fra i filtri e mostra le
+        partite contro di lui, una per riga (il clic apre il replay); il doppio clic le apre tutte nel replayer."""
         c = self.tela("report")
         c.delete("all")
-        c._righe_rp, c._n = [], 0
+        c._bd_box, c._n = [], 0
         if self.righe is None:
             return
         F = self.F
-        rep = DA.report(self.scelte(), self.per, self.ordina if self.ordina != "wl" else "vinte")
-        W = max(c.winfo_width(), 700)
-        x = 8
-        c._col_x = []
-        for k, t, w in COLONNE:
-            c.create_text(x, 10, text=t or DA.nome_var(self.per).upper()[:32], anchor="w", fill=C["accento"] if k == self.ordina else C["titolo"], font=F(7, True))
-            c._col_x.append((x, x + w, k))
-            x += w
-        y = 26
-        for i, r in enumerate(rep):
-            if i % 2 == 0:
-                c.create_rectangle(0, y - 2, W, y + 22, fill="#161b25", outline="")
-            gr_ = r["poche"]
-            x = 8
-            for k, _t, w in COLONNE:
-                if k == "wr":
-                    col = C["muto"] if gr_ or r["wr"] is None else (C["azzurro"] if r["wr"] >= 50 else C["rosso"])
-                    c.create_rectangle(x, y + 5, x + 120, y + 15, fill="#252b36", outline="")
-                    if r["wr"] is not None:
-                        c.create_rectangle(x, y + 5, x + 1.2 * r["wr"], y + 15, fill=col, outline="")
-                    c.create_line(x + 60, y + 2, x + 60, y + 18, fill="#d8d8dc")
-                    c.create_text(x + 128, y + 10, text=f"{r['wr']:.0f}%" if r["wr"] is not None else "-", anchor="w", fill=col, font=F(8, True))
-                else:
-                    v = {"nome": r["nome"], "n": str(r["n"]), "wl": f"{r['vinte']}-{r['perse']}", "play": f"{r['play']:.0f}%" if r["play"] is not None else "-",
-                         "draw": f"{r['draw']:.0f}%" if r["draw"] is not None else "-", "mull": f"{r['mull']:.0f}%" if r["mull"] is not None else "-",
-                         "turni": f"T{r['turni']}" if r["turni"] else "-", "delta": f"{r['delta']:+.1f}" if r["delta"] is not None else "-"}[k]
-                    col = (C["muto"] if gr_ else (C["azzurro"] if (r["delta"] or 0) > 0 else C["rosso"] if (r["delta"] or 0) < 0 else C["testo"])) if k == "delta" \
-                        else (C["muto"] if gr_ else C["titolo"] if k == "nome" else C["testo"])
-                    if k == "nome" and len(v) > 34:
-                        v = v[:33] + "…"
-                    c.create_text(x, y + 10, text=v, anchor="w", fill=col, font=F(8, k == "nome"))
-                x += w
-            c._righe_rp.append((y - 2, y + 22, r["valore"]))
-            y += 24
-        c._n = len(rep)
-        if not rep:
-            c.create_text(12, 40, text="No games in this situation", anchor="w", fill=C["grigio"], font=F(8))
-        c.create_text(8, y + 10, text="grey: under 15 games, a hint", anchor="w", fill=C["muto"], font=F(7))
+        import ev_partita as EV_
+        tutte_t = [x for x in self.righe if x["tipo"] == self.tipo]
+        sc = {p_: v_["scarto"] for p_, v_ in EV_.scarti(tutte_t).items()}
+        formati = {}
+        for x in tutte_t:
+            formati.setdefault(x.get("evento"), x.get("formato"))
+        r = self.bd_partite()
+        W = max(c.winfo_width(), 800)
+        if not self.filtri.get("mio"):      # senza un mazzo: solo il messaggio al centro (anche dopo Reset)
+            return self.disegna_vuoto_mazzo(c, W)
+
+        def numeri(xs):
+            n = len(xs)
+            v = sum(1 for x in xs if x["vinta"])
+            ev = [sc[x["partita"]] for x in xs if x.get("partita") in sc]
+            pl = [x for x in xs if x.get("inizia") is True]
+            dr = [x for x in xs if x.get("inizia") is False]
+            wr_ = lambda ys: round(100 * sum(1 for y in ys if y["vinta"]) / len(ys)) if ys else None
+            return dict(n=n, v=v, p=n - v, wr=wr_(xs), ev=round(sum(ev) / len(ev), 1) if ev else None, play=wr_(pl), n_play=len(pl), draw=wr_(dr),
+                        n_draw=len(dr), ultima=max((x["quando"] for x in xs), default=None), ic=DA.conti(xs).get("ic") if xs else None,
+                        turni=round(sum(x.get("turno") or 0 for x in xs) / n, 1) if n else None)
+        # la domanda, dagli Smart filters
+        f_ = self.filtri
+        contro = (f_.get("suo") or (f"{DA.nome_vs(f_['vs'])} decks" if f_.get("vs") else None) or "every deck you met")
+        dove = " · ".join(t_ for t_ in ((f_.get("formato") or "").capitalize(), nome_evento(f_["evento"], formati.get(f_["evento"])) if f_.get("evento") else "",
+                                        f_.get("rango") or "") if t_) or "everywhere"
+        dom = f"{f_.get('mio') or 'All your decks'}  vs  {contro}  ·  {dove}"
+        c.create_text(14, 16, text=dom, anchor="w", fill=C["titolo"], font=F(12, True), width=W - 28)
+        if self.mu_modo == "gemme":
+            return self.disegna_gemme(c, r, W, 36)
+        k_ = numeri(r)
+        tessere = [("GAMES", f"{k_['n']}", "", C["titolo"]),
+                   ("WON · LOST", f"{k_['v']}-{k_['p']}", "", C["titolo"]),
+                   ("WIN RATE", f"{k_['wr']}%" if k_["wr"] is not None else "-", f"95% CI {k_['ic'][0]}–{k_['ic'][1]}%" if k_.get("ic") else "",
+                    C["muto"] if k_["wr"] is None or k_["n"] < 5 else C["verde"] if k_["wr"] >= 50 else C["rosso"]),
+                   ("EV A GAME", f"{k_['ev']:+.1f}" if k_["ev"] is not None else "-", "win-probability points vs the usual",
+                    C["muto"] if k_["ev"] is None or k_["n"] < 5 else C["verde"] if k_["ev"] > 0 else C["rosso"]),
+                   ("ON THE PLAY", f"{k_['play']}%" if k_["play"] is not None else "-", f"win rate in {k_['n_play']} games", C["testo"]),
+                   ("ON THE DRAW", f"{k_['draw']}%" if k_["draw"] is not None else "-", f"win rate in {k_['n_draw']} games", C["testo"]),
+                   ("LAST", f"{k_['ultima']:%d %b}" if k_["ultima"] else "-", f"avg {k_['turni']} turns" if k_["turni"] else "", C["testo"])]
+        tw = (W - 28) / len(tessere)
+        for i, (t_, v_, sotto, col) in enumerate(tessere):
+            x0 = 14 + i * tw
+            c.create_rectangle(x0, 36, x0 + tw - 8, 102, fill="#161b25", outline="#252b36")
+            c.create_rectangle(x0 + 4, 42, x0 + 6, 54, fill=C["accento"], outline="")
+            c.create_text(x0 + 10, 48, text=t_, anchor="w", fill=C["titolo"], font=F(8, True))
+            c.create_text(x0 + 10, 72, text=v_, anchor="w", fill=col, font=F(16, True))
+            c.create_text(x0 + 10, 92, text=sotto, anchor="w", fill=C["muto"], font=F(7), width=tw - 20)
+        y = 116
+        if k_["n"] and k_["n"] < 5:
+            c.create_text(14, y, text="under 5 games: a hint, not a fact", anchor="w", fill=C["arancio"], font=F(7, True))
+            y += 16
+        # (la striscia degli scenari per evento c'e' stata un'ora, il 18 nov 2026: Autore, «questo riquadro non serve»; gli scenari sono il filtro Event)
+        if not r:
+            c.create_text(14, y + 14, text="No games: change the Smart filters on the left.", anchor="w", fill=C["grigio"], font=F(9))
+            c.configure(scrollregion=(0, 0, W, y + 40))
+            return
+        if True:       # una riga per ogni mazzo avversario incontrato (con un avversario scelto restano tutti, il suo acceso)
+            c.create_rectangle(14, y + 3, 16, y + 17, fill=C["accento"], outline="")
+            c.create_text(22, y + 10, text="AGAINST EACH DECK YOU MET", anchor="w", fill=C["titolo"], font=F(9, True))
+            c.create_text(W - 14, y + 10, text="click a deck: the totals against it (again: all) · double-click: its games in the replayer · grey under 5 games",
+                          anchor="e", fill=C["muto"], font=F(7))
+            y += 26
+            gruppi = collections.defaultdict(list)
+            for x in (DA.filtra(self.righe or [], {k2: v2 for k2, v2 in f_.items() if k2 != "suo"}, self.tipo) if f_.get("suo") else r):
+                gruppi[x.get("suo") or "Unknown"].append(x)
+            righe_ = []
+            for v, xs in gruppi.items():
+                var_ = collections.Counter(DA.vs_di(x_) for x_ in xs if DA.vs_di(x_))
+                righe_.append(dict(valore=v, nome=v, colori=var_.most_common(1)[0][0] if var_ else "", **numeri(xs)))
+            ordk = self.bd_ord
+            righe_.sort(key=lambda z: str(z["nome"]).lower() if ordk == "nome" else (len(z["colori"]) or 9, z["colori"], str(z["nome"]).lower()) if ordk == "col" else (z["n"] < 5, -(z.get(ordk if ordk != "wl" else "v") or -1e9)
+                                                                                       if ordk != "ultima" else -(z["ultima"].timestamp() if z["ultima"] else 0)))
+            x = 14
+            c.create_rectangle(8, y - 3, W - 8, y + 19, fill=TESTA_TAB, outline="")
+            c.create_line(8, y + 19, W - 8, y + 19, fill=C["accento"], width=2)
+            for kc, tc, wc in BD_COLONNE:
+                c.create_text(x, y + 8, text=tc or "OPPONENT'S DECK", anchor="w", fill=C["accento"] if kc == ordk else C["titolo"], font=F(8, True))
+                c._bd_box.append((x, y, x + wc, y + 16, ("ord", kc)))
+                x += wc
+            y += 26
+            nmax = max(z["n"] for z in righe_)
+            for i, z in enumerate(righe_):
+                poche = z["n"] < 5
+                scelto_ = f_.get("suo") == z["valore"]
+                if i % 2 == 0 or scelto_:
+                    c.create_rectangle(8, y - 2, W - 8, y + 22, fill="#1f3446" if scelto_ else "#161b25", outline=C["azzurro"] if scelto_ else "")
+                x = 14
+                for kc, _tc, wc in BD_COLONNE:
+                    if kc == "col":
+                        for j, ch in enumerate(z["colori"]):
+                            img = self.lista().simbolo(ch, 14)
+                            if img is not None:
+                                c.create_image(x + 7 + j * 16, y + 10, image=img)
+                        if not z["colori"]:
+                            c.create_text(x, y + 10, text="?", anchor="w", fill=C["muto"], font=F(8, True))
+                    elif kc == "nome":
+                        c.create_text(x, y + 10, text=z["nome"][:40], anchor="w", fill=C["muto"] if poche else C["titolo"], font=F(8, True))
+                    elif kc == "n":
+                        c.create_rectangle(x, y + 6, x + 90, y + 14, fill="#252b36", outline="")
+                        c.create_rectangle(x, y + 6, x + 90 * z["n"] / nmax, y + 14, fill=C["muto"] if poche else C["accento"], outline="")
+                        c.create_text(x + 98, y + 10, text=str(z["n"]), anchor="w", fill=C["testo"], font=F(8, True))
+                    elif kc == "wr":
+                        col = C["muto"] if poche or z["wr"] is None else (C["verde"] if z["wr"] >= 50 else C["rosso"])
+                        c.create_rectangle(x, y + 5, x + 120, y + 15, fill="#252b36", outline="")
+                        c.create_rectangle(x, y + 5, x + 1.2 * (z["wr"] or 0), y + 15, fill=col, outline="")
+                        c.create_line(x + 60, y + 2, x + 60, y + 18, fill="#d8d8dc")
+                        c.create_text(x + 128, y + 10, text=f"{z['wr']}%", anchor="w", fill=col, font=F(8, True))
+                    else:
+                        v_ = {"wl": f"{z['v']}-{z['p']}", "ev": f"{z['ev']:+.1f}" if z["ev"] is not None else "-",
+                              "play": f"{z['play']}% · {z['n_play']}" if z["play"] is not None else "-",
+                              "draw": f"{z['draw']}% · {z['n_draw']}" if z["draw"] is not None else "-",
+                              "ultima": f"{z['ultima']:%d %b}" if z["ultima"] else "-"}[kc]
+                        col = C["muto"] if poche else ((C["verde"] if z["ev"] > 0 else C["rosso"]) if kc == "ev" and z["ev"] else C["testo"])
+                        c.create_text(x, y + 10, text=v_, anchor="w", fill=col, font=F(8, kc == "ev"))
+                    x += wc
+                c._bd_box.append((8, y - 2, W - 8, y + 22, ("riga", "suo", z["valore"])))
+                y += 24
+            c._n = len(righe_)
         c.configure(scrollregion=(0, 0, W, y + 24))
-        self.maschera_rp(c)
 
     def maschera_rp(self, c=None):
-        """La riga che in fondo starebbe a meta' si copre: in vista solo righe intere (12 nov 2026: «tutto non tagliato»); sopra la copertura quante righe restano
-        sotto (la riga d'aiuto sotto le cartelle non c'e' piu')."""
-        c = c or self.tela("report")
-        c.delete("maschera")
-        top, h = c.canvasy(0), max(c.winfo_height(), 60)
-        fondo = top + h
-        W = max(c.winfo_width(), 700)
-        ultimo = 24 + int((fondo - 24) // 24) * 24       # le righe cominciano a 24 e sono alte 24
-        fine = 24 + 24 * getattr(c, "_n", 0)
-        sotto = (fine - ultimo) // 24 if fine > ultimo else 0
-        if sotto and fondo - ultimo < 18 and ultimo - 24 > top + 24:       # serve posto per la scritta: si copre una riga in piu'
-            ultimo -= 24
-            sotto += 1
-        if ultimo < fondo:
-            c.create_rectangle(0, ultimo, W + 10, fondo + 2, fill=C["scheda"], outline="", tags="maschera")
-        if sotto:
-            c.create_text(W - 12, (ultimo + fondo) / 2, text=f"{sotto} more row{'s' if sotto > 1 else ''} below · scroll", anchor="e", fill=C["grigio"],
-                          font=self.F(7, True), tags="maschera")
+        """(Breakdown non copre piu' l'ultima riga: la tabella scorre intera, con la barra.)"""
+        return None
 
     def partite_numero(self, da):
-        """R14: il doppio clic su una riga del Report o su una cella dei Matchups (il primo clic l'ha messa fra i filtri) apre le sue partite nel replayer,
-        una dopo l'altra (la playlist), dalla piu' recente."""
+        """R14: il doppio clic su un avversario di Breakdown (il primo clic l'ha messo fra i filtri) apre le sue partite nel replayer, una dopo l'altra (la
+        playlist), dalla piu' recente."""
         r = sorted(self.scelte(), key=lambda x: x["quando"], reverse=True)
         if not r:
             return None
-        return self.apri_playlist(r, "Report row" if da == "report" else "Matchup")
+        return self.apri_playlist(r, "Matchup")
 
     def clic_report(self, e):
+        """Breakdown: un avversario va fra i filtri (si scende alle sue partite), un titolo ordina, una partita apre il replay."""
         c = getattr(e, "widget", None) or self.tela("report")
-        y = c.canvasy(e.y)
-        if y < 22:      # le intestazioni: ordina
-            for a, b, k in getattr(c, "_col_x", []):
-                if a <= e.x < b:
-                    self.ordina = "nome" if k == "nome" else k
-                    self.disegna_report()
-                    return
-            return
-        for a, b, v in getattr(c, "_righe_rp", []):
-            if a <= y < b:
-                self.filtri[self.per] = v
-                self.disegna()
-                return
+        x, y = c.canvasx(e.x), c.canvasy(e.y)
+        b = next((b_ for b_ in getattr(c, "_bd_box", []) if b_[0] <= x <= b_[2] and b_[1] <= y <= b_[3]), None)
+        if b is None:
+            return None
+        cosa = b[4]
+        if cosa[0] == "riga":       # l'avversario fra i filtri; di nuovo, tolto
+            self.filtri[cosa[1]] = None if self.filtri.get(cosa[1]) == cosa[2] else cosa[2]
+            self.disegna()
+        elif cosa[0] == "ord":
+            self.bd_ord = cosa[1]
+            self.disegna_report()
+        elif cosa[0] == "partita":
+            self.apri_board(cosa[1])
+        elif cosa[0] == "scegli":       # Matchups vuoto: apre Choose your deck
+            self.apri_deck()
+        elif cosa[0] == "evento_gemme":     # Gem events: l'evento si apre o si chiude
+            self.gem_aperti ^= {cosa[1]}
+            self.disegna_report()
+        return cosa
 
-    # ------------------------------------------------------------ il confronto situazionale (12 nov 2026, «procedi con i confronti situazionali»)
     def b_confronto(self):
         """B: il resto delle partite (rest), tutte (all) o una situazione salvata (s<i>). -> (partite, nome, descrizione)."""
         tutte = [x for x in self.righe if x["tipo"] == self.tipo]
@@ -6367,7 +7051,7 @@ class PaginaPerformance:
                 td, cd = "-", C["muto"]
             else:
                 td = f"{d:+.1f} pts" if r["unita"] == "%" else f"{d:+.1f} turns"
-                cd = (C["azzurro"] if d > 0 else C["rosso"] if d < 0 else C["testo"]) if buono else C["testo"]
+                cd = (C["verde"] if d > 0 else C["rosso"] if d < 0 else C["testo"]) if buono else C["testo"]
             c.create_text(cx[3], y + 12, text=td, anchor="w", fill=cd, font=F(8, True))
             if r["p"] is None:
                 tv, cv, fv = "too few games (5 a side)", C["muto"], F(7)
@@ -6414,7 +7098,8 @@ class PaginaPerformance:
             c.create_line(0, 5, W, 5, fill=C["filo"])
         nome, chiavi = FASI[j]
         on = sum(1 for k in chiavi if self.filtri.get(k) is not None)
-        c.create_text(0, H - 10, text=nome, anchor="w", fill=C["accento"] if on else C["muto"], font=F(7, True))
+        c.create_rectangle(0, H - 16, 2, H - 4, fill=C["accento"], outline="")
+        c.create_text(7, H - 10, text=nome, anchor="w", fill=C["accento"] if on else C["titolo"], font=F(8, True))
         if not chiavi:      # una fase senza filtri in piu': niente + more
             return
         t = f"+ {on} on" if on else "+ more"
@@ -6447,7 +7132,7 @@ class PaginaPerformance:
         if k.startswith("@"):
             carta = [f"{PaginaPerformance.chiave_carta(k[1:])}{n}" for n in DA.CAMPI_TURNO] if PaginaPerformance.chiave_carta(k[1:]) else []
             return [f"{k[1:]}{n}" for n in DA.CAMPI_TURNO] + carta
-        return [k[1:]] if k[:1] in ("&", "%") else [k]
+        return [k[1:]] if k[:1] in ("&", "%", "?") else [k]
 
     def reset_scheda_av(self):
         """Il Reset della scheda aperta di Advanced filters: i suoi filtri via, gli altri (le altre schede, gli smart filters) restano."""
@@ -6455,7 +7140,7 @@ class PaginaPerformance:
             self.filtri.pop(k, None)
         for _t, kk in self.sezioni_av(self.scheda_av):
             for k in kk:
-                if k[:1] in ("@", "&"):
+                if k[:1] in ("@", "&", "?"):
                     self.__dict__.setdefault("_righe_ui", {}).pop(k[1:], None)
         self.disegna()
 
@@ -6580,7 +7265,7 @@ class PaginaPerformance:
                 att = (x0, x1)
             elif sopra == j:
                 d.poligono(_cartella(x0, x1, top, H + 1, sl=0, r=4), riempi="#121722")
-            testi.append(((x0 + x1) / 2, (top + H) / 2 + 1, nome_g, j == aperta))
+            testi.append(((x0 + x1) / 2, (top + H) / 2 - 1, nome_g, j == aperta))
             self.b_aree_av.append((x0, x1, j))
             x = x1 + 2
         if att:
@@ -6635,9 +7320,12 @@ class PaginaPerformance:
         c._pezzi = []
         r = self.scelte()
         k_ = DA.conti(r)
-        tot = DA.conti([x for x in self.righe if x["tipo"] == self.tipo])
+        tot = DA.conti(self.base_confronto())        # con un mazzo scelto, le partite di quel mazzo (18 nov 2026)
         c.create_text(12, 16, text=f"YOUR QUESTION · {self.tipo.lower()} games when", anchor="w", fill=C["azzurro"], font=F(7, True))
-        x, y = 12, 40
+        # la domanda detta di fila (18 nov 2026): sopra i pezzi, una frase sola
+        i_fr = c.create_text(12, 30, text=DA.frase({k_: v_ for k_, v_ in self.filtri.items() if v_ is not None}, self.tipo), anchor="nw",
+                             fill=C["titolo"], font=F(9, True), width=LARGA_FASE - 24, tags="frase")
+        x, y = 12, (c.bbox(i_fr) or (0, 0, 0, 40))[3] + 18
         accesi = [(kf, v) for kf, v in self.filtri.items() if v is not None]
         if not accesi:
             c.create_text(x, y, text="no filter yet: all your games", anchor="w", fill=C["muto"], font=F(7))
@@ -6654,10 +7342,10 @@ class PaginaPerformance:
         # la risposta
         y += 30
         wr = k_["wr"]
-        col = C["muto"] if wr is None else (C["azzurro"] if wr >= 50 else C["rosso"])
+        col = C["muto"] if wr is None else (C["verde"] if wr >= 50 else C["rosso"])
         c.create_text(12, y + 4, text=f"{wr:.0f}%" if wr is not None else "-", anchor="w", fill=col, font=F(18, True))
         info = (f"{k_['n']} games · {k_['vinte']}-{k_['perse']}" + (f" · 95% CI {k_['ic'][0]}–{k_['ic'][1]}%" if k_.get("ic") else "")
-                + (f" · vs all your {self.tipo.lower()} games {tot['wr']:.0f}%" if tot["wr"] is not None and accesi else ""))
+                + (f" · vs {self.nome_base()} ({tot['n']}) {tot['wr']:.0f}%" if tot["wr"] is not None and any(kf != "mio" for kf, _v in accesi) else ""))
         c.create_text(100, y - 2, text=info, anchor="w", fill=C["grigio"], font=F(8))
         if 0 < k_["n"] < 30:
             c.create_text(100, y + 14, text="under 30 games: a hint, not a fact", anchor="w", fill=C["arancio"], font=F(7, True))
@@ -6691,7 +7379,7 @@ class PaginaPerformance:
                               anchor="w", fill=C["rosso"], font=F(7, True))
             if es_["ev"] is not None:
                 y += 18
-                col_e = C["azzurro"] if es_["ev"] >= 1 else C["rosso"] if es_["ev"] <= -1 else C["testo"]
+                col_e = C["verde"] if es_["ev"] >= 1 else C["rosso"] if es_["ev"] <= -1 else C["testo"]
                 c.create_text(12, y + 14, text=(f"EV OF THE SPOT · those turns gave {es_['ev']:+.1f} win-probability points against the usual"
                                                 + (" · under 30 games, a hint" if es_["ev_n"] < 30 else "")), anchor="w", fill=col_e, font=F(7, True))
         c.configure(height=y + 26)
@@ -6715,6 +7403,9 @@ class PaginaPerformance:
                 continue
             if len(chiavi) == 1 and chiavi[0].startswith("&"):
                 y = self.righe_abilita(ca, chiavi[0][1:], y, tutte)
+                continue
+            if len(chiavi) == 1 and chiavi[0].startswith("?"):
+                y = self.righe_mano(ca, chiavi[0][1:], y, tutte)
                 continue
             altri = {DA.SOLO_TIPO[k] for k in chiavi if DA.SOLO_TIPO.get(k, self.tipo) != self.tipo}
             if altri and all(DA.SOLO_TIPO.get(k, self.tipo) != self.tipo for k in chiavi):      # la sezione e' tutta dell'altro formato (il draft)
@@ -6920,6 +7611,55 @@ class PaginaPerformance:
         b.fr.update_idletasks()
         return y + b.fr.winfo_reqheight() + 12
 
+    def righe_mano(self, ca, k, y, tutte):
+        """Il costruttore della mano iniziale dentro la tela di Advanced filters, a y: ogni riga e' quante · di cosa · quale carta (facoltativa, le carte delle
+        mani tenute dalla piu' frequente) · che valore di mana (facoltativo). Di partenza una riga vuota. -> la y sotto."""
+        tk, F = self.tk, self.F
+        conta = collections.Counter(n for x_ in tutte for n in (x_.get("mano_conta") or {}))
+        righe = self.__dict__.setdefault("_righe_ui", {}).get(k)
+        if righe is not None and (self.filtri.get(k) or None) != (self.reqs_mano(righe) or None):      # il filtro tolto dalla domanda: le righe lo seguono
+            righe = None
+        if righe is None:
+            righe = []
+            for q in self.filtri.get(k) or []:
+                quante, cosa, carta, mv = (str(q).split("|") + ["", "", "", ""])[:4]
+                righe.append([quante or None, [cosa or None], carta or None, mv or None])
+            righe = righe or [[None, [None], None, None]]
+            self._righe_ui[k] = righe
+        b = R_F.Righe(tk, F, ca, righe, [k_ for k_, _n in DA.MANO_QUANTI], lambda q_: dict(DA.MANO_QUANTI).get(q_, q_), lambda q_: list(DA.MANO_COSA),
+                      lambda rr, k=k: self.metti_righe_mano(k, rr), larga_campo=140, larga_voce=170, una_voce=True,
+                      carte=[c_ for c_, _n in conta.most_common()], fasi=list(DA.MANO_MV), etichetta_fase="with", fase_qualsiasi=DA.MANO_MV_QUALSIASI)
+        self._costruttori_av["?" + k] = b
+        ca.create_window(8, y, window=b.fr, anchor="nw")
+        b.fr.update_idletasks()
+        y += b.fr.winfo_reqheight() + 4
+        ca.create_text(8, y + 8, text=("Every line must be true in the same hand. «Any card» with a card name: that card; a mana value leaves the lands out. "
+                                       "Examples: Exactly 3 Land · At least 1 Creature with mana value 2 or less · None (0) Removal."),
+                       anchor="nw", fill=C["muto"], font=F(7), width=LARGA_RIGHE_AV - 30)
+        return y + 40
+
+    @staticmethod
+    def reqs_mano(righe):
+        """Le righe del costruttore della mano -> il filtro: una riga entra quando ha quante e almeno cosa o la carta."""
+        reqs = []
+        for r_ in righe:
+            quante, cosa = r_[0], (r_[1] or [None])[0]
+            carta = r_[2] if len(r_) > 2 else None
+            mv = r_[3] if len(r_) > 3 else None
+            if quante and (cosa or carta):
+                reqs.append(f"{quante}|{cosa or 'Any card'}|{carta or ''}|{mv or ''}")
+        return reqs
+
+    def metti_righe_mano(self, k, righe):
+        """Dalle righe della mano al filtro «mano_req»."""
+        reqs = self.reqs_mano(righe)
+        if reqs:
+            self.filtri[k] = reqs
+        else:
+            self.filtri.pop(k, None)
+        self.__dict__.setdefault("_righe_ui", {})[k] = [[r_[0], list(r_[1] or [None])] + list(r_[2:4]) for r_ in righe]
+        self.fr.after_idle(self.disegna)
+
     def metti_righe_ab(self, k, righe):
         self.filtri[k] = self._da_righe_ab(righe) or None
         if self.filtri[k] is None:
@@ -7078,9 +7818,9 @@ class PaginaPerformance:
         return self._lista
 
     def aggiorna_bottone_deck(self):
-        mio, vs = self.filtri.get("mio"), self.filtri.get("vs")
-        t = f"By deck  ·  {(mio or 'all decks').strip()} vs {DA.nome_vs(vs) if vs else 'all'}"
-        self.b_deck.metti(t if len(t) <= 40 else t[:39] + "…", bool(mio or vs))
+        mio, vs, suo = self.filtri.get("mio"), self.filtri.get("vs"), self.filtri.get("suo")
+        t = f"Choose your deck  ·  {(mio or 'all decks').strip()} vs {suo or (DA.nome_vs(vs) if vs else 'all')}"
+        self.b_deck.metti(t if len(t) <= 36 else t[:35].rstrip() + "…", bool(mio or vs or suo))
 
     def apri_deck(self):
         """La finestra By deck: a sinistra il tuo mazzo (o tutti), a destra contro chi: vs all, o vs colors coi colori da spuntare (una variante esatta, dal
@@ -7089,11 +7829,11 @@ class PaginaPerformance:
         f = getattr(self, "fin_deck", None)
         if f is not None and f.winfo_exists():
             f.lift(); return f
-        f = self.fin_deck = tk.Toplevel(self.fr); f.title("By deck"); f.configure(bg=C["scheda"])
+        f = self.fin_deck = tk.Toplevel(self.fr); f.title("Choose your deck"); f.configure(bg=C["scheda"])
         f.transient(self.fr.winfo_toplevel())
         f.geometry(f"+{self.cv_sx.winfo_rootx() + self.cv_sx.winfo_width() + 16}+{max(0, self.cv_sx.winfo_rooty() - 80)}")
         f.bind("<Escape>", lambda e: f.destroy())
-        tk.Label(f, text="BY DECK", bg=C["scheda"], fg=C["titolo"], font=F(9, True)).pack(anchor="w", padx=14, pady=(12, 2))
+        tk.Label(f, text="CHOOSE YOUR DECK", bg=C["scheda"], fg=C["titolo"], font=F(9, True)).pack(anchor="w", padx=14, pady=(12, 2))
         tk.Label(f, text="One of your decks against everyone, or against one exact color variant of the opponent's deck: mono-color to five colors, or colorless. "
                  "The table below is your deck against every variant you met: click a row to pick it.", bg=C["scheda"], fg=C["grigio"], font=F(7),
                  wraplength=960, justify="left").pack(anchor="w", padx=14, pady=(0, 8))
@@ -7127,8 +7867,8 @@ class PaginaPerformance:
         c.delete("all")
         self._box_deck = []
         corto = lambda t, n: t if len(t) <= n else t[:n - 1] + "…"
-        mio, vs = self.filtri.get("mio"), self.filtri.get("vs")
-        modo = "colors" if vs else self.vs_modo
+        mio, vs, suo = self.filtri.get("mio"), self.filtri.get("vs"), self.filtri.get("suo")
+        modo = "deck" if suo or self.vs_modo == "deck" else ("colors" if vs else self.vs_modo)
         pc = lambda v: f"{v:.0f}%" if v is not None else "-"
         # a sinistra il tuo mazzo: contati sotto gli altri filtri (contro chi compreso)
         base_m = DA.filtra(self.righe, {k: v for k, v in self.filtri.items() if k != "mio"}, self.tipo)
@@ -7161,7 +7901,7 @@ class PaginaPerformance:
             else:
                 c.create_text(10, y + 30, text="every deck", anchor="w", fill=C["muto"], font=F(7))
             wr = k_["wr"]
-            c.create_text(262, y + 13, text=pc(wr), anchor="e", fill=C["muto"] if wr is None else (C["azzurro"] if wr >= 50 else C["rosso"]), font=F(9, True))
+            c.create_text(262, y + 13, text=pc(wr), anchor="e", fill=C["muto"] if wr is None else (C["verde"] if wr >= 50 else C["rosso"]), font=F(9, True))
             c.create_text(262, y + 30, text=f"{k_['n']} games", anchor="e", fill=C["accento"] if on else C["grigio"], font=F(7))
             self._box_deck.append((0, y, 270, y + 42, "mio", v))
             y += 46
@@ -7171,7 +7911,7 @@ class PaginaPerformance:
         y = 4
         c.create_text(X, y + 8, text="AGAINST", anchor="w", fill=C["muto"], font=F(7, True))
         y += 22
-        for i, (m, t) in enumerate((("all", "vs all"), ("colors", "vs colors"))):
+        for i, (m, t) in enumerate((("all", "vs all"), ("colors", "vs colors"), ("deck", "vs a deck"))):
             x = X + i * 118
             on = modo == m
             chip(c, x, y, x + 110, y + 28, t, on, F(8, True))
@@ -7190,7 +7930,12 @@ class PaginaPerformance:
             self._box_deck.append((x, y, x + 40, y + 36, "colore", k))
         base_vs = DA.filtra(self.righe, {k: v for k, v in self.filtri.items() if k != "vs"}, self.tipo)
         x = X + 6 * 48 + 8
-        if vs:
+        if suo:
+            kk = DA.conti(DA.filtra(self.righe, self.filtri, self.tipo))
+            c.create_text(x, y + 10, text=f"{(mio or 'All decks').strip()} vs {suo}", anchor="w", fill=C["titolo"], font=F(9, True))
+            c.create_text(x, y + 28, text=f"{kk['n']} games · {kk['vinte']}-{kk['perse']} · {pc(kk['wr'])}"
+                          + (f"  (95% CI {kk['ic'][0]}–{kk['ic'][1]}%)" if kk["ic"] else ""), anchor="w", fill=C["accento"], font=F(8, True))
+        elif vs:
             kk = DA.conti(DA.filtra(base_vs, {"vs": vs}))
             c.create_text(x, y + 10, text=f"{(mio or 'All decks').strip()} vs {DA.etichetta('vs', vs)}", anchor="w", fill=C["titolo"], font=F(9, True))
             c.create_text(x, y + 28, text=f"{kk['n']} games · {kk['vinte']}-{kk['perse']} · {pc(kk['wr'])}"
@@ -7202,6 +7947,53 @@ class PaginaPerformance:
             c.create_text(x, y + 10, text=f"{(mio or 'All decks').strip()} vs everyone", anchor="w", fill=C["titolo"], font=F(9, True))
             c.create_text(x, y + 28, text=f"{kk['n']} games · {kk['vinte']}-{kk['perse']} · {pc(kk['wr'])}", anchor="w", fill=C["grigio"], font=F(8))
         y += 52
+        if modo == "deck":
+            # vs a deck (18 nov 2026, Autore: «si aggiungila»): i mazzi avversari incontrati per nome, col tuo mazzo e coi colori scelti; i simboli dei loro
+            # colori (la variante piu' frequente nelle tue partite contro di loro); il clic sceglie il mazzo, di nuovo lo toglie
+            base_s = DA.filtra(self.righe, {k: v for k, v in self.filtri.items() if k != "suo"}, self.tipo)
+            per_s = collections.defaultdict(list)
+            for x_ in base_s:
+                per_s[x_.get("suo") or "Unknown"].append(x_)
+            c.create_text(X, y + 8, text="AGAINST EVERY DECK YOU MET" + (f" · {DA.nome_vs(vs)} only" if vs else ""), anchor="w", fill=C["muto"], font=F(7, True))
+            col = dict(var=X, n=X + 280, wl=X + 336, wr=X + 400, play=X + 560, draw=X + 620)
+            y += 22
+            for k, t in (("var", "OPPONENT'S DECK"), ("n", "GAMES"), ("wl", "W-L"), ("wr", "WIN RATE"), ("play", "PLAY"), ("draw", "DRAW")):
+                c.create_text(col[k], y + 6, text=t, anchor="w", fill=C["titolo"], font=F(7, True))
+            y += 18
+            if not per_s:
+                c.create_text(X, y + 16, text="No opponent's decks in this situation", anchor="w", fill=C["grigio"], font=F(8))
+                y += 34
+            for i, (v, xs) in enumerate(sorted(per_s.items(), key=lambda kv: (-len(kv[1]), kv[0]))):
+                k_ = DA.conti(xs)
+                on, poche = v == suo, k_["n"] < 5
+                c.create_rectangle(X - 4, y, LARGA_DECK, y + 24, fill="#0e2238" if on else ("#161b25" if i % 2 == 0 else C["scheda"]),
+                                   outline=C["accento"] if on else "")
+                varianti = collections.Counter(DA.vs_di(x_) for x_ in xs if DA.vs_di(x_))
+                vv_ = varianti.most_common(1)[0][0] if varianti else ""
+                for j, ch in enumerate(vv_):
+                    img = self.lista().simbolo(ch, 14)
+                    if img is not None:
+                        c.create_image(col["var"] + 8 + j * 16, y + 12, image=img)
+                testo = C["muto"] if poche else C["titolo"]
+                c.create_text(col["var"] + 8 + 5 * 16 + 4, y + 12, text=corto(v, 24), anchor="w", fill=testo, font=F(8, on))
+                c.create_text(col["n"], y + 12, text=str(k_["n"]), anchor="w", fill=testo, font=F(8))
+                c.create_text(col["wl"], y + 12, text=f"{k_['vinte']}-{k_['perse']}", anchor="w", fill=C["muto"] if poche else C["testo"], font=F(8))
+                wr_ = k_["wr"]
+                colw = C["muto"] if poche else (C["verde"] if (wr_ or 0) >= 50 else C["rosso"])
+                c.create_rectangle(col["wr"], y + 8, col["wr"] + 100, y + 16, fill="#252b36", outline="")
+                if wr_ is not None:
+                    c.create_rectangle(col["wr"], y + 8, col["wr"] + wr_, y + 16, fill=colw, outline="")
+                c.create_line(col["wr"] + 50, y + 5, col["wr"] + 50, y + 19, fill="#d8d8dc")
+                c.create_text(col["wr"] + 108, y + 12, text=pc(wr_), anchor="w", fill=colw, font=F(8, True))
+                c.create_text(col["play"], y + 12, text=pc(k_["play"]), anchor="w", fill=C["muto"] if poche else C["testo"], font=F(8))
+                c.create_text(col["draw"], y + 12, text=pc(k_["draw"]), anchor="w", fill=C["muto"] if poche else C["testo"], font=F(8))
+                self._box_deck.append((X - 4, y, LARGA_DECK, y + 24, "suo", v))
+                y += 26
+            c.create_text(X, y + 8, text="grey: under 5 games, a hint", anchor="w", fill=C["muto"], font=F(7))
+            y += 22
+            alto = max(y, fine_sx) + 8
+            c.configure(scrollregion=(0, 0, LARGA_DECK, alto), height=min(alto, 720))
+            return
         # la tabella: il mazzo contro ogni variante, per gruppi dal monocolore al pentacolore e incolore
         c.create_text(X, y + 8, text="AGAINST EVERY COLOR VARIANT YOU MET", anchor="w", fill=C["muto"], font=F(7, True))
         col = dict(var=X, n=X + 280, wl=X + 336, wr=X + 400, play=X + 560, draw=X + 620)
@@ -7226,7 +8018,7 @@ class PaginaPerformance:
             c.create_text(col["var"], y + 12, text=g["gruppo"].upper(), anchor="w", fill=C["titolo"], font=F(8, True))
             c.create_text(col["n"], y + 12, text=str(k_["n"]), anchor="w", fill=C["titolo"], font=F(8, True))
             c.create_text(col["wl"], y + 12, text=f"{k_['vinte']}-{k_['perse']}", anchor="w", fill=C["testo"], font=F(8))
-            barra(col["wr"], y, k_["wr"], C["azzurro"] if (k_["wr"] or 0) >= 50 else C["rosso"])
+            barra(col["wr"], y, k_["wr"], C["verde"] if (k_["wr"] or 0) >= 50 else C["rosso"])
             c.create_text(col["play"], y + 12, text=pc(k_["play"]), anchor="w", fill=C["testo"], font=F(8))
             c.create_text(col["draw"], y + 12, text=pc(k_["draw"]), anchor="w", fill=C["testo"], font=F(8))
             y += 26
@@ -7242,7 +8034,7 @@ class PaginaPerformance:
                 c.create_text(col["var"] + 8 + 5 * 16 + 4, y + 12, text=DA.nome_vs(v), anchor="w", fill=testo, font=F(8, on))
                 c.create_text(col["n"], y + 12, text=str(k_["n"]), anchor="w", fill=testo, font=F(8))
                 c.create_text(col["wl"], y + 12, text=f"{k_['vinte']}-{k_['perse']}", anchor="w", fill=C["muto"] if poche else C["testo"], font=F(8))
-                barra(col["wr"], y, k_["wr"], C["muto"] if poche else (C["azzurro"] if (k_["wr"] or 0) >= 50 else C["rosso"]))
+                barra(col["wr"], y, k_["wr"], C["muto"] if poche else (C["verde"] if (k_["wr"] or 0) >= 50 else C["rosso"]))
                 c.create_text(col["play"], y + 12, text=pc(k_["play"]), anchor="w", fill=C["muto"] if poche else C["testo"], font=F(8))
                 c.create_text(col["draw"], y + 12, text=pc(k_["draw"]), anchor="w", fill=C["muto"] if poche else C["testo"], font=F(8))
                 self._box_deck.append((X - 4, y, LARGA_DECK, y + 24, "vs", v))
@@ -7267,6 +8059,12 @@ class PaginaPerformance:
                 self.vs_modo = v
                 if v == "all":
                     self.filtri["vs"] = None
+                    self.filtri["suo"] = None
+                elif v == "colors":
+                    self.filtri["suo"] = None
+            elif cosa == "suo":         # vs a deck: il mazzo avversario per nome (di nuovo: tolto)
+                self.vs_modo = "deck"
+                self.filtri["suo"] = None if self.filtri.get("suo") == v else v
             elif cosa == "colore":     # vs colors: i colori spuntati sono una variante esatta; incolore sta da solo
                 self.vs_modo = "colors"
                 flag = set() if not vs else ({"C"} if vs == "C" else set(vs))
@@ -7307,9 +8105,11 @@ class PaginaPerformance:
         c = self.tela("cards")
         c.delete("all")
         self.via_hover_carte()
-        c._box_carte, c._box_coppie = [], []
+        c._box_carte, c._box_coppie, c._box_partite = [], [], []
         if self.righe is None:
             return
+        if self.carte_modo == "card":
+            return self.disegna_scheda_carta(c)
         F = self.F
         W = max(c.winfo_width(), 600)
         r = self.scelte()
@@ -7318,7 +8118,7 @@ class PaginaPerformance:
         base = k_["wr"]
         c.create_text(14, 14, text=f"THE CARDS OF THESE {k_['n']} GAMES · NO LANDS", anchor="w", fill=C["muto"], font=F(7, True))
         if base is not None:
-            c.create_text(W - 14, 14, text=f"win rate of these games {base:.0f}% · click a card: only its games · Pairs: the cards that come together",
+            c.create_text(W - 14, 14, text=f"win rate of these games {base:.0f}% · click a card: only its games · right-click: its analysis · Pairs: the cards that come together",
                           anchor="e", fill=C["grigio"], font=F(7))
         wc = LARGA_CARTA
         hc = round(wc * 279 / 200)
@@ -7326,14 +8126,10 @@ class PaginaPerformance:
         per_coppie = max(1, int((W - 28) // (wc + round(wc * 0.5) + 14)))
         y = 34
         scelte_r = set(DA.righe_carte_scelte())
-        for o in self.copie("cards"):        # il pulsante Rows dice quante righe sono accese, anche all'apertura
-            if "righe" in o["ctl"]:
-                o["ctl"]["righe"].metti("Rows · all" if len(scelte_r) == len(DA.RIGHE_CARTE) else f"Rows · {len(scelte_r)} of {len(DA.RIGHE_CARTE)}",
-                                        len(scelte_r) < len(DA.RIGHE_CARTE))
         if not scelte_r:
-            c.create_text(14, 46, text="No rows picked: open «Rows» and tick the ones you want to see.", anchor="w", fill=C["grigio"], font=F(9))
+            c.create_text(14, 46, text="No rows picked: open the wheel on the left and tick the ones you want to see.", anchor="w", fill=C["grigio"], font=F(9))
         for chiave, titolo in DA.RIGHE_CARTE:
-            if chiave not in scelte_r:      # solo le righe spuntate in Rows
+            if chiave not in scelte_r:      # solo le righe spuntate nella rotella
                 continue
             carte = DA.riga_carte(r, chiave, quante=per_coppie if chiave == "finisher" else per_riga, base=tutte_t)
             c.create_line(14, y, W - 14, y, fill="#252b36")
@@ -7362,6 +8158,36 @@ class PaginaPerformance:
         c.configure(scrollregion=(0, 0, W, y + 6))
 
     def metti_carta(self, c, x, y, cc, chiave, base):
+        """metti_carta_dentro, poi ogni testo sotto la carta sta nella sua larghezza (18 nov 2026, la foto della cartella Cards: le righe lunghe, «their turn
+        4.3 · 39 games», «survived 11/13 · won 82% · else ...», si accavallavano con la carta accanto): prima il carattere piu' piccolo, fino a 6 punti, poi il
+        testo tagliato coi puntini; un testo che va a capo prende la larghezza della carta."""
+        import re as _re
+        prima = (c.find_all() or (0,))[-1]
+        larga = self.metti_carta_dentro(c, x, y, cc, chiave, base)
+        hc = round(LARGA_CARTA * 279 / 200)
+        lim = larga + 10
+        for i in c.find_all():
+            if i <= prima or c.type(i) != "text" or (c.coords(i) or [0, 0])[1] < y + hc:
+                continue
+            if int(float(c.itemcget(i, "width") or 0)) > 0:
+                c.itemconfigure(i, width=lim)
+                continue
+            f_ = c.itemcget(i, "font")
+            m_ = _re.search(r"(\d+)", f_)
+            dim, gr = (int(m_.group(1)) if m_ else 8), "bold" in f_
+            bb = c.bbox(i)
+            while bb and bb[2] - bb[0] > lim and dim > 6:
+                dim -= 1
+                c.itemconfigure(i, font=self.F(dim, gr))
+                bb = c.bbox(i)
+            t_ = c.itemcget(i, "text")
+            while bb and bb[2] - bb[0] > lim and len(t_) > 4:
+                t_ = t_[:-2]
+                c.itemconfigure(i, text=t_.rstrip(" ·") + "…")
+                bb = c.bbox(i)
+        return larga
+
+    def metti_carta_dentro(self, c, x, y, cc, chiave, base):
         """Una carta (o una coppia: due carte sovrapposte a meta') di Cards o della finestra delle coppie: l'immagine, il bordo se e' il filtro acceso, sotto il
         win rate col record e in quante partite (nella riga Harder to cast quante volte e' rimasta in mano). -> la larghezza."""
         F = self.F
@@ -7384,30 +8210,30 @@ class PaginaPerformance:
         if self.filtri.get(fk) == fv:
             c.create_rectangle(x - 3, y - 3, x + larga_c + 3, y + hc + 3, outline=C["accento"], width=2)
         poche = cc["n"] < 5
-        col = C["muto"] if poche or base is None else (C["azzurro"] if cc["wr"] > base else C["rosso"] if cc["wr"] < base else C["testo"])
+        col = C["muto"] if poche or base is None else (C["verde"] if cc["wr"] > base else C["rosso"] if cc["wr"] < base else C["testo"])
         xc = x + larga_c / 2
         if cc.get("sua"):           # una carta dell'Opponent: il suo EV in campo per lui (rosso se ti ha fatto male), il tuo win rate in quelle partite
-            col_v = C["muto"] if cc["poche"] else (C["rosso"] if cc["in_campo"] >= 1 else C["azzurro"] if cc["in_campo"] <= -1 else C["testo"])
+            col_v = C["muto"] if cc["poche"] else (C["rosso"] if cc["in_campo"] >= 1 else C["verde"] if cc["in_campo"] <= -1 else C["testo"])
             c.create_text(xc, y + hc + 12, text=f"{cc['in_campo']:+.1f} EV for them", fill=col_v, font=F(9, True))
             c.create_text(xc, y + hc + 29, text=f"stayed {cc['sopr']}/{cc['n']} · you won {cc['wr']:.0f}%", fill=C["grigio"], font=F(7))
         elif "in_campo" in cc:        # l'EV di una carta in campo (18 nov 2026): il plus-minus dei turni in cui c'era, e chi sopravvive
-            col_v = C["muto"] if cc["poche"] else (C["azzurro"] if cc["in_campo"] >= 1 else C["rosso"] if cc["in_campo"] <= -1 else C["testo"])
+            col_v = C["muto"] if cc["poche"] else (C["verde"] if cc["in_campo"] >= 1 else C["rosso"] if cc["in_campo"] <= -1 else C["testo"])
             c.create_text(xc, y + hc + 12, text=f"{cc['in_campo']:+.1f} EV in play", fill=col_v, font=F(9, True))
-            sopr_ = (f"survived {cc['sopr']}/{cc['n']}" + (f" · won {cc['wr_sopr']}%" if cc["wr_sopr"] is not None else "")
+            sopr_ = (f"lived {cc['sopr']}/{cc['n']}" + (f" · {cc['wr_sopr']}%" if cc["wr_sopr"] is not None else "")
                      + (f" · else {cc['wr_non']}%" if cc["wr_non"] is not None else ""))
             c.create_text(xc, y + hc + 29, text=sopr_, fill=C["grigio"], font=F(7))
             # il contesto: con un partner in campo o da sola; altrimenti lanciata subito o dopo aver aspettato in mano (Autore: «se tengo ajani pridemate
             # finche' non ho sul tavolo qualcosa che sinergizzi ... sto cercando il mio EV»)
             if cc.get("con_ev") is not None and cc.get("sola_ev") is not None:
-                ctx_ = f"with a partner {cc['con_ev']:+.1f} · alone {cc['sola_ev']:+.1f}"
+                ctx_ = f"partner {cc['con_ev']:+.1f} · alone {cc['sola_ev']:+.1f}"
             elif cc.get("subito_ev") is not None and cc.get("attesa_ev") is not None:
-                ctx_ = f"cast at once {cc['subito_ev']:+.1f} · after waiting {cc['attesa_ev']:+.1f}"
+                ctx_ = f"at once {cc['subito_ev']:+.1f} · waited {cc['attesa_ev']:+.1f}"
             else:
                 ctx_ = ""
             if ctx_:
                 c.create_text(xc, y + hc + 43, text=ctx_, fill=C["muto"], font=F(7))
         elif "atteso" in cc:        # l'EV al lancio di una magia contro la stessa magia nelle altre partite
-            col_v = C["muto"] if cc["poche"] else (C["azzurro"] if cc["scarto"] >= 1 else C["rosso"] if cc["scarto"] <= -1 else C["testo"])
+            col_v = C["muto"] if cc["poche"] else (C["verde"] if cc["scarto"] >= 1 else C["rosso"] if cc["scarto"] <= -1 else C["testo"])
             c.create_text(xc, y + hc + 12, text=f"{cc['ev']:+.1f} at cast", fill=col_v, font=F(9, True))
             c.create_text(xc, y + hc + 29, text=f"usual {cc['atteso']:+.1f} · {cc['lanci']} cast{'s' * (cc['lanci'] != 1)}", fill=C["grigio"], font=F(7))
             if cc.get("assist"):        # l'assist: meta' del merito della creatura che ha preparato (il trucco prima del combattimento)
@@ -7415,18 +8241,39 @@ class PaginaPerformance:
         elif "salto" in cc:           # un finisher: quante vittorie ha deciso, il salto di vantaggio medio
             c.create_text(xc, y + hc + 12, text=f"decided {cc['n']} win{'s' * (cc['n'] != 1)}", fill=C["azzurro"], font=F(9, True))
             c.create_text(xc, y + hc + 29, text=f"swing +{cc['salto']:.0f} · {cc['quota']:.0f}% of your wins", fill=C["grigio"], font=F(7))
-        elif cc.get("risposta"):    # C15: una tua risposta, quante copie hai
-            c.create_text(xc, y + hc + 12, text=f"you own {(DA._carta(cc['nome']) or {}).get('copie', 0)}", fill=C["azzurro"], font=F(9, True))
-            c.create_text(xc, y + hc + 29, text=f"MV {(DA._carta(cc['nome']) or {}).get('cmc', 0)}", fill=C["grigio"], font=F(7))
+        elif cc.get("risposta"):    # C15: una tua risposta, quante copie hai (o il jolly per craftarla: 18 nov 2026)
+            cr_ = DA._carta(cc["nome"]) or {}
+            if cr_.get("copie"):
+                c.create_text(xc, y + hc + 12, text=f"you own {cr_.get('copie', 0)}", fill=C["azzurro"], font=F(9, True))
+            else:
+                c.create_text(xc, y + hc + 12, text=f"craft · {RARITA_NOME.get(cr_.get('r'), 'wildcard')}", fill="#f0ad4e", font=F(9, True))
+            c.create_text(xc, y + hc + 29, text=f"MV {cr_.get('cmc', 0)}", fill=C["grigio"], font=F(7))
+        elif "chiuse" in cc:        # una win condition (18 nov 2026): quante vittorie ha chiuso
+            c.create_text(xc, y + hc + 12, text=f"closed {cc['chiuse']} win{'s' * (cc['chiuse'] != 1)}", fill=C["azzurro"], font=F(9, True))
+            c.create_text(xc, y + hc + 29, text=f"{cc['quota']:.0f}% of wins · {cc['n']} cast · {cc['wr']:.0f}% WR", fill=C["grigio"], font=F(7))
+        elif cc.get("quando_sua"):  # una sua carta nel tempo e sulle tue (18 nov 2026)
+            c.create_text(xc, y + hc + 12, text=(f"their turn {cc['giro']:.1f}" if cc.get("giro") is not None else "turn unknown") + f" · {cc['n']} games",
+                          fill=C["rosso"] if (cc["wr"] or 0) < (base or 0) else C["testo"], font=F(9, True))
+            # i bersagli: la prima sotto, la seconda sulla riga dopo (una riga a capo saliva sopra il turno); il resto nella sotto-scheda Card
+            col_ = list(cc.get("colpite") or [])
+            c.create_text(xc, y + hc + 29, text=(f"hit {col_[0][0]} ×{col_[0][1]}" if col_ else f"you won {cc['wr']:.0f}%"), fill=C["grigio"], font=F(7))
+            if len(col_) > 1:
+                c.create_text(xc, y + hc + 43, text=f"{col_[1][0]} ×{col_[1][1]}" + (f" +{len(col_) - 2}" if len(col_) > 2 else ""), fill=C["muto"],
+                              font=F(7))
+        elif "lift" in cc:          # un compagno nella rosa della carta (18 nov 2026)
+            col_l = C["muto"] if cc["poche"] or cc["lift"] is None else (C["verde"] if cc["lift"] > 0 else C["rosso"] if cc["lift"] < 0 else C["testo"])
+            c.create_text(xc, y + hc + 12, text=("-" if cc["lift"] is None else f"{cc['lift']:+.0f} pts together"), fill=col_l, font=F(9, True))
+            c.create_text(xc, y + hc + 29, text=f"{cc['wr']:.0f}% in {cc['n']} · without {cc['wr_senza'] if cc['wr_senza'] is not None else '-'}%",
+                          fill=C["grigio"], font=F(7))
         elif "eccesso" in cc:       # C15: una minaccia, quante sconfitte, quante risposte hai
             c.create_text(xc, y + hc + 12, text=f"in {cc['perse']} of your losses", fill=C["rosso"], font=F(9, True))
             c.create_text(xc, y + hc + 29, text=f"+{cc['eccesso']} pts vs wins · {len(cc.get('risposte') or [])} answers", fill=C["grigio"], font=F(7))
         elif "economici" in cc:     # C13: cosa tolgono le tue rimozioni
-            col_e = C["muto"] if cc["n"] < 5 else (C["rosso"] if cc["economici"] >= 50 else C["azzurro"])
+            col_e = C["muto"] if cc["n"] < 5 else (C["rosso"] if cc["economici"] >= 50 else C["verde"])
             c.create_text(xc, y + hc + 12, text=f"removed MV {cc['bers_mv']:.1f} · its {cc['rim_mv']:.0f}", fill=col_e, font=F(9, True))
             c.create_text(xc, y + hc + 29, text=f"{cc['economici']}% cheap · {cc['tolti']} removed", fill=C["grigio"], font=F(7))
         elif "iwd" in cc:       # C4: l'IWD personale
-            col_i = C["muto"] if cc["poche"] else (C["azzurro"] if cc["iwd"] > 0 else C["rosso"] if cc["iwd"] < 0 else C["testo"])
+            col_i = C["muto"] if cc["poche"] else (C["verde"] if cc["iwd"] > 0 else C["rosso"] if cc["iwd"] < 0 else C["testo"])
             c.create_text(xc, y + hc + 12, text=f"{cc['iwd']:+.0f} pts when drawn", fill=col_i, font=F(9, True))
             c.create_text(xc, y + hc + 29, text=f"{cc['wr']:.0f}% in {cc['n']} · not drawn {cc['wr_non']:.0f}% in {cc['n_non']}", fill=C["grigio"], font=F(7))
         elif chiave == "bloccate" and "bloccata" in cc:
@@ -7597,7 +8444,7 @@ class PaginaPerformance:
                 c.create_rectangle(8, y, W - 8, y + 26, fill="#161b25" if i % 2 == 0 else "#131820", outline="")
                 d_ = v["x"] - v["e"]
                 for x, t, colr in ((14, f"Turn {N}", C["titolo"]), (130, str(v["partite"]), C["testo"]), (200, str(v["x"]), C["testo"]),
-                                   (300, f"{v['e']:.1f}", C["testo"]), (420, f"{d_:+.1f}", C["rosso"] if v["p"] < 0.05 and d_ < 0 else C["azzurro"] if v["p"] < 0.05 else C["testo"]),
+                                   (300, f"{v['e']:.1f}", C["testo"]), (420, f"{d_:+.1f}", C["rosso"] if v["p"] < 0.05 and d_ < 0 else C["verde"] if v["p"] < 0.05 else C["testo"]),
                                    (510, f"{v['p']:.2f}", C["testo"] if v["p"] >= 0.05 else C["arancio"])):
                     c.create_text(x, y + 13, text=t, anchor="w", fill=colr, font=F(8, x == 14))
                 for j, voce in enumerate(DA.FORTUNA):
@@ -7718,15 +8565,15 @@ class PaginaPerformance:
                     testo = f"{v:.0f}%"
                     base_ = tutte_[k]
                     meglio = (v < base_) if k in ("perdi", "trucco") else (v > base_)
-                    colr = C["muto"] if rg["poche"] or i == 0 or base_ is None or abs(v - base_) < 3 else (C["azzurro"] if meglio else C["rosso"])
+                    colr = C["muto"] if rg["poche"] or i == 0 or base_ is None or abs(v - base_) < 3 else (C["verde"] if meglio else C["rosso"])
                 elif k == "scambio":
-                    testo, colr = f"{v:+.2f}", (C["muto"] if rg["poche"] else C["azzurro"] if v > 0 else C["rosso"] if v < 0 else C["testo"])
+                    testo, colr = f"{v:+.2f}", (C["muto"] if rg["poche"] else C["verde"] if v > 0 else C["rosso"] if v < 0 else C["testo"])
                 elif k == "danno":
                     testo, colr = f"{v:.1f}", C["testo"] if not rg["poche"] else C["muto"]
                 elif k == "guadagno":       # il guadagno medio della decisione (vite + 2 x forza), contro quello di tutte
                     base_ = tutte_[k]
                     testo = f"{v:+.1f}"
-                    colr = C["muto"] if rg["poche"] or i == 0 or base_ is None or abs(v - base_) < 0.5 else (C["azzurro"] if v > base_ else C["rosso"])
+                    colr = C["muto"] if rg["poche"] or i == 0 or base_ is None or abs(v - base_) < 0.5 else (C["verde"] if v > base_ else C["rosso"])
                 else:
                     testo, colr = f"{v}", C["testo"] if not rg["poche"] else C["muto"]
                 c.create_text(x, y + 12, text=testo, anchor="w", fill=colr, font=F(8, k == "nome"))
@@ -7812,53 +8659,68 @@ class PaginaPerformance:
         n = tr[0]["n"] if tr else 0
         # il costo (15 nov 2026, il Leak Finder): quanto win rate ti toglie in tutto, nel formato che guardi = quanto spesso capita x quanto costa quando capita;
         # dal piu' costoso, sotto 10 partite in fondo (un indizio). Cosi' il peso di ogni leak viene dai dati di Limited o di Constructed, non da una regola fissa
-        for t in tr:
-            t["costo"] = None if t["delta"] is None or t["tasso"] is None else round(-t["delta"] * t["tasso"] / 100, 1)
-        tr.sort(key=lambda t: (t["con"] < 10, -(t["costo"] if t["costo"] is not None else -99)))
-        # la cartella in parole (15 nov 2026, Autore: «la scheda leak deve avere definizioni dei leak e descrizioni moooolto più intendibili»): ogni leak
-        # e' una scheda con il nome detto come lo diresti tu, cosa e' successo nelle tue partite in una frase, e sotto cos'e', perche' costa, un esempio,
-        # come si corregge; il costo in alto a destra in parole («costs you 1.2 points»)
-        c.create_text(14, 14, text=f"YOUR LEAKS · {self.tipo.upper()} · the mistakes we can spot in the replays of your {n} games, the costliest first",
+        # il costo in EV (18 nov 2026, Autore: «la scheda leaks e' effettivamente ancora utile visto il nuovo modo di ragionare in ev?», «Si', tutte e
+        # tre»): quanti punti di probabilita' di vincere il leak ti toglie in media a partita (ev_partita.costo_leak), non piu' il win rate. Tre gruppi: i
+        # leak che le tue partite confermano, dal piu' costoso; quelli non ancora decisi; le scelte che funzionano (i turni col «leak» rendono di piu': nelle
+        # tue partite non e' un errore); in fondo quelli mai successi
+        import ev_partita as EV_
+        cl = EV_.costo_leak(r, [x for x in self.righe if x["tipo"] == self.tipo])
+
+        def gruppo(t):
+            e_ = cl.get(t["k"])
+            if not t["con"] or not e_:
+                return 3
+            return {"confermato": 0, "contrario": 2}.get(e_["verdetto"], 1)
+        tr.sort(key=lambda t: (gruppo(t), -((cl.get(t["k"]) or {}).get("costo") or -99)))
+        c.create_text(14, 14, text=f"YOUR LEAKS · {self.tipo.upper()} · the mistakes we can spot in the replays of your {n} games, the costliest in EV first",
                       anchor="w", fill=C["muto"], font=F(8, True))
-        c.create_text(14, 32, text=("A leak is a small mistake that keeps coming back and quietly costs you games. Click a leak to keep only the games where it "
-                                    "happened (click again to see all); Watch › opens those games in the replayer, right on the mistake. These are clues "
-                                    "read from the replay, not verdicts: the replay can't see your hand or your plan."),
+        c.create_text(14, 32, text=("A leak is a small mistake that keeps coming back. Its cost is in EV: how many win-probability points it takes from you on "
+                                    "average per game, from the turns with it against your other turns. Click a leak to keep only the games where it happened "
+                                    "(again to see all); Watch › opens them in the replayer, right on the mistake. Clues from the replay, not verdicts."),
                       anchor="nw", fill=C["grigio"], font=F(7), width=W - 30)
         y = 66
-        wr_ = lambda v: "-" if v is None else f"{v:.0f}%"
         LX = 120        # le etichette a sinistra, il testo da LX in poi
-        # i leak come spiegazioni dentro gli scarti (18 nov 2026, il lettore di EV): l'EV dei turni in cui c'e' il leak contro gli altri tuoi turni
-        import ev_partita as EV_
-        lev = EV_.leak_ev(r, [x for x in self.righe if x["tipo"] == self.tipo])
+        TITOLI = {0: ("LEAKS THAT COST YOU · your games confirm them", C["rosso"]), 1: ("NOT DECIDED YET · too close to call, or too few turns", C["grigio"]),
+                  2: ("CHOICES THAT WORK · the turns with them go better than your others: in your games they are not mistakes", C["azzurro"]),
+                  3: ("NEVER HAPPENED IN THESE GAMES", C["verde"])}
+        gr_prima = None
         for i, t in enumerate(tr):
             on = self.filtri.get(f"leak_{t['k']}") == "Yes"
-            poche = t["con"] < 10
-            co_ = t.get("costo")
+            e_ = cl.get(t["k"])
+            gr_ = gruppo(t)
+            if gr_ != gr_prima:
+                y += 4
+                c.create_text(14, y + 8, text=TITOLI[gr_][0], anchor="w", fill=TITOLI[gr_][1], font=F(8, True))
+                c.create_line(14, y + 20, W - 14, y + 20, fill="#252b36")
+                y += 28
+                gr_prima = gr_
+            co_ = (e_ or {}).get("costo")
             sfondo = c.create_rectangle(8, y, W - 8, y + 10, fill="#161b25" if i % 2 == 0 else "#131820", outline=C["accento"] if on else "")
             c.create_text(18, y + 16, text=t["nome"], anchor="w", fill=C["titolo"], font=F(11, True), width=W - 330)
-            # il costo, in parole, in alto a destra
+            # il costo in EV, in parole, in alto a destra
             if not t["con"]:
                 badge, col_b = "never happened", C["verde"]
-            elif co_ is None or poche:
-                badge, col_b = "too few games to say", C["muto"]
-            elif co_ > 0:
-                badge, col_b = f"costs you {co_:.1f} pts of win rate", C["rosso"]
+            elif not e_ or co_ is None:
+                badge, col_b = "too few turns to say", C["muto"]
+            elif gr_ == 0:
+                badge, col_b = f"costs you {co_:.1f} EV pts a game", C["rosso"]
+            elif gr_ == 2:
+                badge, col_b = f"works for you: {-co_:+.1f} EV pts a game", C["azzurro"]
             else:
-                badge, col_b = "no cost seen in your games", C["azzurro"]
+                badge, col_b = f"not decided · {-co_:+.1f} EV pts a game?", C["muto"]
             c.create_text(W - 136, y + 16, text=badge, anchor="e", fill=col_b, font=F(9, True))
             # cosa e' successo nelle tue partite, in una frase
             if not t["con"]:
                 fatto = f"It never happened in your {n} games. Nice."
             else:
-                fatto = (f"It happened in {t['con']} of your {n} games ({t['tasso']:.0f}%). You won {wr_(t['wr_con'])} of those games and "
-                         f"{wr_(t['wr_senza'])} of the others")
-                if poche:
-                    fatto += ": too few games to tell if it really costs you."
-                elif co_ is not None and co_ > 0:
-                    fatto += (f": across all your {self.tipo} games this leak takes about {co_:.1f} points off your win rate "
-                              "(how often it happens × how much it hurts when it does).")
-                else:
-                    fatto += ": in your games it didn't cost you, probably because it happens when you are already ahead."
+                fatto = f"It happened in {t['con']} of your {n} games ({t['tasso']:.0f}%)"
+                if e_ and e_["livello"] == "turno":
+                    fatto += f", in {e_['n']} turn{'s' * (e_['n'] != 1)}"
+                fatto += "."
+                if e_ and e_.get("diff") is not None:
+                    quando = "time" if e_["livello"] == "turno" else "game"
+                    fatto += (f" Each {quando} it {'costs' if e_['diff'] < 0 else 'gives'} about {abs(e_['diff']):.1f} win-probability points against your "
+                              f"other {quando}s; across your games about {abs(co_):.1f} points a game.")
                 if t["tasso_rec"] is not None and t["tasso_prima"] is not None:
                     if t["tasso_rec"] < t["tasso_prima"]:
                         fatto += f" Getting better: {t['tasso_rec']:.0f}% of your last 50 games, {t['tasso_prima']:.0f}% before."
@@ -7868,14 +8730,25 @@ class PaginaPerformance:
             i_f = c.create_text(18, yy, text=fatto, anchor="nw", fill=C["testo"], font=F(8, True), width=W - 160)
             yy = c.bbox(i_f)[3] + 8
             altri, col_altri = self.confronto_leak(t["k"], t["tasso"] if t["con"] else 0.0)
-            e_ = lev.get(t["k"])
             if e_:
-                ev_t = (f"The {e_['n']} turn{'s' * (e_['n'] != 1)} with this leak gave {e_['scarto']:+.1f} win-probability points against what the same turns "
-                        f"usually give" + (f"; your other turns {e_['altri']:+.1f}." if e_["altri"] is not None else ".")
-                        + (" A hint: under 15 turns." if e_["n"] < 15 else ""))
-                col_ev = C["muto"] if e_["n"] < 15 else C["rosso"] if e_["scarto"] <= -1 else C["azzurro"] if e_["scarto"] >= 1 else C["testo"]
+                cosa_ = "turns" if e_["livello"] == "turno" else "games"
+                ev_t = (f"The {e_['n']} {cosa_[:-1] if e_['n'] == 1 else cosa_} with this leak gave {e_['scarto']:+.1f} win-probability points against what the "
+                        f"same {cosa_} usually give" + (f"; your other {cosa_} {e_['altri']:+.1f}." if e_["altri"] is not None else ".")
+                        + (f" A hint: under {EV_.MINIMO} {cosa_}." if e_["n"] < EV_.MINIMO else ""))
+                ver_ = e_.get("verdetto")
+                if ver_ == "confermato":
+                    ev_t += f" CONFIRMED by your games: {e_['diff']:+.1f} points (±{2 * e_['err']:.1f})."
+                elif ver_ == "contrario":
+                    ev_t += (f" NOT CONFIRMED: {e_['diff']:+.1f} points better than your others (±{2 * e_['err']:.1f}); in your games it is a choice, not a "
+                             "mistake.")
+                elif e_["n"] >= EV_.MINIMO and e_.get("diff") is not None:
+                    ev_t += f" Not decided yet: {e_['diff']:+.1f} points, within the noise (±{2 * e_['err']:.1f})."
+                if e_["livello"] == "partita" and t["k"] == "l7":
+                    ev_t += " A concession comes when the game is already going badly: its games are low by nature, read this one as a clue."
+                col_ev = (C["muto"] if e_["n"] < EV_.MINIMO else C["rosso"] if ver_ == "confermato" else C["verde"] if ver_ == "contrario"
+                          else C["rosso"] if e_["scarto"] <= -1 else C["verde"] if e_["scarto"] >= 1 else C["testo"])
             elif t["con"]:
-                ev_t, col_ev = "A leak of the whole game (the mulligan, the concession): no single turn to measure.", C["grigio"]
+                ev_t, col_ev = "No turn-by-turn data for these games yet.", C["grigio"]
             else:
                 ev_t, col_ev = "-", C["grigio"]
             for etichetta, testo, colore in (("EV IN THOSE TURNS", ev_t, col_ev), ("OTHER PLAYERS", altri, col_altri), ("WHAT IT IS", t["spiega"], C["testo"]),
@@ -7892,10 +8765,10 @@ class PaginaPerformance:
                 c._box.append((W - 120, y + 30, W - 16, y + 54, ("guarda_leak", t["k"])))
             y += alto + 6
         y += 8
-        c.create_text(14, y, text=("How the cost is counted: how often the leak happens in the format you are looking at, times the difference between your "
-                                   "win rate in the games with it and in the games without it. Under 10 games it is only a hint. A leak often shows up in "
-                                   "games that were already going badly (a concession), so read the numbers as clues."), anchor="nw", fill=C["grigio"],
-                      font=F(7), width=W - 30)
+        c.create_text(14, y, text=("How the cost is counted: each turn has its EV, the win-probability points it made above or below what the same turn usually "
+                                   "gives (the model of the chance to win, from the replays). A leak's turns are compared with your other turns (the whole game "
+                                   "for the mulligan and the concession): the difference each time, times how often it happens, over your games. Confirmed = "
+                                   f"beyond twice its error; under {EV_.MINIMO} turns only a hint."), anchor="nw", fill=C["grigio"], font=F(7), width=W - 30)
         import leak_17lands as L17
         d17 = L17.carica()
         if self.tipo == "Limited" and d17:
@@ -7962,7 +8835,7 @@ class PaginaPerformance:
             c.create_text(510, y + 13, text=wr_(t["wr_con"]), anchor="w", fill=C["testo"], font=F(8))
             c.create_text(620, y + 13, text=wr_(t["wr_senza"]), anchor="w", fill=C["testo"], font=F(8))
             poche = t["con"] < 10
-            col_d = C["muto"] if poche or t["delta"] is None else (C["rosso"] if t["delta"] < 0 else C["azzurro"])
+            col_d = C["muto"] if poche or t["delta"] is None else (C["rosso"] if t["delta"] < 0 else C["verde"])
             c.create_text(710, y + 13, text="-" if t["delta"] is None else f"{t['delta']:+.0f} pts" + (" · few" if poche else ""), anchor="w", fill=col_d,
                           font=F(8, True))
             c._box.append((8, y, W - 8, y + 26, ("cimitero", t["k"], t["si"][0])))
@@ -8236,7 +9109,7 @@ class PaginaPerformance:
             t_ = (f"{v[0]:+.1f}  ·  {v[1]} combats" if v else ("no data: not attacking is not a combat in the log" if k == "niente" else "no data")) + (
                 "  ← your best line" if k == meglio else "")
             c.create_text(30, y, text=n, anchor="w", fill=C["testo"], font=F(9, k == q["scelta"]))
-            c.create_text(250, y, text=t_, anchor="w", fill=C["azzurro"] if k == meglio else C["grigio"], font=F(9))
+            c.create_text(250, y, text=t_, anchor="w", fill=C["verde"] if k == meglio else C["grigio"], font=F(9))
             y += 22
         y += 8
         c.create_text(16, y, text="Your average, not a rule: a clue to look at the spot again.", anchor="w", fill=C["grigio"], font=F(7))
@@ -8398,7 +9271,7 @@ class PaginaPerformance:
         f = getattr(self, "fin_righe", None)
         if f is None or not f.winfo_exists():
             f = self.fin_righe = tk.Toplevel(self.fr)
-            f.title("Cards · Rows")
+            f.title("Cards · rows to read")
             f.configure(bg=C["scheda"])
             f.resizable(False, False)
             f.bind("<Escape>", lambda e: f.destroy())
@@ -8472,6 +9345,7 @@ class PaginaPerformance:
             cv = self.cv_coppie = tk.Canvas(f, bg=C["scheda"], highlightthickness=0, bd=0)
             cv.pack(fill="both", expand=True, padx=8, pady=8)
             cv.bind("<Button-1>", self.clic_carte)
+            cv.bind("<Button-3>", self.destro_carte)
             cv.bind("<MouseWheel>", lambda e: (self.via_hover_carte(), e.widget.yview_scroll(-2 if e.delta > 0 else 2, "units")))
             cv.bind("<Motion>", self.sopra_carte)
             cv.bind("<Leave>", lambda e: self.via_hover_carte())
@@ -8533,9 +9407,16 @@ class PaginaPerformance:
         collezione, nei colori dei tuoi mazzi, che dal testo la tolgono (grado C). Il clic su una minaccia tiene le sue partite; il passaggio mostra la carta."""
         import variabili_c as VC
         F = self.F
-        mm = VC.minacce(r)
-        c.create_text(14, 16, text=f"THE THREATS THAT BEAT YOU · AND WHAT YOU OWN THAT ANSWERS THEM · {len(r)} games", anchor="w", fill=C["azzurro"],
-                      font=F(8, True))
+        craft_ = getattr(self, "risposte_craft", False)
+        mm = VC.minacce(r, craft=craft_)
+        c.create_text(14, 16, text=f"THE THREATS THAT BEAT YOU · AND WHAT {'ANSWERS' if craft_ else 'YOU OWN THAT ANSWERS'} THEM · {len(r)} games", anchor="w",
+                      fill=C["azzurro"], font=F(8, True))
+        # la spunta: anche le carte da craftare (18 nov 2026, Autore: «suggerendoci validi counter dalla collezione o craftabili se flagghiamo la spunta»)
+        nome_c = "Include craftable"
+        x1_ = W - 14
+        x0_ = x1_ - 20 - int(c.tk.call("font", "measure", F(9, True), nome_c))
+        chip(c, x0_, 4, x1_, 28, nome_c, craft_, F(9, True))
+        c._box_coppie.append((x0_, 4, x1_, 28, ("craft", not craft_), None))
         c.create_text(14, 36, text=("Their cards in more of your losses than your wins; on the right the removal in your collection, in your decks' colors (and "
                                     "Standard-legal if you play Standard), that reads like it removes them. Read from the card text: a clue, not a verdict "
                                     "(protection, ward and hexproof are not checked)."), anchor="nw", fill=C["grigio"], font=F(7), width=W - 30)
@@ -8551,7 +9432,9 @@ class PaginaPerformance:
             x_ = 14 + wc + 40
             c.create_text(x_ - 18, y + hc / 2, text="›", fill=C["accento"], font=F(16, True))
             if not cc["risposte"]:
-                c.create_text(x_, y + hc / 2, text="Nothing in your collection, in these colors, reads like an answer.", anchor="w", fill=C["muto"], font=F(8))
+                c.create_text(x_, y + hc / 2, text=("Nothing in these colors reads like an answer, even to craft." if craft_ else
+                                                    "Nothing in your collection, in these colors, reads like an answer. Tick «Include craftable» to see what to craft."),
+                              anchor="w", fill=C["muto"], font=F(8))
             for nm in cc["risposte"]:
                 if x_ + wc > W - 14:
                     break
@@ -8560,6 +9443,220 @@ class PaginaPerformance:
             y += hc + 50
         c.configure(scrollregion=(0, 0, W, y + 10))
 
+    def destro_carte(self, e):
+        """Il tasto destro su una carta di Cards (o delle sue finestre): la sua analisi, nella sotto-scheda Card."""
+        sotto = self.carta_sotto(e)
+        if sotto is None:
+            return None
+        return self.apri_analisi_carta(DA.nome_intero(sotto[4]))
+
+    def carte_cercabili(self):
+        """Le carte della casella della scheda Card: le tue lanciate, le sue, quelle delle tue liste nelle partite del tipo, dalla piu' frequente."""
+        conta = collections.Counter()
+        for x in self.righe or []:
+            if x.get("tipo") != self.tipo:
+                continue
+            for n in set(x.get("mie_lanciate") or []) | set(x.get("sue_lanciate") or []) | {k for k, q in (x.get("deck") or {}).items() if q}:
+                if n and not DA.e_terra(n):
+                    conta[n] += 1
+        return [n for n, _k in conta.most_common()]
+
+    def cambia_carte_modo(self, m):
+        self.carte_modo = m
+        self.sincronizza()
+        if "cards" in self.visibili():
+            self.disegna_carte()
+
+    def apri_analisi_carta(self, nome, alza=True):
+        """La carta sotto la lente: la porta nella sotto-scheda Card di Cards (dal 18 nov 2026 sera non e' piu' una finestra a parte). nome None: la scheda
+        chiede la carta. -> la tela di Cards."""
+        self.analisi_di = nome
+        self.carte_modo = "card"
+        if alza and self.vista != "cards" and "cards" not in self.staccate:
+            self.cambia_vista("cards")
+        self.sincronizza()
+        if "cards" in self.visibili():
+            self.tela("cards").yview_moveto(0)
+            self.disegna_carte()
+        return self.tela("cards")
+
+    def disegna_scheda_carta(self, c):
+        """La sotto-scheda Card (18 nov 2026, Autore: «Questa analisi deve darci dati diversi se siamo settati in limited o constructed. Per constructed ci
+        deve dare statistiche su quante sinergie conosciute ci sono tra lei e altre carte. Sinergie verificate e realizzatesi in campo dalle piu' deboli alle
+        piu' forti. Ci deve dire in quanto e' giocata in quanti mazzi appare quanto valore ci genera ecc»). Sulle partite dei filtri:
+          in testa la carta, quanto e' giocata (liste, mazzi, copie, lanciata, contro di te) e il valore (EV in campo, meriti, sopravvive);
+          Limited: il draft (GIH e ALSA di 17Lands, i tuoi pick dai log); Constructed: le sinergie conosciute dal testo e quelle verificate in campo;
+          il meta dei tuoi log, la rosa dei compagni, le partite con lei (il clic apre il replay)."""
+        import analisi_carta as AC
+        F = self.F
+        nome = getattr(self, "analisi_di", None)
+        W = max(c.winfo_width(), 900)
+        if not nome:
+            c.create_text(16, 24, text="CARD · type a card in the box above, or right-click any card in By games", anchor="w", fill=C["grigio"], font=F(10, True))
+            c.configure(scrollregion=(0, 0, W, 60))
+            return None
+        r = self.scelte()
+        base_t = [x for x in self.righe if x["tipo"] == self.tipo]
+        k_ = DA.conti(r)
+        base = k_["wr"]
+        wc = LARGA_CARTA
+        img = self.immagine_carta(nome, wc + 60, False)
+        if img is not None:
+            c.create_image(16, 16, image=img, anchor="nw")
+            c._box_carte.append((16, 16, 16 + wc + 60, 16 + round((wc + 60) * 279 / 200), nome, None, None, None))
+        x0 = 16 + wc + 60 + 24
+        cr_ = DA._carta(nome) or {}
+        limited = self.tipo == "Limited"
+        c.create_text(x0, 18, text=nome, anchor="nw", fill=C["titolo"], font=F(14, True), width=W - x0 - 20)
+        c.create_text(x0, 46, text=f"{cr_.get('tipo') or ''} · MV {cr_.get('cmc', 0)} · you own {cr_.get('copie', 0)} · {self.tipo.upper()} ANALYSIS",
+                      anchor="nw", fill=C["grigio"], font=F(8))
+        u = AC.uso(r, nome)
+        yy = 70
+
+        def riga_(testo, col=C["testo"], f_=None):
+            nonlocal yy
+            i_t = c.create_text(x0, yy, text=testo, anchor="nw", fill=col, font=f_ or F(10, True), width=W - x0 - 20)
+            yy = (c.bbox(i_t) or (0, 0, 0, yy + 18))[3] + 5
+        riga_(f"In your lists in {u['in_lista']} of these {u['n']} games · {u['mazzi']} deck{'s' if u['mazzi'] != 1 else ''}"
+              + (f" · {u['copie']:g} copies on average" if u["copie"] else ""))
+        riga_(f"You cast it in {u['lanciata']} games ({u['quota'] or 0:.0f}%)" + (f" · you won {u['wr']:.0f}% (all these games {base:.0f}%)"
+                                                                                 if u["wr"] is not None and base is not None else ""))
+        if u["contro"]:
+            riga_(f"Cast against you in {u['contro']} games · you won {u['wr_contro']:.0f}%", C["grigio"])
+        v_ = AC.valore(r, base_t, nome)
+        if v_:
+            import ev_partita as EV_
+            corti = dict(letale="lethal", danno="unblocked hits", vince="combats won", salva="saves", scambio="trades", tiene="blocks held",
+                         rimbalza="bounced off", rimossa="removed", chump="chump blocks", assist="assists", perde="died for nothing")
+            meriti = ", ".join(f"{corti.get(m) or EV_.NOMI_MERITI.get(m, m)} {n}" for m, n in sorted(v_["conta"].items(), key=lambda kv: -kv[1])[:6])
+            riga_(f"VALUE · EV on the battlefield {v_['in_campo']:+.1f} a copy · merits {v_['ev_meriti']:+.1f} a copy"
+                  + (f" ({meriti})" if meriti else "") + (f" · survived to the end in {v_['sopr']} of {v_['n']} games" if v_.get("n") else ""),
+                  C["verde"] if v_["in_campo"] > 0 else C["rosso"] if v_["in_campo"] < 0 else C["testo"], F(9, True))
+        if limited:
+            ld = AC.limited(nome)
+            g_ = " · ".join(f"17Lands {fmt.capitalize()} GIH {g[0]:.1f}%" if g[0] is not None else f"17Lands {fmt.capitalize()}: {g[1] or 0} games, no GIH yet"
+                            for fmt, g in ld["gih"].items())
+            alsa = next((g[2] for g in ld["gih"].values() if g[2]), None)
+            riga_("DRAFT · " + (g_ or "no 17Lands data for this card") + (f" · ALSA {alsa:.1f}" if alsa else ""), C["azzurro"], F(9, True))
+            riga_((f"Your drafts: you saw it {ld['vista']} times, took it {ld['prese']}" + (f" (pick {ld['pick_medio']:g} of the pack on average)"
+                                                                                         if ld["pick_medio"] else "") + f", passed it {ld['lasciata']}")
+                  if ld["vista"] else "Your drafts: never seen in a pack in your logs", C["grigio"], F(8))
+        me = AC.meta(r, nome)
+        yy += 6
+        colw = (W - x0 - 20) // 3
+        for j, (tit_, lst_) in enumerate((("YOUR DECKS WITH IT", me["miei"]), ("YOU CAST IT AGAINST", me["contro"]), ("CAST AGAINST YOU BY", me["suoi"]))):
+            xx_ = x0 + j * colw
+            c.create_text(xx_, yy, text=tit_, anchor="nw", fill=C["azzurro"], font=F(7, True))
+            if not lst_:
+                c.create_text(xx_, yy + 18, text="-", anchor="nw", fill=C["muto"], font=F(8))
+            for i, (kk, n, w) in enumerate(lst_[:6]):
+                c.create_text(xx_, yy + 18 + i * 17, text=f"{kk[:22]} · {n} · {w:.0f}%" if w is not None else f"{kk[:22]} · {n}", anchor="nw",
+                              fill=C["testo"] if n >= 5 else C["grigio"], font=F(8))
+        y = max(16 + round((wc + 60) * 279 / 200), yy + 18 + 6 * 17) + 24
+        hc = round(wc * 279 / 200)
+        # le sinergie, solo nel Constructed: quelle note dal testo e quelle che si sono avverate in campo
+        if not limited:
+            note = AC.sinergie_note(r, nome)
+            c.create_line(14, y, W - 14, y, fill="#252b36")
+            c.create_text(14, y + 14, text=f"KNOWN SYNERGIES · {len(note)} cards of your lists work with it, from the card text (a clue, not a measure)",
+                          anchor="w", fill=C["azzurro"], font=F(8, True))
+            y += 30
+            if not note:
+                c.create_text(14, y + 6, text="No known synergy with the cards of your lists.", anchor="w", fill=C["muto"], font=F(8))
+                y += 26
+            else:
+                colw2 = (W - 28) // 3
+                for i, z in enumerate(note[:24]):
+                    xx_ = 14 + (i % 3) * colw2
+                    yy_ = y + (i // 3) * 18
+                    c.create_text(xx_, yy_, text=f"{z['nome'][:30]} · {', '.join(nome_famiglia(f_) for f_ in z['famiglie'][:2])}"
+                                  + (f" · in {z['mazzi']} lists" if z["mazzi"] else ""), anchor="nw", fill=C["testo"], font=F(8))
+                y += ((min(len(note), 24) + 2) // 3) * 18 + 10
+            ic = AC.sinergie_in_campo(r, base_t, nome, note)
+            c.create_line(14, y, W - 14, y, fill="#252b36")
+            c.create_text(14, y + 14, text=("VERIFIED ON THE BATTLEFIELD · weakest to strongest: the known synergies that met in play, on your side at the end "
+                                            "of the same turn; EV = win-probability points those turns made above or below the usual, per game"),
+                          anchor="w", fill=C["azzurro"], font=F(8, True), width=W - 28)
+            y += 34
+            if not ic:
+                c.create_text(14, y + 6, text="None of them met it on the battlefield in these games.", anchor="w", fill=C["muto"], font=F(8))
+                y += 26
+            else:
+                for t_, x_c in (("PARTNER", 14), ("WHY", 300), ("GAMES TOGETHER", 520), ("W-L", 650), ("WIN RATE", 720), ("TURNS", 810), ("EV A GAME", 880)):
+                    c.create_text(x_c, y, text=t_, anchor="w", fill=C["titolo"], font=F(7, True))
+                y += 14
+                for i, z in enumerate(ic):
+                    c.create_rectangle(8, y, W - 8, y + 22, fill="#161b25" if i % 2 == 0 else "#131820", outline="")
+                    tono = C["grigio"] if z["poche"] else C["testo"]
+                    col_ev = C["grigio"] if z["poche"] else (C["verde"] if z["ev"] > 0 else C["rosso"] if z["ev"] < 0 else C["testo"])
+                    for t_, x_c, col_ in ((z["nome"][:34], 14, tono), (", ".join(nome_famiglia(f_) for f_ in z["famiglie"][:2]), 300, C["grigio"]),
+                                          (str(z["n"]), 520, tono), (f"{z['vinte']}-{z['perse']}", 650, tono), (f"{z['wr']:.0f}%", 720, tono),
+                                          (str(z["turni"]), 810, tono), (f"{z['ev']:+.1f}", 880, col_ev)):
+                        c.create_text(x_c, y + 11, text=t_, anchor="w", fill=col_, font=F(8, True))
+                    c._box_carte.append((8, y, 290, y + 22, z["nome"], "verificata", z["filtro"][0], z["filtro"][1]))
+                    y += 24
+                c.create_text(14, y + 4, text="click a partner: only the games where you cast both · under 3 games in grey", anchor="nw", fill=C["muto"], font=F(7))
+                y += 24
+        # la rosa
+        sn = AC.sinergie(r, nome)
+        c.create_line(14, y, W - 14, y, fill="#252b36")
+        c.create_text(14, y + 14, text="THE BEST PARTNERS · your cards cast in the same games: win rate together against the games of this card without them",
+                      anchor="w", fill=C["azzurro"], font=F(8, True))
+        y += 30
+        if not sn["rosa"]:
+            c.create_text(14, y + 8, text="No partner yet: you never cast it in these games." if not sn["n"] else "No other card of yours cast with it here.",
+                          anchor="w", fill=C["muto"], font=F(8))
+            y += 34
+        else:
+            per_riga = max(1, int((W - 28) // (wc + 14)))
+            x_ = 14
+            for i, cc in enumerate(sn["rosa"]):
+                if i and i % per_riga == 0:
+                    x_, y = 14, y + hc + 50
+                x_ += self.metti_carta(c, x_, y, cc, "lanciate", None) + 14
+            y += hc + 50
+        # le partite
+        pc = AC.partite_con(r, nome, quante=60)
+        c.create_line(14, y, W - 14, y, fill="#252b36")
+        c.create_text(14, y + 14, text=f"THE GAMES WITH IT · {len(pc)} · click one: its replay", anchor="w", fill=C["azzurro"], font=F(8, True))
+        y += 32
+        for t_, x_c in (("DATE", 14), ("YOUR DECK", 140), ("OPPONENT", 360), ("CAST BY", 560), ("TURN", 680), ("RESULT", 760)):
+            c.create_text(x_c, y, text=t_, anchor="w", fill=C["titolo"], font=F(7, True))
+        y += 14
+        for i, z in enumerate(pc):
+            x = z["x"]
+            c.create_rectangle(8, y, W - 8, y + 22, fill="#161b25" if i % 2 == 0 else "#131820", outline="")
+            for t_, x_c, col_ in ((f"{x['quando']:%d %b %H:%M}", 14, C["testo"]), ((x.get("mio") or "")[:28], 140, C["testo"]),
+                                  ((x.get("suo") or "")[:26], 360, C["testo"]), ({"you": "you", "opponent": "opponent", "both": "both"}[z["chi"]], 560,
+                                                                               C["azzurro"] if z["chi"] != "opponent" else "#f0ad4e"),
+                                  (f"T{z['giro']}" if z["giro"] is not None else "-", 680, C["testo"]),
+                                  ("Won" if x["vinta"] else "Lost", 760, C["verde"] if x["vinta"] else C["rosso"])):
+                c.create_text(x_c, y + 11, text=t_, anchor="w", fill=col_, font=F(8, True))
+            c._box_partite.append((8, y, W - 8, y + 22, x))
+            y += 24
+        c.configure(scrollregion=(0, 0, W, y + 20))
+        return c
+
+    def clic_analisi_carta(self, e):
+        """Nella scheda Card: il clic su un compagno della rosa apre la sua analisi, su un compagno delle sinergie verificate tiene le partite con tutti e
+        due, su una partita apre il suo replay."""
+        c = e.widget
+        x, y = c.canvasx(e.x), c.canvasy(e.y)
+        sotto = self.carta_sotto(e)
+        if sotto is not None:
+            if sotto[5] == "verificata":       # una sinergia verificata: le partite con tutti e due
+                self.filtri["lanciate"] = None if self.filtri.get("lanciate") == sotto[7] else sotto[7]
+                self.disegna()
+                return sotto[7]
+            if sotto[4] == getattr(self, "analisi_di", None):
+                return None
+            return self.apri_analisi_carta(DA.nome_intero(sotto[4]))
+        z = next((b for b in getattr(c, "_box_partite", []) if b[0] <= x <= b[2] and b[1] <= y <= b[3]), None)
+        if z is not None:
+            self.apri_board(z[4])
+            return z[4]
+        return None
+
     def carta_sotto(self, e):
         c = e.widget
         x, y = c.canvasx(e.x), c.canvasy(e.y)
@@ -8567,8 +9664,10 @@ class PaginaPerformance:
 
     def clic_carte(self, e):
         """Il clic su una carta: solo le partite in cui c'e', nel senso della sua riga (in mano, pescata in quel turno, lanciata, rimasta in mano); di nuovo
-        sulla stessa, tutte. Su «Pairs ›» di una riga: la finestra delle sue coppie."""
+        sulla stessa, tutte. Su «Pairs ›» di una riga: la finestra delle sue coppie. Nella scheda Card: clic_analisi_carta."""
         cv = e.widget
+        if self.carte_modo == "card" and cv is self.tela("cards"):
+            return self.clic_analisi_carta(e)
         x, y = cv.canvasx(e.x), cv.canvasy(e.y)
         bc = next((b for b in getattr(cv, "_box_coppie", []) if b[0] <= x <= b[2] and b[1] <= y <= b[3]), None)
         if bc is not None:
@@ -8576,6 +9675,10 @@ class PaginaPerformance:
                 return self.apri_meriti()
             if bc[4] == "ev_sue":               # i mazzi dell'Opponent ricomposti dalle carte viste
                 return self.apri_liste()
+            if isinstance(bc[4], tuple) and bc[4][0] == "craft":       # Answers: anche le carte da craftare
+                self.risposte_craft = bc[4][1]
+                self.disegna_coppie()
+                return bc[4]
             if isinstance(bc[4], tuple):        # Pairs o Trios nella finestra delle coppie
                 self.coppie_k = bc[4][1]
                 self.disegna_coppie()
@@ -8609,10 +9712,11 @@ class PaginaPerformance:
             f.cv.bind("<MouseWheel>", lambda e: f.cv.yview_scroll(-2 if e.delta > 0 else 2, "units"))
         c = f.cv
         c.delete("all")
-        ll = EV_.liste_composite(self.scelte())
+        ll = EV_.liste_composite(self.scelte(), base=[x for x in self.righe or [] if x["tipo"] == self.tipo])
         c.create_text(16, 18, text=f"THEIR DECKS, REBUILT FROM WHAT YOU SAW · {self.tipo.upper()}", anchor="w", fill=C["titolo"], font=F(11, True))
         c.create_text(16, 40, text=("For each deck you met, the cards it showed (cast or revealed) and in how many of your games against it. A few cards a game "
-                                    "add up to the deck. It only sees what reached the battlefield or was revealed: cards kept in hand stay hidden."),
+                                    "add up to the deck. On the right, what the card was worth to the opponent in that deck (win-probability points per copy on the battlefield; "
+                                    "grey under 15 copies). It only sees what reached the battlefield or was revealed: cards kept in hand stay hidden."),
                       anchor="nw", fill=C["grigio"], font=F(8), width=940)
         y = 80
         if not ll:
@@ -8624,8 +9728,14 @@ class PaginaPerformance:
             y += 20
             for j, (nome, _q, pc) in enumerate(a["carte"][:24]):
                 col_, riga_ = j % 3, j // 3
-                c.create_text(16 + col_ * colw, y + riga_ * 18, text=f"{pc:3d}%  {nome}", anchor="w", fill=C["testo"] if pc >= 30 else C["grigio"],
+                c.create_text(16 + col_ * colw, y + riga_ * 18, text=f"{pc:3d}%  {nome[:26]}", anchor="w", fill=C["testo"] if pc >= 30 else C["grigio"],
                               font=F(8))
+                # l'EV della carta per l'Opponent in questo mazzo (18 nov 2026): verde se gli rende, rosso se gli costa, grigio con poche copie
+                ev_ = (a.get("ev") or {}).get(nome)
+                if ev_ is not None:
+                    v_, n_ = ev_
+                    c.create_text(16 + col_ * colw + colw - 14, y + riga_ * 18, text=f"{v_:+.1f}", anchor="e", font=F(8, True),
+                                  fill=C["muto"] if n_ < EV_.MINIMO else C["verde"] if v_ > 0 else C["rosso"] if v_ < 0 else C["grigio"])
             y += ((min(len(a["carte"]), 24) + 2) // 3) * 18 + 16
         c.configure(scrollregion=(0, 0, 980, y + 20))
         if alza:
@@ -8662,7 +9772,7 @@ class PaginaPerformance:
         y += 18
         for i, (mer, v) in enumerate(vm.items()):
             c.create_rectangle(8, y, 750, y + 26, fill="#161b25" if i % 2 == 0 else "#131820", outline="")
-            col = C["muto"] if v["n"] < EV_.MINIMO else C["azzurro"] if v["valore"] >= 1 else C["rosso"] if v["valore"] <= -1 else C["testo"]
+            col = C["muto"] if v["n"] < EV_.MINIMO else C["verde"] if v["valore"] >= 1 else C["rosso"] if v["valore"] <= -1 else C["testo"]
             c.create_text(16, y + 13, text=EV_.NOMI_MERITI.get(mer, mer)[:1].upper() + EV_.NOMI_MERITI.get(mer, mer)[1:], anchor="w", fill=C["titolo"], font=F(9, True))
             c.create_text(380, y + 13, text=f"{v['valore']:+.1f} pts", anchor="w", fill=col, font=F(9, True))
             c.create_text(480, y + 13, text=str(v["n"]), anchor="w", fill=C["testo"], font=F(9))
@@ -8752,7 +9862,7 @@ class PaginaPerformance:
                           anchor="w", fill=C["grigio"], font=F(7))
             xw = W - 600
             wr = k_["wr"]
-            col = C["muto"] if wr is None else (C["azzurro"] if wr >= 50 else C["rosso"])
+            col = C["muto"] if wr is None else (C["verde"] if wr >= 50 else C["rosso"])
             c.create_rectangle(xw, y + 20, xw + 140, y + 32, fill="#252b36", outline="")
             if wr is not None:
                 c.create_rectangle(xw, y + 20, xw + 1.4 * wr, y + 32, fill=col, outline="")
@@ -8760,7 +9870,7 @@ class PaginaPerformance:
             c.create_text(xw + 150, y + 26, text=f"{wr:.0f}%" if wr is not None else "-", anchor="w", fill=col, font=F(11, True))
             if wr is not None and tot["wr"] is not None:
                 d_ = wr - tot["wr"]
-                c.create_text(xw + 215, y + 26, text=f"{d_:+.1f} vs all", anchor="w", fill=C["azzurro"] if d_ > 0 else C["rosso"] if d_ < 0 else C["testo"],
+                c.create_text(xw + 215, y + 26, text=f"{d_:+.1f} vs all", anchor="w", fill=C["verde"] if d_ > 0 else C["rosso"] if d_ < 0 else C["testo"],
                               font=F(8, True))
             pc = lambda v: f"{v:.0f}%" if v is not None else "-"
             c.create_text(xw + 310, y + 18, text="PLAY", anchor="w", fill=C["muto"], font=F(6, True))

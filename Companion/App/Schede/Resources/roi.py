@@ -82,7 +82,7 @@ class Roi:
             segno = lambda x: f"{'+' if x >= 0 else ''}{pt(x)}"
             tk.Label(self.b_roi, text=f"Variance: {segno(e['saldo'] - sd)} to {segno(e['saldo'] + sd)} in 2 runs out of 3 · gains {e['ottiene'] / e['spende']:.2f} gems per gem spent", bg=C["scheda"], fg=C["azzurro"], font=F(7, True),
                      anchor="w", justify="left", wraplength=self.largo_f).pack(fill="x", pady=(3, 0))
-            tk.Label(self.b_roi, text=f"At your low win rate ({100 * w_b:.0f}% limited, {100 * wc_b:.0f}% constructed): ROI {segno(giu)}", bg=C["scheda"], fg=C["rosso_t"] if giu < 0 else C["azzurro"], font=F(7, True),
+            tk.Label(self.b_roi, text=f"At your low win rate ({100 * w_b:.0f}% limited, {100 * wc_b:.0f}% constructed): ROI {segno(giu)}", bg=C["scheda"], fg=C["rosso_t"] if giu < 0 else C["verde"], font=F(7, True),
                      anchor="w", justify="left", wraplength=self.largo_f).pack(fill="x", pady=(1, 4))
         r_ot = tk.Frame(self.b_roi, bg=C["scheda"]); r_ot.pack(fill="x")
         self.griglia(r_ot, [("gems", pt(ri["gemme"]), None, "", gem), ("packs", pt(ri["buste"]), None, "", self.icona("busta", 16)), ("rare wc", pt(ri["jolly_r"]), None, "", self.icona_j("R")),

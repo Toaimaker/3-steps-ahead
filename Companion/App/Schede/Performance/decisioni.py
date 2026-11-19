@@ -59,15 +59,19 @@ def _ricorda(nome, x, d, fai):
     return [dict(z) for z in v[1]]      # copie: chi le riceve puo' aggiungere campi
 
 
-def per_partita(x):
-    """Le decisioni di combattimento di una partita (riga dell'analizzatore): [dict]. Vuota senza i momenti di mana_aperto o senza sapere il tuo posto."""
+def per_partita(x, con_p=True):
+    """Le decisioni di combattimento di una partita (riga dell'analizzatore): [dict]. Vuota senza i momenti di mana_aperto o senza sapere il tuo posto.
+    con_p=False (18 nov 2026, la lentezza al caricamento: i leak leggevano ogni combattimento col modello della P, 6 s su 583 partite): senza la probabilita'
+    di vincere, per chi guarda solo chi e' morto e chi ha bloccato."""
     d = DA._MANA.get(x.get("partita")) or {}
     if not d:
         return []
+    if not con_p:
+        return _ricorda("comb0", x, d, lambda: _per_partita(x, d, False))
     return _ricorda("comb", x, d, lambda: _per_partita(x, d))
 
 
-def _per_partita(x, d):
+def _per_partita(x, d, con_p=True):
     seat = x.get("seat")
     mom = d.get("momenti") or []
     if seat not in (1, 2) or not mom:
@@ -105,8 +109,21 @@ def _per_partita(x, d):
             # non l'esito del game»): quanto cambia il tuo vantaggio (vite di differenza piu' due volte la forza in campo di differenza, DA.vantaggio) dallo
             # stato prima del danno a fine turno
             guadagno=DA.vantaggio(dopo, seat) - DA.vantaggio(prima, seat) if prima and dopo else None,
-            guadagno_p=_delta_p(prima, dopo, seat, t, att, x)))
+            **(_p_due(prima, dopo, seat, t, att, x) if con_p else dict(guadagno_p=None, p_prima=None, p_dopo=None))))
     return out
+
+
+def _p_due(prima, dopo, seat, t, att, x):
+    """La probabilita' di vincere prima e dopo (dict(p_prima, p_dopo), in percentuale): il replayer la dice in una frase, «dal 42% al 51%» (18 nov 2026,
+    Autore: «stare dietro ai dati di ev e' davvero un inferno»). Le stesse due foto di _delta_p, con anche il guadagno (una lettura sola del modello)."""
+    if not prima or not dopo:
+        return dict(guadagno_p=None, p_prima=None, p_dopo=None)
+    tocca = att != seat
+    giro = (t + 2) // 2
+    p0 = DA.p_foto(prima, seat, tocca, giro, x.get("inizia"), x.get("mulligan"), x.get("tipo"))
+    p1 = DA.p_foto(dopo, seat, tocca, giro, x.get("inizia"), x.get("mulligan"), x.get("tipo"))
+    return dict(guadagno_p=None if p0 is None or p1 is None else round(p1 - p0, 2),
+                p_prima=None if p0 is None else round(p0, 1), p_dopo=None if p1 is None else round(p1, 1))
 
 
 def _delta_p(prima, dopo, seat, t, att, x):
@@ -116,8 +133,8 @@ def _delta_p(prima, dopo, seat, t, att, x):
         return None
     tocca = att != seat
     giro = (t + 2) // 2
-    p0 = DA.p_foto(prima, seat, tocca, giro, x.get("inizia"), x.get("mulligan"))
-    p1 = DA.p_foto(dopo, seat, tocca, giro, x.get("inizia"), x.get("mulligan"))
+    p0 = DA.p_foto(prima, seat, tocca, giro, x.get("inizia"), x.get("mulligan"), x.get("tipo"))
+    p1 = DA.p_foto(dopo, seat, tocca, giro, x.get("inizia"), x.get("mulligan"), x.get("tipo"))
     return None if p0 is None or p1 is None else round(p1 - p0, 2)
 
 
@@ -144,7 +161,7 @@ def _per_partita_magie(x, d):
         nome = DA.nome_grp(m[4].get("g")) if m[4].get("g") not in DA.SENZA_FACCIA else None
         out.append(dict(tipo="magia", t=m[1], turno=(m[1] + 1) // 2, partita=x.get("partita"), vinta=x.get("vinta"), quando=x.get("quando"), nome=nome or "a spell",
                         guadagno=DA.vantaggio(dopo, seat) - DA.vantaggio(prima, seat) if prima and dopo else None,
-                        guadagno_p=_delta_p(prima, dopo, seat, m[1], m[2], x)))
+                        **_p_due(prima, dopo, seat, m[1], m[2], x)))
     return out
 
 
@@ -183,7 +200,7 @@ def costi(r, base_r, campo="guadagno_p"):
         s_, n_ = somme.get((dd["tipo"], _fascia_turno(dd["turno"])), (0.0, 0))
         media = s_ / n_ if n_ else None
         costo = dd[campo] - media if dd.get(campo) is not None and media is not None else None
-        out.append(dict(dd, media=media, costo=costo, colore=colore_costo(costo, campo), guadagno_r8=dd.get(campo)))
+        out.append(dict(dd, media=media, costo=costo, colore=colore_costo(costo, campo), guadagno_r8=dd.get(campo), n_confronto=n_))
     out.sort(key=lambda z: (z["costo"] is None, z["costo"] if z["costo"] is not None else 0))
     return out
 

@@ -51,11 +51,15 @@ def righe_partita(mid, dove=None):
             pass
     if dove:
         try:
-            with open(os.path.join(MA.LOGDIR, dove[0]), "rb") as h:
+            percorso = dove[0][1:] if str(dove[0]).startswith("@") else os.path.join(MA.LOGDIR, dove[0])
+            with open(percorso, "rb") as h:
                 h.seek(dove[1])
-                return h.read(dove[2] - dove[1]).decode("utf-8", "replace").splitlines()
+                righe = h.read(dove[2] - dove[1]).decode("utf-8", "replace").splitlines()
+            if any(mid in r_ for r_ in righe[:400]) or any(mid in r_ for r_ in righe[-400:]):
+                return righe
         except OSError:
             pass
+        return MA.trova_righe(mid)        # il log di adesso e' cresciuto o ha cambiato nome: la partita si cerca per matchId (18 nov 2026)
     return []
 
 
@@ -393,28 +397,6 @@ def con_client(righe):
             buf = None
     return out
 
-
-def passi_client(righe):
-    """I tuoi passaggi di priorita' (16 nov 2026, Autore: «solo quelli davvero utili»): il tuo client scrive le sue risposte ad Arena su piu' righe
-    («... to Match: ClientToGremessage» e poi il JSON); di quelle si tiene solo PerformActionResp con «Pass». -> insieme dei gameStateId in cui hai passato."""
-    out, buf = set(), None
-    for k, l in enumerate(righe):
-        if buf is None:
-            if l.strip() == "{" and k > 0 and " to Match: " in righe[k - 1]:
-                buf = [l]
-            continue
-        buf.append(l)
-        if l.rstrip() == "}":
-            testo, buf = "\n".join(buf), None
-            if "ActionType_Pass" not in testo or "PerformActionResp" not in testo:
-                continue
-            try:
-                p_ = (json.loads(testo).get("payload") or {})
-            except ValueError:
-                continue
-            if any(a_.get("actionType") == "ActionType_Pass" for a_ in (p_.get("performActionResp") or {}).get("actions") or []):
-                out.add(p_.get("gameStateId") or 0)
-    return out
 
 
 def azioni(righe, nome=lambda g: None, interni=False):

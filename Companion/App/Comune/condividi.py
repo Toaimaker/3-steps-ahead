@@ -111,6 +111,17 @@ def riga(p, id_account):
     mani = p.get("mani") or []
     limited = bool(re.search(r"Draft|Sealed|Cube", p.get("evento") or ""))
     fmt, bo3 = formato_di(p.get("evento"))
+    # le partite contro Sparky non partono (18 nov 2026, il memo: nell'app non contano e al server arrivavano, 81 su 667)
+    if fmt == "bot":
+        return None
+    # il codice del giocatore viene sempre da un account vero (18 nov 2026, il memo: fino al 10 nov le partite di Autore partivano col codice di «?»,
+    # a966…, poi col suo, 701f…): una partita di cui il log non dice l'account non parte, cosi' due utenti diversi senza account non si mescolano
+    # sotto lo stesso codice. Nell'app di Autore l'account e' il suo.
+    if not id_account or id_account == "?":
+        import account
+        id_account = None if account.PUBBLICA else account.AUTORE["id"]
+    if not id_account or id_account == "?":
+        return None
     return dict(v=VERSIONE_DATI, formato=fmt, bo3=bo3, rango=rango_di(p, limited), partita=codice(p["matchId"]), giocatore=codice(id_account or "?"), evento=p.get("evento"),
                 giorno=datetime.date.fromtimestamp(p["inizio"] / 1000).isoformat(), vinta=bool(p["vinta"]),
                 inizia=(p.get("inizia") == p.get("seat")) if p.get("inizia") is not None else None, mulligan=max(0, len(mani) - 1), turni=p.get("turni"),
@@ -260,6 +271,16 @@ def prova():
         casi.append(("negativa: senza rango nel log niente rango, un rango sconosciuto non passa, il Mythic senza livello",
                      rango_di({}, False) is None and rango_di(dict(rango_prima=["Wood", 1, 0, "x", 1, 0]), False) is None
                      and rango_di(dict(rango_prima=["Mythic", 0, 0, "x", 1, 0]), False) == "Mythic"))
+        casi.append(("una partita contro Sparky non va in coda; negativa: la stessa partita in Ladder si'",
+                     riga(dict(pp[0], evento="AIBotMatch"), "AAAAAAAAAAAAAAAAAAAAAAAAAA") is None and riga(pp[0], "AAAAAAAAAAAAAAAAAAAAAAAAAA") is not None))
+        vecchio = account.PUBBLICA
+        try:
+            account.PUBBLICA = True
+            senza = riga(pp[0], None) is None and riga(pp[0], "?") is None
+        finally:
+            account.PUBBLICA = vecchio
+        casi.append(("nell'app pubblica una partita senza account non parte (mai il codice di «?»); in quella di Autore ha il suo codice",
+                     senza and (vecchio or riga(pp[0], None)["giocatore"] == codice(account.AUTORE["id"]))))
         casi.append(("una partita non si mette in coda due volte", accoda(pp, "AAAAAAAAAAAAAAAAAAAAAAAAAA") == 0))
         casi.append(("negativa: senza indirizzo https non si manda niente", invia("") is None and invia("http://x") is None))
         pp_ = list(pacchi(["x" * 1500] * 627))

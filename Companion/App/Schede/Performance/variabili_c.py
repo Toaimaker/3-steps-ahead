@@ -315,7 +315,7 @@ def colpisce(rim, minaccia):
     return False
 
 
-def minacce(r, quante=12, minimo=3):
+def minacce(r, quante=12, minimo=3, craft=False):
     """C15: le sue magie lanciate che stanno piu' nelle tue sconfitte che nelle vittorie (la quota delle sconfitte con la carta meno quella delle vittorie),
     da `minimo` sconfitte; per ognuna le risposte della tua collezione (risposte). -> righe di Cards: dict(nome, n, vinte, perse, wr, quota, eccesso,
     risposte, filtro)."""
@@ -346,16 +346,17 @@ def minacce(r, quante=12, minimo=3):
     out.sort(key=lambda c: (-c["eccesso"] * c["perse"], c["nome"]))
     out = out[:quante]
     for c in out:
-        c["risposte"] = risposte(c["nome"], colori, standard)
+        c["risposte"] = risposte(c["nome"], colori, standard, craft=craft)
     return out
 
 
-def risposte(minaccia, colori, standard, quante=8):
+def risposte(minaccia, colori, standard, quante=8, craft=False):
     """C15: le carte che hai (almeno una copia), nei colori dati (tutti i loro colori dentro; incolori sempre), legali in Standard se standard, che dal testo
-    tolgono la minaccia (colpisce), dalla piu' economica."""
+    tolgono la minaccia (colpisce), dalla piu' economica. craft=True (18 nov 2026, Autore: «suggerendoci validi counter dalla collezione o craftabili se
+    flagghiamo la spunta»): anche quelle che non hai, da craftare coi jolly; prima le tue a parita' di costo."""
     out = []
     for c in DA._tabella().values():
-        if not c.get("copie") or "Land" in _prima(c) or (standard and (not c.get("standard") or c.get("ban_std"))):
+        if (not c.get("copie") and not craft) or "Land" in _prima(c) or (standard and (not c.get("standard") or c.get("ban_std"))):
             continue
         if not set(c.get("colori") or "") - {"C"} <= colori:
             continue
@@ -363,7 +364,7 @@ def risposte(minaccia, colori, standard, quante=8):
             continue
         if colpisce(c["nome"], minaccia):
             out.append(c["nome"])
-    out.sort(key=lambda n: ((DA._carta(n) or {}).get("cmc", 99), n))
+    out.sort(key=lambda n: ((DA._carta(n) or {}).get("cmc", 99), not (DA._carta(n) or {}).get("copie"), n))
     return out[:quante]
 
 

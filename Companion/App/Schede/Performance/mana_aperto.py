@@ -24,7 +24,7 @@ import re  # noqa: E402
 
 from ambiente import LOGDIR  # noqa: E402
 
-VERSIONE = 22       # 22 (18 nov 2026, le fasi nel dettaglio di Advanced filters): «passi_lanci», il passo di Arena di ogni magia lanciata, [turno, posto, grpId, passo] (Step_Upkeep, Step_Draw, Step_BeginCombat, Step_DeclareAttack, Step_DeclareBlock, Step_CombatDamage, Step_FirstStrikeDamage, Step_EndCombat, Step_End, Step_Cleanup; vuoto nelle fasi principali); 21 21 (18 nov 2026, le giocate del lettore di EV): «lanci», ogni terra giocata e ogni magia lanciata di tutti e due con la foto di quel momento, [turno, posto, "terra"|"magia", grpId, foto, stato], e lo stato in fondo ai confini (l'ordine dentro il turno); 20 (18 nov 2026, il Leak Finder lettore di EV, le fasi del turno): «confini», la foto alla prima riga della fase di combattimento (la fine della prima fase principale) e della seconda fase principale (la fine del combattimento) di ogni turno, [turno, chi e' di turno, "comb"|"m2", foto]; 19 (14 nov 2026): anche «surveil», le carte mandate al cimitero col surveil (ZoneTransfer, categoria Surveil; se le tieni sopra Arena non scrive niente); 18 (14 nov 2026, la pagella dell'enciclopedia): nelle azioni anche «scarta» (di chi era la carta), «contrastata» (di chi era la magia) e «scry» ([turno, chi, "scry", carte sopra, "carte sotto"]); 17 (14 nov 2026): la foto della magia in pila col pagamento (ManaPaid arriva nel messaggio dopo il lancio); 16 (14 nov 2026, Autore: «quando a una carta vengono aggiunti segnalini rendiamolo visibilmente piu' chiaro»): il settimo elemento di ogni carta in campo, i segnalini {tipo: quanti} (o None); 15 (13 nov 2026, Autore: «Sì, aggiungilo», la Reliquia rotta dopo il suo draw step): «attivate», ogni abilita' attivata (non di mana) di tutti e due, [turno, posto, grpId della carta, fase, step, chi e' di turno]; 14 (i leak L3 e L6): «fasi», la fase di ogni tua e sua magia lanciata ([turno, posto, grpId, fase di Arena]); 2: le foto della partita; 3: cimitero, esilio, forza e costituzione; 4: i momenti del combattimento e delle magie coi bersagli;
+VERSIONE = 25       # 25 (18 nov 2026, l'assist di aure ed equipaggiamenti): nelle info del combattimento «porta», {creatura: [aure ed equipaggiamenti attaccati]} dalle annotazioni persistenti Attachment; 24: lo stato in fondo alle «disponibili» (una richiesta vale solo dopo l'ultima giocata del turno); 23 (18 nov 2026, il leaker intelligente, passo 1 del memo): «disponibili», le giocate che Arena ti offriva a ogni tua priorita' (ActionsAvailableReq): [turno, posto, fase, [[grpId, «C» lancio | «P» terra, pagabile 1|0]], stato], pagabile = Arena ha una soluzione di pagamento automatica (autoTapSolution); 22 22 (18 nov 2026, le fasi nel dettaglio di Advanced filters): «passi_lanci», il passo di Arena di ogni magia lanciata, [turno, posto, grpId, passo] (Step_Upkeep, Step_Draw, Step_BeginCombat, Step_DeclareAttack, Step_DeclareBlock, Step_CombatDamage, Step_FirstStrikeDamage, Step_EndCombat, Step_End, Step_Cleanup; vuoto nelle fasi principali); 21 21 (18 nov 2026, le giocate del lettore di EV): «lanci», ogni terra giocata e ogni magia lanciata di tutti e due con la foto di quel momento, [turno, posto, "terra"|"magia", grpId, foto, stato], e lo stato in fondo ai confini (l'ordine dentro il turno); 20 (18 nov 2026, il Leak Finder lettore di EV, le fasi del turno): «confini», la foto alla prima riga della fase di combattimento (la fine della prima fase principale) e della seconda fase principale (la fine del combattimento) di ogni turno, [turno, chi e' di turno, "comb"|"m2", foto]; 19 (14 nov 2026): anche «surveil», le carte mandate al cimitero col surveil (ZoneTransfer, categoria Surveil; se le tieni sopra Arena non scrive niente); 18 (14 nov 2026, la pagella dell'enciclopedia): nelle azioni anche «scarta» (di chi era la carta), «contrastata» (di chi era la magia) e «scry» ([turno, chi, "scry", carte sopra, "carte sotto"]); 17 (14 nov 2026): la foto della magia in pila col pagamento (ManaPaid arriva nel messaggio dopo il lancio); 16 (14 nov 2026, Autore: «quando a una carta vengono aggiunti segnalini rendiamolo visibilmente piu' chiaro»): il settimo elemento di ogni carta in campo, i segnalini {tipo: quanti} (o None); 15 (13 nov 2026, Autore: «Sì, aggiungilo», la Reliquia rotta dopo il suo draw step): «attivate», ogni abilita' attivata (non di mana) di tutti e due, [turno, posto, grpId della carta, fase, step, chi e' di turno]; 14 (i leak L3 e L6): «fasi», la fase di ogni tua e sua magia lanciata ([turno, posto, grpId, fase di Arena]); 2: le foto della partita; 3: cimitero, esilio, forza e costituzione; 4: i momenti del combattimento e delle magie coi bersagli;
 #                    5: ogni istantaneo e stregoneria in pila (anche senza bersagli) e i permanenti che ha tolto dal campo (i board wipe);
 #                    6: per le partite lette dagli archivi, dove stanno («dove»: archivio, byte di inizio e di fine), per il replay azione per azione;
 #                    7: debug del 12 nov 2026: le cancellazioni, chi e' in campo dalle zone, le vite a 0, l'annullamento, emblemi e inneschi, i riassunti;
@@ -137,7 +137,7 @@ def leggi(righe):
     zown, zids, vite = {}, {}, {}
     pers = {}           # le annotazioni persistenti: i segnalini (VERSIONE 16)
     # ogni cosa annotata porta lo stato del gioco in cui e' nata, cosi' un annullamento la toglie: [(stato, elemento)]
-    st = dict(attacchi=[], fine=[], foto=[], momenti=[], mano0=None, pend=None, azioni=[], fasi=[], attivate=[], confini=[], lanci=[], passi_lanci=[])
+    st = dict(attacchi=[], fine=[], foto=[], momenti=[], mano0=None, pend=None, azioni=[], fasi=[], attivate=[], confini=[], lanci=[], passi_lanci=[], disponibili=[])
     riassunti = 0
     visti_ts = {}               # {id dell'annotazione TargetSpec: stato}
     # i momenti in ordine (12 nov 2026, Autore: «una freccia che definisce quali carte interagiscono con quali altre, per vedere come si e' bloccato in
@@ -199,7 +199,7 @@ def leggi(righe):
 
     def annulla(fino):
         """L'annullamento di Arena: via quello che e' nato da questo stato in poi (lo stato Full che segue lo rimanda)."""
-        for k in ("attacchi", "fine", "foto", "momenti", "azioni", "fasi", "attivate", "confini", "lanci", "passi_lanci"):
+        for k in ("attacchi", "fine", "foto", "momenti", "azioni", "fasi", "attivate", "confini", "lanci", "passi_lanci", "disponibili"):
             st[k] = [x for x in st[k] if x[0] < fino]
         for dd in (mom_di, in_pila):
             for k in [k for k, v in dd.items() if v[0] >= fino]:
@@ -215,7 +215,7 @@ def leggi(righe):
         if r.startswith(RIASSUNTO):
             riassunti += 1
             continue
-        if "gameStateMessage" not in r:
+        if "gameStateMessage" not in r and "ActionsAvailableReq" not in r:
             continue
         i = r.find("{")
         if i < 0:
@@ -225,6 +225,16 @@ def leggi(righe):
         except ValueError:
             continue
         for m in (d.get("greToClientEvent") or {}).get("greToClientMessages") or []:
+            if m.get("type") == "GREMessageType_ActionsAvailableReq" and ti.get("turnNumber"):
+                # le giocate legali che Arena ti offriva (VERSIONE 23): la verita' di Arena al posto della stima dal testo delle carte (i leak L1 e L2)
+                lst_ = []
+                for a_ in (m.get("actionsAvailableReq") or {}).get("actions") or []:
+                    k_ = {"ActionType_Cast": "C", "ActionType_Play": "P"}.get(a_.get("actionType"))
+                    if k_ and a_.get("grpId"):
+                        lst_.append([a_["grpId"], k_, 1 if (k_ == "P" or a_.get("autoTapSolution") or not a_.get("manaCost")) else 0])
+                st["disponibili"].append((m.get("gameStateId") or 0, [ti.get("turnNumber"), (m.get("systemSeatIds") or [None])[0], ti.get("phase") or "", lst_,
+                                                                         m.get("gameStateId") or 0]))
+                continue
             gs = m.get("gameStateMessage")
             if not gs:
                 continue
@@ -364,7 +374,13 @@ def leggi(righe):
                     pot = sum(1 for o in sul if o.get("controllerSeatId") == att and "CardType_Creature" in (o.get("cardTypes") or [])
                               and (o in attaccanti or (not o.get("isTapped") and not o.get("hasSummoningSickness"))))
                     aperte = terre(2 if att == 1 else 1, campo)[0]
-                    st["pend"] = (posto, pend[1] if pend else sid, ["comb", t, att, foto(), dict(att=att_ids, blocchi=blocchi, pot=pot, aperte=aperte)])
+                    # le aure e gli equipaggiamenti attaccati (VERSIONE 25): l'assist delle carte che li portano
+                    porta = {}
+                    for a_p in pers.values():
+                        if "AnnotationType_Attachment" in (a_p.get("type") or []) and a_p.get("affectorId") and a_p.get("affectedIds"):
+                            porta.setdefault(a_p["affectedIds"][0], []).append(a_p["affectorId"])
+                    st["pend"] = (posto, pend[1] if pend else sid, ["comb", t, att, foto(), dict(att=att_ids, blocchi=blocchi, pot=pot, aperte=aperte,
+                                                                                               porta=porta)])
             elif pend:
                 st["momenti"].insert(pend[0], (pend[1], pend[2]))
                 st["pend"] = None
@@ -421,7 +437,7 @@ def leggi(righe):
     ultima = [ti.get("turnNumber"), ti.get("activePlayer"), foto()] if ti.get("turnNumber") else None
     via = lambda lst: [x[1] for x in lst]
     return dict(azioni=via(st["azioni"]), fasi=via(st["fasi"]), attivate=via(st["attivate"]), attacchi=via(st["attacchi"]), fine=via(st["fine"]), mano0=st["mano0"][1] if st["mano0"] else None, foto=via(st["foto"]), ultima=ultima,
-                momenti=via(st["momenti"]), confini=via(st["confini"]), lanci=via(st["lanci"]), passi_lanci=via(st["passi_lanci"]), riassunti=riassunti)
+                momenti=via(st["momenti"]), confini=via(st["confini"]), lanci=via(st["lanci"]), passi_lanci=via(st["passi_lanci"]), disponibili=via(st["disponibili"]), riassunti=riassunti)
 
 
 _INDICE = {}        # {file partita.json: matchId}: un pezzo di log non cambia, si legge una volta per processo (13 nov 2026: 450 file a ogni rilettura)
@@ -483,6 +499,73 @@ def dagli_archivi(dati, letti, ids):
     return nuove
 
 
+_VIVI = {}         # i log di adesso gia' guardati in questo processo: {percorso: (misura, data)}
+
+
+def log_vivi():
+    """Il Player.log di adesso e il Player-prev.log (quello della sessione di Arena prima), se ci sono."""
+    try:
+        import piattaforma
+        pl = piattaforma.player_log()
+    except Exception:       # noqa: BLE001 - senza la cartella di Arena niente log vivi
+        return []
+    return [f for f in ((pl, pl.replace("Player.log", "Player-prev.log")) if pl else ()) if f and os.path.exists(f)]
+
+
+def dai_vivi(dati, ids):
+    """Le partite finite che mancano, dal Player.log di adesso e dal Player-prev.log (18 nov 2026, Autore: «perche' le ultime partite giocate mi dice
+    not in the logs?»: le partite di oggi stavano solo nel log di adesso, che l'archivio copia ogni 6 ore e il giro salta con Arena aperta). Solo le
+    partite finite (una in corso ha la sua parte che cresce); il «dove» porta il percorso intero con «@» davanti: il file cresce e al riavvio di Arena
+    cambia nome, quindi il replay controlla che il pezzo sia ancora la partita (replay_log.righe_partita). -> quante nuove."""
+    nuove = 0
+    for f in log_vivi():
+        try:
+            st = os.stat(f)
+        except OSError:
+            continue
+        k = (st.st_size, st.st_mtime)
+        if _VIVI.get(f) == k:
+            continue
+        if ids is not None and not (set(ids) - set(dati)):
+            break
+        try:
+            with open(f, "rb") as h:
+                data = h.read()
+        except OSError:
+            continue
+        for mid in dict.fromkeys((a or b).decode() for a, b in MID.findall(data)):
+            if mid in dati or (ids is not None and mid not in ids):
+                continue
+            m = mid.encode()
+            i = data.find(m); i = data.rfind(b"\n", 0, i) + 1
+            j = data.rfind(m); j = data.find(b"\n", j); j = len(data) if j < 0 else j + 1
+            d = leggi(data[i:j].decode("utf-8", "replace").splitlines())
+            if d["fine"]:
+                d["dove"] = ["@" + os.path.abspath(f), i, j]
+                dati[mid] = d
+                nuove += 1
+        _VIVI[f] = k
+    return nuove
+
+
+def trova_righe(mid):
+    """Le righe di una partita cercata per matchId nei log di adesso e negli archivi (dal piu' nuovo): quando il «dove» non porta piu' alla partita."""
+    m = mid.encode()
+    for f in log_vivi() + sorted(glob.glob(os.path.join(LOGDIR, "20*_Player*.log")), reverse=True):
+        try:
+            with open(f, "rb") as h:
+                data = h.read()
+        except OSError:
+            continue
+        i = data.find(m)
+        if i < 0:
+            continue
+        i = data.rfind(b"\n", 0, i) + 1
+        j = data.rfind(m); j = data.find(b"\n", j); j = len(data) if j < 0 else j + 1
+        return data[i:j].decode("utf-8", "replace").splitlines()
+    return []
+
+
 def tutti(ids=None, archivi=True):
     """{matchId: dato}: dalla copia, le nuove dai pezzi di log e (archivi) dai log archiviati, poi salvate. ids: solo queste partite."""
     try:        # la copia (13 MB) si rilegge solo se il file e' cambiato
@@ -513,6 +596,7 @@ def tutti(ids=None, archivi=True):
     prima = len(letti)
     if archivi:
         nuove += dagli_archivi(dati, letti, ids)
+        nuove += dai_vivi(dati, ids)
     if nuove or len(letti) != prima:
         try:
             os.makedirs(os.path.dirname(COPIA), exist_ok=True)
@@ -548,10 +632,16 @@ def blocca_attacchi(g):
     return bool(re.search(r"can't attack you|attack you unless|creatures can't attack", _testo(g), re.I))
 
 
+_AURE_FERME = {}     # ricordata per carta (18 nov 2026, la lentezza al caricamento: 173.000 chiamate, 1,5 s)
+
+
 def aura_ferma(g):
     """Un'aura che ferma la creatura incantata («enchanted creature can't attack», Pacifism, Petrify): la rilettura del 15 nov 2026 ha trovato Unstoppable
     Slasher sotto Pacifism contato come attaccante. Le foto non dicono a chi e' attaccata: si toglie la creatura piu' forte (grado C)."""
-    return bool(re.search(r"enchanted (?:creature|artifact or creature|permanent)[^.]*can't attack", _testo(g), re.I))
+    v = _AURE_FERME.get(g)
+    if v is None:
+        v = _AURE_FERME[g] = bool(re.search(r"enchanted (?:creature|artifact or creature|permanent)[^.]*can't attack", _testo(g), re.I))
+    return v
 
 
 def _ferme(lato):
@@ -605,7 +695,31 @@ def finestre_non_att(d, seat):
     return out
 
 
-SCELTE_ATTACCO = ("Couldn't attack", "Didn't attack", "Attacked with some", "Attacked with everything")
+SCELTE_ATTACCO = ("Couldn't attack", "Didn't attack", "Attacked with some", "Attacked with everything", "Held back, nothing to block")
+# l'ultima (18 nov 2026, Autore: «quando oppo attacca con 2 creature su 3 e io ho board vuoto, oppo ha lasciato punti sul tavolo?»): ha attaccato con una
+# parte di chi poteva e chi difende non aveva nessuna creatura stappata per bloccare: danni lasciati sul tavolo (un indizio: la creatura tenuta a casa puo'
+# servire a difendersi nel turno dopo)
+
+
+def difensori_stappati(m):
+    """Le creature stappate di chi difende in un momento di combattimento (dalla foto prima del danno): quante potevano bloccare."""
+    f = m[3] if len(m) > 3 and isinstance(m[3], dict) else {}
+    dif = 2 if m[2] == 1 else 1
+    return sum(1 for c in (f.get("c") or [[], []])[dif - 1] or [] if len(c) > 3 and c[3] is not None and not c[1])
+
+
+def tenuti_a_casa(d, seat):
+    """I turni dell'Opponent (seat = l'Hero) in cui ha attaccato con una parte di chi poteva e tu non avevi creature stappate: {turno di Arena: (attaccanti,
+    potevano)}. Il replayer lo dice nel racconto del combattimento."""
+    out = {}
+    if not d or seat not in (1, 2):
+        return out
+    for m in d.get("momenti") or []:
+        if m[0] == "comb" and m[2] != seat and m[4] and m[4].get("att"):
+            pot = m[4].get("pot")
+            if pot and len(m[4]["att"]) < pot and not difensori_stappati(m):
+                out[m[1]] = (len(m[4]["att"]), pot)
+    return out
 
 
 def scelte_attacco(d):
@@ -626,7 +740,12 @@ def scelte_attacco(d):
     for m in d.get("momenti") or []:
         if m[0] == "comb" and m[4] and m[4].get("att"):
             pot = m[4].get("pot")
-            out[m[1]] = SCELTE_ATTACCO[3] if pot and len(m[4]["att"]) >= pot else SCELTE_ATTACCO[2]
+            if pot and len(m[4]["att"]) >= pot:
+                out[m[1]] = SCELTE_ATTACCO[3]
+            elif not difensori_stappati(m):
+                out[m[1]] = SCELTE_ATTACCO[4]
+            else:
+                out[m[1]] = SCELTE_ATTACCO[2]
     return out
 
 
@@ -950,6 +1069,16 @@ def prova():
     casi.append(("l'annullamento: via la magia annullata, il momento della magia vera c'e' (anche con lo stesso id)", mu == [300]))
     casi.append(("le fasi delle magie (VERSIONE 14): la magia lanciata in Main1, col turno, il posto e il grpId; negativa: quella annullata no",
                  leggi(fu)["fasi"] == [[5, 1, 300, "Phase_Main1"]] and leggi(fa)["fasi"] == [[3, 2, 151, "Phase_Main1"]]))
+    # le giocate di Arena (VERSIONE 23): un ActionsAvailableReq in Main2 del turno 5, Healer's Hawk pagabile, Serra Angel no, la terra offerta
+    aar = lambda azioni, sid=6: "[UnityCrossThreadLogger]x " + json.dumps(dict(greToClientEvent=dict(greToClientMessages=[dict(
+        type="GREMessageType_ActionsAvailableReq", systemSeatIds=[1], gameStateId=sid, actionsAvailableReq=dict(actions=azioni))])))
+    fd = [gs(gameStateId=5, type="GameStateType_Full", zones=[dict(zoneId=28, type="ZoneType_Battlefield")], turnInfo=dict(turnNumber=5, activePlayer=1,
+                                                                                                                           phase="Phase_Main2")),
+          aar([dict(actionType="ActionType_Cast", grpId=814, manaCost=[dict(color=["ManaColor_White"], count=1)], autoTapSolution=dict(autoTapActions=[])),
+               dict(actionType="ActionType_Cast", grpId=816, manaCost=[dict(color=["ManaColor_White"], count=5)]),
+               dict(actionType="ActionType_Play", grpId=811), dict(actionType="ActionType_Pass")])]
+    casi.append(("le giocate di Arena: Healer's Hawk pagabile, Serra Angel offerta ma non pagabile, la terra; negativa: Pass non c'e'",
+                 leggi(fd)["disponibili"] == [[5, 1, "Phase_Main2", [[814, "C", 1], [816, "C", 0], [811, "P", 1]], 6]]))
     # i confini delle fasi (VERSIONE 20): la prima riga del combattimento e della seconda fase principale di ogni turno, una volta sola
     bf_ = [dict(zoneId=28, type="ZoneType_Battlefield"), pl()]
     tf_ = lambda ph, n=5: dict(turnNumber=n, activePlayer=1, phase=ph)
@@ -989,6 +1118,24 @@ def prova():
           gs(type="GameStateType_Diff", zones=campo(), diffDeletedInstanceIds=[10], players=[dict(systemSeatNumber=1, status="PlayerStatus_PendingLoss")])]
     u = leggi(zz)["ultima"][2]
     casi.append(("le vite a zero (lifeTotal assente) e la creatura cancellata", u["v"] == [0, 5] and u["c"] == [[], []]))
+    # la partita cercata per matchId quando il «dove» non porta piu' alla partita (18 nov 2026: il Player.log di adesso cresce e cambia nome)
+    import tempfile
+    import replay_log as RL_
+    d_t = tempfile.mkdtemp()
+    f_t = os.path.join(d_t, "Player.log")
+    mid_t = "11111111-2222-3333-4444-555555555555"
+    with open(f_t, "w", encoding="utf-8") as h_:
+        h_.write("altro\n" + "".join('{"matchId": "%s", "n": %d}\n' % (mid_t, k) for k in range(3)) + "dopo\n")
+    MA_ = RL_.MA        # il modulo che usa il replay (lanciato come programma, questo e' __main__)
+    vero_v, vero_dir = MA_.log_vivi, MA_.LOGDIR
+    try:
+        MA_.log_vivi = lambda: [f_t]
+        MA_.LOGDIR = d_t
+        rr_ = RL_.righe_partita(mid_t, ["@" + f_t, 0, 5])
+        casi.append(("il dove sbagliato (il log e' cambiato): la partita si ritrova per matchId, solo le sue righe; negativa: un matchId che non c'e' non da' "
+                     "niente", len(rr_) == 3 and all(mid_t in r_ for r_ in rr_) and MA_.trova_righe("99999999-2222-3333-4444-555555555555") == []))
+    finally:
+        MA_.log_vivi, MA_.LOGDIR = vero_v, vero_dir
     for n, ok in casi:
         print(("ok    " if ok else "ROSSO ") + n)
     print(f"{sum(1 for _n, ok in casi if ok)}/{len(casi)}")

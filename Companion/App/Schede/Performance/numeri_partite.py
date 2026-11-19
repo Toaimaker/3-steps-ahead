@@ -49,7 +49,8 @@ def _wr(xs):
     return 100 * sum(1 for x in xs if x["vinta"]) / len(xs) if xs else None
 
 
-def valori(r, tutte, filtri=None):
+def valori(r, tutte, filtri=None, atteso=None):
+    """tutte: le partite di confronto (il tipo, o il mazzo scelto in By deck); atteso: le partite da cui viene l'EV atteso (di partenza tutte)."""
     import decisioni as DEC
     k = DA.conti(r)
     tot = DA.conti(tutte)
@@ -98,7 +99,7 @@ def valori(r, tutte, filtri=None):
         tono = "vuoto" if g_ is None else "neutro" if gb is None or len(r) == len(tutte) else ("su" if g_ > gb else "giu")
         out[kk] = (f"{g_:+.1f}" if g_ is not None else "-", tono, f"{c_['n']} combats" + (f" · all {gb:+.1f}" if gb is not None and len(r) != len(tutte) else ""))
     k5 = DA.contro_il_caso(r)["turni"].get(5)
-    out["ev"] = valore_ev(r, tutte, filtri)
+    out["ev"] = valore_ev(r, atteso if atteso is not None else tutte, filtri)
     out["fortuna"] = (f"{k5['x'] - k5['e']:+.1f}" if k5 else "-", "vuoto" if not k5 else "neutro" if k5["p"] >= 0.05 else ("su" if k5["x"] > k5["e"] else "giu"),
                       f"in {k5['partite']} games · p {k5['p']:.2f}" if k5 else "")
     mm = [x["minuti"] for x in r if x.get("minuti")]

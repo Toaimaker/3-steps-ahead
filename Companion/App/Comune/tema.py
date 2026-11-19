@@ -40,7 +40,9 @@ CYBER = dict(ciano="#00e5ff", magenta="#ff2fd2", viola="#a35bff", acido="#b8ff3c
              fondo="#070910", testa="#0d1120", riga="#141a2e", filo="#1f2a44", sezione="#ff6fdc")
 # i colori del tier del mazzo (S A B C D, rating_mazzi.tier): li usano la finestra grande e quella dei mazzi
 COL_TIER = {"S": CI["arancio"], "A": CI["verde"], "B": CI["azzurro"], "C": CI["grigio"], "D": CI["rosso"], "?": CI["muto"]}
-VINTA, PERSA = CI["azzurro"], CI["rosso"]   # il grafico delle vinte e delle perse (vedi sopra: controllati per i daltonici)
+# il positivo e il negativo (vinte e perse, win rate sopra e sotto il 50%, EV sopra e sotto il solito): dal 19 nov 2026 il positivo e' verde (Autore:
+# «su tutta l'app ogni valore ev o wr positivo deve essere verde, non blu»); fino a quel giorno azzurro, scelto per i daltonici
+VINTA, PERSA = CI["verde"], CI["rosso"]
 SALDO = "#f0ad4e"       # la linea del saldo sul Trend: lontana da azzurro, rosso e grigio anche per i daltonici, 13,8 o piu' in OKLab; viola e rosa cadevano sotto 8 sull'azzurro
 SFONDO_FASCIA, SFONDO_LINEA = "#12161e", "#1b2029"   # lo sfondo del grafico: fasce e linee appena visibili sul fondo dei pannelli (redesign del 14 nov 2026)
 LEGHE = ("Bronze", "Silver", "Gold", "Platinum", "Diamond", "Mythic")

@@ -28,8 +28,9 @@ class CartaCompleta:
     get() -> la carta scelta o QUALSIASI (come la tendina di prima, per le prove)."""
     MOSTRA = 8
 
-    def __init__(self, tk, F, padre, carte, carta, scegli, larga=210):
+    def __init__(self, tk, F, padre, carte, carta, scegli, larga=210, vuoto="any card"):
         self.tk, self.F, self.carte, self.scegli = tk, F, list(carte), scegli
+        self.vuoto = vuoto      # il segnaposto della casella vuota (18 nov 2026, Breakdown: «Everyone»)
         self.scelta = carta
         self.fr = tk.Frame(padre, bg=TEND["bordo"])
         self.e = tk.Entry(self.fr, bg=TEND["campo"], fg=C["titolo"], insertbackground=C["titolo"], relief="flat", font=F(9), width=max(10, larga // 8),
@@ -49,7 +50,7 @@ class CartaCompleta:
             self.e.insert(0, carta)
             self.e.configure(fg=C["titolo"])
         else:
-            self.e.insert(0, "any card")
+            self.e.insert(0, self.vuoto)
             self.e.configure(fg=C["grigio"])
 
     def get(self):
@@ -160,7 +161,7 @@ FASE_QUALSIASI = "Any phase"
 
 class Righe:
     def __init__(self, tk, F, padre, righe, campi, nome_campo, voci_di, on_cambio, bg=None, larga_campo=190, larga_voce=170, dopo=None, una_voce=False,
-                 carte=None, fasi=None):
+                 carte=None, fasi=None, etichetta_fase="in", fase_qualsiasi=None):
         """righe: la lista [[campo, [voci]]] (la modifica); campi: le chiavi del campo; nome_campo(k) come si legge; voci_di(k): le voci di quel campo;
         on_cambio(righe): dopo ogni cambio; dopo: il testo fra il campo e le voci (es. «cast»); una_voce: una voce sola per riga, niente + (le famiglie
         turno per turno con un valore per turno: l'attacco, la difesa, le pescate); carte: una tendina in piu' in fondo alla riga col nome della carta,
@@ -168,7 +169,9 @@ class Righe:
         nome specifico della carta se vogliamo»): la riga diventa [campo, [voci], carta o None]."""
         # fasi (18 nov 2026, Autore: «una tendina successiva che chiede la fase in cui vogliamo esplorare il turno»): [(codice, nome)]; la riga diventa
         # [campo, [voci], carta, fase]; None = Any phase
+        # etichetta_fase e fase_qualsiasi (18 nov 2026, la mano iniziale): l'ultima tendina puo' essere un'altra cosa (il valore di mana), col suo nome
         self.una_voce, self.carte, self.fasi = una_voce, carte, fasi
+        self.etichetta_fase, self.fase_qualsiasi = etichetta_fase, fase_qualsiasi or FASE_QUALSIASI
         self.tk, self.F, self.righe, self.campi = tk, F, righe, list(campi)
         self.nome_campo, self.voci_di, self.on_cambio, self.dopo = nome_campo, voci_di, on_cambio, dopo
         self.bg = bg or C["scheda"]
@@ -213,12 +216,12 @@ class Righe:
                 tc.fr.pack(side="left", padx=(2, 0))
                 self.tendine.append((i, "carta", tc))
             if self.fasi:       # la fase del turno, dopo il resto della riga
-                tk.Label(riga, text="in", bg=self.bg, fg=C["grigio"], font=F(8)).pack(side="left", padx=(10, 2))
+                tk.Label(riga, text=self.etichetta_fase, bg=self.bg, fg=C["grigio"], font=F(8)).pack(side="left", padx=(10, 2))
                 tf = self._tendina(riga, 175)
-                tf.opzioni([FASE_QUALSIASI] + [c_ for c_, _n in self.fasi], lambda v_, i=i: self.metti_fase(i, v_),
-                           etichette={FASE_QUALSIASI: FASE_QUALSIASI, **dict(self.fasi)})
+                tf.opzioni([self.fase_qualsiasi] + [c_ for c_, _n in self.fasi], lambda v_, i=i: self.metti_fase(i, v_),
+                           etichette={self.fase_qualsiasi: self.fase_qualsiasi, **dict(self.fasi)})
                 fase = self.righe[i][3] if len(self.righe[i]) > 3 else None
-                tf.set(fase if fase else FASE_QUALSIASI)
+                tf.set(fase if fase else self.fase_qualsiasi)
                 tf.fr.pack(side="left", padx=(2, 0))
                 self.tendine.append((i, "fase", tf))
             via = tk.Label(riga, text="✕", bg=self.bg, fg=C["grigio"], font=F(9, True), cursor="hand2")
@@ -264,7 +267,7 @@ class Righe:
     def metti_fase(self, i, v):
         while len(self.righe[i]) < 4:
             self.righe[i].append(None)
-        self.righe[i][3] = None if v in (FASE_QUALSIASI, VUOTA) else v
+        self.righe[i][3] = None if v in (FASE_QUALSIASI, self.fase_qualsiasi, VUOTA) else v
         self.cambiato()
 
     def aggiungi_voce(self, i):

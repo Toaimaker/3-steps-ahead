@@ -32,11 +32,11 @@ if _casa not in sys.path:
     sys.path.insert(0, _casa)
 import percorsi  # noqa: E402,F401
 import collections  # noqa: E402
+import re  # noqa: E402
 import dati_analizzatore as DA  # noqa: E402
 
 GIRO_MAX = 8            # i giri 1-8 uno per uno, poi «9+»
 FASCE_P = (20, 40, 60, 80)      # la situazione all'inizio del turno: P sotto 20, 20-40, 40-60, 60-80, sopra 80
-NOMI_FASCE = ("far behind", "behind", "even", "ahead", "far ahead")
 K_GRADINO = 20          # quante partite «vale» il gradino sopra quando lo spot ne ha poche
 MINIMO = 15             # sotto, un numero e' un indizio (grigio)
 ALTO = 75               # il percentile del valore alto ma ripetibile
@@ -70,24 +70,30 @@ def partita(x):
 
 def _p_fine_turno(f, seat, t, att, x):
     """La P a fine del turno t di chi e' di turno (att): tocca all'altro, nel giro del turno dopo (come decisioni._delta_p)."""
-    return DA.p_foto(f, seat, att != seat, (t + 2) // 2, x.get("inizia"), x.get("mulligan"))
+    return DA.p_foto(f, seat, att != seat, (t + 2) // 2, x.get("inizia"), x.get("mulligan"), x.get("tipo"))
 
 
 FASI = ("main1", "comb", "main2")
-NOMI_FASI = {"main1": "main phase 1", "comb": "combat", "main2": "main phase 2"}
+NOMI_FASI = {"main1": "main phase 1", "comb": "combat", "main2": "main phase 2", "inizio": "the turn passing"}
 
 
 def _p_nel_turno(f, seat, t, att, x):
-    """La P di una foto presa durante il turno t di att (ai confini delle fasi): tocca ancora a lui, nel giro di quel turno. E' la stessa lettura della foto
-    di fine del turno prima, cosi' la prima fase non contiene il cambio di chi tocca."""
-    return DA.p_foto(f, seat, att == seat, (t + 1) // 2, x.get("inizia"), x.get("mulligan"))
+    """La P di una foto presa durante il turno t di att: «se il turno finisse qui» (19 nov 2026, Autore: «guardando la scena in funzione del turno
+    successivo»), la stessa lettura della foto di fine turno. Chi ha attaccato resta tappato fino al suo turno dopo e non blocca: fino al 18 nov la foto di
+    meta' turno si leggeva come se toccasse ancora a lui, le sue creature tappate contavano come pronte e il suo combattimento valeva -37 punti per te
+    con la partita gia' vinta."""
+    return _p_fine_turno(f, seat, t, att, x)
 
 
-def _fasi(t, att, p0, p1, confini, seat, x):
+def _fasi(t, att, p0, p1, confini, seat, x, f_prima=None):
     """Le fasi di un turno (il terzo livello della spina): la prima fase principale (con stap, mantenimento e pescata) fino alla prima riga del
     combattimento, il combattimento fino alla prima riga della seconda fase principale, la seconda fase principale fino alla fine del turno (col passo
-    finale). Una fase che il log non ha (niente combattimento) si fonde con quella prima. La somma delle fasi e' il turno."""
-    punti = [("main1", p0)]
+    finale). Una fase che il log non ha (niente combattimento) si fonde con quella prima. La somma delle fasi e' il turno.
+    Ogni confine si legge «se il turno finisse qui» (_p_nel_turno). Dal 19 nov 2026 il cambio di chi tocca sta in una voce sua, «inizio» (la foto di fine
+    del turno prima letta come se anche questo turno fosse passato senza far niente, meno p0): non e' una scelta di nessuno, cosi' non finisce nella prima
+    fase principale."""
+    base = _p_fine_turno(f_prima, seat, t, att, x) if f_prima is not None else None
+    punti = [("main1", base if base is not None else p0)]
     for k in ("comb", "m2"):
         f = confini.get((t, k))
         if f is None:
@@ -97,6 +103,8 @@ def _fasi(t, att, p0, p1, confini, seat, x):
             punti.append(("comb" if k == "comb" else "main2", p))
     if len(punti) == 1:         # il log non ha i confini di questo turno: una fase sola, «turn», con un atteso suo (non e' una prima fase principale)
         punti = [("turn", p0)]
+    elif base is not None:
+        punti.insert(0, ("inizio", p0))
     out = []
     for i, (nome, pa) in enumerate(punti):
         pb = punti[i + 1][1] if i + 1 < len(punti) else p1
@@ -105,26 +113,27 @@ def _fasi(t, att, p0, p1, confini, seat, x):
 
 
 def _partita(x, d, seat):
-    inizio = DA.p_foto(d.get("mano0"), seat, bool(x["inizia"]), 1, x.get("inizia"), x.get("mulligan")) if d.get("mano0") else None
+    inizio = DA.p_foto(d.get("mano0"), seat, bool(x["inizia"]), 1, x.get("inizia"), x.get("mulligan"), x.get("tipo")) if d.get("mano0") else None
     if inizio is None:
         return None
     fine = 100.0 if x["vinta"] else 0.0
     confini = {(c_[0], c_[2]): c_[3] for c_ in d.get("confini") or []}
     turni = []
     p = inizio
+    f_prima = d.get("mano0")
     for t, att, f in d["foto"]:
         p1 = _p_fine_turno(f, seat, t, att, x)
         if p1 is None:
             return None
         turni.append(dict(t=t, giro=(t + 1) // 2, mio=att == seat, p0=round(p, 2), p1=round(p1, 2), ev=round(p1 - p, 2),
-                          fasi=_fasi(t, att, p, p1, confini, seat, x)))
-        p = p1
+                          fasi=_fasi(t, att, p, p1, confini, seat, x, f_prima)))
+        p, f_prima = p1, f
     u = d.get("ultima")
     if u and (not turni or u[0] > turni[-1]["t"]):       # l'ultimo turno non ha la foto di fine: finisce all'ultimo stato
         p1 = _p_fine_turno(u[2], seat, u[0], u[1], x)
         if p1 is not None:
             turni.append(dict(t=u[0], giro=(u[0] + 1) // 2, mio=u[1] == seat, p0=round(p, 2), p1=round(p1, 2), ev=round(p1 - p, 2),
-                              fasi=_fasi(u[0], u[1], p, p1, confini, seat, x)))
+                              fasi=_fasi(u[0], u[1], p, p1, confini, seat, x, f_prima)))
             p = p1
     for z in turni:
         z["fase_p"] = fascia_p(z["p0"])
@@ -261,7 +270,7 @@ def _voci(z, ph=None):
     chi = "hero" if z["mio"] else "opp"
     if ph is None:
         return ("all", chi)
-    if ph["f"] == "turn":       # un turno senza i confini delle fasi: conta solo nei totali
+    if ph["f"] in ("turn", "inizio"):       # un turno senza i confini delle fasi, o il cambio di chi tocca: contano solo nei totali
         return ()
     if chi == "opp" and ph["f"] in ("main1", "main2"):
         return ("opp_main",)
@@ -316,6 +325,7 @@ def leva(x, t):
 MERITI = (("letale", "dealt the lethal damage"), ("danno", "hit the opponent unblocked"), ("vince", "won a combat (killed and survived)"),
           ("salva", "blocked and saved you from lethal"), ("scambio", "traded (killed and died)"), ("tiene", "blocked and survived"),
           ("rimbalza", "attacked, was blocked, nobody died"), ("rimossa", "drew a removal spell"), ("chump", "chump blocked"),
+          ("assist", "helped a creature in combat (aura, equipment)"),
           ("perde", "attacked or blocked and died for nothing"))
 NOMI_MERITI = dict(MERITI)
 # Il valore di ogni evento NON e' scritto a mano: e' il CONTROFATTUALE col modello della P. Il tavolo vero dopo il gesto contro lo stesso tavolo senza
@@ -446,6 +456,30 @@ def eventi_carte(x):
                     mer = "vince" if vivo and morti_suoi else "scambio" if morti_suoi else "perde" if not vivo else "rimbalza"
                     cf = _senza(dopo, a, b, rimetti_a=[] if vivo or ai not in miei_prima else [miei_prima[ai]], rimetti_b=morti_suoi)
                 carte[ai]["eventi"].append((mer, t, "comb", valore(dopo, cf, t, att, nel)))
+            # il danno di piu' attaccanti non bloccati diviso alla Shapley (18 nov 2026, il memo: «la divisione del letale fra piu' attaccanti»): ognuno
+            # prende la media di quello che aggiunge in tutti gli ordini possibili, e le parti sommano il valore dell'attacco intero; da solo, ognuno
+            # valeva solo quello che aggiungeva per ultimo (tre attaccanti oltre il letale: quasi zero a testa). Fino a 6 attaccanti (64 tavoli)
+            liberi = [ai for ai, _tg in info["att"] if ai in carte and not any(ai in aa for _bi, aa in blocchi)]
+            if 2 <= len(liberi) <= 6:
+                pw_ = {ai: (miei_prima.get(ai) or [0, 0, 0, 0])[3] or 0 for ai in liberi}
+                v_s = {}
+                for mask in range(1 << len(liberi)):
+                    fuori = sum(pw_[ai] for j, ai in enumerate(liberi) if not mask >> j & 1)
+                    v_s[mask] = p_di(_senza(dopo, a, b, vite_b=fuori), t, att, nel)
+                if all(v is not None for v in v_s.values()):
+                    import math as _m
+                    n_ = len(liberi)
+                    for j, ai in enumerate(liberi):
+                        sh = 0.0
+                        for mask in range(1 << n_):
+                            if mask >> j & 1:
+                                continue
+                            k_ = bin(mask).count("1")
+                            sh += _m.factorial(k_) * _m.factorial(n_ - k_ - 1) / _m.factorial(n_) * (v_s[mask | 1 << j] - v_s[mask])
+                        ev_ = carte[ai]["eventi"]
+                        for q, (mer, t_e, f_e, _v) in enumerate(ev_):
+                            if t_e == t and f_e == "comb" and mer in ("danno", "letale"):
+                                ev_[q] = (mer, t_e, f_e, round(sh, 2))
         else:
             vite = (prima.get("v") or [20, 20])[a] or 0
             forza = {i_: c_[3] or 0 for i_, c_ in suoi_prima.items()}
@@ -466,6 +500,22 @@ def eventi_carte(x):
                 cf = _senza(dopo, a, b, rimetti_a=[] if vivo or bi not in miei_prima else [miei_prima[bi]], rimetti_b=morti_suoi,
                             vite_a=-sum(forza.get(ai, 0) for ai in aa))
                 carte[bi]["eventi"].append((mer, t, "comb", valore(dopo, cf, t, att, nel)))
+    # l'assist di aure ed equipaggiamenti (18 nov 2026, il memo: «l'assist di aure ed equipaggiamenti»): una tua aura o un tuo equipaggiamento attaccato a
+    # una tua creatura che in quel combattimento ha un merito che vale prende la sua parte, divisa in parti uguali fra la creatura e chi la porta (i punti
+    # non si contano due volte); dalle annotazioni Attachment di mana_aperto (VERSIONE 25)
+    for m in combs:
+        porta = (m[4] or {}).get("porta") or {}
+        for cid, sopra in porta.items():
+            k = carte.get(cid)
+            aiuti = [carte[s_] for s_ in sopra if s_ in carte and s_ != cid]
+            if not k or not aiuti:
+                continue
+            for j, (mer, t_e, f_e, v_e) in enumerate(k["eventi"]):
+                if t_e == m[1] and f_e == "comb" and v_e is not None and v_e > 0:
+                    quota = round(v_e / (len(aiuti) + 1), 2)
+                    k["eventi"][j] = (mer, t_e, f_e, quota)
+                    for a_ in aiuti:
+                        a_["eventi"].append(("assist", t_e, "comb", quota))
     # le rimozioni dell'Opponent: le sue magie (e abilita') che hanno tolto una tua carta dal campo; senza: la carta in campo e la magia nella sua mano
     for j, m in enumerate(momenti):
         if m[0] != "spell" or len(m) < 5 or not m[4] or m[4].get("chi") in (None, seat) or not isinstance(m[3], dict):
@@ -518,6 +568,144 @@ def _mappa_turni(base):
     return _MAPPE[k]
 
 
+# ---------------------------------------------------------------- il voto EV di ogni fase, riga per riga (19 nov 2026)
+# Autore: «i voti EV li diamo alla fine di ogni fase: un voto per ogni cosa accaduta piu' i pti guadagnati dagli errori di oppo, ogni riga di punteggio per
+# cio' che e' accaduto in quella fase e ogni voto cliccabile per andare al punto esatto della fase in cui si e' generata quell'azione», poi la tabella delle
+# etichette: tuo merito, suo errore (punti regalati), sua giocata buona, conseguenza senza scelta.
+FASE_PASSO = {"Game start": "main1", "Upkeep": "main1", "Draw": "main1", "Main1": "main1", "BeginCombat": "comb", "DeclareAttack": "comb",
+              "DeclareBlock": "comb", "FirstStrikeDamage": "comb", "CombatDamage": "comb", "EndCombat": "comb", "Main2": "main2", "End": "main2",
+              "Cleanup": "main2"}
+SOGLIA_RIGA = 1.0       # sotto un punto di P una scelta non e' ne' un merito ne' un regalo: grigia
+ETICHETTE = {"mio_su": "your play", "mio_giu": "your play", "mio_pari": "your play", "suo_errore": "opponent's mistake",
+             "suo_buono": "opponent's good play", "suo_pari": "opponent's play", "risultato": "result"}
+_SALTA = ("paid mana for", "resolved", " on the stack", "turn ", "The game begins", "got 1 counter", "attached to", "chose ")
+_RIGHE = {}
+
+
+def _scelta(evs, att_mio):
+    """Chi ha scelto in un passo del replay: (True l'Hero / False l'Opponent, testo) o None se il passo e' solo una conseguenza (danni, morti, pescate,
+    inneschi). Scelte: lanciare una magia, giocare una terra, attaccare, bloccare (chi difende), il potere di un planeswalker."""
+    for _mio, tx in evs:
+        if re.match(r"(You|Opponent) (cast|played|attacked with) ", tx):
+            return tx.startswith("You"), tx
+        if " blocked " in tx:
+            return not att_mio, tx
+        if re.search(r" (got|lost) \d+ loyalty", tx):
+            return att_mio, tx
+    return None
+
+
+def _testo_passo(evs):
+    """La frase che dice il passo: la prima che non e' un dettaglio (mana pagato, risoluzione, inneschi in pila)."""
+    for _m, tx in evs:
+        if not any(k in tx for k in _SALTA):
+            return tx
+    return evs[0][1] if evs else ""
+
+
+def _tipo(mio, v):
+    if mio:
+        return "mio_su" if v >= SOGLIA_RIGA else "mio_giu" if v <= -SOGLIA_RIGA else "mio_pari"
+    return "suo_errore" if v >= SOGLIA_RIGA else "suo_buono" if v <= -SOGLIA_RIGA else "suo_pari"
+
+
+def righe_fasi(x, passi, base=None):
+    """Le righe del voto di ogni fase da un replay azione per azione (DA.azioni_partita). Ogni passo vale quanto cambia la probabilita' di vincere
+    dell'Hero «se il turno finisse qui» (_p_nel_turno: le creature che hanno attaccato restano tappate, il letale sul tavolo conta); il cambio di chi tocca a
+    inizio turno resta fuori (non e' una scelta). Le conseguenze (danni, morti, pescate, inneschi) vanno nella riga della scelta che le ha causate nella
+    stessa fase; quelle prima di ogni scelta restano righe loro, grigie; il mana pagato va nella magia che segue.
+    -> dict(fasi=[dict(chiave=(t, f), t, f, giro, mio, righe=[dict(i, testo, tipo, ev, incluso)], totale, atteso, scarto, n, primo, ultimo)],
+            del_passo={indice del passo: chiave della sua fase}), o None senza le foto dei passi."""
+    seat = x.get("seat")
+    d = DA._MANA.get(x.get("partita")) or {}
+    if not passi or seat not in (1, 2):
+        return None
+    k = (x.get("partita"), id(passi), id(d), bool(base))
+    if k in _RIGHE:
+        return _RIGHE[k]
+    out, del_passo, cur, p_passo = [], {}, None, {}
+    prec_f, prec_t, p_prec = d.get("mano0"), None, None
+    in_sospeso = 0.0        # il mana pagato: va alla magia che segue
+    for i, p_ in enumerate(passi):
+        f_ = p_[1] or {}
+        g_ = f_.get("_grezza")
+        att = f_.get("_att")
+        if g_ is None or att not in (1, 2):
+            continue
+        t = p_[2]
+        fase = FASE_PASSO.get(p_[0].split(" · ")[-1], "main1")
+        if t != prec_t:     # un turno nuovo: si parte dalla foto di prima letta come se anche questo turno fosse passato (il cambio di chi tocca fuori)
+            p_prec = _p_fine_turno(prec_f, seat, t, att, x) if prec_f is not None else None
+        p_ora = _p_fine_turno(g_, seat, t, att, x)
+        # la win chance di adesso (19 nov 2026, in testa al racconto): fino al danno del combattimento chi e' di turno ha ancora la mossa (la sua lettura), dal
+        # danno in poi il turno sta finendo (la lettura di fine turno, con le creature tappate). La lettura «se il turno finisse qui» dei punti, a inizio
+        # turno, sarebbe come se chi gioca passasse senza far niente (il tuo turno 3 al 10%)
+        passo_n = p_[0].split(" · ")[-1]
+        if fase == "main2" or passo_n in ("CombatDamage", "FirstStrikeDamage", "EndCombat"):
+            p_vista = p_ora
+        else:
+            p_vista = DA.p_foto(g_, seat, att == seat, (t + 1) // 2, x.get("inizia"), x.get("mulligan"), x.get("tipo"))
+        if p_vista is not None:
+            p_passo[i] = p_vista
+        prec_f, prec_t = g_, t
+        if p_ora is None or p_prec is None:
+            p_prec = p_ora
+            continue
+        dv, p_prec = p_ora - p_prec, p_ora
+        ch = (t, fase)
+        if cur is None or cur["chiave"] != ch:
+            cur = dict(chiave=ch, t=t, f=fase, giro=(t + 1) // 2, mio=att == seat, righe=[], primo=i, ultimo=i, resto=0.0)
+            out.append(cur)
+            in_sospeso = 0.0
+        cur["ultimo"] = i
+        del_passo[i] = ch
+        evs = p_[4] or []
+        sc = _scelta(evs, att == seat)
+        if sc is None and any("paid mana for" in tx for _m, tx in evs):
+            in_sospeso += dv
+            continue
+        if sc is not None:
+            cur["righe"].append(dict(i=i, testo=sc[1], tipo=_tipo(sc[0], 0.0), mio=sc[0], ev=dv + in_sospeso, incluso=False))
+            in_sospeso = 0.0
+            continue
+        tx = _testo_passo(evs)
+        utile = bool(tx) and not any(k_ in tx for k_ in _SALTA)
+        scelta_prima = next((r_ for r_ in reversed(cur["righe"]) if r_["tipo"] != "risultato"), None)
+        # nel combattimento il danno ai giocatori e la fine della partita vanno all'attacco, non al blocco che viene dopo (19 nov 2026, il collaudo: il blocco
+        # del Mindseeker Oculus si prendeva -86,9 per un attacco che era letale comunque); le creature morte e il danno alle creature restano al blocco
+        # (la partita che finisce nel passo va all'attacco anche col danno misto: Thorin che travolge quattro bloccanti e ti chiude)
+        if fase == "comb" and scelta_prima is not None and " blocked " in scelta_prima["testo"] and (any("lost the game" in tx_ for _m, tx_ in evs) or (any(
+                re.search(r"dealt \d+ to (you|the opponent)|lost \d+ life", tx_) for _m, tx_ in evs) and not any(
+                re.search(r"dealt \d+ to (?!you|the opponent)|died", tx_) for _m, tx_ in evs))):
+            scelta_prima = next((r_ for r_ in reversed(cur["righe"]) if r_["tipo"] != "risultato" and "attacked with" in r_["testo"]), scelta_prima)
+        if scelta_prima is not None:        # una conseguenza: i suoi punti nella scelta che l'ha causata
+            scelta_prima["ev"] += dv
+            if utile:
+                cur["righe"].append(dict(i=i, testo=tx, tipo="risultato", mio=None, ev=dv, incluso=True))
+        elif utile or abs(dv) >= 0.05:
+            cur["righe"].append(dict(i=i, testo=tx, tipo="risultato", mio=None, ev=dv, incluso=False))
+        else:
+            cur["resto"] += dv
+    if in_sospeso and cur is not None:
+        cur["resto"] += in_sospeso
+    # le scelte si etichettano col valore finale (con le conseguenze); il totale, l'atteso e lo scarto della fase
+    tt = {(z["t"], ph["f"]): ph for z in (_turni_di(base, x.get("partita")) if base else []) for ph in z.get("fasi") or []}
+    for fz in out:
+        for r_ in fz["righe"]:
+            if r_["tipo"] != "risultato":
+                r_["tipo"] = _tipo(r_["mio"], r_["ev"])
+        fz["totale"] = sum(r_["ev"] for r_ in fz["righe"] if not r_["incluso"]) + fz["resto"]
+        ph = tt.get(fz["chiave"])
+        fz["atteso"] = ph.get("atteso") if ph else None
+        fz["n"] = ph.get("n") if ph else 0
+        fz["scarto"] = fz["totale"] - fz["atteso"] if fz["atteso"] is not None else None
+    v = dict(fasi=out, del_passo=del_passo, p_passo=p_passo)
+    if len(_RIGHE) > 20:
+        _RIGHE.clear()
+    _RIGHE[k] = v
+    return v
+
+
 _INDICI = {}
 
 
@@ -544,7 +732,7 @@ _EVENTI = {}
 def _eventi(x):
     """eventi_carte ricordato per partita finche' il suo dato di mana_aperto e' lo stesso (il controfattuale chiama il modello)."""
     d = DA._MANA.get(x.get("partita"))
-    k = (x.get("partita"), x.get("seat"), x.get("vinta"), x.get("inizia"), x.get("mulligan"))
+    k = (x.get("partita"), x.get("seat"), x.get("vinta"), x.get("inizia"), x.get("mulligan"), x.get("tipo"))
     v = _EVENTI.get(k)
     if v is None or v[0] is not d:
         v = _EVENTI[k] = (d, eventi_carte(x))
@@ -676,28 +864,24 @@ def _ev_lanci(x):
     return out
 
 
-def giocate(r, base, quante=40, minimo=5):
-    """Il livello delle giocate: ogni magia lanciata e ogni terra giocata dall'Hero (le foto dei lanci di mana_aperto; per le partite lette prima, le sole
-    magie coi bersagli dai momenti), l'EV dal lancio al momento dopo, contro la stessa carta sulle partite base, avvicinata alle carte dello stesso tipo
-    quando ha pochi lanci. -> [dict(nome, n, ev, atteso, scarto, poche, assist, filtro)], dall'EV piu' alto."""
-    partite_di = collections.defaultdict(dict)
+_GIOCATE = {}
 
-    def dalle(rr, segna=False):
-        out = collections.defaultdict(list)
-        for x in rr:
-            d = DA._MANA.get(x.get("partita")) or {}
-            seat = x.get("seat")
-            if seat not in (1, 2):
-                continue
-            lanciate = set(x.get("mie_lanciate") or [])
-            if d.get("lanci") is not None:
-                for nome, v in _ev_lanci(x):
-                    if nome not in lanciate:        # le terre (non sono magie lanciate) e le carte fuori dal filtro della riga non entrano
-                        continue
-                    out[nome].append(v)
-                    if segna:
-                        partite_di[nome][x.get("partita")] = bool(x.get("vinta"))
-                continue
+
+def _giocate_partita(x):
+    """Le giocate dell'Hero di una partita, [(nome, ev)]: dalle foto dei lanci (_ev_lanci) o, per le partite lette prima, dalle magie coi bersagli dei
+    momenti. Ricordate per partita finche' il suo dato di mana_aperto e' lo stesso (18 nov 2026, Autore: «si puo' velocizzare l'apertura di cards?»: la riga
+    EV AT CAST rifaceva il modello della P su ogni lancio a ogni disegno, 3,4 s)."""
+    d = DA._MANA.get(x.get("partita")) or {}
+    seat = x.get("seat")
+    k = (x.get("partita"), seat, x.get("vinta"), x.get("inizia"), x.get("mulligan"), x.get("tipo"))
+    v = _GIOCATE.get(k)
+    if v is not None and v[0] is d and v[2] is d.get("lanci") and v[3] is d.get("momenti"):
+        return v[1]
+    out = []
+    if seat in (1, 2):
+        if d.get("lanci") is not None:
+            out = list(_ev_lanci(x))
+        else:
             mom = d.get("momenti") or []
             for i, m in enumerate(mom):
                 if m[0] != "spell" or len(m) < 5 or not m[4] or m[4].get("chi") != seat or m[4].get("ab") or not isinstance(m[3], dict):
@@ -710,32 +894,64 @@ def giocate(r, base, quante=40, minimo=5):
                 nome = DA.nome_grp(m[4].get("g")) if m[4].get("g") not in DA.SENZA_FACCIA else None
                 if p0 is None or p1 is None or not nome:
                     continue
-                if DA.nome_intero(nome) not in lanciate:
+                out.append((DA.nome_intero(nome), p1 - p0))
+    _GIOCATE[k] = (d, out, d.get("lanci"), d.get("momenti"))
+    return out
+
+
+def giocate(r, base, quante=40, minimo=5):
+    """Il livello delle giocate: ogni magia lanciata e ogni terra giocata dall'Hero (le foto dei lanci di mana_aperto; per le partite lette prima, le sole
+    magie coi bersagli dai momenti), l'EV dal lancio al momento dopo, contro la stessa carta sulle partite base, avvicinata alle carte dello stesso tipo
+    quando ha pochi lanci. L'atteso a gradini (18 nov 2026, il memo: «l'atteso dal mazzo e dall'archetipo»): per ogni lancio la stessa carta nello stesso
+    mazzo contro lo stesso archetipo, avvicinata alla stessa carta nello stesso mazzo, poi alla carta in tutti i mazzi, poi alle carte dello stesso tipo,
+    ogni gradino col peso n/(n+10). -> [dict(nome, n, ev, atteso, scarto, poche, assist, filtro)], dall'EV piu' alto."""
+    partite_di = collections.defaultdict(dict)
+
+    def dalle(rr, segna=False):
+        out = collections.defaultdict(list)
+        for x in rr:
+            lanciate = set(x.get("mie_lanciate") or [])
+            for nome, v in _giocate_partita(x):
+                if nome not in lanciate:        # le terre (non sono magie lanciate) e le carte fuori dal filtro della riga non entrano
                     continue
-                out[DA.nome_intero(nome)].append(p1 - p0)
+                out[nome].append((v, x.get("mio"), x.get("suo")))
                 if segna:
-                    partite_di[DA.nome_intero(nome)][x.get("partita")] = bool(x.get("vinta"))
+                    partite_di[nome][x.get("partita")] = bool(x.get("vinta"))
         return out
     qui, tutte = dalle(r, segna=True), dalle(base)
     # l'atteso a gradini: la stessa magia, avvicinata alla media di tutte le tue magie dello stesso tipo (istantaneo, stregoneria, altro) quando ha pochi lanci
     def tipo_di(n):
         t_ = (DA._carta(n) or {}).get("tipo") or ""
         return next((k for k in ("Land", "Creature", "Instant", "Sorcery", "Planeswalker", "Artifact", "Enchantment") if k in t_), "Other")
-    per_tipo = collections.defaultdict(list)
+    per_tipo, per_carta, per_mazzo, per_arch = (collections.defaultdict(list) for _ in range(4))
     for n_, v_ in tutte.items():
-        per_tipo[tipo_di(n_)] += v_
+        for v1, mz, ar in v_:
+            per_tipo[tipo_di(n_)].append(v1)
+            per_carta[n_].append(v1)
+            per_mazzo[(n_, mz)].append(v1)
+            per_arch[(n_, mz, ar)].append(v1)
+
+    def atteso_lancio(n_, mz, ar):
+        a_ = None
+        for lst in (per_tipo.get(tipo_di(n_)), per_carta.get(n_), per_mazzo.get((n_, mz)), per_arch.get((n_, mz, ar))):
+            if not lst:
+                continue
+            m_ = sum(lst) / len(lst)
+            w = len(lst) / (len(lst) + 10)
+            a_ = m_ if a_ is None else w * m_ + (1 - w) * a_
+        return a_
     assist = collections.defaultdict(float)
     for x in r:
         for k in _eventi(x):
             for nome_a, _t, v_a in k.get("assist") or []:
                 assist[nome_a] += v_a
     out = []
-    for nome, v in qui.items():
+    for nome, vv in qui.items():
+        v = [z[0] for z in vv]
         media = sum(v) / len(v)
-        tt = tutte.get(nome) or v
-        pt = per_tipo.get(tipo_di(nome)) or tt
-        w = len(tt) / (len(tt) + 10)
-        att = w * (sum(tt) / len(tt)) + (1 - w) * (sum(pt) / len(pt))
+        attesi = [atteso_lancio(nome, mz, ar) for _v, mz, ar in vv]
+        attesi = [a_ for a_ in attesi if a_ is not None]
+        att = sum(attesi) / len(attesi) if attesi else media
         pp = partite_di[nome]
         vinte = sum(pp.values())
         out.append(dict(nome=nome, n=len(pp), vinte=vinte, perse=len(pp) - vinte, wr=round(100 * vinte / len(pp), 1) if pp else 0.0,
@@ -808,10 +1024,12 @@ def carte_sue(r, base, quante=40, minimo=5):
     return out[:quante]
 
 
-def liste_composite(r, quante=8, minimo=3):
+def liste_composite(r, quante=8, minimo=3, base=None):
     """Il meta dai nostri dati: per ogni archetipo dell'Opponent (matchup_log, «suo») incontrato in almeno `minimo` partite, le carte che ha mostrato
     (lanciate o viste) con la frequenza, cioe' in quante delle partite contro quell'archetipo; dalle carte piu' frequenti. Da poche carte per partita si
-    ricompone il mazzo. -> [dict(archetipo, partite, vinte, carte=[(nome, partite, quota)])], dagli archetipi piu' incontrati."""
+    ricompone il mazzo. -> [dict(archetipo, partite, vinte, carte=[(nome, partite, quota)], ev={nome: (EV in campo per lui, copie)})], dagli archetipi piu'
+    incontrati. Con `base` (le partite del tipo, per gli attesi dei turni) l'EV di ogni carta per l'Opponent DENTRO quell'archetipo (18 nov 2026, il memo:
+    «l'EV a gradini carta -> archetipo»): la stessa carta puo' rendere diverso in due mazzi."""
     per = collections.defaultdict(list)
     for x in r:
         if x.get("suo"):
@@ -821,8 +1039,11 @@ def liste_composite(r, quante=8, minimo=3):
         if len(xx) < minimo or arch == "Unknown":      # senza magie viste non c'e' un mazzo da ricomporre
             continue
         c = collections.Counter(n for x in xx for n in set((x.get("sue_lanciate") or []) + (x.get("sue_viste") or [])) if not DA.e_terra(n))
+        ev = {}
+        if base:
+            ev = {c_["nome"]: (c_["in_campo"], c_["copie"]) for c_ in carte_sue(xx, base, quante=10 ** 6, minimo=1)}
         out.append(dict(archetipo=arch, partite=len(xx), vinte=sum(1 for x in xx if x.get("vinta")),
-                        carte=[(n, q, round(100 * q / len(xx))) for n, q in c.most_common(40)]))
+                        carte=[(n, q, round(100 * q / len(xx))) for n, q in c.most_common(40)], ev=ev))
     out.sort(key=lambda a: -a["partite"])
     return out[:quante]
 
@@ -932,8 +1153,53 @@ def leak_ev(r, base):
             tt = set(v)
             for z in turni:
                 (con if z["t"] in tt else senza)[k].append(z["scarto"])
-    return {k: dict(n=len(v), scarto=round(sum(v) / len(v), 2), altri=round(sum(senza[k]) / len(senza[k]), 2) if senza[k] else None)
-            for k, v in con.items() if v}
+    # il leaker intelligente, passo 2 (18 nov 2026, il memo: «ogni leak tarato sulle vittorie ... si tengono solo i leak che le partite confermano»): la
+    # differenza fra i turni col leak e gli altri, col suo errore (Welch), dice se le tue partite lo confermano. «confermato» = i turni col leak rendono
+    # meno degli altri oltre 2 errori; «contrario» = rendono di piu' oltre 2 errori (lo fai quando sei avanti, o non e' un errore); «non deciso» il resto,
+    # e sotto MINIMO turni sempre «non deciso».
+    return {k: verdetto_leak(v, senza[k]) for k, v in con.items() if v}
+
+
+def costo_leak(r, base):
+    """Il costo dei leak in EV (18 nov 2026, Autore: «la scheda leaks e' effettivamente ancora utile visto il nuovo modo di ragionare in ev?», poi «Si',
+    tutte e tre»): per ogni leak di leak.ORDINE che c'e' nelle partite r, {leak: dict(livello, n, scarto, altri, diff, err, verdetto, costo, partite)}.
+      livello «turno»: i turni col leak contro gli altri tuoi turni (leak_ev);
+      livello «partita» (il mulligan, la concessione): lo scarto delle partite col leak contro quello delle altre (scarti).
+    costo = quanti punti di probabilita' di vincere ti toglie in media a partita: la differenza per volta x le volte / le partite (positivo = ti costa)."""
+    import leak as LK
+    turno = leak_ev(r, base)
+    sc = scarti(base)
+    rr = [x for x in r if x.get("leak") and x.get("partita") in sc]
+    tot = len(rr) or 1
+    out = {}
+    for k in LK.ORDINE:
+        if k in turno:
+            d = dict(turno[k], livello="turno")
+        else:
+            con = [sc[x["partita"]]["scarto"] for x in rr if LK.valore(x, k) == "Yes"]
+            senza = [sc[x["partita"]]["scarto"] for x in rr if LK.valore(x, k) == "No"]
+            if not con:
+                continue
+            d = dict(verdetto_leak(con, senza), livello="partita")
+        d["partite"] = tot
+        d["costo"] = None if d["diff"] is None else round(-d["diff"] * d["n"] / tot, 2)
+        out[k] = d
+    return out
+
+
+def verdetto_leak(v, s_):
+    """Gli scarti dei turni col leak (v) contro quelli degli altri turni (s_): dict(n, scarto, altri, diff, err, verdetto)."""
+    def _var(w):
+        m = sum(w) / len(w)
+        return sum((a_ - m) ** 2 for a_ in w) / (len(w) - 1) if len(w) > 1 else 0.0
+    d = dict(n=len(v), scarto=round(sum(v) / len(v), 2), altri=round(sum(s_) / len(s_), 2) if s_ else None, diff=None, err=None, verdetto="non deciso")
+    if s_ and len(v) >= 2 and len(s_) >= 2:
+        diff = sum(v) / len(v) - sum(s_) / len(s_)
+        err = (_var(v) / len(v) + _var(s_) / len(s_)) ** 0.5
+        d.update(diff=round(diff, 2), err=round(err, 2))
+        if len(v) >= MINIMO and err > 0:
+            d["verdetto"] = "confermato" if diff < -2 * err else "contrario" if diff > 2 * err else "non deciso"
+    return d
 
 
 # ---------------------------------------------------------------- prove
@@ -948,7 +1214,7 @@ def prova_carte():
         DA.nome_grp = lambda g: f"Card {g}"
         DA.e_terra = lambda n: False
         DA.nome_intero = lambda n: n
-        DA._MANA.clear(); _MEMO.clear(); _EVENTI.clear(); _MAPPE.clear(); _SCARTI.clear()
+        DA._MANA.clear(); _MEMO.clear(); _EVENTI.clear(); _GIOCATE.clear(); _MAPPE.clear(); _SCARTI.clear()
         F = lambda mie, sue, v, n=(3, 3): dict(c=[mie, sue], v=list(v), n=list(n))
         # g1, Hero posto 1, vinta: al turno 3 attacca con la 1 (3/3) e la 2 (2/2), lui blocca la 2 con la sua 10 (2/2) e muoiono tutte e due (scambio), la
         # 1 passa (danno); al turno 4 lui toglie la carta 3 con una magia; al turno 5 la 1 da sola chiude (letale: l'ultimo attacco della partita vinta)
@@ -1003,6 +1269,35 @@ def prova_carte():
         casi.append(("le carte: Card 101 (la 1) in 2 partite, sopravvive nella vinta; i suoi meriti contati", cc["Card 101"]["n"] == 2
                      and cc["Card 101"]["sopr"] == 1 and cc["Card 101"]["conta"].get("letale") == 1))
         casi.append(("negativa: senza le foto della partita niente eventi", eventi_carte(dict(x1, partita="zz")) == []))
+        # Shapley: due attaccanti non bloccati da 3 contro 4 vite chiudono insieme; da soli nessuno dei due uccide, insieme si'; le parti sono uguali e
+        # sommano il valore dell'attacco; negativa: col valore marginale di prima ognuno valeva quasi tutto (la somma superava il totale)
+        a5, a6 = cr(5), cr(6)
+        DA._MANA["g5"] = dict(mano0=F([], [], (20, 20), (7, 7)),
+                              foto=[[1, 1, F([a5, a6], [], (20, 20))], [2, 2, F([a5, a6], [], (20, 4))]],
+                              ultima=[3, 1, F([a5, a6], [], (20, -2))],
+                              confini=[[3, 1, "comb", F([a5, a6], [], (20, 4))], [3, 1, "m2", F([a5, a6], [], (20, -2))]],
+                              momenti=[["comb", 3, 1, F([a5, a6], [], (20, 4)), dict(att=[[5, 2], [6, 2]], blocchi=[])]])
+        x5 = dict(partita="g5", seat=1, inizia=True, mulligan=0, vinta=True)
+        e5 = {k["id"]: k for k in eventi_carte(x5)}
+        v5, v6 = e5[5]["eventi"][0][3], e5[6]["eventi"][0][3]
+        tot5 = 100.0 - _p_nel_turno(F([a5, a6], [], (20, 4)), 1, 3, 1, x5)
+        casi.append(("Shapley: i due attaccanti si dividono il letale in parti uguali, e le parti sommano il valore dell'attacco",
+                     abs(v5 - v6) < 0.02 and abs(v5 + v6 - tot5) < 0.1))
+        # l'assist di un'aura (VERSIONE 25): la 4 (un'aura, non creatura) attaccata alla 1 che fa danno non bloccata: meta' del danno all'aura
+        au = [104, 0, 0, None, None, 4]
+        DA._MANA["g3"] = dict(mano0=F([], [], (20, 20), (7, 7)),
+                              foto=[[1, 1, F([cr(1), au], [], (20, 20))], [2, 2, F([cr(1), au], [], (20, 20))], [3, 1, F([cr(1), au], [], (20, 17))]],
+                              ultima=[4, 2, F([cr(1), au], [], (20, 17))],
+                              confini=[[3, 1, "comb", F([cr(1), au], [], (20, 20))], [3, 1, "m2", F([cr(1), au], [], (20, 17))]],
+                              momenti=[["comb", 3, 1, F([cr(1), au], [], (20, 20)), dict(att=[[1, 2]], blocchi=[], porta={1: [4]})]])
+        x3 = dict(partita="g3", seat=1, inizia=True, mulligan=0, vinta=False)
+        e3 = {k["id"]: k for k in eventi_carte(x3)}
+        casi.append(("l'assist dell'aura: la creatura e l'aura si dividono il valore del danno in parti uguali", e3[4]["eventi"]
+                     and e3[4]["eventi"][0][0] == "assist" and e3[1]["eventi"][0][0] == "danno" and abs(e3[4]["eventi"][0][3] - e3[1]["eventi"][0][3]) < 0.02))
+        DA._MANA["g4"] = dict(DA._MANA["g3"], momenti=[["comb", 3, 1, F([cr(1), au], [], (20, 20)), dict(att=[[1, 2]], blocchi=[])]])
+        _EVENTI.clear(); _GIOCATE.clear()
+        casi.append(("negativa: senza l'aura attaccata niente assist, la creatura tiene tutto",
+                     not [e for e in {k["id"]: k for k in eventi_carte(dict(x3, partita="g4"))}[4]["eventi"]]))
         # la sinergia all'entrata (dal testo): un partner che fa guadagnare vita accanto a chi la vuole; senza testo, nessuna
         vt_ = dict(_TAG)
         try:
@@ -1013,7 +1308,7 @@ def prova_carte():
             _TAG.clear(); _TAG.update(vt_)
         # l'assist: una tua magia (Card 600) sulla tua 1 nel turno 3, quando la 1 fa danno non bloccata: meta' del merito alla magia, meta' alla creatura
         DA._MANA["g1"]["momenti"].insert(1, ["spell", 3, 1, F([a1, a3, a2], [s10], (20, 20)), dict(g=600, chi=1, ab=False, bers=[1], colpiti=[])])
-        _EVENTI.clear()
+        _EVENTI.clear(); _GIOCATE.clear()
         ev_a = {k["id"]: k for k in eventi_carte(x1)}
         casi.append(("l'assist: la magia sulla 1 prende meta' del danno della 1, la 1 tiene l'altra meta'", ev_a[1]["assist"]
                      and ev_a[1]["assist"][0][0] == "Card 600" and abs(ev_a[1]["assist"][0][2] - ev_a[1]["eventi"][0][3]) < 0.02
@@ -1057,18 +1352,90 @@ def prova_carte():
         lc = liste_composite([y1, y2, dict(y2, partita="g9", suo="Unknown")], minimo=2)
         casi.append(("il mazzo ricomposto: Rakdos in 2 partite, Card 110 nel 100%, Card 111 nel 50%; negativa: Unknown (senza magie viste) non si ricompone",
                      len(lc) == 1 and lc[0]["archetipo"] == "Rakdos" and lc[0]["carte"][0] == ("Card 110", 2, 100) and ("Card 111", 1, 50) in lc[0]["carte"]))
+        lce = liste_composite([y1, y2], minimo=2, base=[y1, y2])
+        casi.append(("l'EV dentro l'archetipo: Card 110 ha l'EV per lui nelle partite contro Rakdos, uguale a quello delle sue carte su quelle partite; "
+                     "negativa: senza base niente EV", lce[0]["ev"].get("Card 110") == (cs["Card 110"]["in_campo"], cs["Card 110"]["copie"]) and lc[0]["ev"] == {}))
+        # l'atteso dal mazzo (18 nov 2026): la stessa Card 700 in un altro mazzo rende di meno; l'atteso della 700 nel mazzo A sta fra la media di tutti e
+        # quella del mazzo A (piu' vicino alla carta nello stesso mazzo); negativa: senza l'altro mazzo l'atteso e' la carta stessa
+        DA._MANA["g1z"] = dict(DA._MANA["g1"], lanci=[[3, 1, "magia", 700, F([a1, a3, a2], [s10], (20, 20)), 10],
+                                                       [3, 1, "magia", 702, F([a1, a3], [s10], (20, 20)), 12]])
+        xa, xb = dict(x1, mio="A"), dict(x1, partita="g1z", mio="B")
+        ga = {g_["nome"]: g_ for g_ in giocate([xa], [xa, xb], minimo=1)}
+        gsolo = {g_["nome"]: g_ for g_ in giocate([xa], [xa], minimo=1)}
+        casi.append(("l'atteso dal mazzo: la 700 nel mazzo A ha un atteso diverso da quello calcolato col solo mazzo A (l'altro mazzo pesa poco ma pesa)",
+                     abs(ga["Card 700"]["atteso"] - gsolo["Card 700"]["atteso"]) > 0.01))
         lk = leak_ev([dict(x1, leak={"l1": [3], "l7": True})], [x1, x2])
         casi.append(("i leak dentro gli scarti: L1 al turno 3 ha il suo scarto; negativa: L7 (di tutta la partita) non ha un turno", "l1" in lk
                      and lk["l1"]["n"] == 1 and "l7" not in lk))
+        alt = [(-1) ** i * 3.0 for i in range(40)]
+        casi.append(("leaker passo 2: 20 turni col leak a -6 contro gli altri intorno a 0 e' confermato; 20 a +6 e' contrario; negative: 20 turni dentro il "
+                     "rumore e 5 turni soli (sotto il minimo) restano non decisi",
+                     verdetto_leak([-6.0 + (i % 3) for i in range(20)], alt)["verdetto"] == "confermato"
+                     and verdetto_leak([6.0 + (i % 3) for i in range(20)], alt)["verdetto"] == "contrario"
+                     and verdetto_leak([(-1) ** i * 3.0 for i in range(20)], alt)["verdetto"] == "non deciso"
+                     and verdetto_leak([-6.0] * 4 + [-5.0], alt)["verdetto"] == "non deciso"))
     finally:
         DA.nome_grp, DA.e_terra, DA.nome_intero = vero
         DA._MANA.clear(); DA._MANA.update(vecchio)
-        _MEMO.clear(); _EVENTI.clear(); _MAPPE.clear(); _SCARTI.clear()
+        _MEMO.clear(); _EVENTI.clear(); _GIOCATE.clear(); _MAPPE.clear(); _SCARTI.clear()
+    return casi
+
+
+def prova_costo_leak():
+    """Il costo dei leak in EV (18 nov 2026): un leak di turno e uno di tutta la partita, con leak_ev e scarti finti."""
+    global leak_ev, scarti
+    veri = leak_ev, scarti
+    casi = []
+    try:
+        r = [dict(partita=f"c{i}", leak={"l2": [3], "l7": i < 10}) for i in range(40)]
+        leak_ev = lambda r_, b_: {"l2": dict(n=40, scarto=-4.0, altri=1.0, diff=-5.0, err=1.0, verdetto="confermato")}
+        scarti = lambda b_: {f"c{i}": dict(scarto=(-8.0 if i < 10 else 2.0) + (i % 3)) for i in range(40)}
+        cl = costo_leak(r, r)
+        casi.append(("il costo in EV: L2 di turno, 5 punti a volta x 40 volte / 40 partite = 5 a partita; L7 di partita, le 10 partite contro le 30",
+                     cl["l2"]["livello"] == "turno" and cl["l2"]["costo"] == 5.0 and cl["l7"]["livello"] == "partita" and cl["l7"]["n"] == 10
+                     and cl["l7"]["costo"] > 0))
+        casi.append(("negativa: un leak che non c'e' nelle partite non ha costo", "l1" not in cl and "l12" not in cl or cl.get("l12", {}).get("n", 0) == 0))
+    finally:
+        leak_ev, scarti = veri
+    return casi
+
+
+def prova_righe_fasi():
+    """Il voto per fase su una partita finta (19 nov 2026): le scelte e le loro conseguenze, chi prende i punti, i totali, la win chance."""
+    casi = []
+    cr = lambda i, pw=3, tap=0: [200 + i, tap, 0, pw, pw, i]
+    f_ = lambda mie, sue, v: dict(c=[mie, sue], v=list(v), n=[3, 3])
+    vecchio, vecchio_r = dict(DA._MANA), dict(_RIGHE)
+    try:
+        DA._MANA.clear(); _RIGHE.clear()
+        DA._MANA["rf"] = dict(mano0=f_([], [], (20, 20)), foto=[])
+        x = dict(partita="rf", seat=1, inizia=True, mulligan=0, vinta=False)
+        passo = lambda nome, foto, t, att, evs: (nome, dict(_grezza=foto, _att=att), t, None, [(True, e_) for e_ in evs], [], [])
+        f0 = f_([cr(1, 2)], [cr(2, 6)], (6, 20))
+        ps = [passo("Opponent T1 · Main1", f0, 2, 2, ["Opponent played Forest"]),
+              passo("Opponent T1 · DeclareAttack", f_([cr(1, 2)], [cr(2, 6, 1)], (6, 20)), 2, 2, ["Opponent attacked with Big (6/6)"]),
+              passo("Opponent T1 · DeclareBlock", f_([cr(1, 2)], [cr(2, 6, 1)], (6, 20)), 2, 2, ["Small blocked Big"]),
+              passo("Opponent T1 · CombatDamage", f_([], [cr(2, 6, 1)], (0, 20)), 2, 2, ["You lost the game at 0 life", "Big dealt 2 to Small", "Small died"])]
+        v = righe_fasi(x, ps)
+        comb = next((fz for fz in v["fasi"] if fz["f"] == "comb"), None)
+        att = next((r_ for r_ in comb["righe"] if "attacked with" in r_["testo"]), None) if comb else None
+        blo = next((r_ for r_ in comb["righe"] if " blocked " in r_["testo"]), None) if comb else None
+        casi.append(("voto per fase: la fine della partita nel combattimento va all'attacco (sua giocata buona), non al blocco",
+                     att is not None and blo is not None and att["tipo"] == "suo_buono" and att["ev"] < -5 and abs(blo["ev"]) < 1))
+        casi.append(("voto per fase: le righe sommano il totale della fase; la conseguenza ha i punti nella riga sopra",
+                     all(abs(sum(r_["ev"] for r_ in fz["righe"] if not r_["incluso"]) + fz["resto"] - fz["totale"]) < 0.01 for fz in v["fasi"])
+                     and any(r_["incluso"] and r_["tipo"] == "risultato" for r_ in comb["righe"])))
+        casi.append(("voto per fase: la win chance di ogni passo fra 0 e 100, la fine a 1 (hai perso)", all(0 <= q <= 100 for q in v["p_passo"].values())
+                     and v["p_passo"][3] <= 5))
+        casi.append(("negativa: le etichette dell'Opponent solo sulle sue scelte, le tue sulle tue",
+                     all(r_["tipo"].startswith("suo") == (r_["mio"] is False) for fz in v["fasi"] for r_ in fz["righe"] if r_["tipo"] != "risultato")))
+    finally:
+        DA._MANA.clear(); DA._MANA.update(vecchio); _RIGHE.clear(); _RIGHE.update(vecchio_r)
     return casi
 
 
 def prova():
-    casi = prova_carte()
+    casi = prova_carte() + prova_costo_leak() + prova_righe_fasi()
     cr = lambda i, pw=3: [100 + i, 0, 0, pw, pw, i]
     vuoto = dict(c=[[], []], v=[20, 20], n=[7, 7])
     f_mia = lambda k, v=(20, 20): dict(c=[[cr(i) for i in range(k)], []], v=list(v), n=[4, 4])
@@ -1090,8 +1457,8 @@ def prova():
         casi.append(("i punti si conservano: turni + chiusura = fine - inizio", conserva(c)))
         casi.append(("i turni che fanno danno salgono: il turno 5 (lui da 17 a 10) ha EV positivo", c["turni"][4]["ev"] > 0))
         f5 = c["turni"][4]["fasi"]
-        casi.append(("le fasi del turno 5: prima principale, combattimento, seconda; il combattimento (7 danni) sale; la somma delle fasi e' il turno",
-                     [ph["f"] for ph in f5] == ["main1", "comb", "main2"] and f5[1]["ev"] > 0
+        casi.append(("le fasi del turno 5: il cambio di chi tocca a parte (inizio), prima principale, combattimento, seconda; il combattimento (7 danni) "
+                     "sale; la somma delle fasi e' il turno", [ph["f"] for ph in f5] == ["inizio", "main1", "comb", "main2"] and f5[2]["ev"] > 0
                      and abs(sum(ph["ev"] for ph in f5) - c["turni"][4]["ev"]) < 0.02))
         casi.append(("negativa: un turno senza confini nel log ha una fase sola, tutto il turno", [ph["f"] for ph in c["turni"][2]["fasi"]] == ["turn"]
                      and c["turni"][2]["fasi"][0]["ev"] == c["turni"][2]["ev"]))
@@ -1124,8 +1491,10 @@ def prova():
         per_ = sc["v1"]["per"]
         casi.append(("divisa per chi e' di turno: Hero piu' Opponent fa tutti i turni; il combattimento dell'Hero c'e'",
                      abs(per_["hero"] + per_["opp"] - per_["all"]) < 0.05 and "hero_comb" in per_))
-        casi.append(("la leva: a fine turno 5 una vita sua in meno alza la P; al turno 7 (lui a 2) vale di piu' che al turno 1",
-                     (leva(xv, 5) or 0) > 0 and (leva(xv, 7) or 0) > (leva(xv, 1) or 0)))
+        # (19 nov 2026, modello con le carte, Motore_EV: con lui a 2 vite e tre creature la partita e' gia' al 99% e una vita vale poco: la saturazione e'
+        # giusta. La prova di prima, «al turno 7 vale di piu' che al turno 1», dipendeva dal modello di prima)
+        casi.append(("la leva: una vita sua in meno alza sempre la P (turni 1, 5, 7) e mai oltre il 100",
+                     all((leva(xv, t_) or 0) > 0 for t_ in (1, 5, 7)) and all((leva(xv, t_) or 0) < 50 for t_ in (1, 5, 7))))
         # le negative
         casi.append(("negativa: senza le foto, senza il risultato o senza sapere chi comincia niente conto",
                      partita(dict(partita="zz", seat=1, inizia=True, vinta=True)) is None and partita(dict(xv, vinta=None)) is None

@@ -243,6 +243,14 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
 
         if "--fuori-schermo" not in sys.argv:       # le carte di Collection si cuociono in sottofondo: finito il lavoro esce subito, e con Arena aperto aspetta
             self.root.after(8000, lambda: subprocess.Popen([PY_MUTO, "-I", "-X", "utf8", percorsi.programma("cuoci_carte.py")], cwd=percorsi.ROOT, **piattaforma.flag("sotto")))
+            # l'IS-MCTS sulle partite limited nuove (19 nov 2026, sessione Magic 22, Autore: «si mettilo»): la riga BEST LINE del replayer. Un minuto dopo
+            # l'avvio e poi ogni due ore, a priorita' bassa; con Arena aperta non parte e si ferma da solo; una copia sola (Log_Arena/ismcts.lock)
+            def _ismcts():
+                f_ = os.path.join(percorsi.ROOT, "Motore_EV", "ismcts.py")
+                if os.path.exists(f_) and not piattaforma.arena_aperta():
+                    subprocess.Popen([PY_MUTO, "-I", "-X", "utf8", f_, "--giro"], cwd=percorsi.ROOT, **piattaforma.flag("sotto"))
+                self.root.after(2 * 3600 * 1000, _ismcts)
+            self.root.after(60000, _ismcts)
         self.corpo.columnconfigure(0, weight=11, uniform="c"); self.corpo.columnconfigure(1, weight=10, uniform="c"); self.corpo.rowconfigure(0, weight=1)
 
 

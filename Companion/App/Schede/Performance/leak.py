@@ -162,7 +162,7 @@ ESEMPIO = {"l1": "Turn 4: you have a Forest in hand, you cast a 3-drop with your
 
 
 # R10, il leak tracker (13 nov 2026, come il Leak Tracker di PokerTracker): come si corregge ogni leak, una riga (dai coach citati sopra; grado C)
-COME = {"l1": "Play a land every turn, unless you are holding it on purpose (a landfall card, a bluff).",
+COME = {"l1": "Play a land every turn, unless you are holding it on purpose. The Leak Finder already skips two such cases: a land kept for a landfall card you have on the battlefield and played the next turn, and a land kept as a bluff when you have 6+ lands and nothing in hand that needs more mana.",
         "l2": "At the end of your turn count your untapped lands against your hand: if a creature fits, cast it, unless you are holding up an instant for "
               "their turn (and then use it).",
         "l3": "Attack first, then cast your creatures in the second main phase. Cast it before combat only when it changes the attack: it pumps, "
@@ -213,6 +213,52 @@ def _forza(lato, ids=None):
     return sum(max(0, c[3] or 0) for c in lato or [] if len(c) > 3 and c[3] is not None and (ids is None or (len(c) > 5 and c[5] in ids)))
 
 
+# L1, le due eccezioni (18 nov 2026, la promessa su r/MagicArena: «the land skipped to bluff or to keep a land for landfall is NOT handled yet ... I'll fix
+# it»). Landfall: un tuo permanente che scatta quando una tua terra entra; la terra tenuta e giocata nel tuo turno dopo con quel permanente in campo era
+# tenuta per farlo scattare. Bluff: con le terre in campo a TERRE_BASTANO o piu' e nessuna carta in mano che chieda piu' mana di quello che hai gia', la
+# terra in mano e' una carta che l'avversario non sa: tenerla non ti toglie niente. Grado C, dal testo delle carte.
+_RX_LANDFALL = re.compile(r"landfall|whenever (?:a|one or more|another) lands? (?:you control )?enters?(?: the battlefield)?(?: under your control)?|"
+                          r"whenever you play a land", re.I)
+TERRE_BASTANO = 6
+
+
+def _landfall(g):
+    n = _nome(g)
+    return bool(n) and not DA.e_terra(n) and bool(_RX_LANDFALL.search(_carta(n).get("testo") or ""))
+
+
+def l1_tenuta_apposta(d, seat, t, foto):
+    """True se la terra non giocata al tuo turno t di Arena era tenuta apposta: per un landfall (giocata nel tuo turno dopo, t+2, con un tuo permanente
+    landfall in campo a fine del turno t) o per bluffare (TERRE_BASTANO terre in campo e niente in mano che chieda piu' mana)."""
+    a = seat - 1
+    campo = [c for c in (foto.get("c") or [[], []])[a] if c]
+    terre_campo = sum(1 for c in campo if _terra(c[0]))
+    terre_dopo = {t_ for t_, s_, cosa, _g, _tp in d.get("azioni") or [] if cosa == "terra" and s_ == seat}
+    if t + 2 in terre_dopo and any(_landfall(c[0]) for c in campo):
+        return True
+    mano = (foto.get("m") or [[], []])[a]
+    costi = [costo_vero(_nome(g)) for g in mano if _nome(g) and not _terra(g)]
+    return terre_campo >= TERRE_BASTANO and all(c_ is not None and c_ <= terre_campo for c_ in costi)
+
+
+def arena_offriva(d, seat, t):
+    """Il leaker intelligente, passo 1 (18 nov 2026, il memo: «cosa potevi lanciare, dalla verita' di Arena»): le giocate che Arena ti offriva all'ultima tua
+    priorita' nella seconda fase principale del turno t (se no nella prima): dict(lanci={grpId pagabili adesso}, terra=True|False), o None se la partita
+    e' stata letta prima che mana_aperto le salvasse (VERSIONE 23) o in quel turno non ce ne sono."""
+    disp = d.get("disponibili")
+    if disp is None:
+        return None
+    # vale solo una richiesta arrivata dopo l'ultima tua giocata del turno (una terra, una magia): prima diceva quello che avevi prima di giocare
+    # (18 nov 2026: l'ultima richiesta della prima fase principale era spesso quella di prima del lancio della creatura, e la dava ancora pagabile)
+    ultima = max((l_[5] for l_ in d.get("lanci") or [] if l_[0] == t and l_[1] == seat and len(l_) > 5), default=0)
+    for fase in ("Phase_Main2", "Phase_Main1"):
+        ult = [e for e in disp if e[0] == t and e[1] == seat and e[2] == fase and len(e) > 4 and e[4] > ultima]
+        if ult:
+            lst = ult[-1][3]
+            return dict(lanci={g for g, k, p in lst if k == "C" and p}, terra=any(k == "P" for _g, k, _p in lst))
+    return None
+
+
 def per_partita(x):
     d = DA._MANA.get(x.get("partita")) or {}
     seat, mom = x.get("seat"), d.get("momenti")
@@ -227,7 +273,10 @@ def per_partita(x):
             # guardare avanti (la regola del 15 nov 2026): la terra tenuta in mano e usata nel suo turno (landcycling, channel: un'abilita' della carta
             # dalla mano) era tenuta apposta
             usate_dopo = {a_[2] for a_ in d.get("attivate") or [] if a_[0] == m[1] + 1 and a_[1] == seat}
-            if m[1] not in terre and any(_terra(g) and g not in usate_dopo for g in mano):
+            # Arena dice se una terra si poteva giocare (VERSIONE 23): una terra in mano che Arena non ti offriva (una faccia di terra che non si gioca
+            # da qui, la terra del turno gia' messa in campo da un effetto) non e' una terra saltata
+            off_ = arena_offriva(d, seat, m[1])
+            if m[1] not in terre and any(_terra(g) and g not in usate_dopo for g in mano) and (off_ is None or off_["terra"])                     and not l1_tenuta_apposta(d, seat, m[1], m[3]):
                 l1.append(m[1])
     for dec in _blocchi(x, d, seat):
         l4.append(dec)
@@ -260,6 +309,12 @@ def per_partita(x):
         suoi_crea = [c for c in (f.get("c") or [[], []])[b] if len(c) > 3 and c[3] is not None and not _terra(c[0])]
         if not suoi_crea:
             creature = [n for n in creature if not aspetta_bersaglio(n)]
+        # Arena dice se quella creatura si poteva pagare (VERSIONE 23): resta solo una creatura che Arena ti offriva con la soluzione di pagamento; i costi
+        # ridotti o aumentati, le terre che non danno quel colore, i divieti li sa Arena e non il testo
+        off_ = arena_offriva(d, seat, t)
+        if off_ is not None:
+            pagabili = {n_ for n_ in (_nome(g_) for g_ in off_["lanci"]) if n_}
+            creature = [n for n in creature if n in pagabili]
         # il mana tenuto per il suo turno (15 nov 2026, Autore: «quel mana poteva essere utile per giocare una spell nel turno avversario, come
         # sistemiamo questo dilemma?»): se nel suo turno dopo hai lanciato qualcosa, quel mana si toglie e il leak c'e' solo se la creatura ci stava lo
         # stesso; un'abilita' attivata nel suo turno (costo che non si legge) chiude il dubbio a tuo favore; se non hai lanciato niente ma in mano avevi un
@@ -303,7 +358,7 @@ def per_partita(x):
                     l6.append(t)
                     carte_l6.setdefault(t, []).append(n)
     import decisioni as DEC
-    for dec in DEC.per_partita(dict(x, vinta=x.get("vinta"), quando=x.get("quando"))):
+    for dec in DEC.per_partita(dict(x, vinta=x.get("vinta"), quando=x.get("quando")), con_p=False):
         if dec["persi_miei"] and dec["persi_suoi"]:         # uno scambio: muoiono creature da tutte e due le parti
             if scambio_cattivo(_scambio(d, dec, seat)):
                 l5.append(dec["t"])
@@ -708,7 +763,7 @@ def _blocchi(x, d, seat):
     for m in mom:
         if m[0] == "comb" and len(m) > 4 and m[4] and m[4].get("att") and m[2] != seat:
             per_t.setdefault(m[1], m)
-    for dec in DEC.per_partita(dict(x, vinta=x.get("vinta"), quando=x.get("quando"))):
+    for dec in DEC.per_partita(dict(x, vinta=x.get("vinta"), quando=x.get("quando")), con_p=False):
         if dec["tipo"] != "blocco" or not dec["bloccato"] or dec["persi_miei"] < 1 or dec["persi_suoi"] > 0:
             continue
         m = per_t.get(dec["t"])
@@ -767,6 +822,20 @@ def prova():
         casi.append(("L1: il turno 3 di Arena (il tuo 2) senza terra con un'Isola in mano; negativa: il turno 1 l'ha giocata, il 3 non aveva terre",
                      lk["l1"] == [3]))
         casi.append(("L7: concesso a 12 vite contro 3 di forza con una carta in mano", lk["l7"] is True))
+        # le eccezioni di L1 (18 nov 2026): landfall e bluff; negative: senza la terra al turno dopo, con una carta in mano che chiede piu' mana
+        DA._NOMI_GRP.update({803: "Lotus Cobra", 804: "Plains", 805: "Ghalta the Immovable"})
+        cobra = [803, False, False, 2, 1, 61]
+        DA._MANA["lkf"] = dict(azioni=[[1, 1, "terra", 801, "L"], [5, 1, "terra", 801, "L"]],
+                               momenti=[["fine", 3, 1, foto([801, 802], c1=[[804, False, False, None, None, 60], cobra])]], ultima=[6, 2, foto([802])])
+        DA._MANA["lkf2"] = dict(DA._MANA["lkf"], azioni=[[1, 1, "terra", 801, "L"]])
+        sei = [[804, False, False, None, None, 70 + i] for i in range(6)]
+        DA._MANA["lkb"] = dict(azioni=[[1, 1, "terra", 801, "L"]], momenti=[["fine", 3, 1, foto([801, 802], c1=sei)]], ultima=[6, 2, foto([802])])
+        DA._MANA["lkb2"] = dict(DA._MANA["lkb"], momenti=[["fine", 3, 1, foto([801, 805], c1=sei)]])
+        l1_ = lambda p: per_partita(dict(partita=p, seat=1, fine="You conceded"))["l1"]
+        casi.append(("L1 landfall: la terra tenuta e giocata al turno dopo con Lotus Cobra in campo non e' un leak; negativa: senza la terra al turno dopo si'",
+                     l1_("lkf") == [] and l1_("lkf2") == [3]))
+        casi.append(("L1 bluff: 6 terre in campo e solo Opt in mano, tenere la terra non toglie niente; negativa: con Ghalta (7 mana) in mano e' un leak",
+                     l1_("lkb") == [] and l1_("lkb2") == [3]))
         DA._MANA["lk2"] = dict(DA._MANA["lk1"], ultima=[6, 2, foto([802], v=(3, 20), c2=[[900, False, False, 5, 5, 50]])])
         casi.append(("negativa L7: a 3 vite contro 5 di forza la concessione non ha vie d'uscita", per_partita(dict(x, partita="lk2"))["l7"] is False))
         DA._MANA["lk6"] = dict(DA._MANA["lk1"], ultima=[6, 2, foto([802], v=(12, 20), c2=[[900, False, False, 7, 7, 50]])])
@@ -807,6 +876,21 @@ def prova():
         DA._MANA["lk8"] = dict(DA._MANA["lk7"], momenti=[["fine", 1, 1, foto([814], c1=[tap(P1), P2, tap(SW)])]])
         l8_ = per_partita(dict(partita="lk8", seat=1, inizia=True))
         casi.append(("L2: la Plains stappata paga Healer's Hawk in mano; negativa L8: tappate giuste", l8_["l2"] == [1] and l8_["l8"] == []))
+        # il leaker intelligente (18 nov 2026): con le giocate di Arena, L2 c'e' solo se Arena offriva Healer's Hawk pagabile; negativa: offerta ma senza
+        # la soluzione di pagamento (un costo aumentato), niente L2; L1: una terra che Arena non offriva non e' una terra saltata
+        DA._MANA["lk8a"] = dict(DA._MANA["lk8"], disponibili=[[1, 1, "Phase_Main2", [[814, "C", 1]], 9]], lanci=[[1, 1, "magia", 813, {}, 5]])
+        DA._MANA["lk8b"] = dict(DA._MANA["lk8"], disponibili=[[1, 1, "Phase_Main2", [[814, "C", 0]], 9]], lanci=[[1, 1, "magia", 813, {}, 5]])
+        # negativa: una richiesta arrivata prima dell'ultima giocata del turno non vale (si torna alla lettura dal testo)
+        DA._MANA["lk8c"] = dict(DA._MANA["lk8"], disponibili=[[1, 1, "Phase_Main2", [[814, "C", 0]], 3]], lanci=[[1, 1, "magia", 813, {}, 5]])
+        casi.append(("negativa: la richiesta di prima dell'ultima giocata non vale, resta la lettura dal testo (L2 c'e')",
+                     arena_offriva(DA._MANA["lk8c"], 1, 1) is None and per_partita(dict(partita="lk8c", seat=1, inizia=True))["l2"] == [1]))
+        casi.append(("leaker intelligente: L2 con Healer's Hawk offerta e pagabile; negativa: offerta senza pagamento, niente L2",
+                     per_partita(dict(partita="lk8a", seat=1, inizia=True))["l2"] == [1] and per_partita(dict(partita="lk8b", seat=1, inizia=True))["l2"] == []))
+        DA._MANA["lk1a"] = dict(DA._MANA["lk1"], disponibili=[[3, 1, "Phase_Main2", [[802, "C", 0]], 9]])
+        DA._MANA["lk1b"] = dict(DA._MANA["lk1"], disponibili=[[3, 1, "Phase_Main2", [[801, "P", 1]], 9]])
+        casi.append(("leaker intelligente: L1 solo se Arena offriva la terra; negativa: senza la terra fra le giocate, niente L1",
+                     per_partita(dict(partita="lk1b", seat=1, fine="You conceded"))["l1"] == [3]
+                     and per_partita(dict(partita="lk1a", seat=1, fine="You conceded"))["l1"] == []))
         # il mana tenuto per il suo turno (15 nov 2026): due Plains stappate, in mano Healer's Hawk e Raise the Alarm
         DA._NOMI_GRP[818] = "Raise the Alarm"
         DA._MANA["lk20"] = dict(DA._MANA["lk7"], momenti=[["fine", 1, 1, foto([814, 818], c1=[P1, P2, tap(SW)])]])
