@@ -476,6 +476,238 @@
     "scopri": [
       "si",
       "le carte esiliate dalla cima volano nell'esilio e quella lanciata va in pila con FREE (CastingTimeOption, costo alternativo 149)"
+    ],
+    "ritardata_muore": [
+      "si",
+      "come ritardata: quando la creatura muore l'abilita' ritardata va in pila col nome della carta, poi i suoi effetti"
+    ],
+    "ecl_contrasta_tutti": [
+      "si",
+      "ECL, come contrasta senza freccia (non prende di mira): le sue magie lasciano la pila verso il cimitero una alla volta, poi le pedine scorrono dalla carta in pila"
+    ],
+    "ecl_torna_senza_abilita": [
+      "si",
+      "ECL, la carta vola dal cimitero in campo; la pillola NO ABILITIES sulla carta quando Arena scrive RemoveAbility"
+    ],
+    "ecl_rimbalza_conta": [
+      "si",
+      "ECL, come rimbalza: i permanenti volano in mano, uno alla volta"
+    ],
+    "ecl_pedine_per_tornati": [
+      "si",
+      "ECL, come pedina: le pedine scorrono in campo dalla carta in pila"
+    ],
+    "ecl_esilia_dal_cimitero": [
+      "si",
+      "ECL, la carta vola dal cimitero all'esilio"
+    ],
+    "ecl_dalla_mano_attaccando": [
+      "parte",
+      "ECL, la creatura vola dalla mano al campo tappata; la freccia d'attacco solo se Arena la scrive fra gli attaccanti del combattimento in corso (non ancora visto in una partita ECL)"
+    ],
+    "ecl_di_giocatore": [
+      "nonserve",
+      "ECL, sceglie solo il giocatore a cui si applicano le istruzioni che contiene: si vedono quelle (tappa, pompa, danno...)"
+    ],
+    "ecl_tappa_altra": [
+      "si",
+      "ECL, come tappa: la carta si gira"
+    ],
+    "ecl_guadagna_forza_max": [
+      "si",
+      "ECL, come guadagna: il cuore verde col «+N» e il numero che sale"
+    ],
+    "ecl_togli_un_segnalino": [
+      "si",
+      "ECL, come togli_segnalini: il segnalino sparisce dalla carta e i pallini cambiano"
+    ],
+    "ecl_togli_tutti": [
+      "si",
+      "ECL, come togli_segnalini: tutti i segnalini spariscono dalla carta"
+    ],
+    "ecl_esilia_dalla_mano": [
+      "si",
+      "ECL, le carte volano dalla mano all'esilio (dalla sua mano partono come dorsi e si rivelano in esilio)"
+    ],
+    "ecl_macinata_in_cima": [
+      "si",
+      "ECL, la carta vola dal cimitero al grimorio con ON TOP sul mazzo"
+    ],
+    "ecl_danno_forza_avversari": [
+      "si",
+      "ECL, come danno_forza: la goccia col -N sulla vita e la spada col numero sulla creatura che lo infligge"
+    ],
+    "ecl_macinate_tipo_in_mano": [
+      "si",
+      "ECL, le carte macinate volano dal grimorio al cimitero, poi quelle del tipo dal cimitero in mano, una alla volta"
+    ],
+    "ecl_secondo_o_fondo": [
+      "si",
+      "ECL, come in_grimorio: la carta vola verso il grimorio; ON THE BOTTOM sul mazzo o «2nd from the top» nel racconto"
+    ],
+    "ecl_torna_esiliata_costo": [
+      "si",
+      "ECL, come ritorna_esiliata: la carta vola dall'esilio in mano"
+    ],
+    "fdn_guadagna_perso": [
+      "si",
+      "FDN, come guadagna: il cuore verde col «+N»"
+    ],
+    "fdn_perdono_ricorda": [
+      "si",
+      "FDN, come perde: la goccia col -N sulla vita di ogni avversario"
+    ],
+    "fdn_guadagna_perse_qui": [
+      "si",
+      "FDN, come guadagna: il cuore verde col «+N»"
+    ],
+    "fdn_perde_mv_bersaglio": [
+      "si",
+      "FDN, come perde: la goccia col -N sulla vita"
+    ],
+    "fdn_pedine_per_nome": [
+      "si",
+      "FDN, come pedina: le pedine scorrono in campo dalla carta in pila (uguali, col xN)"
+    ],
+    "fdn_esilia_cimitero": [
+      "si",
+      "FDN, le carte volano dal cimitero all'esilio, una alla volta"
+    ],
+    "fdn_cimitero_nel_grimorio": [
+      "si",
+      "FDN, come mescola_nel_grimorio: le carte volano dal cimitero al grimorio, poi i tre dorsi che si mischiano"
+    ],
+    "fdn_danno_senza_volare": [
+      "si",
+      "FDN, come danno: una goccia col -N su ogni creatura colpita, le morte grigie col teschio al cimitero"
+    ],
+    "fdn_ritorna_mv": [
+      "si",
+      "FDN, come ritorna_tutte: le carte volano dai cimiteri in campo, una alla volta (sotto chi le prende, dal cimitero dell'altro)"
+    ],
+    "fdn_pesca_mv_diversi": [
+      "si",
+      "FDN, come pesca: le carte volano dal grimorio alla mano"
+    ],
+    "fdn_drena_se_creatura": [
+      "si",
+      "FDN, la goccia col -N sulla sua vita e il cuore verde col «+N» sulla tua"
+    ],
+    "fdn_sacrifica_ricorda": [
+      "si",
+      "FDN, come sacrifica: la carta grigia col teschio va al cimitero"
+    ],
+    "fdn_guadagna_costituzione_sacrificata": [
+      "si",
+      "FDN, come guadagna: il cuore verde col «+N» dopo il sacrificio"
+    ],
+    "fdn_rito": [
+      "si",
+      "FDN, come danno: la goccia col -N sulla vita (10)"
+    ],
+    "fdn_distruggi_omonimi": [
+      "si",
+      "FDN, come distruggi: la freccia al bersaglio, poi i permanenti grigi col teschio al cimitero uno alla volta; da 3 in su board wipe nel racconto"
+    ],
+    "fdn_dai_controllo": [
+      "si",
+      "FDN, come prendi_controllo: la carta scorre dal tuo campo a quello dell'avversario"
+    ],
+    "fdn_controllo_a_un_avversario": [
+      "si",
+      "FDN, come prendi_controllo: l'artefatto scorre nel campo dell'avversario"
+    ],
+    "fin_esilia_cima_avversari": [
+      "si",
+      "FIN, come esilia_cima: le carte volano dal suo grimorio all'esilio"
+    ],
+    "fin_danno_equipaggiate": [
+      "si",
+      "FIN, come danno_forza: la goccia col -N sulla vita e la spada col numero su Barret"
+    ],
+    "fin_distruggi_equip_su": [
+      "si",
+      "FIN, come distruggi: l'equipaggiamento esce da sotto la carta che lo portava e va al cimitero grigio col teschio"
+    ],
+    "fin_rivela_in_mano_perdi": [
+      "si",
+      "FIN, la carta rivelata si mostra grande con REVEALED e vola in mano, poi la goccia col -N sulla vita"
+    ],
+    "fin_elisir": [
+      "si",
+      "FIN, le carte volano dal cimitero al grimorio, i tre dorsi che si mischiano, poi il cuore verde col «+N»"
+    ],
+    "fin_esilia_cibo": [
+      "si",
+      "FIN, la freccia, la carta vola dal cimitero all'esilio, poi la pedina Food scorre in campo"
+    ],
+    "fin_sacrifica_meta": [
+      "si",
+      "FIN, come sacrifica_oggetti: le creature grigie al loro posto volano al cimitero, una alla volta"
+    ],
+    "fin_danno_mv_altri": [
+      "si",
+      "FIN, come danno: la goccia col -N sulla vita di ogni avversario"
+    ],
+    "sos_tappa_o_stappa": [
+      "si",
+      "SOS, la carta si gira (tappata o stappata), una alla volta"
+    ],
+    "sos_perde_mv_bersaglio": [
+      "si",
+      "SOS, come perde: la goccia col -N sulla vita"
+    ],
+    "sos_mano_in_cima": [
+      "si",
+      "SOS, le carte volano dalla mano al grimorio con ON TOP sul mazzo (le sue come dorsi)"
+    ],
+    "sos_tra_macinate_in_campo": [
+      "si",
+      "SOS, le carte macinate volano al cimitero, poi la creatura scelta dal cimitero in campo"
+    ],
+    "sos_esilia_dal_cimitero": [
+      "si",
+      "SOS, la carta vola dal cimitero all'esilio"
+    ],
+    "sos_pesca_potenza": [
+      "si",
+      "SOS, come pesca: le carte volano dal grimorio alla mano"
+    ],
+    "sos_stordisci_doppio": [
+      "si",
+      "SOS, come stordisci: i segnalini di stordimento in testa alla carta"
+    ],
+    "sos_pompa_nome": [
+      "si",
+      "SOS, come pompa: la forza nel pallino blu"
+    ],
+    "sos_scarta_quanti": [
+      "si",
+      "SOS, come scarta: le carte volano dalla mano al cimitero (le sue come dorsi)"
+    ],
+    "sos_pesca_scartate": [
+      "si",
+      "SOS, come pesca: le carte volano dal grimorio alla mano"
+    ],
+    "sos_pesca_mano_bersaglio": [
+      "si",
+      "SOS, come pesca: le carte volano dal grimorio alla mano"
+    ],
+    "sos_cerca_mano_o_cimitero": [
+      "si",
+      "SOS, come cerca: la carta vola dal grimorio alla mano o al cimitero, poi i tre dorsi che si mischiano"
+    ],
+    "sos_terra_scartata_in_campo": [
+      "si",
+      "SOS, lo scarto vola al cimitero, poi la terra dal cimitero in campo tappata"
+    ],
+    "sos_esilia_massimo_mv": [
+      "si",
+      "SOS, come esilia: la carta scelta vola dal suo campo all'esilio"
+    ],
+    "sos_pox": [
+      "si",
+      "SOS, Pox Plague in tre passi: le gocce sulle vite, gli scarti al cimitero, i sacrifici grigi col teschio al cimitero uno alla volta"
     ]
   },
   "annotazioni": {

@@ -1,0 +1,47 @@
+{
+ "tipo": "Constructed",
+ "partite": 520,
+ "auc_occasioni": 0.623,
+ "auc_mano_rel": 0.572,
+ "auc_pescate_rel": 0.607,
+ "auc_gioco_io": 0.723,
+ "auc_gioco_suo": 0.779,
+ "auc_ritmo": 0.426,
+ "auc_fine_partita": 0.983,
+ "auc_negativa": [
+  0.513,
+  0.555
+ ],
+ "spearman_occasioni_gioco": -0.011,
+ "spearman_occasioni_gioco_suo": 0.057,
+ "medie": {
+  "mano": 51.15,
+  "pescate_io": 10.7,
+  "pescate_suo": -1.38,
+  "gioco_io": -15.85,
+  "gioco_suo": 9.96,
+  "ritmo": -0.87,
+  "fine_partita": -2.94
+ },
+ "medie_vinte": {
+  "occasioni": 1.7,
+  "mano_rel": 0.52,
+  "pescate_rel": 1.18,
+  "gioco_io": -5.62,
+  "gioco_suo": 25.23,
+  "ritmo": -1.66
+ },
+ "medie_perse": {
+  "occasioni": -1.89,
+  "mano_rel": -0.63,
+  "pescate_rel": -1.25,
+  "gioco_io": -26.39,
+  "gioco_suo": -5.78,
+  "ritmo": -0.05
+ },
+ "terzili_win_rate": [
+  38.7,
+  50.9,
+  62.6
+ ]
+}

@@ -1,0 +1,47 @@
+{
+ "tipo": "Limited",
+ "partite": 59,
+ "auc_occasioni": 0.773,
+ "auc_mano_rel": 0.62,
+ "auc_pescate_rel": 0.8,
+ "auc_gioco_io": 0.76,
+ "auc_gioco_suo": 0.711,
+ "auc_ritmo": 0.396,
+ "auc_fine_partita": 0.963,
+ "auc_negativa": [
+  0.595,
+  0.71
+ ],
+ "spearman_occasioni_gioco": 0.15,
+ "spearman_occasioni_gioco_suo": 0.208,
+ "medie": {
+  "mano": 50.01,
+  "pescate_io": 11.14,
+  "pescate_suo": -0.18,
+  "gioco_io": -28.66,
+  "gioco_suo": 16.53,
+  "ritmo": -1.12,
+  "fine_partita": -7.04
+ },
+ "medie_vinte": {
+  "occasioni": 8.03,
+  "mano_rel": 2.07,
+  "pescate_rel": 5.96,
+  "gioco_io": -5.59,
+  "gioco_suo": 31.23,
+  "ritmo": -5.74
+ },
+ "medie_perse": {
+  "occasioni": -5.65,
+  "mano_rel": -0.69,
+  "pescate_rel": -4.96,
+  "gioco_io": -44.48,
+  "gioco_suo": 6.45,
+  "ritmo": 2.04
+ },
+ "terzili_win_rate": [
+  21.1,
+  26.3,
+  71.4
+ ]
+}

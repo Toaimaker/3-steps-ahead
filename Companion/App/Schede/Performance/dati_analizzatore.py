@@ -60,6 +60,23 @@ SIT = [("io_terra", "You missed a land drop (by your 4th turn)"), ("lui_terra", 
        ("io_letale_mancato", "Your board had lethal through their untapped blockers and the opponent survived the turn")]
 _MANA = {}      # {matchId: dato di mana_aperto}, riempito da righe()
 NOME_SIT = dict(SIT)
+
+# Il «solito» di ogni mazzo viene solo dalle partite di quel mazzo (UpgradePlan01 passo 1, Autore, 20 nov 2026: «ogni mazzo deve confrontarsi con se
+# stesso», «Sì, montalo»; la prova: Note/UpgradePlan01_Passo1.md). Il mazzo e' il nome del tuo mazzo (nel Limited la coppia di colori), dentro il tipo
+# (Constructed o Limited). Sotto MINIMO_MAZZO partite il mazzo non ha ancora un solito: l'EV vero resta, il confronto no.
+MINIMO_MAZZO = 10
+
+
+def chiave_mazzo(x):
+    return (x.get("tipo"), (x.get("mio") or "").strip())
+
+
+def per_mazzo(base):
+    """{chiave del mazzo: [partite]} dalle partite base."""
+    out = collections.defaultdict(list)
+    for x in base:
+        out[chiave_mazzo(x)].append(x)
+    return out
 _SCHEDE = {}
 
 
@@ -2362,12 +2379,14 @@ def _p_carte(f, seat, stato, tipo, giro, tocca_me):
         return None
 
 
-def p_foto(f, seat, tocca_me, giro, inizia=None, mull=0, tipo=None, vecchia=False):
+def p_foto(f, seat, tocca_me, giro, inizia=None, mull=0, tipo=None, vecchia=False, mano_extra=(0, 0)):
     """R8 (13 nov 2026, Autore: «Sì, con la citazione»): la probabilita' di vincere, in punti percentuali, dal tavolo di una foto, col modello del suggeritore
     (Companion/Suggeritore/prob_vittoria.py, Regole/prob_vittoria.json: gradient boosting tarato sui replay pubblici di 17Lands, CC BY 4.0, sei set del
     limited). Vite, creature (forza, costituzione, volare/minaccia/raggiungere, tappate), terre, carte in mano, chi tocca, il giro, chi ha cominciato, i
     mulligan. Il valore delle carte (GIH) no: e' la media del set per tutte, cosi' le due app dicono la stessa cosa. Nel costruito e' un'estrapolazione
-    (il modello e' del limited): confronta due tavoli, non e' una promessa. None senza foto o senza il modello."""
+    (il modello e' del limited): confronta due tavoli, non e' una promessa. None senza foto o senza il modello.
+    mano_extra (UpgradePlan01 passo 2, 20 nov 2026): carte da aggiungere (o togliere) al conto della mano (tua, sua) per la pescata del turno, che il dato
+    del modello conta in un momento preciso (ev_partita.pescata_extra); solo il numero, le carte restano quelle della foto."""
     if not f or seat not in (1, 2):
         return None
     try:
@@ -2391,10 +2410,16 @@ def p_foto(f, seat, tocca_me, giro, inizia=None, mull=0, tipo=None, vecchia=Fals
     v = f.get("v") or [20, 20]
     n = f.get("n") or [0, 0]
     stato = dict(tocca_me=1 if tocca_me else 0, N=giro, on_play=1 if inizia else 0, LU=v[a] if v[a] is not None else 20, LO=v[b] if v[b] is not None else 20,
-                 miei=miei, suoi=suoi, TERU=terre(lati[a]), TERO=terre(lati[b]), MANU=n[a] or 0, MANO=n[b] or 0, mull=mull or 0,
+                 miei=miei, suoi=suoi, TERU=terre(lati[a]), TERO=terre(lati[b]), MANU=max(0, (n[a] or 0) + mano_extra[0]), MANO=max(0, (n[b] or 0) + mano_extra[1]), mull=mull or 0,
                  tappati_suoi=sum(c["girato"] for c in suoi) if tocca_me else 0, tappati_miei=0 if tocca_me else sum(c["girato"] for c in miei))
     # il letale sul tavolo, che il modello non vede (19 nov 2026): chi tocca chiude e chi difende non ha carte in mano -> la partita e' decisa (99 e 1, non
     # 100 e 0: qualcosa che non si vede resta possibile)
+    # le vite a zero (704.5a, 119.6): la partita e' decisa, per tutti e due i modelli. Fino al 20 nov 2026 lo diceva solo il modello di prima
+    # (prob_vittoria.p_vittoria); quello con le carte dava 4-5% a un giocatore a 0 vite (trovato dalla verifica sui gemelli, UpgradePlan01)
+    if stato["LU"] <= 0:
+        return 0.0
+    if stato["LO"] <= 0:
+        return 100.0
     if letale(f, seat, tocca_me):
         return 99.0 if tocca_me else 1.0
     # il modello nuovo (19 nov 2026, sessione Magic 22, Motore_EV/valuta_carte.py): ogni carta del tavolo e della tua mano col suo vettore, imparato dal

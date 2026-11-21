@@ -2793,7 +2793,7 @@ class PaginaPerformance:
     PIU_CHIAVE, SOGLIA_CHIAVE = 5, 6
 
     def ev_turno_passo(self, b):
-        """Il turno del passo aperto nel replayer col suo EV contro il solito (ev_partita, l'atteso da tutte le partite del tipo), o None."""
+        """Il turno del passo aperto nel replayer col suo EV contro il solito (ev_partita: il solito dello stesso mazzo, DA.chiave_mazzo), o None."""
         try:
             import ev_partita as EV_
             t = b["passi"][b["i"]][2]
@@ -2909,40 +2909,163 @@ class PaginaPerformance:
         y += 24
         if p0 is not None:
             d_ = p - p0
+            sol_ = self.mano_solita(x_)
+            if sol_ is not None:        # la mano tenuta e' la prima occasione della partita (occasioni.py): contro la mano media dello stesso mazzo
+                d_m = p0 - sol_
+                cc.create_text(x0 + 14, y, text=f"hand you kept {p0:.0f}% · your deck's usual {sol_:.0f}%", anchor="nw", fill=C["muto"], font=F(7))
+                cc.create_text(x0 + larga - 14, y - 1, text=f"{d_m:+.1f}".replace("-", "−"), anchor="ne",
+                               fill=C["verde"] if d_m >= 1 else C["rosso"] if d_m <= -1 else C["muto"], font=F(8, True))
+                y += 16
             cc.create_text(x0 + 14, y, text=f"start of the game {p0:.0f}% · since then", anchor="nw", fill=C["muto"], font=F(7))
             cc.create_text(x0 + larga - 14, y - 1, text=f"{d_:+.1f}".replace("-", "−"), anchor="ne", fill=C["verde"] if d_ >= 1 else C["rosso"] if d_ <= -1 else C["muto"],
                            font=F(8, True))
             y += 16
         return y + 8
 
+    def range_avversario(self, b):
+        """Il range della mano dell'Opponent a fine di ogni suo mezzo turno e del tuo (Motore_EV/range_nucleo.range_partita), solo nel Limited, una volta per
+        partita; None fuori dal Limited o senza il modello e la base del set (21 nov 2026, Autore: «montiamo ogni miglioria», per il range «Sì, solo
+        Limited»: nel Constructed non e' misurato)."""
+        x_ = b["x"]
+        if x_.get("tipo") != "Limited":
+            return None
+        k_ = (x_.get("partita"),)
+        if b.get("_range_k") != k_:
+            try:
+                import sys as _s
+                cart = os.path.join(DA.percorsi.ROOT, "Motore_EV")
+                if cart not in _s.path:
+                    _s.path.insert(0, cart)
+                import range_nucleo as RN_
+                b["_range"] = RN_.range_partita(x_)
+            except Exception:       # noqa: BLE001 - senza il modello o la base del set: niente range
+                b["_range"] = None
+            b["_range_k"] = k_
+        return b["_range"]
+
+    def disegna_range(self, cc, b, x0, larga, y):
+        """Sotto la WIN CHANCE, nel Limited: la probabilita' che l'Opponent abbia in mano almeno una carta di ogni tipo, alla fine dell'ultimo mezzo turno
+        chiuso prima del passo aperto (Note/Motore_EV_Range.md). Una stima dai replay di 17Lands, non la sua mano."""
+        rr = self.range_avversario(b)
+        if not rr:
+            return y
+        try:
+            t_cur = b["passi"][b["i"]][2]
+        except (IndexError, KeyError, TypeError):
+            return y
+        z = None
+        for q in rr:
+            if q["t"] is not None and t_cur is not None and q["t"] < t_cur:
+                z = q
+        if z is None:
+            return y
+        import range_nucleo as RN_
+        F = self.F
+        chi = "your" if z["mio"] else "Opponent's"
+        cc.create_rectangle(x0 + 12, y + 1, x0 + 14, y + 13, fill=C["accento"], outline="")
+        cc.create_text(x0 + 19, y, text="OPPONENT'S HAND · RANGE", anchor="nw", fill=C["titolo"], font=F(8, True))
+        cc.create_text(x0 + larga - 14, y + 1, text=f"{z['H']} cards · end of {chi} T{z['N']}", anchor="ne", fill=C["muto"], font=F(7))
+        y += 18
+        W_ = larga - 28
+        xb = x0 + 14 + int(W_ * 0.55)
+        for k, et in RN_.ETICHETTE:
+            v = z["p"].get(k)
+            if v is None:
+                continue
+            cc.create_text(x0 + 14, y + 6, text=f"has {et}", anchor="w", fill=C["testo"], font=F(7))
+            cc.create_rectangle(xb, y + 2, x0 + 14 + W_ - 40, y + 10, fill="#1b2130", outline="")
+            cc.create_rectangle(xb, y + 2, xb + (x0 + 14 + W_ - 40 - xb) * max(0.0, min(1.0, v)), y + 10, fill=C["accento"], outline="")
+            cc.create_text(x0 + larga - 14, y + 6, text=f"{100 * v:.0f}%", anchor="e", fill=C["titolo"], font=F(7, True))
+            y += 14
+        cc.create_text(x0 + 14, y + 2, text="A guess learned from 17Lands replays (CC BY 4.0), Limited only: never his real hand.", anchor="nw",
+                       fill=C["grigio"], font=F(6), width=larga - 28)
+        return y + 20
+
+    def mano_solita(self, x_):
+        """La P media della mano tenuta nelle partite dello stesso mazzo (DA.chiave_mazzo, lascia-una-fuori come occasioni.con_occasioni), o None sotto
+        DA.MINIMO_MAZZO partite col conto."""
+        import ev_partita as EV_
+        k_ = DA.chiave_mazzo(x_)
+        cache = getattr(self, "_mani_solite", None)
+        if cache is None or cache[0] is not self.righe:
+            cache = self._mani_solite = (self.righe, {})
+        if k_ not in cache[1]:
+            vv = []
+            for y_ in self.righe or []:
+                if DA.chiave_mazzo(y_) == k_:
+                    c_ = EV_.partita(y_)
+                    if c_ is not None:
+                        vv.append((y_.get("partita"), c_["inizio"]))
+            cache[1][k_] = vv
+        vv = [p_ for pid, p_ in cache[1][k_] if pid != x_.get("partita")]
+        if len(vv) < getattr(DA, "MINIMO_MAZZO", 10):
+            return None
+        return sum(vv) / len(vv)
+
     def segnapunti(self, b):
         """La somma dei voti delle fasi chiuse fino al passo aperto (19 nov 2026, Autore: «una somma dei victory points che si aggiorna a ogni ricalcolo
-        delle fasi mia e di oppo», posizione A): le tue scelte, le sue scelte buone (i punti che ti tolgono), i suoi errori (i punti che ti regala), pescate e
-        conseguenze di nessuno; net e' la somma, quanto e' cambiata la tua probabilita' di vincere. -> dict o None senza il voto."""
+        delle fasi mia e di oppo», posizione A): le tue scelte, le sue scelte buone (i punti che ti tolgono), i suoi errori (i punti che ti regala); dal 21
+        nov 2026 divisi come le spine (sotto): le pescate, la posta del turno, le tue non-azioni, il resto; net e' la somma, quanto e' cambiata la tua
+        probabilita' di vincere dall'inizio. -> dict o None senza il voto."""
         import ev_partita as EV_
         x_ = b["x"]
         base = [y for y in self.righe or [] if y["tipo"] == x_.get("tipo")]
         v = EV_.righe_fasi(x_, b["passi"], base)
         if not v:
             return None
-        out = dict(mie=0.0, n_mie=0, buone=0.0, n_buone=0, errori=0.0, n_errori=0, altro=0.0, fino=None)
+        # divisi come le spine del motore (21 nov 2026, Autore: «montiamo ogni miglioria apportata sul motore ... che il replayer sia allineato ai dati
+        # ev del motore», spine.py, Note/Spine_Mazzo_Giocatore.md): le pescate sono occasioni della partita, di nessuno (occasioni.py); la posta del turno
+        # (la P che chi e' di turno perde se passa senza fare niente, la fase «inizio» di ev_partita) e' di chi ha la mossa; il resto delle fasi senza
+        # scelte a parte. Cosi' il totale e' quanto e' cambiata la tua probabilita' di vincere dall'inizio della partita, come la WIN CHANCE.
+        out = dict(mie=0.0, n_mie=0, buone=0.0, n_buone=0, errori=0.0, n_errori=0, altro=0.0, fino=None, pesc_io=0.0, n_pesc_io=0, pesc_suo=0.0,
+                   n_pesc_suo=0, posta_io=0.0, posta_suo=0.0, attese=0.0)
+        k_ = (id(b["passi"]),)
+        if b.get("_spine_k") != k_:
+            import spine as SP_
+            try:
+                b["_spine"] = SP_.spine_partita(x_, b["passi"])
+            except Exception:       # noqa: BLE001 - una partita senza il conto: il segnapunti non c'e'
+                b["_spine"] = None
+            b["_spine_k"] = k_
+        sp_ = b["_spine"]
+        if not sp_:
+            return None
+        # quando si chiude ogni fase della spina: la fase (t, f) e' chiusa se una fase delle righe dello stesso turno e non prima, o di un turno dopo, e'
+        # chiusa al passo aperto; all'ultimo passo tutto (meno la fine, che e' il risultato)
+        ORD = {"inizio": 0, "main1": 1, "turn": 1, "comb": 2, "main2": 3}
+        chiuse = [(fz["t"], ORD.get(fz["f"], 3)) for fz in v["fasi"] if fz["ultimo"] <= b["i"]]
+        ultimo = b["i"] >= len(b["passi"]) - 1
         for fz in v["fasi"]:
-            if fz["ultimo"] > b["i"]:       # la fase non e' ancora chiusa: entra quando finisce
+            if fz["ultimo"] <= b["i"]:
+                out["fino"] = fz
+
+        def chiusa(t, f):
+            return ultimo or any(t2 > t or (t2 == t and o2 >= ORD.get(f, 3)) for t2, o2 in chiuse)
+        for t, f, k, ev, testo in sp_["pezzi"]:
+            if t is None or not chiusa(t, f):
                 continue
-            out["fino"] = fz
-            out["altro"] += fz.get("resto", 0.0)
-            for r_ in fz["righe"]:
-                if r_["incluso"]:
-                    continue
-                if r_["tipo"] == "risultato":
-                    out["altro"] += r_["ev"]
-                elif r_["tipo"].startswith("mio"):
-                    out["mie"] += r_["ev"]; out["n_mie"] += 1
-                elif r_["ev"] < 0:
-                    out["buone"] += r_["ev"]; out["n_buone"] += 1
+            chi, _st, lin, ult = k
+            if lin == "la mossa":
+                out["posta_io" if chi == "Hero" else "posta_suo"] += ev
+            elif chi == "partita":
+                if ult == "pescata Hero":
+                    out["pesc_io"] += ev; out["n_pesc_io"] += 1
                 else:
-                    out["errori"] += r_["ev"]; out["n_errori"] += 1
-        out["net"] = out["mie"] + out["buone"] + out["errori"] + out["altro"]
+                    out["pesc_suo"] += ev; out["n_pesc_suo"] += 1
+            elif chi == "Hero" and ult == "non-azione":
+                out["attese"] += ev
+            elif chi == "Hero":
+                out["mie"] += ev; out["n_mie"] += 1
+            elif chi == "Opponent":
+                if ev < 0:
+                    out["buone"] += ev; out["n_buone"] += 1
+                else:
+                    out["errori"] += ev; out["n_errori"] += 1
+            else:
+                out["altro"] += ev
+        out["occasioni"] = out["pesc_io"] + out["pesc_suo"]
+        out["net"] = (out["mie"] + out["buone"] + out["errori"] + out["altro"] + out["occasioni"] + out["posta_io"] + out["posta_suo"]
+                      + out["attese"])
         return out
 
     def disegna_segnapunti(self, cc, sp, x0, larga, y):
@@ -2968,10 +3091,21 @@ class PaginaPerformance:
             cc.create_text(xa + 6, y + 30, text=segno(v), anchor="w", fill=C["arancio"] if j == 2 and v >= EV_.SOGLIA_RIGA else col(v), font=F(12, True))
             cc.create_text(xa + 6, y + 43, text=f"{n} {nome_n}", anchor="w", fill=C["muto"], font=F(6))
         y += 56
-        cc.create_line(x0 + 14, y, x0 + larga - 14, y, fill="#232a37")
-        cc.create_text(x0 + 14, y + 9, text=f"DRAWS AND RESULTS {segno(sp['altro'])} · TOTAL", anchor="w", fill=C["muto"], font=F(7, True))
-        cc.create_text(x0 + larga - 14, y + 9, text=segno(sp["net"]), anchor="e", fill=col(sp["net"]), font=F(12, True))
-        return y + 28
+        # sotto, le voci che non sono scelte (le spine): le occasioni della partita, la posta del turno, il resto
+        for tit, v, nota in (("THE GAME · YOUR DRAWS", sp["pesc_io"], f"{sp['n_pesc_io']} draws"),
+                             ("THE GAME · OPPONENT'S DRAWS", sp["pesc_suo"], f"{sp['n_pesc_suo']} draws"),
+                             ("TURN STAKES · YOU / OPPONENT", sp["posta_io"] + sp["posta_suo"], f"{segno(sp['posta_io'])} / {segno(sp['posta_suo'])}"),
+                             ("YOUR NON-ACTIONS · held back, waited", sp["attese"], ""),
+                             ("NO CHOICE · rest of the phases", sp["altro"], "")):
+            cc.create_text(x0 + 14, y + 7, text=tit, anchor="w", fill=C["muto"], font=F(7, True))
+            if nota:
+                cc.create_text(x0 + larga - 70, y + 7, text=nota, anchor="e", fill=C["muto"], font=F(6))
+            cc.create_text(x0 + larga - 14, y + 7, text=segno(v), anchor="e", fill=col(v), font=F(8, True))
+            y += 15
+        cc.create_line(x0 + 14, y + 2, x0 + larga - 14, y + 2, fill="#232a37")
+        cc.create_text(x0 + 14, y + 13, text="TOTAL · your win chance since the start", anchor="w", fill=C["muto"], font=F(7, True))
+        cc.create_text(x0 + larga - 14, y + 13, text=segno(sp["net"]), anchor="e", fill=col(sp["net"]), font=F(12, True))
+        return y + 32
 
     def due_voti(self, x_, fz, r_):
         """I due voti di una tua scelta (19 nov 2026, sessione Magic 22, il mockup: Autore «vai in ordine tutto»): [(testo, tono)].
@@ -3769,6 +3903,7 @@ class PaginaPerformance:
         import ev_partita as EV_
         voto_ = self.voto_fase(b) if b.get("modo") == "azioni" else None
         y = self.disegna_win_chance(cc, b, x0_r, larga_r, y)
+        y = self.disegna_range(cc, b, x0_r, larga_r, y)
         if voto_ is not None:
             # i punti della partita in un posto fisso, subito sotto la win chance (stesso giorno, Autore: «la tabellina di accumulo pti devi tenerla sotto il
             # grafo di win chance o la vediamo andare su e giu' e diventiamo matti»: dopo PHASE TOTAL saltava con l'altezza del voto della fase)
@@ -8826,6 +8961,7 @@ class PaginaPerformance:
                 c._box.append((W - 120, y + 30, W - 16, y + 54, ("guarda_leak", t["k"])))
             y += alto + 6
         y += 8
+        y = self.disegna_linee(c, W, y)
         c.create_text(14, y, text=("How the cost is counted: each turn has its EV, the win-probability points it made above or below what the same turn usually "
                                    "gives (the model of the chance to win, from the replays). A leak's turns are compared with your other turns (the whole game "
                                    "for the mulligan and the concession): the difference each time, times how often it happens, over your games. Confirmed = "
@@ -8839,6 +8975,76 @@ class PaginaPerformance:
                                        "habits of 15 can be measured there; a «close rule» says what changes. Not endorsed by 17Lands."),
                           anchor="nw", fill=C["grigio"], font=F(7), width=W - 30)
         c.configure(scrollregion=(0, 0, W, y + 60))
+
+    LINEE_EN = {"panico": "PANIC", "freddezza": "COLD HEAD", "inganno": "DECEPTION", "speranza": "HOPE", "strategia": "STRATEGY"}
+
+    def linee_spot(self):
+        """Gli spot delle linee psicologiche (psicologia.con_finestra) delle partite del tipo, una volta per lettura delle partite (~2,5 s)."""
+        k_ = (self.tipo, id(self.righe))
+        if getattr(self, "_linee_k", None) != k_:
+            import psicologia as PS
+            r = [x for x in self.righe or [] if x.get("seat") in (1, 2) and x["tipo"] == self.tipo]
+            try:
+                self._linee = (r, PS.con_finestra(r, r))
+            except Exception:       # noqa: BLE001 - senza le foto delle partite il profilo non c'e'
+                self._linee = (r, [])
+            self._linee_k = k_
+        return self._linee
+
+    def disegna_linee(self, c, W, y):
+        """Il profilo psicologico del mazzo scelto (21 nov 2026, Autore: «montiamo ogni miglioria apportata sul motore», Replayer + Leak Finder;
+        profilo_giocatore.py, Note/UpgradePlan01_Profilo.md): sotto pressione e da tranquillo, quanto spesso fai ogni linea con questo mazzo contro i tuoi
+        altri mazzi e quanto ti rende con lui (la finestra del tuo turno e del suo dopo, contro il solito del mazzo). Solo con un mazzo in Choose your deck."""
+        import psicologia as PS
+        import profilo_giocatore as PG
+        F = self.F
+        mio = self.filtri.get("mio")
+        c.create_rectangle(12, y + 1, 14, y + 15, fill=C["accento"], outline="")
+        c.create_text(19, y, text="YOUR LINES WITH THIS DECK · under pressure and calm", anchor="nw", fill=C["titolo"], font=F(9, True))
+        y += 20
+        if not mio:
+            c.create_text(19, y, text="Choose a deck in Choose your deck: the profile compares how you play it with how you play your other decks.",
+                          anchor="nw", fill=C["grigio"], font=F(7), width=W - 40)
+            return y + 34
+        r, S = self.linee_spot()
+        chiavi = {DA.chiave_mazzo(x) for x in r if x.get("mio") == mio}
+        m = next(iter(chiavi), None)
+        n_p = sum(1 for x in r if DA.chiave_mazzo(x) == m)
+        if m is None or n_p < PG.MINIMO_PARTITE or not any(s_["mazzo"] == m for s_ in S):
+            c.create_text(19, y, text=f"Under {PG.MINIMO_PARTITE} games with this deck: no profile yet.", anchor="nw", fill=C["grigio"], font=F(7))
+            return y + 30
+        P = PG.profilo(S, m)
+        segno = lambda v: f"{v:+.1f}".replace("-", "−")
+        for stato, nome in PG.STATI:
+            q = P[stato]
+            if not q["n"]:
+                continue
+            spr = "" if q["spremuto"] is None else f" · squeezes {segno(q['spremuto'])} ±{q['es']:.1f} vs your other decks"
+            c.create_text(19, y, text=f"{nome.upper()} · {q['n']} Hero turns{spr}", anchor="nw", fill=C["testo"], font=F(8, True))
+            y += 18
+            for col_x, tit in ((19, "LINE"), (W - 330, "WITH THIS DECK"), (W - 210, "OTHER DECKS"), (W - 90, "WORTH")):
+                c.create_text(col_x, y, text=tit, anchor="nw", fill=C["muto"], font=F(6, True))
+            y += 14
+            for k, v in q["linee"].items():
+                if not v["volte"]:
+                    continue
+                forte = v["z"] is not None and abs(v["z"]) > PG.Z_FORTE
+                c.create_text(19, y, text=f"{self.LINEE_EN.get(PS.LINEE[k], PS.LINEE[k])} · {PS.NOMI[k]}", anchor="nw",
+                              fill=C["testo"] if forte else C["muto"], font=F(7, forte), width=W - 360)
+                c.create_text(W - 330, y, text=f"{100 * v['quota']:.1f}%", anchor="nw", fill=C["arancio"] if forte else C["testo"], font=F(7, True))
+                c.create_text(W - 210, y, text=f"{100 * v['quota_altri']:.1f}%", anchor="nw", fill=C["muto"], font=F(7))
+                if v["prezzo"] is not None:
+                    c.create_text(W - 90, y, text=segno(v["prezzo"]), anchor="nw",
+                                  fill=C["verde"] if v["prezzo"] > 0 else C["rosso"], font=F(7, True))
+                else:
+                    c.create_text(W - 90, y, text="few", anchor="nw", fill=C["grigio"], font=F(7))
+                y += 16
+            y += 8
+        c.create_text(19, y, text=("Orange: you do it with this deck much more or much less than with your other decks (beyond twice its error). Worth: "
+                                   "win-probability points of your turn and the Opponent's next one with the line against without it, with this deck and in "
+                                   "this state. Under pressure = your chance to win under 30% or the Opponent kills you within 2 turns. Some lines are "
+                                   "partly read from what came after (chump, trap, bluff)."), anchor="nw", fill=C["grigio"], font=F(7), width=W - 40)
+        return y + 52
 
     def confronto_leak(self, k, tuo):
         """La riga OTHER PLAYERS di un leak (15 nov 2026, Autore: «aggiungi il confronto»): nel Limited quanto spesso succede ai giocatori di 17Lands

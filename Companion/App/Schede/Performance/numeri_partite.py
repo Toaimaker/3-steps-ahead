@@ -117,11 +117,16 @@ def valori(r, tutte, filtri=None, atteso=None):
 
 def valore_ev(r, tutte, filtri=None):
     """La tessera EV VALUE: l'EV dello scenario (la finestra dello spot dei filtri, se no la partita intera) contro il solito, in media per partita, in punti
-    percentuali di probabilita' di vincere (ev_partita.ev_spot_partita, l'atteso da tutte le partite del tipo). Il verdetto: «worth it» o «avoid» quando la
-    media sta oltre due errori standard dallo zero, se no «too close to call»; sotto 10 partite «a hint»."""
+    percentuali di probabilita' di vincere (ev_partita.ev_spot_partita; il solito viene dalle partite dello stesso mazzo fra quelle di «tutte», UpgradePlan01
+    passo 1). Il verdetto: «worth it» o «avoid» quando la media sta oltre due errori standard dallo zero, se no «too close to call»; sotto 10 partite
+    «a hint»."""
     import ev_partita as EV_
+    import dati_analizzatore as DA_
     vv = [v for v, _s in (EV_.ev_spot_partita(x, filtri or {}, tutte) for x in r) if v is not None]
     if not vv:
+        conta = DA_.per_mazzo(tutte)
+        if r and all(len(conta.get(DA_.chiave_mazzo(x)) or []) < DA_.MINIMO_MAZZO for x in r):
+            return ("-", "vuoto", f"no usual yet: each deck is compared with itself, from {DA_.MINIMO_MAZZO} games")
         return ("-", "vuoto", "no games with the turn-by-turn board here")
     spot = any(EV_.ev_spot_partita(x, filtri or {}, tutte)[1] for x in r[:20])
     n = len(vv)

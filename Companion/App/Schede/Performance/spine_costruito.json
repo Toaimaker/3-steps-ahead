@@ -1,0 +1,318 @@
+{
+ "tipo": "costruito",
+ "partite": 520,
+ "errore_max": 0.04,
+ "quota_mazzo": {
+  "Hero": 51.1,
+  "Opponent": 43.8,
+  "partita": 3.9,
+  "nessuno": 1.2
+ },
+ "quota_giocatore": {
+  "Hero": 51.8,
+  "Opponent": 43.1,
+  "partita": 3.9,
+  "nessuno": 1.2
+ },
+ "quota_linee": {
+  "Hero > tranquillo > la mossa": 41.1,
+  "Hero > tranquillo > nessuna linea": 15.4,
+  "Hero > tranquillo > tappato": 13.0,
+  "Hero > sotto pressione > la mossa": 10.0,
+  "Hero > sotto pressione > nessuna linea": 4.9,
+  "Hero > sotto pressione > tappato": 4.5,
+  "Hero > tranquillo > corsa": 3.1,
+  "Hero > ? > nessuna linea": 2.8,
+  "Hero > ? > la mossa": 1.9,
+  "Hero > tranquillo > chump": 0.8,
+  "Hero > tranquillo > catena": 0.7,
+  "Hero > sotto pressione > trappola": 0.6,
+  "Hero > sotto pressione > catena": 0.4,
+  "Hero > sotto pressione > chump": 0.4,
+  "Hero > sotto pressione > corsa": 0.2,
+  "Hero > tranquillo > trappola": 0.1,
+  "Hero > tranquillo > aspetta": 0.1,
+  "Hero > sotto pressione > bluff": 0.0,
+  "Hero > tranquillo > no_corsa": 0.0,
+  "Hero > tranquillo > aspetta_catena": 0.0,
+  "Hero > sotto pressione > aspetta_catena": 0.0,
+  "Hero > ? > aspetta_catena": 0.0,
+  "Hero > sotto pressione > aspetta": 0.0,
+  "Hero > tranquillo > bluff": 0.0,
+  "Hero > sotto pressione > no_corsa": 0.0
+ },
+ "meccaniche": {
+  "Hero > -": -84.59,
+  "Hero > nessuna": 25.73,
+  "Hero > counter": 7.48,
+  "Hero > instant_sorcery": 5.43,
+  "Hero > enchantment": 5.19,
+  "Hero > evasion": 3.19,
+  "Hero > deathtouch": 3.12,
+  "Hero > cat": 3.09,
+  "Hero > draw": 2.83,
+  "Hero > etb": 2.8,
+  "Hero > damage_face": 2.59,
+  "Hero > artifact": 2.01,
+  "Hero > demon": 1.43,
+  "Hero > angel": 1.17,
+  "Hero > lifegain": 0.99,
+  "Hero > token": 0.94,
+  "Hero > blink": -0.3,
+  "Hero > discard_self": 0.29,
+  "Hero > mana": 0.17,
+  "Hero > bounce_own": 0.14,
+  "Hero > lifeloss": 0.1,
+  "Hero > outlaw": 0.07,
+  "Hero > elf": 0.06,
+  "Hero > zombie": 0.05,
+  "Hero > food": 0.02,
+  "Hero > dies": 0.02,
+  "Hero > prowess_body": 0.01,
+  "Hero > dragon": 0.01
+ },
+ "linee": {
+  "Opponent > - > la mossa": {
+   "punti_partita": 69.13,
+   "foglie": 518
+  },
+  "Hero > tranquillo > la mossa": {
+   "punti_partita": -65.57,
+   "foglie": 520
+  },
+  "Opponent > - > sua scelta": {
+   "punti_partita": -59.17,
+   "foglie": 1622
+  },
+  "Hero > tranquillo > nessuna linea": {
+   "punti_partita": 24.6,
+   "foglie": 1240
+  },
+  "Hero > tranquillo > tappato": {
+   "punti_partita": 20.67,
+   "foglie": 828
+  },
+  "Hero > sotto pressione > la mossa": {
+   "punti_partita": -15.98,
+   "foglie": 244
+  },
+  "partita > - > occasione": {
+   "punti_partita": 9.31,
+   "foglie": 1037
+  },
+  "Hero > sotto pressione > tappato": {
+   "punti_partita": 7.17,
+   "foglie": 298
+  },
+  "Hero > sotto pressione > nessuna linea": {
+   "punti_partita": 5.36,
+   "foglie": 483
+  },
+  "Hero > tranquillo > corsa": {
+   "punti_partita": 4.94,
+   "foglie": 227
+  },
+  "Hero > ? > nessuna linea": {
+   "punti_partita": 4.41,
+   "foglie": 386
+  },
+  "nessuno > - > nessuna scelta": {
+   "punti_partita": -3.8,
+   "foglie": 2049
+  },
+  "Hero > ? > la mossa": {
+   "punti_partita": -3.04,
+   "foglie": 105
+  },
+  "Hero > tranquillo > chump": {
+   "punti_partita": -1.22,
+   "foglie": 53
+  },
+  "Hero > tranquillo > catena": {
+   "punti_partita": 1.12,
+   "foglie": 61
+  },
+  "Hero > sotto pressione > trappola": {
+   "punti_partita": 0.98,
+   "foglie": 59
+  },
+  "Hero > sotto pressione > catena": {
+   "punti_partita": 0.7,
+   "foglie": 31
+  },
+  "Hero > sotto pressione > chump": {
+   "punti_partita": -0.65,
+   "foglie": 37
+  },
+  "Hero > sotto pressione > corsa": {
+   "punti_partita": 0.33,
+   "foglie": 32
+  },
+  "Hero > tranquillo > trappola": {
+   "punti_partita": 0.19,
+   "foglie": 55
+  },
+  "Hero > tranquillo > aspetta": {
+   "punti_partita": 0.08,
+   "foglie": 86
+  },
+  "Hero > sotto pressione > bluff": {
+   "punti_partita": 0.02,
+   "foglie": 21
+  },
+  "Hero > tranquillo > no_corsa": {
+   "punti_partita": 0.02,
+   "foglie": 61
+  },
+  "Hero > tranquillo > aspetta_catena": {
+   "punti_partita": 0.01,
+   "foglie": 1
+  },
+  "Hero > sotto pressione > aspetta_catena": {
+   "punti_partita": 0.01,
+   "foglie": 1
+  },
+  "Hero > ? > aspetta_catena": {
+   "punti_partita": -0.0,
+   "foglie": 1
+  },
+  "Hero > sotto pressione > aspetta": {
+   "punti_partita": 0.0,
+   "foglie": 20
+  },
+  "Hero > tranquillo > bluff": {
+   "punti_partita": -0.0,
+   "foglie": 22
+  },
+  "Hero > sotto pressione > no_corsa": {
+   "punti_partita": 0.0,
+   "foglie": 15
+  }
+ },
+ "carte_migliori": [
+  [
+   "Ugin, Eye of the Storms",
+   26.62,
+   14
+  ],
+  [
+   "Unstable Glyphbridge",
+   26.45,
+   14
+  ],
+  [
+   "The Princess Takes Flight",
+   21.82,
+   54
+  ],
+  [
+   "Unstoppable Slasher",
+   21.26,
+   41
+  ],
+  [
+   "Unholy Annex",
+   19.54,
+   53
+  ],
+  [
+   "Twinblade Paladin",
+   18.64,
+   24
+  ],
+  [
+   "Ajani Unrelenting",
+   18.6,
+   12
+  ],
+  [
+   "Mountain",
+   17.67,
+   102
+  ],
+  [
+   "Elspeth, Storm Slayer",
+   17.42,
+   52
+  ],
+  [
+   "Tragedy Feaster",
+   16.98,
+   26
+  ],
+  [
+   "Avengers Disassembled",
+   16.52,
+   39
+  ],
+  [
+   "The Mountain-king's Return",
+   15.89,
+   83
+  ]
+ ],
+ "carte_peggiori": [
+  [
+   "la mossa",
+   -84.59,
+   520
+  ],
+  [
+   "Pox Plague",
+   -10.61,
+   10
+  ],
+  [
+   "Improvisation Capstone",
+   -8.15,
+   35
+  ],
+  [
+   "Roll-Roll-Roll-Roll",
+   -6.96,
+   23
+  ],
+  [
+   "Flameshape",
+   -6.65,
+   58
+  ],
+  [
+   "Three Steps Ahead",
+   -5.44,
+   12
+  ],
+  [
+   "Cat",
+   -2.9,
+   19
+  ],
+  [
+   "Soldier",
+   -2.76,
+   20
+  ],
+  [
+   "Human Soldier",
+   -2.68,
+   64
+  ],
+  [
+   "Sunpearl Kirin",
+   -1.42,
+   60
+  ],
+  [
+   "Moment of Triumph",
+   -0.28,
+   31
+  ],
+  [
+   "Erode",
+   0.08,
+   41
+  ]
+ ],
+ "spearman_meriti": 0.009,
+ "carte_confrontate": 65
+}

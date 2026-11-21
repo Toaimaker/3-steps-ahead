@@ -1,6 +1,6 @@
 {
- "version": "0.1.128",
- "date": "2026-11-19",
- "notes": "Leak Finder: player folders with All decks and deck folders with a deck; Leaks are now Habits, judged in EV; Cards rows by category with Weakest first; every limited event in the Event menu",
+ "version": "0.1.129",
+ "date": "2026-11-21",
+ "notes": "Replayer: Total victory points split like the EV engine, the kept hand against your deck's usual, the opponent's hand range in Limited; Habits: your lines with a deck under pressure",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

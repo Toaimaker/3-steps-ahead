@@ -183,21 +183,27 @@ def colore_costo(v, campo="guadagno"):
 
 def costi(r, base_r, campo="guadagno_p"):
     """Le decisioni delle partite r (i tuoi attacchi e blocchi, le tue magie coi bersagli) col costo contro la media di base_r (di solito tutte le partite
-    del tipo). -> [dict(..., media, costo, colore)], dalla piu' costosa."""
+    del tipo). La media viene solo dalle partite dello stesso mazzo (DA.chiave_mazzo, UpgradePlan01 passo 1); un mazzo con meno di DA.MINIMO_MAZZO partite
+    nella base non ha ancora un confronto («nd»). -> [dict(..., media, costo, colore)], dalla piu' costosa."""
     def tutte_d(rr):
         out = []
         for x in rr:
-            out += [dd for dd in per_partita(x) if dd["tipo"] in ("attacco", "blocco")] + per_partita_magie(x)
+            km = DA.chiave_mazzo(x)
+            out += [dict(dd, _mazzo=km) for dd in per_partita(x) if dd["tipo"] in ("attacco", "blocco")]
+            out += [dict(dd, _mazzo=km) for dd in per_partita_magie(x)]
         return out
+    partite_mazzo = collections.Counter(DA.chiave_mazzo(x) for x in base_r)
     somme = {}
     for dd in tutte_d(base_r):
         if dd.get(campo) is not None:
-            k = (dd["tipo"], _fascia_turno(dd["turno"]))
+            k = (dd["_mazzo"], dd["tipo"], _fascia_turno(dd["turno"]))
             s_, n_ = somme.get(k, (0.0, 0))
             somme[k] = (s_ + dd[campo], n_ + 1)
     out = []
     for dd in tutte_d(r):
-        s_, n_ = somme.get((dd["tipo"], _fascia_turno(dd["turno"])), (0.0, 0))
+        ok = partite_mazzo.get(dd["_mazzo"], 0) >= DA.MINIMO_MAZZO
+        s_, n_ = somme.get((dd["_mazzo"], dd["tipo"], _fascia_turno(dd["turno"])), (0.0, 0)) if ok else (0.0, 0)
+        dd.pop("_mazzo", None)
         media = s_ / n_ if n_ else None
         costo = dd[campo] - media if dd.get(campo) is not None and media is not None else None
         out.append(dict(dd, media=media, costo=costo, colore=colore_costo(costo, campo), guadagno_r8=dd.get(campo), n_confronto=n_))
@@ -443,21 +449,29 @@ def prova_costi():
     casi = []
     casi.append(("i colori: -6 rosso, -3 giallo, 0 verde, None non stimabile", [colore_costo(v) for v in (-6, -3, 0, None)] == ["rosso", "giallo", "verde", "nd"]))
     casi.append(("con la P: -6 punti e' giallo, -8 rosso, -3 verde", [colore_costo(v, "guadagno_p") for v in (-6, -8, -3)] == ["giallo", "rosso", "verde"]))
-    vero = (per_partita, per_partita_magie)
+    vero = (per_partita, per_partita_magie, DA.MINIMO_MAZZO)
     try:
+        DA.MINIMO_MAZZO = 1
         dd = {"a": [dict(tipo="attacco", turno=2, guadagno=4.0)], "b": [dict(tipo="attacco", turno=3, guadagno=-4.0)],
-              "c": [dict(tipo="attacco", turno=8, guadagno=-10.0)]}
+              "c": [dict(tipo="attacco", turno=8, guadagno=-10.0)], "d": [dict(tipo="attacco", turno=2, guadagno=-20.0)]}
         globals()["per_partita"] = lambda x: [dict(z, partita=x["partita"], t=2 * z["turno"]) for z in dd[x["partita"]]]
         globals()["per_partita_magie"] = lambda x: []
-        tutte_ = [dict(partita=k) for k in dd]
+        tutte_ = [dict(partita=k, tipo="Constructed", mio="A") for k in "abc"] + [dict(partita="d", tipo="Constructed", mio="B")]
         cc = costi(tutte_, tutte_, campo="guadagno")
         b_ = next(z for z in cc if z["partita"] == "b")
-        casi.append(("il costo: -4 contro la media dei primi turni (0) = -4, giallo; il turno 8 ha la sua media (nessun confronto coi primi turni)",
-                     abs(b_["costo"] + 4) < 1e-9 and b_["colore"] == "giallo" and next(z for z in cc if z["partita"] == "c")["costo"] == 0))
+        casi.append(("il costo: -4 contro la media dei primi turni del suo mazzo (0) = -4, giallo; il turno 8 ha la sua media (nessun confronto coi "
+                     "primi turni)", abs(b_["costo"] + 4) < 1e-9 and b_["colore"] == "giallo" and next(z for z in cc if z["partita"] == "c")["costo"] == 0))
         casi.append(("in ordine dalla piu' costosa", cc[0]["partita"] == "b"))
+        casi.append(("ogni mazzo si confronta con se stesso: il -20 del mazzo B non entra nella media del mazzo A, ed e' il solito di B (costo 0)",
+                     abs(b_["media"]) < 1e-9 and next(z for z in cc if z["partita"] == "d")["costo"] == 0))
+        DA.MINIMO_MAZZO = 2
+        cc2 = costi(tutte_, tutte_, campo="guadagno")
+        casi.append(("negativa: il mazzo B con 1 partita sotto il minimo (2) non ha confronto, il mazzo A si'",
+                     next(z for z in cc2 if z["partita"] == "d")["colore"] == "nd" and next(z for z in cc2 if z["partita"] == "b")["colore"] == "giallo"))
+        DA.MINIMO_MAZZO = 1
         casi.append(("negativa: senza il campo (guadagno_p assente) il costo non si stima", all(z["colore"] == "nd" for z in costi(tutte_, tutte_))))
     finally:
-        globals()["per_partita"], globals()["per_partita_magie"] = vero
+        globals()["per_partita"], globals()["per_partita_magie"], DA.MINIMO_MAZZO = vero
     return casi
 
 

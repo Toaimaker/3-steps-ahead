@@ -1,0 +1,291 @@
+{
+ "tipo": "limited",
+ "partite": 59,
+ "errore_max": 0.03,
+ "quota_mazzo": {
+  "Hero": 51.5,
+  "Opponent": 44.6,
+  "partita": 2.1,
+  "nessuno": 1.8
+ },
+ "quota_giocatore": {
+  "Hero": 52.4,
+  "Opponent": 43.7,
+  "partita": 2.1,
+  "nessuno": 1.8
+ },
+ "quota_linee": {
+  "Hero > tranquillo > la mossa": 36.0,
+  "Hero > tranquillo > nessuna linea": 16.3,
+  "Hero > sotto pressione > la mossa": 13.9,
+  "Hero > tranquillo > tappato": 13.2,
+  "Hero > sotto pressione > nessuna linea": 6.9,
+  "Hero > sotto pressione > tappato": 5.1,
+  "Hero > tranquillo > corsa": 2.6,
+  "Hero > ? > nessuna linea": 1.9,
+  "Hero > ? > la mossa": 1.3,
+  "Hero > sotto pressione > chump": 1.0,
+  "Hero > sotto pressione > corsa": 0.6,
+  "Hero > tranquillo > chump": 0.5,
+  "Hero > tranquillo > trappola": 0.2,
+  "Hero > tranquillo > catena": 0.2,
+  "Hero > sotto pressione > trappola": 0.1,
+  "Hero > sotto pressione > catena": 0.1,
+  "Hero > sotto pressione > bluff": 0.0,
+  "Hero > tranquillo > bluff": 0.0,
+  "Hero > tranquillo > no_corsa": 0.0,
+  "Hero > sotto pressione > no_corsa": 0.0,
+  "Hero > tranquillo > aspetta": 0.0
+ },
+ "meccaniche": {
+  "Hero > -": -145.24,
+  "Hero > nessuna": 59.88,
+  "Hero > evasion": 9.32,
+  "Hero > artifact": 8.96,
+  "Hero > counter": 8.23,
+  "Hero > draw": 5.48,
+  "Hero > damage_face": 4.68,
+  "Hero > outlaw": 3.03,
+  "Hero > etb": 2.83,
+  "Hero > instant_sorcery": 2.42,
+  "Hero > prowess_body": 2.39,
+  "Hero > discard_self": 2.15,
+  "Hero > deathtouch": 1.9,
+  "Hero > elf": 1.42,
+  "Hero > demon": 1.04,
+  "Hero > enchantment": 0.94,
+  "Hero > dies": 0.83,
+  "Hero > angel": 0.8,
+  "Hero > token": 0.21,
+  "Hero > cat": 0.03,
+  "Hero > lifegain": 0.02
+ },
+ "linee": {
+  "Opponent > - > la mossa": {
+   "punti_partita": 123.3,
+   "foglie": 59
+  },
+  "Opponent > - > sua scelta": {
+   "punti_partita": -106.77,
+   "foglie": 250
+  },
+  "Hero > tranquillo > la mossa": {
+   "punti_partita": -102.01,
+   "foglie": 59
+  },
+  "Hero > tranquillo > nessuna linea": {
+   "punti_partita": 45.67,
+   "foglie": 172
+  },
+  "Hero > sotto pressione > la mossa": {
+   "punti_partita": -39.42,
+   "foglie": 45
+  },
+  "Hero > tranquillo > tappato": {
+   "punti_partita": 37.41,
+   "foglie": 146
+  },
+  "Hero > sotto pressione > tappato": {
+   "punti_partita": 14.35,
+   "foglie": 86
+  },
+  "partita > - > occasione": {
+   "punti_partita": 10.96,
+   "foglie": 118
+  },
+  "Hero > sotto pressione > nessuna linea": {
+   "punti_partita": 9.69,
+   "foglie": 134
+  },
+  "nessuno > - > nessuna scelta": {
+   "punti_partita": -8.16,
+   "foglie": 236
+  },
+  "Hero > tranquillo > corsa": {
+   "punti_partita": 7.32,
+   "foglie": 32
+  },
+  "Hero > ? > nessuna linea": {
+   "punti_partita": 5.48,
+   "foglie": 36
+  },
+  "Hero > ? > la mossa": {
+   "punti_partita": -3.81,
+   "foglie": 13
+  },
+  "Hero > sotto pressione > chump": {
+   "punti_partita": -2.93,
+   "foglie": 6
+  },
+  "Hero > sotto pressione > corsa": {
+   "punti_partita": 1.63,
+   "foglie": 10
+  },
+  "Hero > tranquillo > chump": {
+   "punti_partita": -1.48,
+   "foglie": 6
+  },
+  "Hero > tranquillo > trappola": {
+   "punti_partita": -0.63,
+   "foglie": 7
+  },
+  "Hero > sotto pressione > trappola": {
+   "punti_partita": -0.41,
+   "foglie": 9
+  },
+  "Hero > sotto pressione > catena": {
+   "punti_partita": 0.24,
+   "foglie": 6
+  },
+  "Hero > tranquillo > catena": {
+   "punti_partita": 0.23,
+   "foglie": 2
+  },
+  "Hero > sotto pressione > bluff": {
+   "punti_partita": 0.0,
+   "foglie": 14
+  },
+  "Hero > tranquillo > bluff": {
+   "punti_partita": -0.0,
+   "foglie": 7
+  },
+  "Hero > tranquillo > no_corsa": {
+   "punti_partita": 0.0,
+   "foglie": 26
+  },
+  "Hero > sotto pressione > no_corsa": {
+   "punti_partita": 0.0,
+   "foglie": 13
+  },
+  "Hero > tranquillo > aspetta": {
+   "punti_partita": 0.0,
+   "foglie": 2
+  }
+ },
+ "carte_migliori": [
+  [
+   "Island",
+   21.42,
+   34
+  ],
+  [
+   "Surveillance Phantasm",
+   18.51,
+   18
+  ],
+  [
+   "Swamp",
+   17.48,
+   18
+  ],
+  [
+   "Forest",
+   17.43,
+   17
+  ],
+  [
+   "Mountain",
+   16.29,
+   37
+  ],
+  [
+   "Plains",
+   16.06,
+   16
+  ],
+  [
+   "Jace",
+   14.38,
+   55
+  ],
+  [
+   "Surgical Precision",
+   12.96,
+   10
+  ],
+  [
+   "Keeper of the Quiet Hour",
+   7.54,
+   29
+  ],
+  [
+   "Sphinx's Approach",
+   7.05,
+   10
+  ],
+  [
+   "Divining Duelist",
+   6.62,
+   10
+  ],
+  [
+   "Awaken the Inferno",
+   5.91,
+   10
+  ]
+ ],
+ "carte_peggiori": [
+  [
+   "la mossa",
+   -145.24,
+   59
+  ],
+  [
+   "No Admittance",
+   -8.54,
+   11
+  ],
+  [
+   "Protege's Awakening",
+   -8.31,
+   12
+  ],
+  [
+   "Mindseeker Oculus",
+   3.77,
+   11
+  ],
+  [
+   "Awaken the Inferno",
+   5.91,
+   10
+  ],
+  [
+   "Divining Duelist",
+   6.62,
+   10
+  ],
+  [
+   "Sphinx's Approach",
+   7.05,
+   10
+  ],
+  [
+   "Keeper of the Quiet Hour",
+   7.54,
+   29
+  ],
+  [
+   "Surgical Precision",
+   12.96,
+   10
+  ],
+  [
+   "Jace",
+   14.38,
+   55
+  ],
+  [
+   "Plains",
+   16.06,
+   16
+  ],
+  [
+   "Mountain",
+   16.29,
+   37
+  ]
+ ],
+ "spearman_meriti": -0.191,
+ "carte_confrontate": 23
+}

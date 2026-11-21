@@ -19,6 +19,8 @@ L'EV ATTESO di un turno e' quanto rende di solito un turno nello stesso spot: ch
 P in cinque fasce), sulle partite dello stesso tipo (Constructed o Limited). Con poche partite nello spot il valore si avvicina a quello del gradino sopra
 (il giro senza la situazione, poi chi e' di turno): la media dello spot pesa n, quella del gradino K_GRADINO (`attese`, `atteso`). Accanto alla media un
 valore alto ma ripetibile, il 75° percentile dello spot (mai il massimo, che e' fortuna).
+Dal 20 nov 2026 (UpgradePlan01 passo 1, Autore: «ogni mazzo deve confrontarsi con se stesso») il solito viene solo dalle partite dello stesso mazzo
+(DA.chiave_mazzo: il nome del mazzo, nel Limited la coppia di colori); sotto DA.MINIMO_MAZZO partite il mazzo non ha ancora un solito.
 
 L'EV OTTENUTO di un turno meno il suo atteso e' lo SCARTO: negativo, il turno ha reso meno del solito; positivo, di piu'. Non e' un errore: un esito che
 va male non dice che la scelta era sbagliata (Autore: «su 8 volte 5 volte e' sopravvissuto e in 4 di quelle partite abbiamo vinto»). Le scelte si
@@ -68,9 +70,29 @@ def partita(x):
     return v[1]
 
 
-def _p_fine_turno(f, seat, t, att, x):
-    """La P a fine del turno t di chi e' di turno (att): tocca all'altro, nel giro del turno dopo (come decisioni._delta_p)."""
-    return DA.p_foto(f, seat, att != seat, (t + 2) // 2, x.get("inizia"), x.get("mulligan"), x.get("tipo"))
+def _p_fine_turno(f, seat, t, att, x, pesca=0):
+    """La P a fine del turno t di chi e' di turno (att): tocca all'altro, nel giro del turno dopo (come decisioni._delta_p). pesca: le carte che att deve
+    ancora pescare in questo turno (pescata_extra), contate nella sua mano."""
+    extra = (0, 0) if not pesca else ((pesca, 0) if att == seat else (0, pesca))
+    return DA.p_foto(f, seat, att != seat, (t + 2) // 2, x.get("inizia"), x.get("mulligan"), x.get("tipo"), mano_extra=extra)
+
+
+# La pescata del turno e il momento del dato (UpgradePlan01 passo 2, 20 nov 2026; la misura: Motore_EV/salti_p.py, Note/UpgradePlan01_Passo2.md). Il modello
+# e' tarato su tavoli fotografati PRIMA del turno di chi gioca, cioe' prima della sua pescata. Letta «se il turno finisse qui», una foto presa prima della
+# pescata ha una carta in meno di quelle che il dato conta (la P sale di 3-6 punti a ogni pescata, sempre); letta «tocca a chi gioca», una foto presa
+# dopo la pescata ne ha una in piu'. Si corregge il solo numero di carte della mano di chi e' di turno. Chi comincia non pesca al suo primo turno.
+PRIMA_PESCA = ("Game start", "Untap", "Upkeep", "-")
+
+
+def pescata_extra(passo_n, t, lettura):
+    """Le carte da aggiungere alla mano di chi e' di turno: lettura «fine» (se il turno finisse qui) +1 prima della pescata; «vista» (tocca a chi gioca)
+    -1 dopo la pescata. Il turno 1 non ha pescata (lo dice il numero di Arena: t == 1 e' il primo turno di chi comincia)."""
+    if t == 1:
+        return 0
+    prima = passo_n in PRIMA_PESCA
+    if lettura == "fine":
+        return 1 if prima else 0
+    return 0 if prima else -1
 
 
 FASI = ("main1", "comb", "main2")
@@ -92,7 +114,7 @@ def _fasi(t, att, p0, p1, confini, seat, x, f_prima=None):
     Ogni confine si legge «se il turno finisse qui» (_p_nel_turno). Dal 19 nov 2026 il cambio di chi tocca sta in una voce sua, «inizio» (la foto di fine
     del turno prima letta come se anche questo turno fosse passato senza far niente, meno p0): non e' una scelta di nessuno, cosi' non finisce nella prima
     fase principale."""
-    base = _p_fine_turno(f_prima, seat, t, att, x) if f_prima is not None else None
+    base = _p_fine_turno(f_prima, seat, t, att, x, pescata_extra("Upkeep", t, "fine")) if f_prima is not None else None
     punti = [("main1", base if base is not None else p0)]
     for k in ("comb", "m2"):
         f = confini.get((t, k))
@@ -207,10 +229,19 @@ def atteso(tab, z, fase=None):
 
 def turni_con_scarto(righe_, base):
     """Ogni turno delle partite righe_ con l'atteso dalle partite base: [dict(partita, vinta, quando, t, giro, mio, p0, p1, ev, atteso, alto, scarto, n,
-    gradino)], nell'ordine delle partite e dei turni."""
-    tab = attese(base)
+    gradino, base_n (le partite del suo mazzo che fanno il solito))], nell'ordine delle partite e dei turni. Il solito viene solo dalle partite base dello
+    stesso mazzo (DA.chiave_mazzo, UpgradePlan01 passo 1); un mazzo con meno di DA.MINIMO_MAZZO partite non ha ancora un solito e i suoi turni non escono."""
+    gruppi = DA.per_mazzo(base)
+    tabelle = {}
     out = []
     for x in righe_:
+        km = DA.chiave_mazzo(x)
+        b = gruppi.get(km) or []
+        if len(b) < DA.MINIMO_MAZZO:
+            continue
+        if km not in tabelle:
+            tabelle[km] = attese(b)
+        tab = tabelle[km]
         c = partita(x)
         if c is None:
             continue
@@ -226,7 +257,7 @@ def turni_con_scarto(righe_, base):
             # l'atteso del turno e' la somma degli attesi delle sue fasi: cosi' lo scarto del turno e' la somma degli scarti delle fasi (l'incastro)
             media = sum(ph["atteso"] for ph in fasi) if fasi and len(fasi) == len(z.get("fasi") or []) else a["media"]
             out.append(dict(z, partita=x.get("partita"), vinta=x.get("vinta"), quando=x.get("quando"), atteso=round(media, 2), alto=round(a["alto"], 2),
-                            scarto=round(z["ev"] - media, 2), n=a["n"], gradino=a["gradino"], fasi=fasi))
+                            scarto=round(z["ev"] - media, 2), n=a["n"], gradino=a["gradino"], fasi=fasi, base_n=len(b)))
     return out
 
 
@@ -634,17 +665,19 @@ def righe_fasi(x, passi, base=None):
             continue
         t = p_[2]
         fase = FASE_PASSO.get(p_[0].split(" · ")[-1], "main1")
+        passo_n = p_[0].split(" · ")[-1]
         if t != prec_t:     # un turno nuovo: si parte dalla foto di prima letta come se anche questo turno fosse passato (il cambio di chi tocca fuori)
-            p_prec = _p_fine_turno(prec_f, seat, t, att, x) if prec_f is not None else None
-        p_ora = _p_fine_turno(g_, seat, t, att, x)
+            p_prec = _p_fine_turno(prec_f, seat, t, att, x, pescata_extra("Upkeep", t, "fine")) if prec_f is not None else None
+        p_ora = _p_fine_turno(g_, seat, t, att, x, pescata_extra(passo_n, t, "fine"))
         # la win chance di adesso (19 nov 2026, in testa al racconto): fino al danno del combattimento chi e' di turno ha ancora la mossa (la sua lettura), dal
         # danno in poi il turno sta finendo (la lettura di fine turno, con le creature tappate). La lettura «se il turno finisse qui» dei punti, a inizio
         # turno, sarebbe come se chi gioca passasse senza far niente (il tuo turno 3 al 10%)
-        passo_n = p_[0].split(" · ")[-1]
         if fase == "main2" or passo_n in ("CombatDamage", "FirstStrikeDamage", "EndCombat"):
             p_vista = p_ora
         else:
-            p_vista = DA.p_foto(g_, seat, att == seat, (t + 1) // 2, x.get("inizia"), x.get("mulligan"), x.get("tipo"))
+            pv_ = pescata_extra(passo_n, t, "vista")
+            p_vista = DA.p_foto(g_, seat, att == seat, (t + 1) // 2, x.get("inizia"), x.get("mulligan"), x.get("tipo"),
+                                mano_extra=(0, 0) if not pv_ else ((pv_, 0) if att == seat else (0, pv_)))
         if p_vista is not None:
             p_passo[i] = p_vista
         prec_f, prec_t = g_, t
@@ -815,10 +848,10 @@ def carte(r, base, quante=40, minimo=5):
     return out[:quante]
 
 
-def _ev_lanci(x):
+def _ev_lanci(x, con_turno=False):
     """Le giocate dell'Hero di una partita dalle foto dei lanci (mana_aperto VERSIONE 21): [(nome, ev)]. Una magia va dalla foto del lancio (in pila) alla
     foto dopo nello stesso turno (un altro lancio, un confine di fase, la fine del turno): la risposta dell'Opponent e' dentro. Una terra e' il controfattuale:
-    la foto con la terra contro la stessa foto senza. [] senza i lanci."""
+    la foto con la terra contro la stessa foto senza. [] senza i lanci. Con con_turno: [(turno, grpId, nome, ev)] (il voto per scopo, scopo.py)."""
     d = DA._MANA.get(x.get("partita")) or {}
     seat = x.get("seat")
     lanci = d.get("lanci")
@@ -860,7 +893,7 @@ def _ev_lanci(x):
             p1 = _p_nel_turno(dopo, seat, t, att, x) if dopo is not None else _p_fine_turno(fine[t][1], seat, t, att, x)
         if p0 is None or p1 is None:
             continue
-        out.append((DA.nome_intero(nome), p1 - p0))
+        out.append((t, g, DA.nome_intero(nome), p1 - p0) if con_turno else (DA.nome_intero(nome), p1 - p0))
     return out
 
 
@@ -1240,8 +1273,10 @@ def prova_carte():
         casi.append(("entra ed esce: la 1 resta fino alla fine, la 2 esce al turno 3, la 3 entra al 2 ed esce al 4", ev[1]["esce"] is None
                      and ev[2]["esce"] == 3 and ev[3]["esce"] == 4 and ev[3]["entra"] == 2))
         val = lambda i, j=0: ev[i]["eventi"][j][3]
-        casi.append(("il controfattuale: il danno, lo scambio e il letale valgono piu' di zero, la rimozione subita meno di zero",
-                     val(1) > 0 and val(2) > 0 and val(1, 1) > 0 and val(3) < 0))
+        # (20 nov 2026, il modello regolarizzato di UpgradePlan01: uno scambio alla pari, la tua 2/2 per la sua 2/2, vale circa zero nei due sensi; il
+        # modello di prima lo dava un filo positivo, quello nuovo -0,7. Il danno e il letale restano chiaramente positivi)
+        casi.append(("il controfattuale: il danno e il letale valgono piu' di zero, lo scambio alla pari circa zero, la rimozione subita meno di zero",
+                     val(1) > 0 and abs(val(2)) < 2 and val(1, 1) > 0 and val(3) < 0))
         # g2, Hero posto 1 a 6 vite: lui attacca con 10 e 11 (3/3), la carta 1 (1/1) blocca la 10 e muore senza uccidere: senza quel blocco i 6 danni
         # arrivavano alle sue 6 vite -> salva, e il controfattuale e' una partita persa (P zero); al turno 4 lui attacca con la 10 e la carta 2 blocca a 12
         # vite, muore senza uccidere -> chump
@@ -1435,6 +1470,8 @@ def prova_righe_fasi():
 
 
 def prova():
+    min_vero = DA.MINIMO_MAZZO
+    DA.MINIMO_MAZZO = 1             # le partite finte sono poche: il minimo vero si prova a parte, piu' sotto
     casi = prova_carte() + prova_costo_leak() + prova_righe_fasi()
     cr = lambda i, pw=3: [100 + i, 0, 0, pw, pw, i]
     vuoto = dict(c=[[], []], v=[20, 20], n=[7, 7])
@@ -1485,6 +1522,17 @@ def prova():
         casi.append(("il riepilogo: 2 partite, 1 vinta, win rate 50, per giro e chi e' di turno, sotto MINIMO e' un indizio",
                      r["partite"] == 2 and r["vinte"] == 1 and r["fine"] == 50.0 and r["per_turno"] and all(p_["poche"] for p_ in r["per_turno"])
                      and r["peggiori"][0]["scarto"] <= r["migliori"][0]["scarto"]))
+        # ogni mazzo si confronta con se stesso (UpgradePlan01 passo 1): con la persa in un altro mazzo, il solito della vinta viene solo da lei
+        xp_b = dict(xp, mio="Altro mazzo")
+        tt_solo = turni_con_scarto([xv], [xv])
+        tt_due = turni_con_scarto([xv], [xv, xp_b])
+        casi.append(("il solito per mazzo: la partita di un altro mazzo non cambia il solito (stessi scarti con e senza)",
+                     tt_solo and [z["scarto"] for z in tt_solo] == [z["scarto"] for z in tt_due] and tt_due[0]["base_n"] == 1))
+        casi.append(("e con la persa nello stesso mazzo il solito cambia", [z["scarto"] for z in turni_con_scarto([xv], [xv, xp])] != [z["scarto"] for z in tt_solo]))
+        DA.MINIMO_MAZZO = 2
+        casi.append(("negativa: un mazzo sotto il minimo non ha solito (nessun turno con lo scarto); due partite dello stesso mazzo si'",
+                     turni_con_scarto([xv], [xv, xp_b]) == [] and len(turni_con_scarto([xv], [xv, xp])) > 0))
+        DA.MINIMO_MAZZO = 1
         sc = scarti([xv, xp])
         casi.append(("la metrica del grafico: per partita la somma dei turni, ottenuto meno atteso", set(sc) == {"v1", "p1"}
                      and abs(sc["v1"]["ev"] - sum(z["ev"] for z in c["turni"])) < 0.05 and abs(sc["v1"]["scarto"] - (sc["v1"]["ev"] - sc["v1"]["atteso"])) < 0.05))
@@ -1504,11 +1552,23 @@ def prova():
         DA._MANA["u1"] = dict(mano0=vuoto, foto=[[1, 1, f_mia(2, (20, 1))]])
         casi.append(("negativa: la leva non si calcola con lui a 1 vita (non si scende a 0) ne' in un turno senza foto",
                      leva(dict(xv, partita="u1"), 1) is None and leva(xp, 99) is None))
+        # la pescata del turno (UpgradePlan01 passo 2): +1 prima della pescata letta a fine turno, -1 dopo letta «tocca a chi gioca», niente al turno 1
+        casi.append(("la pescata in arrivo: a fine turno +1 nel mantenimento, 0 in Main1; «tocca a chi gioca» 0 nel mantenimento, -1 in Main1",
+                     pescata_extra("Upkeep", 5, "fine") == 1 and pescata_extra("Main1", 5, "fine") == 0 and pescata_extra("Upkeep", 5, "vista") == 0
+                     and pescata_extra("Main1", 5, "vista") == -1))
+        casi.append(("negativa: al turno 1 chi comincia non pesca, nessuna correzione", pescata_extra("Upkeep", 1, "fine") == 0
+                     and pescata_extra("Main1", 1, "vista") == 0))
+        f_p = f_mia(2)
+        p0_ = DA.p_foto(f_p, 1, False, 3, True, 0)
+        p1_ = DA.p_foto(f_p, 1, False, 3, True, 0, mano_extra=(1, 0))
+        p2_ = DA.p_foto(f_p, 1, False, 3, True, 0, mano_extra=(0, 1))
+        casi.append(("una carta in piu' nella tua mano alza la P, nella sua la abbassa", p0_ is not None and p1_ > p0_ and p2_ < p0_))
         casi.append(("le fasce della situazione: 10 far behind, 50 even, 95 far ahead", fascia_p(10) == 0 and fascia_p(50) == 2 and fascia_p(95) == 4
                      and fascia_giro(12) == "9+" and fascia_giro(3) == "3"))
     finally:
         DA._MANA.clear(); DA._MANA.update(vecchio)
         _MEMO.clear()
+        DA.MINIMO_MAZZO = min_vero
     for n, ok in casi:
         print(("ok    " if ok else "ROSSO ") + n)
     print(f"{sum(1 for _n, ok in casi if ok)}/{len(casi)}")

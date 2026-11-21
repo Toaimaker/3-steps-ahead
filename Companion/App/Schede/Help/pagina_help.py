@@ -213,7 +213,7 @@ SEZIONI = (
                            "your spell before damage; your blocks: turn, your untapped lands, you blocked, with how many, your spell before damage); a "
                            "line is a filter and its values (one is enough), Add line adds a filter (all are needed); Reset clears that tab"),
       ("EV vs expected", "a metric of the chart, next to Win rate and Games: for each game, the win-probability points its turns made above or below "
-             "what the same turns usually give (same turn, same side, same situation from far behind to far ahead, in all your games of that type). "
+             "what the same turns usually give with the same deck (same turn, same side, same situation from far behind to far ahead, in your games with that deck: each deck is compared with itself; a deck with fewer than 10 games has no usual yet). "
              "Cumulative is the running sum: a line that climbs means those games gain more than usual, one that falls means they leave value on the table; "
              "with Split by, one line per deck or opponent. EV of picks the turns or the phase: the Hero's or the Opponent's turns, the Hero's main phase 1, "
              "combat (the attack), main phase 2, the Opponent's combat (your defense), the Opponent's main phases. A difference is not a mistake: a good "
