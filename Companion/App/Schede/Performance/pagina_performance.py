@@ -2977,9 +2977,9 @@ class PaginaPerformance:
             cc.create_rectangle(xb, y + 2, xb + (x0 + 14 + W_ - 40 - xb) * max(0.0, min(1.0, v)), y + 10, fill=C["accento"], outline="")
             cc.create_text(x0 + larga - 14, y + 6, text=f"{100 * v:.0f}%", anchor="e", fill=C["titolo"], font=F(7, True))
             y += 14
-        cc.create_text(x0 + 14, y + 2, text="A guess learned from 17Lands replays (CC BY 4.0), Limited only: never his real hand.", anchor="nw",
-                       fill=C["grigio"], font=F(6), width=larga - 28)
-        return y + 20
+        i_n = cc.create_text(x0 + 14, y + 2, text="A guess learned from 17Lands replays (CC BY 4.0), Limited only: never his real hand.", anchor="nw",
+                             fill=C["grigio"], font=F(6), width=larga - 28)
+        return (cc.bbox(i_n) or (0, 0, 0, y + 14))[3] + 10      # la nota puo' andare a capo: quello che viene dopo parte sotto di lei
 
     def mano_solita(self, x_):
         """La P media della mano tenuta nelle partite dello stesso mazzo (DA.chiave_mazzo, lascia-una-fuori come occasioni.con_occasioni), o None sotto
