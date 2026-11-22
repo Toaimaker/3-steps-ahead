@@ -476,6 +476,13 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
                        "settings": PaginaSettings(tk, self.altre, self.F, self.mana),
                        "help": PaginaHelp(tk, self.altre, self.F, self.mana, controlla=not FUORI_SCHERMO)}
         self.perf = self.pagine["performance"]
+        if not PUBBLICA:        # la scheda Database: solo nell'app di Autore (21 nov 2026, «una nuova scheda che ha solo la nostra app per regola»)
+            try:
+                from pagina_database import PaginaDatabase
+                self.pagine["database"] = PaginaDatabase(tk, self.altre, self.F, self.mana)
+                self.pagine["database"].perf = self.perf
+            except Exception as e:      # noqa: BLE001 - senza la scheda l'app va avanti
+                print("database:", f"{type(e).__name__}: {e}")
         for k_, pg_ in self.pagine.items():
             if k_ != "corso":
                 pg_.fr.place(x=0, y=0, relwidth=1, relheight=1)
@@ -487,7 +494,8 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
         self.root.after(1500, self.prepara_dietro)
 
         Pagina.MOSTRA_SCHEDA = self.mostra      # il builder dei mazzi porta a vista la Collection
-        nascoste = {"corso"} if PUBBLICA else set()     # l'app pubblica (account.py): il Drafter vuole il motore del drafter e i suoi dati, non ci sono ancora
+        nascoste = {"corso", "database"} if PUBBLICA else set()
+        nascoste |= {k_ for k_, _n in SCHEDE if k_ not in self.pagine and k_ != "corso"}       # una scheda senza pagina non ha linguetta     # l'app pubblica (account.py): il Drafter vuole il motore del drafter e i suoi dati, non ci sono ancora
         for self.k, self.nome in SCHEDE:
             cella = tk.Frame(self.barra_schede, bg=CI["fondo"])
             if self.k not in nascoste:
@@ -980,6 +988,9 @@ class Finestra(ChatFinestra, DrafterEvento, DrafterMazzi, DeckSheet, DrafterPart
                     if condividi.qualcuno():
                         condividi.accoda()
                         condividi.invia(condividi.endpoint())
+                    import condividi_completa      # la seconda scelta, spenta di partenza: il log pulito in coda sul PC e poi a POST /logs
+                    condividi_completa.accoda_tutte()
+                    condividi_completa.invia(condividi.endpoint())
                 except Exception as e:      # noqa: BLE001 - la condivisione non ferma mai la finestra
                     print("condivisione:", f"{type(e).__name__}: {e}")
             if not untapped_ok:

@@ -101,11 +101,33 @@ class Condivisione:
         if url:
             l_ = tk.Label(self.fr, text="Privacy notice ↗", bg=self.bg, fg=C["accento"], font=F(8), cursor="hand2"); l_.pack(anchor="w", pady=(4, 0))
             l_.bind("<Button-1>", lambda e: webbrowser.open(url))
+        self.leva2 = None
+        if codice:      # la seconda scelta, solo in Settings (mai nel benvenuto): nome in gioco e log, spenta di partenza (21 nov 2026)
+            r2 = tk.Frame(self.fr, bg=self.bg); r2.pack(fill="x", pady=(12, 6))
+            tk.Label(r2, text="Share full games (optional)", bg=self.bg, fg=C["titolo"], font=F(10, True)).pack(side="left")
+            self.leva2 = tk.Canvas(r2, width=118, height=30, bg=self.bg, highlightthickness=0, bd=0, cursor="hand2"); self.leva2.pack(side="right")
+            self.leva2.bind("<Button-1>", lambda e: self.cambia2())
+            tk.Label(self.fr, text="Also sends your Arena name and each game's log, so games can be replayed. Your opponents' names, account ids, chats, "
+                     "e-mails and network addresses are removed from the log before it leaves your PC. Off unless you turn it on; it needs the data "
+                     "server to be ready, until then the games wait on your PC.", bg=self.bg, fg=C["grigio"], font=F(8), anchor="w", justify="left",
+                     wraplength=larga).pack(fill="x")
+        self.aggiorna()
+
+    def cambia2(self):
+        import condividi_completa as CC
+        CC.imposta_consenso(CC.consenso() is not True)
         self.aggiorna()
 
     def aggiorna(self):
         import condividi
         si = condividi.consenso() is True
+        if getattr(self, "leva2", None) is not None:
+            import condividi_completa as CC
+            s2 = CC.consenso() is True
+            c2 = self.leva2
+            c2.delete("all")
+            c2.create_text(0, 15, text="ON" if s2 else "OFF", anchor="w", fill=C["verde_t"] if s2 else C["muto"], font=self.F(9, True))
+            c2.create_image(118, 15, anchor="e", image=DG.interruttore(52, 26, s2, C["verde"], C["fondo"], C["filo"], "#ffffff", C["grigio"]))
         coda = os.path.join(condividi.CARTELLA[0], "coda.jsonl")
         try:
             n = sum(1 for r in open(coda, encoding="utf-8") if r.strip()) if os.path.exists(coda) else 0

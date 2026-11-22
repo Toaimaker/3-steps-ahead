@@ -153,7 +153,8 @@ class Rete:
         r = np.random.default_rng(seme)
         self.A = (r.standard_normal((dim_testo, K)) * 0.05).astype(np.float32)
         self.dl = np.zeros((n_carte, K), np.float32)
-        n_tot = n_in + K * len(ZONE)
+        self.zone = list(ZONE)      # le zone con cui e' stata allenata (22 nov 2026: le reti con lib_u e vis_o)
+        n_tot = n_in + K * len(self.zone)
         self.W1 = (r.standard_normal((n_tot, H)) * math.sqrt(2 / n_tot)).astype(np.float32)
         self.b1 = np.zeros(H, np.float32)
         self.w2 = (r.standard_normal(H) * math.sqrt(1 / H)).astype(np.float32)
@@ -167,7 +168,7 @@ class Rete:
         return np.asarray(Phi @ self.A) + self.dl
 
     def avanti(self, Xs, Mz, E):
-        S = [np.asarray(Mz[z] @ E) for z in ZONE]
+        S = [np.asarray(Mz[z] @ E) for z in self.zone]
         inp = np.concatenate([Xs] + S, axis=1).astype(np.float32)
         a = inp @ self.W1 + self.b1
         h = np.maximum(a, 0)
@@ -180,12 +181,12 @@ class Rete:
         out = np.empty(len(X), np.float32)
         for i in range(0, len(X), 50000):
             sl = slice(i, i + 50000)
-            out[sl] = self.avanti(Xs[sl], {z: Mz[z][sl] for z in ZONE}, E)[0]
+            out[sl] = self.avanti(Xs[sl], {z: Mz[z][sl] for z in self.zone}, E)[0]
         return out
 
     def salva(self, path, grp, cols, extra):
         np.savez(path, A=self.A, dl=self.dl, W1=self.W1, b1=self.b1, w2=self.w2, b2=np.array(self.b2), mu=self.mu, sd=self.sd,
-                 grp=grp, cols=np.array(cols), meta=np.array(json.dumps(extra)))
+                 grp=grp, cols=np.array(cols), meta=np.array(json.dumps(dict(extra, zone=self.zone))))
 
     @classmethod
     def apri(cls, path):
@@ -196,6 +197,7 @@ class Rete:
         r.b2 = np.float32(d["b2"])
         r.grp = d["grp"]; r.cols = d["cols"].tolist(); r.meta = json.loads(str(d["meta"]))
         r.indice = {int(g): i for i, g in enumerate(r.grp)}
+        r.zone = list(r.meta.get("zone") or ZONE[:5])
         return r
 
 
@@ -375,8 +377,70 @@ def posizione(g):
     return e
 
 
-def logit_tavolo(xv, zone):
-    """xv: il vettore di prob_vittoria.vettore (36 numeri); zone: {zona: [grpId, ...]}. -> logit, o None senza il modello."""
+INSIEME = QUI / "insieme"        # le reti in uso dal 22 nov 2026 (Motore_EV/insieme.py): cinque «base» e cinque «zone»
+_INS = {}
+
+
+def insieme(tipo):
+    """Le cinque reti di un insieme («base» o «zone»), lette una volta; [] se mancano. SPENTE di default (22 nov 2026): sui log di Autore non
+    battono la rete di prima (Motore_EV/insieme.json, «log»); EV_INSIEME=1 le accende per le misure."""
+    if os.environ.get("EV_INSIEME") != "1":
+        return []
+    if tipo not in _INS:
+        fs = sorted(INSIEME.glob(f"{tipo}_*.npz")) if INSIEME.exists() else []
+        reti = []
+        try:
+            for f in fs:
+                reti.append(Rete.apri(f))
+        except (OSError, ValueError, KeyError):
+            reti = []
+        if reti:
+            import testi_carte as TC
+            phi = TC.matrice(reti[0].grp.tolist())
+            for r in reti:
+                r.E = r.posizioni(phi)
+                r.nuove = {}
+        _INS[tipo] = reti
+    return _INS[tipo]
+
+
+def _pos_rete(r, g):
+    i = r.indice.get(int(g))
+    if i is not None:
+        return r.E[i]
+    e = r.nuove.get(g)
+    if e is None:
+        import testi_carte as TC
+        if g not in _NET.setdefault("phi_nuove", {}):
+            _NET["phi_nuove"][g] = TC.matrice([int(g)])
+        e = r.nuove[g] = np.asarray(_NET["phi_nuove"][g] @ r.A)[0]
+    return e
+
+
+def _logit_rete(r, xv, zone):
+    x = np.array([xv[i] for i in r.cols], np.float32)
+    S = []
+    for z in r.zone:
+        v = sum((_pos_rete(r, g) for g in zone.get(z) or []), np.zeros(K, np.float32))
+        if z == "lib_u":
+            v = v * float(zone.get("_lib_scala", 1.0))      # un mazzo da 60 portato alla misura di uno da 40, su cui le reti sono allenate
+        S.append(v)
+    inp = np.concatenate([(x - r.mu) / r.sd] + S).astype(np.float32)
+    h = np.maximum(inp @ r.W1 + r.b1, 0)
+    return float(h @ r.w2 + r.b2)
+
+
+def logit_tavolo(xv, zone, quale=None):
+    """xv: il vettore di prob_vittoria.vettore (36 numeri); zone: {zona: [grpId, ...]} (con lib_u e vis_o quando si sanno). -> logit, o None.
+    quale: None = l'insieme che si puo' usare (le cinque reti «zone» se ci sono lib_u e vis_o, se no le cinque «base», se no la rete di prima);
+    «zone», «base», «singola» per le misure."""
+    if quale in (None, "zone", "base"):
+        tipo = quale or ("zone" if "lib_u" in zone else "base")
+        reti = insieme(tipo)
+        if reti:
+            return float(np.mean([_logit_rete(r, xv, zone) for r in reti]))
+        if quale in ("zone", "base"):
+            return None
     net = rete()
     if net is None:
         return None

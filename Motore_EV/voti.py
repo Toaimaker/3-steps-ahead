@@ -46,7 +46,7 @@ def linea(match_id, t, tipo):
         return None
     return dict(scarto=r["scarto"], vera=r["candidate"][r["vera"]], migliore=r["candidate"][r["migliore"]], p=r["p"],
                 meglio=r["meglio"] and not r.get("altro_ordine"), altro_ordine=bool(r.get("altro_ordine")),
-                stessa=r["vera"] == r["migliore"], mondi=max(int(v) for v in r["mondi"].values()))
+                stessa=r["vera"] == r["migliore"], mondi=max(int(v) for v in r["mondi"].values()), contro=r.get("contro") or {})
 
 
 def _r(x, q):

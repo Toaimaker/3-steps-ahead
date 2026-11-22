@@ -34,6 +34,8 @@ if _casa not in sys.path:
     sys.path.insert(0, _casa)
 import percorsi  # noqa: E402,F401
 import collections  # noqa: E402
+import json  # noqa: E402
+import math  # noqa: E402
 import re  # noqa: E402
 import dati_analizzatore as DA  # noqa: E402
 
@@ -95,6 +97,169 @@ def pescata_extra(passo_n, t, lettura):
     return 0 if prima else -1
 
 
+# ------------------------------------------------------------------------------------------------- la lettura unica della P
+# (22 nov 2026, Autore: «Sì, parti», sulla scala dell'equity: una sola definizione della P a ogni passo). Fino a oggi la P si leggeva in due modi: «se il
+# turno finisse qui» (i punti, l'EV, l'equity) e «tocca a chi gioca» (la WIN CHANCE fino al danno del combattimento). Misurate contro la P di fine turno
+# (dove le due letture coincidono: il confine dove l'incastro e' esatto), sulle foto ai confini e ai lanci di tutte le partite, errore quadratico, meta'
+# partite fuori, sei divisioni:
+#     prima fase principale   «tocca a chi gioca» 11,1 (corretta 10,9)   «se il turno finisse qui» 17,4 (corretta 12,2)
+#     combattimento           «tocca a chi gioca» 12,8 (corretta 5,9)    «se il turno finisse qui» 6,2 (corretta 5,8)
+#     seconda fase            «tocca a chi gioca» 13,7 (corretta 4,9)    «se il turno finisse qui» 2,0 (corretta 2,0)
+# (Constructed, tuo turno; il Limited e il suo turno uguali). La lettura unica e' quindi la migliore per la fase, tarata perche' preveda in media la P di fine
+# turno: il primo passo a differenze temporali (il valore di adesso = il valore atteso del passo dopo). La taratura: logit(P di fine turno) = a + b logit(P
+# letta), per tipo, fase e chi e' di turno (lettura_unica.json; --tara-lettura la rifa' e la misura).
+F_LETTURA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lettura_unica.json")
+_LETTURA = {}
+FASE_LETTURA = {"main1": "vista", "comb": "fine", "m2": "fine"}
+PUNTI_UNICI = os.environ.get("EV_PUNTI_UNICI", "1") != "0"     # i punti delle fasi e dei passi con la lettura unica (0: come fino al 21 nov)
+
+
+def _lettura():
+    if "t" not in _LETTURA:
+        try:
+            with open(F_LETTURA, encoding="utf-8") as h:
+                _LETTURA["t"] = json.load(h)
+        except (OSError, ValueError):
+            _LETTURA["t"] = None
+    return _LETTURA["t"]
+
+
+def _lg(p):
+    p = min(0.995, max(0.005, p / 100))
+    return math.log(p / (1 - p))
+
+
+def _p_grezza(f, seat, t, att, x, fase, passo_n=None):
+    """La lettura della fase, senza taratura: «vista» (tocca a chi gioca, la pescata del turno gia' fatta salvo nei passi prima) o «fine»."""
+    if FASE_LETTURA.get(fase) == "vista":
+        pv = pescata_extra(passo_n or "Main1", t, "vista")
+        return DA.p_foto(f, seat, att == seat, (t + 1) // 2, x.get("inizia"), x.get("mulligan"), x.get("tipo"),
+                         mano_extra=(0, 0) if not pv else ((pv, 0) if att == seat else (0, pv)))
+    return _p_fine_turno(f, seat, t, att, x)
+
+
+def p_unica(f, seat, t, att, x, fase, passo_n=None, tarata=True):
+    """La P di una foto presa durante il turno t di att, nella fase (main1, comb, m2), con la lettura unica: la lettura migliore per la fase, tarata sulla P
+    di fine turno. Una partita gia' decisa (vite a zero, il letale) resta decisa: la taratura non la tocca. -> punti percentuali o None."""
+    p = _p_grezza(f, seat, t, att, x, fase, passo_n)
+    if p is None or not tarata or p in (0.0, 1.0, 99.0, 100.0):
+        return p
+    tab = _lettura() or {}
+    c = tab.get(f"{x.get('tipo')}|{fase}|{'mio' if att == seat else 'suo'}")
+    if not c:
+        return p
+    return 100.0 / (1 + math.exp(-(c["a"] + c["b"] * _lg(p))))
+
+
+def punti_lettura(x):
+    """Le foto della partita per la taratura: [(fase, mio, P grezza, P di fine turno)]. Le foto ai confini (combattimento, seconda fase) e ai lanci della
+    prima fase principale (dal secondo turno: al primo non c'e' pescata)."""
+    d = DA._MANA.get(x.get("partita")) or {}
+    seat = x.get("seat")
+    if seat not in (1, 2) or x.get("inizia") is None:
+        return []
+    fine = {t: (att, f) for t, att, f in d.get("foto") or []}
+    sid_comb = {c_[0]: c_[4] for c_ in d.get("confini") or [] if c_[2] == "comb" and len(c_) > 4}
+    punti = [(c_[0], c_[1], "comb" if c_[2] == "comb" else "m2", c_[3]) for c_ in d.get("confini") or [] if c_[2] in ("comb", "m2")]
+    for t, _chi, _cosa, _g, f, sid in d.get("lanci") or []:
+        if t in sid_comb and sid < sid_comb[t] and t > 1 and t in fine:
+            punti.append((t, fine[t][0], "main1", f))
+    out = []
+    for t, att, fase, f in punti:
+        if t not in fine or fine[t][0] != att:
+            continue
+        p = _p_grezza(f, seat, t, att, x, fase)
+        e = _p_fine_turno(fine[t][1], seat, t, att, x)
+        if p is not None and e is not None:
+            out.append((fase, att == seat, p, e))
+    return out
+
+
+def tara_lettura(log=print, scrivi=True):
+    """Tara la lettura unica su tutte le partite e la misura a meta' partite fuori (sei divisioni). Negativa: la taratura di un'altra fase."""
+    import random
+    import numpy as np
+    R = DA.righe()
+    per = collections.defaultdict(list)       # (tipo, fase, chi) -> [(partita, p, e)]
+    for x in R:
+        if x.get("tipo") not in ("Constructed", "Limited"):
+            continue
+        for fase, mio, p, e in punti_lettura(x):
+            per[(x["tipo"], fase, "mio" if mio else "suo")].append((x["partita"], p, e))
+
+    def fit(z):
+        X = np.array([[1.0, _lg(p)] for _g, p, _e in z])
+        Y = np.array([_lg(e) for _g, _p, e in z])
+        w = np.linalg.lstsq(X, Y, rcond=None)[0]
+        return float(w[0]), float(w[1])
+
+    def cal(p, a, b):
+        return 100 / (1 + math.exp(-(a + b * _lg(p))))
+    ris, tab = {}, {}
+    for k, z in sorted(per.items()):
+        if len(z) < 60:
+            continue
+        gs = sorted({g for g, _p, _e in z})
+        err = collections.defaultdict(list)
+        for s_ in range(6):
+            r_ = random.Random(s_)
+            g2 = gs[:]
+            r_.shuffle(g2)
+            A_ = set(g2[: len(g2) // 2])
+            a, b = fit([v for v in z if v[0] in A_])
+            altra = [v for kk, zz in per.items() if kk[0] == k[0] and kk[1] != k[1] and kk[2] != k[2] for v in zz]
+            an, bn = fit([v for v in altra if v[0] in A_]) if len(altra) >= 60 else (0.0, 1.0)
+            te = [v for v in z if v[0] not in A_]
+            err["grezza"].append(math.sqrt(sum((e - p) ** 2 for _g, p, e in te) / len(te)))
+            err["tarata"].append(math.sqrt(sum((e - cal(p, a, b)) ** 2 for _g, p, e in te) / len(te)))
+            err["negativa"].append(math.sqrt(sum((e - cal(p, an, bn)) ** 2 for _g, p, e in te) / len(te)))
+            err["scarto"].append(sum(e - p for _g, p, e in te) / len(te))
+            err["scarto_tarata"].append(sum(e - cal(p, a, b) for _g, p, e in te) / len(te))
+        a, b = fit(z)
+        tab["|".join(k)] = dict(a=round(a, 4), b=round(b, 4), n=len(z))
+        ris[k] = {n: sum(v) / len(v) for n, v in err.items()}
+        log(f"  {k[0]:11} {k[1]:5} {k[2]}  n={len(z):5}  errore dalla P di fine turno: grezza {ris[k]['grezza']:5.2f}  tarata {ris[k]['tarata']:5.2f}  "
+            f"negativa {ris[k]['negativa']:5.2f}   scarto {ris[k]['scarto']:+6.2f} -> {ris[k]['scarto_tarata']:+5.2f}")
+    if scrivi and tab:
+        import datetime
+        with open(F_LETTURA, "w", encoding="utf-8") as h:
+            json.dump(dict(data=datetime.date.today().isoformat(), nota="ev_partita.p_unica: logit(P fine turno) = a + b logit(P letta)", **tab), h, indent=1)
+        _LETTURA.clear()
+    return ris
+
+
+# ------------------------------------------------------------------------------------------------- l'orologio
+# (22 nov 2026, Autore: «Sì, mettilo»): l'equity come corsa fra due orologi (Motore_EV/orologi.py, Note/Gerarchie_Valore.md). Non cambia la P (la rete
+# del modello in uso gli orologi li ha gia' imparati: l'unione non la batte), la spiega: in quanti turni la forza in campo di ognuno azzera l'altro.
+TETTO_OROLOGIO = 15
+
+
+def orologio(f, seat):
+    """Dalla foto f, dal tuo posto: dict(forza_mia, forza_sua, vite_mie, vite_sue, turni_mie (i tuoi turni per azzerarlo con la forza in campo, None oltre
+    il tetto o senza forza), turni_suoi, mano_mia, mano_sua, bloccanti_suoi, bloccanti_miei) o None senza foto. Grado C: tutta la forza in campo, i
+    bloccanti contati a parte, senza le abilita'."""
+    if not f or seat not in (1, 2):
+        return None
+    a, b = seat - 1, 2 - seat
+    lati = f.get("c") or [[], []]
+    cre = lambda lato: [z for z in lato or [] if len(z) > 4 and z[3] is not None]       # noqa: E731
+    mie, sue = cre(lati[a]), cre(lati[b])
+    fm, fs = sum(max(0, z[3] or 0) for z in mie), sum(max(0, z[3] or 0) for z in sue)
+    v = f.get("v") or [20, 20]
+    vm, vs = v[a] if v[a] is not None else 20, v[b] if v[b] is not None else 20
+    n = f.get("n") or [0, 0]
+
+    def turni(vite, forza):
+        if vite <= 0:
+            return 0
+        if forza <= 0:
+            return None
+        k = -(-vite // forza)
+        return k if k <= TETTO_OROLOGIO else None
+    return dict(forza_mia=fm, forza_sua=fs, vite_mie=vm, vite_sue=vs, turni_mie=turni(vs, fm), turni_suoi=turni(vm, fs), mano_mia=n[a] or 0,
+                mano_sua=n[b] or 0, bloccanti_suoi=len(sue), bloccanti_miei=len(mie))
+
+
 FASI = ("main1", "comb", "main2")
 NOMI_FASI = {"main1": "main phase 1", "comb": "combat", "main2": "main phase 2", "inizio": "the turn passing"}
 
@@ -114,13 +279,16 @@ def _fasi(t, att, p0, p1, confini, seat, x, f_prima=None):
     Ogni confine si legge «se il turno finisse qui» (_p_nel_turno). Dal 19 nov 2026 il cambio di chi tocca sta in una voce sua, «inizio» (la foto di fine
     del turno prima letta come se anche questo turno fosse passato senza far niente, meno p0): non e' una scelta di nessuno, cosi' non finisce nella prima
     fase principale."""
-    base = _p_fine_turno(f_prima, seat, t, att, x, pescata_extra("Upkeep", t, "fine")) if f_prima is not None else None
+    if PUNTI_UNICI:     # 22 nov 2026: l'inizio del turno vale la fine del turno prima (la lettura unica), niente voce «inizio»
+        base = None
+    else:
+        base = _p_fine_turno(f_prima, seat, t, att, x, pescata_extra("Upkeep", t, "fine")) if f_prima is not None else None
     punti = [("main1", base if base is not None else p0)]
     for k in ("comb", "m2"):
         f = confini.get((t, k))
         if f is None:
             continue
-        p = _p_nel_turno(f, seat, t, att, x)
+        p = p_unica(f, seat, t, att, x, k) if PUNTI_UNICI else _p_nel_turno(f, seat, t, att, x)
         if p is not None:
             punti.append(("comb" if k == "comb" else "main2", p))
     if len(punti) == 1:         # il log non ha i confini di questo turno: una fase sola, «turn», con un atteso suo (non e' una prima fase principale)
@@ -609,6 +777,16 @@ FASE_PASSO = {"Game start": "main1", "Upkeep": "main1", "Draw": "main1", "Main1"
 SOGLIA_RIGA = 1.0       # sotto un punto di P una scelta non e' ne' un merito ne' un regalo: grigia
 ETICHETTE = {"mio_su": "your play", "mio_giu": "your play", "mio_pari": "your play", "suo_errore": "opponent's mistake",
              "suo_buono": "opponent's good play", "suo_pari": "opponent's play", "risultato": "result"}
+NON_BLOCCO = "You did not block"
+_PASSI_BLOCCO = ("FirstStrikeDamage", "CombatDamage", "EndCombat")      # non DeclareBlock: Arena puo' scrivere piu' passi di blocco prima del blocco vero
+
+
+def _stappate(g_, seat):
+    """Le tue creature stappate in una foto grezza (i bloccanti possibili, grado C)."""
+    lati = (g_ or {}).get("c") or [[], []]
+    return [c_ for c_ in lati[seat - 1] or [] if len(c_) > 4 and c_[3] is not None and not c_[1]]
+
+
 _SALTA = ("paid mana for", "resolved", " on the stack", "turn ", "The game begins", "got 1 counter", "attached to", "chose ")
 _RIGHE = {}
 
@@ -666,18 +844,21 @@ def righe_fasi(x, passi, base=None):
         t = p_[2]
         fase = FASE_PASSO.get(p_[0].split(" · ")[-1], "main1")
         passo_n = p_[0].split(" · ")[-1]
-        if t != prec_t:     # un turno nuovo: si parte dalla foto di prima letta come se anche questo turno fosse passato (il cambio di chi tocca fuori)
-            p_prec = _p_fine_turno(prec_f, seat, t, att, x, pescata_extra("Upkeep", t, "fine")) if prec_f is not None else None
-        p_ora = _p_fine_turno(g_, seat, t, att, x, pescata_extra(passo_n, t, "fine"))
+        fase_l = "m2" if fase == "main2" else "comb" if fase == "comb" else "main1"
+        if PUNTI_UNICI:     # 22 nov 2026: ogni passo con la lettura unica, l'inizio del turno letto come la prima fase (tocca a chi gioca, prima di pescare)
+            if t != prec_t:
+                p_prec = p_unica(prec_f, seat, t, att, x, "main1", "Upkeep") if prec_f is not None else None
+            p_ora = p_unica(g_, seat, t, att, x, fase_l, passo_n)
+        else:
+            if t != prec_t:     # un turno nuovo: si parte dalla foto di prima letta come se anche questo turno fosse passato (il cambio di chi tocca fuori)
+                p_prec = _p_fine_turno(prec_f, seat, t, att, x, pescata_extra("Upkeep", t, "fine")) if prec_f is not None else None
+            p_ora = _p_fine_turno(g_, seat, t, att, x, pescata_extra(passo_n, t, "fine"))
         # la win chance di adesso (19 nov 2026, in testa al racconto): fino al danno del combattimento chi e' di turno ha ancora la mossa (la sua lettura), dal
         # danno in poi il turno sta finendo (la lettura di fine turno, con le creature tappate). La lettura «se il turno finisse qui» dei punti, a inizio
         # turno, sarebbe come se chi gioca passasse senza far niente (il tuo turno 3 al 10%)
-        if fase == "main2" or passo_n in ("CombatDamage", "FirstStrikeDamage", "EndCombat"):
-            p_vista = p_ora
-        else:
-            pv_ = pescata_extra(passo_n, t, "vista")
-            p_vista = DA.p_foto(g_, seat, att == seat, (t + 1) // 2, x.get("inizia"), x.get("mulligan"), x.get("tipo"),
-                                mano_extra=(0, 0) if not pv_ else ((pv_, 0) if att == seat else (0, pv_)))
+        # dal 22 nov 2026 la lettura unica (p_unica): «tocca a chi gioca» nella prima fase principale, «se il turno finisse qui» dal combattimento in poi,
+        # tarate sulla P di fine turno. Fino a quel giorno «tocca a chi gioca» valeva fino al danno: nel combattimento 12-17 punti lontano dalla fine del turno
+        p_vista = p_ora if PUNTI_UNICI else p_unica(g_, seat, t, att, x, fase_l, passo_n)
         if p_vista is not None:
             p_passo[i] = p_vista
         prec_f, prec_t = g_, t
@@ -693,6 +874,16 @@ def righe_fasi(x, passi, base=None):
         cur["ultimo"] = i
         del_passo[i] = ch
         evs = p_[4] or []
+        # non bloccare e' una scelta (21 nov 2026, dal memo: «una scelta che non lascia un'azione nel log (non bloccare per tenere il Nighthawk per il
+        # letale) non ha una riga sua: i suoi punti stanno nell'attacco dell'avversario»): nel suo combattimento, dal primo passo dopo l'attacco senza un
+        # tuo blocco, se avevi una creatura stappata (grado C: non si guarda se poteva bloccare davvero, volare e minaccia), la riga «You did not block»
+        # prende le conseguenze che col blocco andrebbero al blocco; la partita persa nel passo resta all'attacco, come col blocco
+        if (fase == "comb" and att != seat and passo_n in _PASSI_BLOCCO and not cur.get("nb_fatto")
+                and any(r_["mio"] is False and "attacked with" in r_["testo"] for r_ in cur["righe"])):
+            cur["nb_fatto"] = True
+            if (not any(" blocked " in tx for _m, tx in evs) and not any(r_["mio"] and " blocked " in r_["testo"] for r_ in cur["righe"])
+                    and _stappate(g_, seat)):
+                cur["righe"].append(dict(i=i, testo=NON_BLOCCO, tipo=_tipo(True, 0.0), mio=True, ev=0.0, incluso=False, non_blocco=True))
         sc = _scelta(evs, att == seat)
         if sc is None and any("paid mana for" in tx for _m, tx in evs):
             in_sospeso += dv
@@ -710,6 +901,8 @@ def righe_fasi(x, passi, base=None):
         if fase == "comb" and scelta_prima is not None and " blocked " in scelta_prima["testo"] and (any("lost the game" in tx_ for _m, tx_ in evs) or (any(
                 re.search(r"dealt \d+ to (you|the opponent)|lost \d+ life", tx_) for _m, tx_ in evs) and not any(
                 re.search(r"dealt \d+ to (?!you|the opponent)|died", tx_) for _m, tx_ in evs))):
+            scelta_prima = next((r_ for r_ in reversed(cur["righe"]) if r_["tipo"] != "risultato" and "attacked with" in r_["testo"]), scelta_prima)
+        if (fase == "comb" and scelta_prima is not None and scelta_prima.get("non_blocco") and any("lost the game" in tx_ for _m, tx_ in evs)):
             scelta_prima = next((r_ for r_ in reversed(cur["righe"]) if r_["tipo"] != "risultato" and "attacked with" in r_["testo"]), scelta_prima)
         if scelta_prima is not None:        # una conseguenza: i suoi punti nella scelta che l'ha causata
             scelta_prima["ev"] += dv
@@ -1464,6 +1657,23 @@ def prova_righe_fasi():
                      and v["p_passo"][3] <= 5))
         casi.append(("negativa: le etichette dell'Opponent solo sulle sue scelte, le tue sulle tue",
                      all(r_["tipo"].startswith("suo") == (r_["mio"] is False) for fz in v["fasi"] for r_ in fz["righe"] if r_["tipo"] != "risultato")))
+        # non bloccare (21 nov 2026): con una creatura stappata e nessun blocco, la riga «You did not block» prende il danno subito
+        _RIGHE.clear()
+        g1 = f_([cr(1, 2)], [cr(2, 3, 1)], (20, 20))
+        ps2 = [passo("Opponent T1 · DeclareAttack", f_([cr(1, 2)], [cr(2, 3, 1)], (20, 20)), 2, 2, ["Opponent attacked with Mid (3/3)"]),
+               passo("Opponent T1 · CombatDamage", f_([cr(1, 2)], [cr(2, 3, 1)], (17, 20)), 2, 2, ["Mid dealt 3 to you"])]
+        v2 = righe_fasi(x, ps2)
+        nb = [r_ for fz in v2["fasi"] for r_ in fz["righe"] if r_.get("non_blocco")]
+        casi.append(("voto per fase: non bloccare potendo e' una tua riga col danno subito", len(nb) == 1 and nb[0]["mio"] and nb[0]["ev"] < 0
+                     and nb[0]["testo"] == NON_BLOCCO))
+        _RIGHE.clear()
+        ps3 = [passo("Opponent T1 · DeclareAttack", f_([cr(1, 2, 1)], [cr(2, 3, 1)], (20, 20)), 2, 2, ["Opponent attacked with Mid (3/3)"]),
+               passo("Opponent T1 · CombatDamage", f_([cr(1, 2, 1)], [cr(2, 3, 1)], (17, 20)), 2, 2, ["Mid dealt 3 to you"])]
+        v3 = righe_fasi(x, ps3)
+        casi.append(("negativa: senza creature stappate niente riga del non blocco",
+                     not any(r_.get("non_blocco") for fz in v3["fasi"] for r_ in fz["righe"])))
+        casi.append(("negativa: col blocco niente riga del non blocco", not any(r_.get("non_blocco") for fz in v["fasi"] for r_ in fz["righe"])))
+        del g1
     finally:
         DA._MANA.clear(); DA._MANA.update(vecchio); _RIGHE.clear(); _RIGHE.update(vecchio_r)
     return casi
@@ -1494,8 +1704,8 @@ def prova():
         casi.append(("i punti si conservano: turni + chiusura = fine - inizio", conserva(c)))
         casi.append(("i turni che fanno danno salgono: il turno 5 (lui da 17 a 10) ha EV positivo", c["turni"][4]["ev"] > 0))
         f5 = c["turni"][4]["fasi"]
-        casi.append(("le fasi del turno 5: il cambio di chi tocca a parte (inizio), prima principale, combattimento, seconda; il combattimento (7 danni) "
-                     "sale; la somma delle fasi e' il turno", [ph["f"] for ph in f5] == ["inizio", "main1", "comb", "main2"] and f5[2]["ev"] > 0
+        casi.append(("le fasi del turno 5 con la lettura unica: prima principale (dalla fine del turno prima, niente voce «inizio»), combattimento, seconda; "
+                     "il combattimento (7 danni) sale; la somma delle fasi e' il turno", [ph["f"] for ph in f5] == ["main1", "comb", "main2"] and f5[1]["ev"] > 0
                      and abs(sum(ph["ev"] for ph in f5) - c["turni"][4]["ev"]) < 0.02))
         casi.append(("negativa: un turno senza confini nel log ha una fase sola, tutto il turno", [ph["f"] for ph in c["turni"][2]["fasi"]] == ["turn"]
                      and c["turni"][2]["fasi"][0]["ev"] == c["turni"][2]["ev"]))
@@ -1565,6 +1775,13 @@ def prova():
         casi.append(("una carta in piu' nella tua mano alza la P, nella sua la abbassa", p0_ is not None and p1_ > p0_ and p2_ < p0_))
         casi.append(("le fasce della situazione: 10 far behind, 50 even, 95 far ahead", fascia_p(10) == 0 and fascia_p(50) == 2 and fascia_p(95) == 4
                      and fascia_giro(12) == "9+" and fascia_giro(3) == "3"))
+        # l'orologio (22 nov 2026): il tavolo di Autore, 3/1, 2/2 e 4/4 contro nessuna creatura e 9 vite
+        fo = dict(c=[[[1, 0, 0, 3, 1, 1, None], [2, 0, 0, 2, 2, 2, None], [3, 0, 0, 4, 4, 3, None], [4, 0, 0, None, None, 4, None]], []], v=[20, 9], n=[2, 3])
+        o = orologio(fo, 1)
+        casi.append(("l'orologio: 9 di forza contro 9 vite, lo azzeri in 1 turno; lui senza forza non ha un orologio; la terra non conta",
+                     o["turni_mie"] == 1 and o["turni_suoi"] is None and o["forza_mia"] == 9 and o["mano_sua"] == 3))
+        casi.append(("negativa: dal suo posto lo stesso tavolo e' rovesciato (lui non ti azzera, tu lo azzeri in 1)",
+                     orologio(fo, 2)["turni_suoi"] == 1 and orologio(fo, 2)["turni_mie"] is None))
     finally:
         DA._MANA.clear(); DA._MANA.update(vecchio)
         _MEMO.clear()
@@ -1576,6 +1793,9 @@ def prova():
 
 
 if __name__ == "__main__":
+    if "--tara-lettura" in sys.argv:
+        tara_lettura()
+        sys.exit(0)
     if "--prova" in sys.argv:
         sys.exit(0 if prova() else 1)
     tipo = "Limited" if "--limited" in sys.argv else "Constructed"

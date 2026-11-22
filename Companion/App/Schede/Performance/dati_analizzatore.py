@@ -1756,10 +1756,107 @@ def sessioni(righe):
 
 _CACHE = {}
 
+# La copia su disco delle righe (21 nov 2026, Autore: «La lentezza del Leak Finder all'apertura»): riga() costava 8,4 s su 10,7 a freddo per 595 partite.
+# Ogni riga si ricorda per (partita, record di matchup_log, partita di partite_log, dato di mana_aperto) e per l'ambiente (il codice dell'app, le regole,
+# il database delle carte): se cambia una cosa sola dell'ambiente si rifanno tutte, come prima; una partita nuova si fa da sola. Solo quello che esce da
+# riga(): sessioni, serie, versioni e draft si rifanno sempre, perche' dipendono dalle altre partite. RIGHE_COPIA=0 la spegne (le prove d'identita').
+import hashlib as _hashlib  # noqa: E402
+import pickle as _pickle  # noqa: E402
+_F_RIGHE = None
+_RIGHE_MEM = {}
+
+
+def _f_righe():
+    global _F_RIGHE
+    if _F_RIGHE is None:
+        from ambiente import LOGDIR
+        _F_RIGHE = os.path.join(LOGDIR, "cache", "righe_analizzatore.pkl")
+    return _F_RIGHE
+
+
+def _ambiente_righe():
+    """L'impronta di tutto quello da cui riga() dipende oltre la partita: i .py dell'app e del Companion, le regole, il database delle carte."""
+    h = _hashlib.sha1()
+    radice = percorsi.ROOT
+    for f_ in (os.path.join(radice, "Dati", "scryfall", "carte.json"),):      # i formati e l'identita' di colore delle carte
+        try:
+            st_ = os.stat(f_)
+            h.update(f"{f_}:{st_.st_mtime_ns}:{st_.st_size};".encode())
+        except OSError:
+            pass
+    for cart, est in ((os.path.join(radice, "Companion"), ".py"), (os.path.join(radice, "Regole"), ".json"),
+                      (os.path.join(radice, "Dati", "untapped", "arena_cards"), ".json")):
+        for d_, _sub, files in os.walk(cart):
+            if "__pycache__" in d_:
+                continue
+            for f in files:
+                if f.endswith(est):
+                    try:
+                        st_ = os.stat(os.path.join(d_, f))
+                        h.update(f"{d_}/{f}:{st_.st_mtime_ns}:{st_.st_size};".encode())
+                    except OSError:
+                        pass
+    try:
+        import mana_aperto
+        h.update(str(mana_aperto.VERSIONE).encode())
+    except Exception:       # noqa: BLE001
+        pass
+    return h.hexdigest()
+
+
+def _chiave_riga(p, r):
+    h = _hashlib.sha1()
+    h.update(_pickle.dumps((p, r), protocol=5))
+    d = _MANA.get(r.get("partita"))
+    h.update(b"m" if d else b"-")
+    f_ = indice_schede().get((r.get("partita") or "")[:8])        # la scheda in Partite/ (puo' arrivare dopo la partita, o essere riscritta)
+    try:
+        h.update(str(os.stat(f_).st_mtime_ns).encode() if f_ else b"senza scheda")
+    except OSError:
+        h.update(b"senza scheda")
+    if d:
+        h.update(str(len(d.get("azioni") or [])).encode()); h.update(str(len(d.get("momenti") or [])).encode())
+    return h.hexdigest()
+
+
+def _copia_righe():
+    """{chiave: riga in pickle} della copia su disco, se l'ambiente e' lo stesso; {} se no."""
+    if os.environ.get("RIGHE_COPIA") == "0":
+        return {}
+    amb = _ambiente_righe()
+    _RIGHE_MEM["amb"] = amb
+    if _RIGHE_MEM.get("letta") == amb:
+        return _RIGHE_MEM.get("righe") or {}
+    try:
+        with open(_f_righe(), "rb") as h:
+            c = _pickle.load(h)
+        righe_ = c["righe"] if c.get("amb") == amb else {}
+    except Exception:       # noqa: BLE001 - copia assente o rotta: si rifa' tutto
+        righe_ = {}
+    _RIGHE_MEM.update(letta=amb, righe=righe_)
+    return righe_
+
+
+def _salva_righe(nuove):
+    if os.environ.get("RIGHE_COPIA") == "0" or "amb" not in _RIGHE_MEM:
+        return
+    if _RIGHE_MEM.get("letta") == _RIGHE_MEM["amb"] and _RIGHE_MEM.get("righe") == nuove:
+        return
+    try:
+        f = _f_righe()
+        os.makedirs(os.path.dirname(f), exist_ok=True)
+        with open(f + ".tmp", "wb") as h:
+            _pickle.dump(dict(amb=_RIGHE_MEM["amb"], righe=nuove), h, protocol=5)
+        os.replace(f + ".tmp", f)
+        _RIGHE_MEM.update(letta=_RIGHE_MEM["amb"], righe=nuove)
+    except OSError:
+        pass
+
 
 def righe(partite=None):
     """Tutte le partite dei log come righe dell'analizzatore, in ordine di tempo. Ricordate finche' i log non cambiano."""
     import matchup_log as MU
+    partite_vere = partite is None
     if partite is None:
         import partite_log
         partite, _n = partite_log.partite()
@@ -1767,6 +1864,7 @@ def righe(partite=None):
     firma = (len(partite), partite[-1].get("matchId") if partite else None)       # partite_log da' gia' le partite dell'account mostrato
     if _CACHE.get("firma") == firma:
         return _CACHE["righe"]
+    _SCHEDE.clear()     # le schede di Partite/ si rileggono: una partita appena finita ha la sua scheda dopo la prima lettura (21 nov 2026, il debug)
     _TERRE.clear()      # una rilettura dei log rifa' anche le terre (una carta nuova del database)
     try:        # il mana aperto: dalla copia su disco, e le partite nuove lette adesso (la prima volta ~10 s per 450 partite)
         import mana_aperto
@@ -1774,10 +1872,25 @@ def righe(partite=None):
     except Exception:       # noqa: BLE001 - senza i pezzi di log le situazioni del mana restano None
         _MANA.clear()
     out = []
+    vere = partite_vere
+    copia = _copia_righe() if vere else {}
+    nuove = {}
     for p in partite:
         r = MU.record(p)
         if r:
-            out.append(riga(p, r))
+            k = _chiave_riga(p, r)
+            b = copia.get(k)
+            if b is not None:
+                try:
+                    out.append(_pickle.loads(b)); nuove[k] = b
+                    continue
+                except Exception:       # noqa: BLE001 - una voce rotta si rifa'
+                    pass
+            x = riga(p, r)
+            out.append(x)
+            nuove[k] = _pickle.dumps(x, protocol=5)
+    if vere:        # solo le partite dei log: le prove con partite finte non toccano la copia
+        _salva_righe(nuove)
     sessioni(out)
     import variabili_c as VC
     VC.serie(out)       # C6: la partita prima e le sconfitte di fila
@@ -2374,9 +2487,89 @@ def _p_carte(f, seat, stato, tipo, giro, tocca_me):
         return None
     try:
         import prob_vittoria as PV
-        return VC.p_tavolo(PV.vettore(stato), VC.zone_foto(f, seat), tipo, giro, tocca_me)
+        return VC.p_tavolo(PV.vettore(stato), dict(VC.zone_foto(f, seat), **zone_extra(f, seat)), tipo, giro, tocca_me)
     except Exception:       # noqa: BLE001
         return None
+
+
+_ZX = {}            # id(foto) -> (seat, grimorio [grp], sue magie lanciate fin li' [grp], scala del grimorio)
+_ZX_DI = {}
+_GRP_NOME = {}
+
+
+def _grp_di_nome(n):
+    """Un grpId di Arena per nome (non pedina, non ribilanciata), dal database delle carte; None se non c'e'."""
+    if not _GRP_NOME:
+        try:
+            import db_carte
+            tt = db_carte.testi()
+            for c in db_carte.carte():
+                if c.get("isToken") or c.get("IsRebalanced") or "titleId" not in c:
+                    continue
+                nm = tt.get(c["titleId"])
+                if nm:
+                    _GRP_NOME.setdefault(nm, c["grpid"])
+                    _GRP_NOME.setdefault(nm.split(" // ")[0], c["grpid"])
+        except Exception:       # noqa: BLE001
+            _GRP_NOME[""] = None
+    return _GRP_NOME.get(n) or _GRP_NOME.get(nome_intero(n))
+
+
+def _zx_partita(x):
+    """Le zone in piu' del modello (22 nov 2026: le cinque reti «zone» di Motore_EV/insieme.py) per ogni foto della partita, dal posto dell'Hero:
+    lib_u = la lista della partita meno le carte viste fuori dal grimorio (mano, campo senza pedine, cimitero, esilio); vis_o = le magie che l'Opponent
+    ha lanciato fino a quel turno (le azioni di mana_aperto). Il posto dell'Opponent non ha la sua lista: li' restano le cinque reti «base»."""
+    from collections import Counter
+    d = _MANA.get(x.get("partita")) or {}
+    deck, seat = x.get("deck") or {}, x.get("seat")
+    if not d or not deck or seat not in (1, 2):
+        return
+    a = seat - 1
+    voci = [(0, d.get("mano0"))] + [(t, f) for t, _att, f in d.get("foto") or []]
+    nel_gioco = {}
+    for _t, f in voci:
+        for g in [c_[0] for c_ in ((f or {}).get("c") or [[], []])[a] or []] + list(((f or {}).get("m") or [[], []])[a] or []):
+            n = nome_grp(g)
+            if n:
+                nel_gioco.setdefault(nome_intero(n), g)
+    lib0 = Counter()
+    for n, q in deck.items():
+        g = nel_gioco.get(nome_intero(n)) or _grp_di_nome(n)
+        if g:
+            lib0[g] += q
+    tot = sum(deck.values())
+    scala = 40 / tot if tot > 40 else 1.0
+    sue = [(t, g) for t, posto, tipo, g, *_r in d.get("azioni") or [] if posto != seat and tipo == "magia" and g]
+    for t, f in voci:
+        if not f:
+            continue
+        lib = Counter(lib0)
+        fuori = [c_[0] for c_ in (f.get("c") or [[], []])[a] or [] if len(c_) > 2 and not c_[2]]
+        for k in ("m", "g", "e"):
+            fuori += list(((f.get(k) or [[], []])[a]) or [])
+        for g in fuori:
+            if lib.get(g, 0) > 0:
+                lib[g] -= 1
+        _ZX[id(f)] = (seat, [g for g, q in lib.items() for _ in range(q)], [g for tt, g in sue if tt <= t], scala)
+
+
+def zone_extra(f, seat):
+    """{lib_u, vis_o, _lib_scala} per una foto di mana_aperto dal posto seat, o {} se non si sanno (le reti «base» le fanno a meno)."""
+    if not f:
+        return {}
+    R = _CACHE.get("righe")
+    if R is not None and _ZX_DI.get("r") is not R:
+        _ZX.clear()
+        _ZX_DI["r"] = R
+        for x in R:
+            try:
+                _zx_partita(x)
+            except Exception:       # noqa: BLE001 - una partita strana resta senza zone in piu'
+                pass
+    v = _ZX.get(id(f))
+    if not v or v[0] != seat:
+        return {}
+    return {"lib_u": v[1], "vis_o": v[2], "_lib_scala": v[3]}
 
 
 def p_foto(f, seat, tocca_me, giro, inizia=None, mull=0, tipo=None, vecchia=False, mano_extra=(0, 0)):
@@ -3869,6 +4062,39 @@ def prova():
     casi.append(("Weakest first: A (-8 in 60) prima di C, B (5 partite) e D (poche) in fondo",
                  [c_["nome"] for c_ in deboli_prima(rr_, "iwd", 4)] == ["A", "C", "B", "D"]))
     casi.append(("negativa: una carta pescata in 5 partite non sale in testa anche a -36", deboli_prima(rr_, "iwd", 1)[0]["nome"] != "B"))
+    # la copia delle righe (21 nov 2026): la chiave cambia col record e col dato di mana_aperto; le partite finte non scrivono la copia
+    p_, r_ = {"matchId": "x", "seat": 1}, {"partita": "x", "vinta": True}
+    k0 = _chiave_riga(p_, r_)
+    casi.append(("copia delle righe: stessa partita, stessa chiave", k0 == _chiave_riga(dict(p_), dict(r_))))
+    casi.append(("negativa: un record diverso cambia la chiave", k0 != _chiave_riga(p_, dict(r_, vinta=False))))
+    _MANA["x"] = {"azioni": [1]}
+    casi.append(("negativa: il dato di mana_aperto cambia la chiave", k0 != _chiave_riga(p_, r_)))
+    _MANA.pop("x", None)
+    import tempfile
+    ind_ = _SCHEDE.get("indice")
+    with tempfile.TemporaryDirectory() as td_:
+        fs_ = os.path.join(td_, "scheda_x.json")
+        open(fs_, "w").write("{}")
+        _SCHEDE["indice"] = {"x": fs_}
+        k1 = _chiave_riga(p_, r_)
+        os.utime(fs_, ns=(1, 10 ** 18))
+        casi.append(("negativa: la scheda di Partite/ arrivata o riscritta cambia la chiave", k0 != k1 != _chiave_riga(p_, r_)))
+    if ind_ is None:
+        _SCHEDE.pop("indice", None)
+    else:
+        _SCHEDE["indice"] = ind_
+    try:
+        prima_ = os.stat(_f_righe()).st_mtime_ns
+    except OSError:
+        prima_ = None
+    _CACHE.clear()
+    righe([{"matchId": "finta", "seat": 1, "vinta": True, "inizio": 0}])
+    try:
+        dopo_ = os.stat(_f_righe()).st_mtime_ns
+    except OSError:
+        dopo_ = None
+    _CACHE.clear()
+    casi.append(("le partite finte non toccano la copia su disco", prima_ == dopo_))
     for n, ok in casi:
         print(("ok    " if ok else "ROSSO ") + n)
     print(f"{sum(1 for _n, ok in casi if ok)}/{len(casi)}")

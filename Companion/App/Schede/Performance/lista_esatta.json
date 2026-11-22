@@ -1,0 +1,8 @@
+{
+ "a": -0.6718838671695402,
+ "b": 0.610448764446734,
+ "passate": 412,
+ "partite": 150,
+ "data": "2026-11-21",
+ "nota": "P(lancia una risposta che ferma nel tuo turno) = sigmoide(a + b logit(P tiene)), liste_avversarie.misura_lista_esatta"
+}

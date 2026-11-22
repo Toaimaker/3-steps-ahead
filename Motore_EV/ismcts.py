@@ -119,6 +119,7 @@ def nascondi_ev(t, i, rng):
             resto = [x for x in rng.permutation(len(carte)) if disp[x]]
             for o, kk in zip(mano + grim, scelte + resto):
                 o.carta = carte[int(kk)]
+            _STATO["mano"] = [getattr(carte[int(x)], "nome", None) for x in scelte]      # la mano pescata in questo mondo (il «perde contro»)
     for gi in t.giocatori:
         gi.grimorio.rng = np.random.Generator(np.random.PCG64(int(rng.integers(0, 2 ** 63 - 1))))
     t.seme = int(rng.integers(0, 2 ** 63 - 1))
@@ -137,9 +138,45 @@ def installa():
 def lavoro(arg):
     """Una partita di prova: (lavoro di guarda_avanti, mondo w, W, pesi della mano)."""
     base, w, W, pesi = arg
-    _STATO.update(w=w, W=W, pesi=pesi)
+    _STATO.update(w=w, W=W, pesi=pesi, mano=[])
     import guarda_avanti as G
-    return G._lavoro(base)
+    v = G._lavoro(base)
+    return v, sorted({c for c in (classe_risposta(n) for n in _STATO.get("mano") or []) if c})
+
+
+_RISP = {}
+RISPOSTE = ("instant removal", "combat trick", "counterspell", "flash creature")
+
+
+def classe_risposta(nome):
+    """La classe di risposta di una carta della sua mano (21 nov 2026, il «perde contro»): rimozione istantanea, trucco, contromagia, creatura flash;
+    None per il resto. Dal tipo e dal testo (dati_analizzatore.ruolo_magia, grado C)."""
+    if not nome:
+        return None
+    if nome not in _RISP:
+        try:
+            import dati_analizzatore as DA
+            c = DA._carta(nome) or {}
+            tipo, testo = (c.get("tipo") or "").split(" // ")[0], c.get("testo") or ""
+            r = DA.ruolo_magia(nome)
+            ist = "Instant" in tipo or testo.startswith("Flash") or "Flash" in testo.split(".")[0]
+            _RISP[nome] = ("instant removal" if r == "Removal" and ist else "combat trick" if r == "Combat trick" else
+                           "counterspell" if r == "Counterspell" else "flash creature" if r == "Creature" and ist else None)
+        except Exception:       # noqa: BLE001
+            _RISP[nome] = None
+    return _RISP[nome]
+
+
+def perde_contro(valori, classi):
+    """Per la mossa vera: in quali mondi va peggio. valori e classi mondo per mondo -> {classe: [quota dei mondi con quella carta, punti di P in meno
+    rispetto ai mondi senza]} solo per le classi con almeno 2 mondi per parte."""
+    out = {}
+    v = np.array(valori, float)
+    for c in RISPOSTE:
+        con = np.array([c in (k or []) for k in classi], bool)
+        if con.sum() >= 2 and (~con).sum() >= 2:
+            out[c] = [round(float(con.mean()), 3), round(float(100 * (v[con].mean() - v[~con].mean())), 2)]
+    return out
 
 
 # ---------------------------------------------------------------------------- la ricerca
@@ -159,6 +196,7 @@ def cerca(d, pool=None, pesi=None, w0=W0, giri=GIRI, log=lambda *a: None):
     kw = {**kw, "turni": turni, "valuta": "carte"}
     vive = list(range(len(codici)))
     valori = {j: [] for j in vive}
+    classi_m = {}           # le classi di risposta nella sua mano, mondo per mondo (il «perde contro»)
     mondi_usati = []
     for giro in range(giri):
         nuovi = [int(x) for x in np.random.default_rng([d["seme"], 8907, giro]).integers(0, 2 ** 63 - 1, size=w0)]
@@ -169,7 +207,8 @@ def cerca(d, pool=None, pesi=None, w0=W0, giri=GIRI, log=lambda *a: None):
                 lavori.append(((a, b, d["seme"], esito["prefisso"], d["io"], d["tipo"], codici[j], m, False, kw), giro * w0 + wi, Wtot, pesi))
         es = pool.map(lavoro, lavori, chunksize=1) if pool else [lavoro(x) for x in lavori]
         for idx, (j) in enumerate(vive):
-            valori[j] += es[idx * w0:(idx + 1) * w0]
+            valori[j] += [e_[0] for e_ in es[idx * w0:(idx + 1) * w0]]
+            classi_m.setdefault(j, []).extend(e_[1] for e_ in es[idx * w0:(idx + 1) * w0])
         mondi_usati += nuovi
         if giro < giri - 1 and len(vive) > 2:
             media = {j: float(np.mean(valori[j])) for j in vive}
@@ -190,7 +229,7 @@ def cerca(d, pool=None, pesi=None, w0=W0, giri=GIRI, log=lambda *a: None):
     pval = CL.segni(piu, meno)
     return dict(gid=d["gid"], k=d["k"], tipo=d["tipo"], turno=d.get("turno"), candidate=nomi, valori={str(j): round(media[j], 2) for j in media},
                 mondi={str(j): len(valori[j]) for j in valori}, vera=vera, migliore=migliore, scarto=round(scarto, 2), p=round(pval, 4),
-                meglio=bool(migliore != vera and -scarto >= SOGLIA and pval <= P_MAX))
+                meglio=bool(migliore != vera and -scarto >= SOGLIA and pval <= P_MAX), contro=perde_contro(valori[vera], classi_m.get(vera, [])))
 
 
 def pesi_mano(d):
@@ -285,7 +324,7 @@ def leggi_uscita():
     return {"punti": [], "non_stimabili": {}, "partite": []}
 
 
-def giro(processi=4, max_partite=None, log=print, solo=None):
+def giro(processi=4, max_partite=None, log=print, solo=None, rifai=False):
     """L'IS-MCTS sulle partite limited dei log, dalla piu' recente, una partita alla volta e mai con Arena aperta (si ferma e riprende al giro dopo).
     Lo lancia la finestra grande in sottofondo a priorita' bassa, come la cottura delle carte; una copia sola (Log_Arena/ismcts.lock)."""
     import piattaforma
@@ -300,6 +339,10 @@ def giro(processi=4, max_partite=None, log=print, solo=None):
     if arena_aperta():
         log("Arena e' aperta: l'IS-MCTS non parte"); return None
     fatto = leggi_uscita()
+    if rifai:       # tutto da capo (21 nov 2026: il «perde contro» nasce coi punti nuovi); i punti di prima restano finche' una partita non e' rifatta
+        vecchi = fatto
+        fatto = {"punti": [], "non_stimabili": {}, "partite": []}
+        fatto["_vecchi"] = [r for r in vecchi["punti"]]
     fatte = set(fatto["partite"]) | {_match_di(r["gid"]) for r in fatto["punti"]}
     partite = [x for x in reversed(DA.righe()) if x.get("tipo") == "Limited" and x["partita"] not in fatte and (solo is None or x["partita"] in solo)]
     if max_partite:
@@ -330,7 +373,14 @@ def giro(processi=4, max_partite=None, log=print, solo=None):
                     fatto["non_stimabili"][motivo] = fatto["non_stimabili"].get(motivo, 0) + 1
             else:
                 fatto["partite"].append(x["partita"])
-            USCITA.write_text(json.dumps(fatto, indent=1, ensure_ascii=False), encoding="utf8")
+            if "_vecchi" in fatto:      # nel file: i punti nuovi, e quelli di prima delle partite non ancora rifatte (il replayer non resta vuoto)
+                rifatte = {x_[:8] for x_ in fatto["partite"]}
+                scritto = dict(fatto, punti=fatto["punti"] + [r for r in fatto["_vecchi"] if _match_di(r["gid"])[:8] not in rifatte])
+                scritto.pop("_vecchi", None)
+                scritto["partite"] = list(fatto["partite"])
+            else:
+                scritto = fatto
+            USCITA.write_text(json.dumps(scritto, indent=1, ensure_ascii=False), encoding="utf8")
             log(f"  {x['partita'][:8]}: {len(punti)} punti ({time.time() - t0:.0f} s)")
     return fatto
 
@@ -482,6 +532,11 @@ def prova():
     chk(fatto is not None and fatto["vera"] in range(len(fatto["candidate"])) and all(0 <= v <= 100 for v in fatto["valori"].values()),
         f"IS-MCTS su un punto vero: {fatto and len(fatto['candidate'])} candidate, scarto {fatto and fatto['scarto']}")
     chk(fatto is not None and fatto["mondi"][str(fatto["vera"])] == max(fatto["mondi"].values()), "la mossa vera non esce mai dai dimezzamenti")
+    chk(fatto is not None and isinstance(fatto.get("contro"), dict), "il «perde contro» registrato col punto")
+    pc = perde_contro([0.6, 0.6, 0.2, 0.2, 0.6], [[], [], ["combat trick"], ["combat trick"], []])
+    chk(pc.get("combat trick") == [0.4, -40.0], "perde contro: nei mondi col trucco 40 punti in meno, nel 40% dei mondi")
+    chk("instant removal" not in pc and perde_contro([0.5, 0.5], [["counterspell"], []]) == {},
+        "negativa: una classe che non c'e' o con un mondo solo per parte non si dice")
     try:
         punti_partita(dict(partita="00000000-nessuna", seat=1))
         chk(False, "negativa: una partita senza log")
@@ -494,6 +549,8 @@ def prova():
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(); ap.add_argument("--pilota", nargs="?", const=60, type=int); ap.add_argument("--processi", type=int, default=4)
     ap.add_argument("--giro", action="store_true")
+    ap.add_argument("--rifai", action="store_true")
+    ap.add_argument("--max", type=int, default=None)
     ap.add_argument("--prova", action="store_true")
     a = ap.parse_args()
     if a.pilota:
@@ -501,6 +558,6 @@ if __name__ == "__main__":
         if f:
             scrivi_nota(f)
     if a.giro:
-        giro(a.processi)
+        giro(a.processi, a.max, rifai=a.rifai)
     if a.prova:
         sys.exit(0 if prova() else 1)

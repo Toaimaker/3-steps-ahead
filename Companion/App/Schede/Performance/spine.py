@@ -128,6 +128,8 @@ def tipo_riga(r):
         return "terra"
     if " attacked with " in t:
         return "attacco"
+    if r.get("non_blocco"):
+        return "non_blocco"
     if " blocked " in t:
         return "blocco"
     return "potere"

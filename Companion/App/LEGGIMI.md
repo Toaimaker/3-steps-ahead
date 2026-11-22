@@ -38,6 +38,7 @@ Companion/
                          mazzi_salvati, mazzi_arena, dati_mazzo, prezzi_carte
       Resources/         pagina_risorse, farmer, roadmap, roi, trend, roadmap_check, risorse, verifica_piani, premi_eventi
       Collection/        pagina_collezione, collezione_carte, collezione_viva, cuoci_carte, costruttore_mazzi (il builder), terre_auto
+      Database/          pagina_database, dati_database: le tue partite e quelle condivise dai tester (solo nell'app di Autore, 21 nov 2026)
       Social/            finestra_social (la colonna), social (i dati)
       Help/              pagina_help (ogni scheda e i suoi comandi, gli aggiornamenti), aggiornamenti (il controllo: il manifest all'indirizzo di aggiornamenti.json)
     Overlay/             l'overlay della costruzione sopra Arena, e hud_arena (il Deck HUD sopra Arena durante le partite)

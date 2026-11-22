@@ -592,7 +592,10 @@ class PaginaPerformance:
     def scalda_decisioni(self, righe, da=0, a_volta=4):
         """Le decisioni di ogni partita (decisioni._ricorda) calcolate a pezzi quando la pagina e' ferma (15 nov 2026, il debug del replayer: il primo replay
         aperto nella sessione aspettava 1,5 s per il costo delle decisioni di tutte le partite). Poche partite alla volta, cosi' la finestra non si ferma."""
-        if da >= len(righe) or not self.fr.winfo_exists():
+        if not self.fr.winfo_exists():
+            return
+        if da >= len(righe):        # poi il solito riga per riga del voto per fase (solito_righe, 21 nov 2026), dalla partita piu' recente
+            self.fr.after(500, lambda: self.scalda_solito(list(reversed(righe))))
             return
         if getattr(self, "_anim_in_corso", False):          # mai mentre il replayer anima
             self.fr.after(400, lambda: self.scalda_decisioni(righe, da, a_volta))
@@ -608,6 +611,33 @@ class PaginaPerformance:
             except Exception:      # noqa: BLE001 - una partita senza dati si salta
                 pass
         self.fr.after(30, lambda: self.scalda_decisioni(righe, da + a_volta, a_volta))
+
+    def scalda_solito(self, righe, da=0):
+        """Le righe del voto per fase di ogni partita (solito_righe.calcola, ~0,17 s a partita), una alla volta e mai mentre il replayer anima; la copia su
+        disco ogni 20 partite. Le partite gia' nella copia non costano niente."""
+        import solito_righe as SR
+        if not self.fr.winfo_exists():
+            return
+        if da >= len(righe):
+            SR.salva()
+            return
+        if getattr(self, "_anim_in_corso", False):
+            self.fr.after(400, lambda: self.scalda_solito(righe, da))
+            return
+        fatte = 0
+        while da < len(righe) and fatte < 1:
+            x = righe[da]
+            da += 1
+            try:
+                if SR.gia_fatta(x):
+                    continue
+                SR.calcola(x)
+                fatte += 1
+            except Exception:      # noqa: BLE001 - una partita senza dati si salta
+                pass
+        if da % 20 == 0:
+            SR.salva()
+        self.fr.after(60 if fatte else 1, lambda: self.scalda_solito(righe, da))
 
     def mostra_carica(self, secondi):
         """«Loading your games…» al centro della pagina mentre la prima lettura dei log e' in corso (13 nov 2026, Autore: «la scheda performance non carica i
@@ -2920,7 +2950,41 @@ class PaginaPerformance:
             cc.create_text(x0 + larga - 14, y - 1, text=f"{d_:+.1f}".replace("-", "−"), anchor="ne", fill=C["verde"] if d_ >= 1 else C["rosso"] if d_ <= -1 else C["muto"],
                            font=F(8, True))
             y += 16
+        y = self.disegna_orologio(cc, b, x0, larga, y)
         return y + 8
+
+    def disegna_orologio(self, cc, b, x0, larga, y):
+        """Sotto la WIN CHANCE l'orologio (22 nov 2026, Autore: «Sì, mettilo»): perche' il tavolo vale quello che vale, in turni. La tua forza in campo
+        contro le sue vite, la sua contro le tue, le carte in mano. Non cambia il numero: lo spiega (Note/Gerarchie_Valore.md, l'equity come corsa)."""
+        import ev_partita as EV_
+        passi = b.get("passi") or []
+        i = min(b.get("i") or 0, len(passi) - 1) if passi else -1
+        f_ = (passi[i][1] or {}).get("_grezza") if i >= 0 else None
+        o = EV_.orologio(f_, b["x"].get("seat"))
+        if not o:
+            return y
+        F = self.F
+
+        def frase(t, forza, vite):
+            if t == 0:
+                return "already at 0 life"
+            if t is None:
+                return f"no clock yet ({forza} power vs {vite} life)" if forza <= 0 else f"over {EV_.TETTO_OROLOGIO} turns ({forza} power vs {vite} life)"
+            return f"{t} turn{'s' if t != 1 else ''} ({forza} power vs {vite} life)"
+        cc.create_text(x0 + 14, y + 2, text="CLOCK", anchor="nw", fill=C["titolo"], font=F(7, True))
+        y += 15
+        tm, ts = o["turni_mie"], o["turni_suoi"]
+        col_m = C["verde"] if tm is not None and (ts is None or tm < ts) else C["testo"]
+        col_s = C["arancio"] if ts is not None and (tm is None or ts < tm) else C["testo"]
+        cc.create_text(x0 + 14, y, text=f"Hero kills the Opponent in {frase(tm, o['forza_mia'], o['vite_sue'])}", anchor="nw", fill=col_m, font=F(7),
+                       width=larga - 28)
+        y += 15
+        cc.create_text(x0 + 14, y, text=f"The Opponent kills Hero in {frase(ts, o['forza_sua'], o['vite_mie'])}", anchor="nw", fill=col_s, font=F(7),
+                       width=larga - 28)
+        y += 15
+        cc.create_text(x0 + 14, y, text=f"creatures: Opponent {o['bloccanti_suoi']}, Hero {o['bloccanti_miei']} · cards in hand: Opponent {o['mano_sua']}, Hero {o['mano_mia']}",
+                       anchor="nw", fill=C["muto"], font=F(7), width=larga - 28)
+        return y + 16
 
     def range_avversario(self, b):
         """Il range della mano dell'Opponent a fine di ogni suo mezzo turno e del tuo (Motore_EV/range_nucleo.range_partita), solo nel Limited, una volta per
@@ -3138,6 +3202,12 @@ class PaginaPerformance:
                 out.append((f"BEST LINE {ln['scarto']:+.1f} · {voti.inglese(ln['migliore'])}".replace("-", "−"), "rosso"))
             else:
                 out.append((f"BEST LINE · about the same ({ln['scarto']:+.1f}) · {voti.inglese(ln['migliore'])}".replace("-", "−"), "muto"))
+            # perde contro (21 nov 2026): nei mondi della ricerca, la tua mossa con la sua mano che aveva un trucco, una rimozione istantanea, una
+            # contromagia o una creatura flash, contro i mondi senza; solo le classi che costano almeno SOGLIA punti
+            peggio = sorted(((c, q, d) for c, (q, d) in (ln.get("contro") or {}).items() if d <= -5), key=lambda z: z[2])
+            if peggio:
+                testo_c = "LOSES TO · " + ", ".join(f"{c} ({100 * q:.0f}% of his hands, {d:+.0f})" for c, q, d in peggio[:3])
+                out.append((testo_c.replace("-", "−"), "arancio"))
         fo = v.get("forti")
         if fo:
             dove = " · Limited players" if v.get("constructed") else ""
@@ -3164,6 +3234,16 @@ class PaginaPerformance:
         cc.create_text(x0 + 14, y, text=f"{chi} T{fz['giro']} · {EV_.NOMI_FASI.get(fz['f'], fz['f']).upper()} · EV", anchor="nw", fill=C["azzurro"],
                        font=F(8, True), width=larga - 28)
         y += 20
+        if fz["mio"] and fz["f"] in ("main1", "comb"):
+            # l'equity contro il suo range (21 nov 2026, liste_avversarie): nel Constructed, se lui ha passato con 2+ terre aperte, quanto spesso il suo mazzo
+            # in quel caso risponde nel tuo turno e con cosa; una volta in testa alle tue fasi
+            try:
+                import liste_avversarie as LA_
+                tx_r = LA_.testo_risposta(LA_.risposta(b["x"], fz["t"], self.righe or []))
+            except Exception:       # noqa: BLE001 - senza il ritratto nessuna riga
+                tx_r = None
+            if tx_r:
+                y = self.pillola_voto(cc, x0 + 14, y, larga - 28, tx_r, "arancio" if "go through" in tx_r else "muto") + 6
         self._box_voto = []
         for r_ in voto["righe"]:
             on = r_["i"] == b["i"]
@@ -3172,17 +3252,53 @@ class PaginaPerformance:
             i_t = cc.create_text(x0 + 24, y + 2, text=r_["testo"], anchor="nw", fill=C["titolo"] if r_["tipo"] != "risultato" else C["testo"],
                                  font=F(8, r_["tipo"] != "risultato"), width=larga - 96)
             yb = (cc.bbox(i_t) or (0, 0, 0, y + 14))[3]
+            sol = None
             if r_["incluso"]:
                 eti = "result · in the row above"
             else:
                 eti = EV_.ETICHETTE.get(r_["tipo"], "")
+                if r_["mio"] and r_["tipo"] != "risultato":
+                    # contro le tue scelte uguali con questo mazzo (21 nov 2026, solito_righe): il colore del numero dallo scarto, non dal segno
+                    try:
+                        import solito_righe as SR
+                        base_ = [z for z in self.righe or [] if z["tipo"] == b["x"].get("tipo")]
+                        sol = SR.solito(b["x"], r_, fz, base_)
+                    except Exception:       # noqa: BLE001 - senza il solito resta il colore del segno
+                        sol = None
+                    if sol and sol["media"] is not None:
+                        sc_ = sol["scarto"]
+                        col = C["verde"] if sc_ >= EV_.SOGLIA_RIGA else C["rosso"] if sc_ <= -EV_.SOGLIA_RIGA else C["muto"]
+                        eti += (f" · usually {sol['media']:+.1f} ({sol['n']} times, {sol['gradino']}) · vs usual {sc_:+.1f}").replace("-", "−")
+                    elif sol is not None:
+                        eti += (f" · few games to compare ({sol['fatte']} of {sol['totali']} read)" if sol["fatte"] < sol["totali"]
+                                else " · few games to compare")
                 cc.create_text(x0 + larga - 14, y + 2, text=f"{r_['ev']:+.1f}".replace("-", "−"), anchor="ne", fill=col, font=F(10, True))
             col_e = C["arancio"] if r_["tipo"] in ("suo_errore", "suo_buono") else C["muto"]
-            cc.create_text(x0 + 24, yb + 1, text=eti, anchor="nw", fill=col_e, font=F(7, True))
-            y = yb + 16
+            i_e = cc.create_text(x0 + 24, yb + 1, text=eti, anchor="nw", fill=col_e, font=F(7, True), width=larga - 40)
+            y = (cc.bbox(i_e) or (0, 0, 0, yb + 13))[3] + 3
             if r_["mio"] and not r_["incluso"] and r_["tipo"] != "risultato":
                 for testo_, tono_ in self.due_voti(b["x"], fz, r_):
                     y = self.pillola_voto(cc, x0 + 22, y, larga - 44, testo_, tono_) + 3
+                # l'equity contro il suo range (21 nov 2026, equity.py): la tua magia se va a segno e se lui risponde, pesate dalla probabilita' che risponda
+                if b["x"].get("tipo") == "Constructed" and r_["testo"].startswith("You cast "):
+                    try:
+                        import equity as EQ_
+                        eq_ = EQ_.della_riga(b["x"], fz["t"], r_["testo"], self.righe or [])
+                    except Exception:       # noqa: BLE001 - senza l'equity la riga resta com'era
+                        eq_ = None
+                    if eq_:
+                        y = self.pillola_voto(cc, x0 + 22, y, larga - 44, f"EQUITY VS HIS RANGE · {eq_['equity']:.0f}% · it resolves {eq_['p_res']:.0f}% · "
+                                              f"if he answers {eq_['p_ans']:.0f}% · he answers {100 * eq_['q']:.0f}%", "azzurro") + 3
+                # il combattimento (21 nov 2026, equity.risolvi, Constructed e Limited): come dichiarato, a regole, contro la sua risposta prima del danno
+                if r_["testo"].startswith(("You attacked with ", "You blocked ")):
+                    try:
+                        import equity as EQ_
+                        eq_ = EQ_.della_riga_combattimento(b["x"], fz["t"], r_["testo"], self.righe or [])
+                    except Exception:       # noqa: BLE001
+                        eq_ = None
+                    if eq_:
+                        y = self.pillola_voto(cc, x0 + 22, y, larga - 44, f"EQUITY VS HIS RANGE · {eq_['equity']:.0f}% · as declared {eq_['p_res']:.0f}% · "
+                                              f"if he answers before damage {eq_['p_ans']:.0f}% · he answers {100 * eq_['q']:.0f}%", "azzurro") + 3
             # la barretta di chi e' il voto e la riga accesa sul passo aperto
             cc.create_rectangle(x0 + 12, y0 + 2, x0 + 15, y - 4, fill=col if not r_["incluso"] else "#2a3140", outline="")
             if on:
@@ -4136,6 +4252,7 @@ class PaginaPerformance:
         self._mano_suo_items = []
         self._pila_item = None
         self._pezzo_id = {}
+        self._pezzo_gruppo = {}
         self._pedine_nomi = getattr(self, "_pedine_nomi", {})
         for q in pezzi:
             im = ImageTk.PhotoImage(q["img"])
@@ -4153,6 +4270,9 @@ class PaginaPerformance:
                 self._gruppo_item[it] = k_g
             if q["zkey"] in ("mio", "suo") and len(q["ids"]) == 1:      # una carta sola (non un gruppo di pedine): si tappa e si stappa da sola
                 self._pezzo_id[q["ids"][0]] = (it, q["box"], q["tap"], q["nome"])
+            elif q["zkey"] in ("mio", "suo") and q["ids"]:      # dentro un gruppo (le terre uguali col xN): anche lei si gira (21 nov 2026, sotto)
+                for id_q in q["ids"]:
+                    self._pezzo_gruppo[id_q] = (it, q["box"], q["tap"], q["nome"])
             if q["zkey"] in ("mio", "suo", "mano"):
                 self._box_zona.append((q["zkey"], q["nome"], bx, q["tap"], it, q["ped"]))
             elif q["zkey"].startswith("esi_mano_"):      # la fila PLAYABLE accanto alla mano: la carta che diventa giocabile ci vola (anima_board)
@@ -4860,6 +4980,15 @@ class PaginaPerformance:
         tap_prima = {c_[5]: bool(c_[1]) for lato in ("mio", "suo") for c_ in (prima.get(lato) or []) if len(c_) > 5}
         girate = sorted(((id_, it_g, box_g, tap_g, n_g) for id_, (it_g, box_g, tap_g, n_g) in (getattr(self, "_pezzo_id", {}) or {}).items()
                          if id_ in tap_prima and tap_prima[id_] != bool(tap_g) and id_ not in cambi), key=lambda g_: (g_[2][1], g_[2][0]))
+        # la terra che si tappa ed entra in un gruppo uguale gia' tappato (o si stappa ed entra in quello stappato) non ha un pezzo suo: si gira il gruppo
+        # che la riceve, una volta (21 nov 2026, il debug: l'avversario paga con un'Island e un secondo Dismal Backwater, e il Dismal saliva a x2 senza
+        # girarsi; la regola «una mano sola»: ogni terra del pagamento si gira, una alla volta)
+        visti_g = {g_[1] for g_ in girate}
+        for id_, (it_g, box_g, tap_g, n_g) in (getattr(self, "_pezzo_gruppo", {}) or {}).items():
+            if id_ in tap_prima and tap_prima[id_] != bool(tap_g) and id_ not in cambi and it_g not in visti_g:
+                visti_g.add(it_g)
+                girate.append((id_, it_g, box_g, tap_g, n_g))
+        girate.sort(key=lambda g_: (g_[2][1], g_[2][0]))
         # il combattimento (14 nov 2026, Autore: «dopo la dichiarazione di attacchi e difesa le carte si muovono per dirigersi verso la direzione, le carte
         # che muoiono vanno in overlay desaturato prima di andare al cimitero», «insomma animiamo il combattimento»): gli attaccanti avanzano verso chi
         # attaccano e i bloccanti verso l'attaccante (spinte nuove, una alla volta), nel passo del danno ogni attaccante colpisce (avanti e indietro), poi
@@ -6220,6 +6349,56 @@ class PaginaPerformance:
         if c.find_withtag("frecce"):
             c.tag_lower("giocabile", "frecce")
 
+    def giocabili_col_solito(self, nomi):
+        """Le carte che potevi giocare, ognuna con quanto rende di solito lanciarla in questa fase e tratto di partita col tuo mazzo (21 nov 2026, la
+        revisione del range, punto 4: «il replayer valuta le carte giocabili»; solito_righe, gli stessi gradini del voto per fase). Dalla migliore; le
+        abilita' («carta: testo») e le carte senza abbastanza esempi restano col solo nome."""
+        b = getattr(self, "_board", None) or {}
+        try:
+            import ev_partita as EV_
+            import solito_righe as SR
+            passo = (b.get("passi") or [])[b.get("i", 0)]
+            t = passo[2]
+            fz = dict(f=EV_.FASE_PASSO.get(passo[0].split(" · ")[-1], "main1"), giro=(t + 1) // 2)
+            base = [z for z in self.righe or [] if z["tipo"] == b["x"].get("tipo")]
+        except Exception:       # noqa: BLE001
+            return list(nomi)
+        con, senza = [], []
+        for n_ in nomi:
+            if ": " in n_:
+                senza.append(n_)
+                continue
+            try:
+                so = SR.solito(b["x"], dict(testo=f"You cast {n_}", mio=True, incluso=False, ev=0.0), fz, base)
+            except Exception:       # noqa: BLE001
+                so = None
+            # solo i gradini della carta o del suo tipo: «qualunque magia lanciata» non dice niente di questa carta (e una carta sconosciuta e' «Other»)
+            if so and so.get("media") is not None and not so["gradino"].startswith("the same kind of play") and not so["gradino"].startswith("an other"):
+                con.append((so["media"], f"{n_} (usually {so['media']:+.1f})".replace("-", "−")))
+            else:
+                senza.append(n_)
+        return [t_ for _m, t_ in sorted(con, key=lambda z: -z[0])] + senza
+
+    def righe_stato_avversario(self):
+        """Quello che si sa di lui a fine del turno prima (stato_avversario, 21 nov 2026): le carte che puo' giocare dall'esilio o dal cimitero e la
+        rianimazione pronta. Fatti del tavolo, non stime (la rianimazione e' letta dal testo, grado C)."""
+        b = getattr(self, "_board", None) or {}
+        try:
+            import stato_avversario as SA
+            passo = (b.get("passi") or [])[b.get("i", 0)]
+            st = SA.al_turno(b["x"], passo[2] - 1)
+        except Exception:       # noqa: BLE001
+            return []
+        out = []
+        if st.get("gioca"):
+            out.append(("#ff9a3c", "HE CAN PLAY FROM " + " · ".join(f"{'EXILE' if z_ == 'esi' else 'GRAVEYARD'}: {n_}" for n_, z_ in st["gioca"][:4])))
+        if st.get("rianima"):
+            out.append(("#ff9a3c", f"HIS GRAVEYARD · {', '.join(st['bersagli'][:3])} can come back"
+                        + (f" ({', '.join(st['modo_rianima'][:2])})" if st.get("modo_rianima") else "")))
+        if st.get("noti"):
+            out.append(("#ff9a3c", "IN HIS HAND, KNOWN · " + ", ".join(st["noti"][:5])))
+        return out
+
     def righe_info(self, f):
         """Le righe del racconto che vengono da cosa Arena ti ha chiesto e detto in questo passo (16 nov 2026, Autore: «vai monta»)."""
         inf = (f or {}).get("info") or {}
@@ -6252,7 +6431,9 @@ class PaginaPerformance:
         for mio_, fr_ in inf.get("ch") or []:
             out.append(("#ffe08a", f"{'YOU SAY' if mio_ else 'OPPONENT SAYS'} · {fr_}"))
         if inf.get("gioc"):
-            out.append(("#5acdff", "YOU COULD PLAY · " + ", ".join(inf["gioc"][:8]) + (f" +{len(inf['gioc']) - 8}" if len(inf["gioc"]) > 8 else "")))
+            out.append(("#5acdff", "YOU COULD PLAY · " + ", ".join(self.giocabili_col_solito(inf["gioc"][:8]))
+                        + (f" +{len(inf['gioc']) - 8}" if len(inf["gioc"]) > 8 else "")))
+        out += self.righe_stato_avversario()
         if inf.get("pa"):
             out.append(("#39d98a", f"COULD ATTACK · {len(inf['pa'])} creature{'s' if len(inf['pa']) != 1 else ''}"))
         if inf.get("pb"):
@@ -8947,7 +9128,20 @@ class PaginaPerformance:
                 ev_t, col_ev = "No turn-by-turn data for these games yet.", C["grigio"]
             else:
                 ev_t, col_ev = "-", C["grigio"]
-            for etichetta, testo, colore in (("EV IN THOSE TURNS", ev_t, col_ev), ("OTHER PLAYERS", altri, col_altri), ("WHAT IT IS", t["spiega"], C["testo"]),
+            motore_ = None
+            if self.tipo == "Limited" and t["con"]:     # il giudice del motore di partita (21 nov 2026, il leaker intelligente, passo 3)
+                try:
+                    import leak as LK_
+                    g_ = LK_.giudice_motore(r, t["k"])
+                    motore_ = LK_.testo_motore(g_)
+                    col_m = (C["rosso"] if g_["meglio"] > g_["stessa"] + g_["pari"] else C["verde"] if g_["stessa"] > g_["meglio"] + g_["pari"]
+                             else C["testo"]) if motore_ else None
+                except Exception:       # noqa: BLE001 - senza il motore la riga non c'e'
+                    motore_ = None
+            righe_l = [("EV IN THOSE TURNS", ev_t, col_ev), ("OTHER PLAYERS", altri, col_altri)]
+            if motore_:
+                righe_l.append(("THE GAME ENGINE", motore_, col_m))
+            for etichetta, testo, colore in (*righe_l, ("WHAT IT IS", t["spiega"], C["testo"]),
                                               ("WHY IT COSTS", t["perche"], C["testo"]), ("EXAMPLE", t["esempio"], C["grigio"]),
                                               ("HOW TO FIX", t["come"], "#e8d28a")):
                 c.create_text(18, yy, text=etichetta, anchor="nw", fill=C["azzurro"] if etichetta != "HOW TO FIX" else "#e8d28a", font=F(7, True))

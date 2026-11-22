@@ -185,6 +185,58 @@ COME = {"l1": "Play a land every turn, unless you are holding it on purpose. The
 RECENTI = 50        # il trend: le ultime RECENTI partite contro quelle prima
 
 
+# Il leaker intelligente, passo 3 (21 nov 2026, dal memo: «il giudice della giocata migliore col motore di partita (oggi solo FRA)»; Autore: «Facciamo
+# ... Il leaker intelligente, passo 3»): ogni leak di un turno si mette contro il giudizio dell'IS-MCTS (Motore_EV/ismcts.py, letto da Motore_EV/voti.linea)
+# sullo stesso turno: le candidate negli stessi mondi fino alla fine del suo turno dopo. Il punto del motore e' la PRIMA mossa del tuo turno («agisci»),
+# l'attacco o il blocco: il leak si giudica sul punto del suo tipo (MOTORE_TIPO). «meglio» = il motore trova una linea migliore della tua (il leak regge);
+# «stessa» = il motore sceglie quello che hai fatto tu; «pari» = la tua linea e la sua sono nel rumore. Solo dove il pilota e' passato (oggi il Limited di
+# FRA). Grado C: la prima mossa del turno non e' sempre la mossa del leak (L3 e' la creatura prima dell'attacco, L14 la terra prima della pescata).
+MOTORE_TIPO = {"l1": ("agisci",), "l2": ("agisci",), "l3": ("agisci",), "l4": ("blocca",), "l5": ("attacca", "blocca"), "l8": ("agisci",),
+               "l9": ("attacca",), "l10": ("agisci",), "l11": ("attacca",), "l14": ("agisci",)}
+
+
+def giudice_motore(r, k):
+    """-> dict(meglio, stessa, pari, punti) sulle partite r per il leak k, o None se il leak non ha un punto del motore."""
+    tipi = MOTORE_TIPO.get(k)
+    if not tipi:
+        return None
+    try:
+        import os as _os
+        cart = _os.path.join(percorsi.ROOT, "Motore_EV")
+        if cart not in sys.path:
+            sys.path.insert(0, cart)
+        import voti
+    except Exception:       # noqa: BLE001 - senza il motore dell'EV niente giudice
+        return None
+    c = dict(meglio=0, stessa=0, pari=0)
+    for x in r:
+        turni = (x.get("leak") or {}).get(k)
+        if not isinstance(turni, list):
+            continue
+        for t in turni:
+            for tp in tipi:
+                try:
+                    v = voti.linea(x.get("partita"), t, tp)
+                except Exception:       # noqa: BLE001
+                    v = None
+                if v:
+                    c["stessa" if v["stessa"] else "meglio" if v["meglio"] else "pari"] += 1
+                    break
+    c["punti"] = c["meglio"] + c["stessa"] + c["pari"]
+    return c
+
+
+def testo_motore(g):
+    """La riga THE GAME ENGINE di un leak, in inglese; None senza punti."""
+    if not g or not g["punti"]:
+        return None
+    n = g["punti"]
+    return (f"On {n} of these turns the game engine played the game forward from your board (Limited, the sets it knows): it found a better line "
+            f"{g['meglio']} time{'s' * (g['meglio'] != 1)}, chose what you did {g['stessa']} time{'s' * (g['stessa'] != 1)}, and {g['pari']} "
+            f"time{'s' * (g['pari'] != 1)} your line and its best were too close to tell. It judges the first move of the turn, the attack or the block, so "
+            "read it as a second opinion, not a verdict.")
+
+
 def tracker(r):
     """R10: per ogni leak, nelle partite r che hanno i momenti: in quante c'e' (il tasso), il win rate con e senza, e il trend (il tasso nelle ultime RECENTI
     partite contro quelle prima). La popolazione (gli altri giocatori) non c'e': servirebbero i dati condivisi (C12, scelta di Autore).
@@ -1084,6 +1136,20 @@ def prova():
     if _carta("Three Steps Ahead"):
         casi.append(("una spree costa anche la modalita' piu' economica: Three Steps Ahead {U} + {2} = 3 (Arena: manaCost U + 2); negativa: Opt resta 1",
                      _costo("Three Steps Ahead") == ["U", "1", "1"] and costo_vero("Three Steps Ahead") == 3 and costo_vero("Opt") == 1))
+    # il giudice del motore (21 nov 2026): un punto del pilota finto sullo stesso turno e tipo
+    giudice_motore([], "l14")       # mette Motore_EV nel sys.path
+    try:
+        import voti as _VT
+        vecchia = _VT.linea
+        _VT.linea = lambda mid, t, tp: (dict(stessa=False, meglio=True) if (mid, t, tp) == ("m1", 5, "agisci") else
+                                        dict(stessa=True, meglio=False) if (mid, t, tp) == ("m1", 7, "agisci") else None)
+        g_ = giudice_motore([dict(partita="m1", leak={"l14": [5, 7, 9]})], "l14")
+        casi.append(("il giudice del motore: una linea migliore, una uguale, un turno senza punto", g_ == dict(meglio=1, stessa=1, pari=0, punti=2)))
+        casi.append(("negativa: la concessione non ha un punto del motore", giudice_motore([dict(partita="m1", leak={"l7": True})], "l7") is None))
+        casi.append(("negativa: senza punti niente riga", testo_motore(giudice_motore([dict(partita="zz", leak={"l14": [3]})], "l14")) is None))
+        _VT.linea = vecchia
+    except ImportError:
+        casi.append(("il giudice del motore: Motore_EV/voti.py non c'e'", False))
     for n, ok in casi:
         print(("ok    " if ok else "ROSSO ") + n)
     print(f"{sum(1 for _n, ok in casi if ok)}/{len(casi)}")

@@ -1,0 +1,64 @@
+{
+ "data": "2026-11-22",
+ "nota": "ev_partita.p_unica: logit(P fine turno) = a + b logit(P letta)",
+ "Constructed|comb|mio": {
+  "a": 0.1205,
+  "b": 1.0432,
+  "n": 3285
+ },
+ "Constructed|comb|suo": {
+  "a": -0.1322,
+  "b": 1.01,
+  "n": 3286
+ },
+ "Constructed|m2|mio": {
+  "a": 0.0136,
+  "b": 1.0015,
+  "n": 3285
+ },
+ "Constructed|m2|suo": {
+  "a": -0.0267,
+  "b": 1.0001,
+  "n": 3286
+ },
+ "Constructed|main1|mio": {
+  "a": -0.0471,
+  "b": 0.9673,
+  "n": 5510
+ },
+ "Constructed|main1|suo": {
+  "a": -0.0661,
+  "b": 0.9811,
+  "n": 5138
+ },
+ "Limited|comb|mio": {
+  "a": 0.1933,
+  "b": 1.0217,
+  "n": 509
+ },
+ "Limited|comb|suo": {
+  "a": -0.2152,
+  "b": 1.0383,
+  "n": 508
+ },
+ "Limited|m2|mio": {
+  "a": 0.0618,
+  "b": 0.9991,
+  "n": 509
+ },
+ "Limited|m2|suo": {
+  "a": -0.0335,
+  "b": 1.0085,
+  "n": 508
+ },
+ "Limited|main1|mio": {
+  "a": -0.1104,
+  "b": 0.9278,
+  "n": 826
+ },
+ "Limited|main1|suo": {
+  "a": -0.1497,
+  "b": 0.9583,
+  "n": 789
+ }
+}

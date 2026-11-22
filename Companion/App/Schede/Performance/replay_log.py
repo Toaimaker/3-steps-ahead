@@ -768,6 +768,11 @@ def azioni(righe, nome=lambda g: None, interni=False):
                 for a_ in (msg.get("actionsAvailableReq") or {}).get("actions") or []:
                     k_ = {"ActionType_Cast": "C", "ActionType_Play": "P", "ActionType_Activate": "A"}.get(a_.get("actionType"))
                     i_ = a_.get("instanceId")
+                    # solo quello che puoi pagare (21 nov 2026, Autore: «quando gioco terre che hanno due mana differenti ... mi dice che posso giocare
+                    # cose a un costo superiore»): Arena manda ogni lancio legale, anche quelli che le tue terre non pagano; pagabile = Arena ha la soluzione
+                    # di pagamento automatica (autoTapSolution) o il costo non ha mana, come le «disponibili» di mana_aperto
+                    if k_ in ("C", "A") and a_.get("manaCost") and not a_.get("autoTapSolution"):
+                        continue
                     if k_ and i_ and zona_di.get(i_) and [i_, k_] not in [x_[:2] for x_ in lst_]:
                         lst_.append([i_, k_, zona_di[i_], MA.grp_vero(ogg(i_), tutti) or a_.get("grpId") or 0, a_.get("abilityGrpId") or 0,
                                      1 if "CardType_Instant" in (ogg(i_).get("cardTypes") or []) else 0])
@@ -1343,6 +1348,21 @@ def prova():
                  len(fp_) == 5 and [tx for _c, tx in fp_[2]["ev"]] == ["paid mana for Shock"] and fp_[2]["foto"]["c"][0][0][1] == 1
                  and 200 in fp_[2]["foto"]["m"][0] and [tx for _c, tx in fp_[3]["ev"]] == ["cast Shock"] and fp_[3]["foto"]["c"][0][0][1] == 1))
     casi.append(("negativa: un messaggio senza ManaPaid non cambia la foto del lancio e non fa il passo del pagamento", len(fn_) == 4 and fn_[2]["foto"]["c"][0][0][1] == 0))
+    # le giocate offerte (21 nov 2026, Autore: le terre a due colori, «mi dice che posso giocare cose a un costo superiore»): Arena elenca anche i lanci
+    # che le tue terre non pagano; resta solo chi ha la soluzione di pagamento (autoTapSolution) o un costo senza mana. Due carte in mano: 1 pagabile, 2 no
+    def aar(acts):
+        return "[UnityCrossThreadLogger]x " + json.dumps(dict(greToClientEvent=dict(greToClientMessages=[dict(
+            type="GREMessageType_ActionsAvailableReq", systemSeatIds=[1], actionsAvailableReq=dict(actions=acts))])))
+    mano2 = gs(type="GameStateType_Full", zones=[dict(zoneId=31, type="ZoneType_Hand", ownerSeatId=1, objectInstanceIds=[1, 2])],
+               players=[dict(systemSeatNumber=1, lifeTotal=20), dict(systemSeatNumber=2, lifeTotal=20)], turnInfo=dict(turnNumber=3, activePlayer=1),
+               gameObjects=[carta(1, 100, 31, 1), carta(2, 200, 31, 1)], annotations=[dict(type=["AnnotationType_NewTurnStarted"], affectedIds=[1])])
+    costo = [dict(color=["ManaColor_Generic"], count=3)]
+    fg_ = azioni([mano2, aar([dict(actionType="ActionType_Cast", instanceId=1, grpId=100, manaCost=costo, autoTapSolution=dict(autoTapActions=[])),
+                              dict(actionType="ActionType_Cast", instanceId=2, grpId=200, manaCost=costo),
+                              dict(actionType="ActionType_Pass")])], nomi.get)
+    gi_ = [e_[0] for e_ in ((fg_[-1]["foto"].get("gi") or {}).get("a") or [])] if fg_ else None
+    casi.append(("le giocate offerte: la carta pagabile c'e'; negativa: quella offerta senza soluzione di pagamento no (la terra doppia non da' due mana)",
+                 gi_ == [1]))
     # il bersaglio scelto in un messaggio dopo il lancio (14 nov 2026: Erode, l'abilita' di Seam Rip): la freccia sta nel passo della magia in pila
     import json as _j
     lancio_ = _j.loads(righe[3].split(" ", 1)[1])

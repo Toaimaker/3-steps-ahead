@@ -12,7 +12,7 @@ I comportamenti, dal log (grado C, le regole sono scritte qui):
              no_corsa    nessun attacco con creature in campo quando la corsa era tua (il tuo orologio su di lui non piu' lungo del suo su di te)
              chump       nel suo turno blocchi, il tuo bloccante muore, il suo attaccante resta, e senza quel blocco non morivi
   freddezza  corsa       attacchi quando la corsa e' tua
-  inganno    trappola    lanci una magia nel suo combattimento
+  inganno    trappola    lanci una magia nel suo combattimento, dopo che ha dichiarato gli attaccanti (21 nov 2026; prima: in tutta la fase)
              bluff       a fine turno 2+ terre stappate, in mano niente di istantaneo o flash, lui ha creature e nel suo turno non attacca con tutte
 
 Il valore: lo scarto della finestra (il tuo turno piu' il suo dopo) contro il solito del mazzo (ev_partita.turni_con_scarto). Per ogni comportamento,
@@ -38,6 +38,7 @@ import ev_partita as EV  # noqa: E402
 import leak  # noqa: E402
 
 PRESSIONE_P = 30.0
+PASSI_TRAPPOLA = ("Step_DeclareAttack", "Step_DeclareBlock", "Step_FirstStrikeDamage", "Step_CombatDamage")
 OROLOGIO = 2
 LINEE = {"tappato": "panico", "no_corsa": "panico", "chump": "panico", "corsa": "freddezza", "trappola": "inganno", "bluff": "inganno",
          "aspetta": "speranza", "aspetta_catena": "strategia", "catena": "strategia"}
@@ -126,7 +127,13 @@ def spot_partita(x):
     fine = {t: (att, f) for t, att, f in d.get("foto") or []}
     stappate = {(t, chi): (s, n) for t, chi, s, n in d.get("fine") or []}
     magie = collections.Counter((t, s_) for t, s_, _g, _f in d.get("fasi") or [])
-    in_comb = {(t, s_) for t, s_, _g, f in d.get("fasi") or [] if f == "Phase_Combat"}
+    # la trappola nel solo combattimento (21 nov 2026, dal memo: «la trappola nel solo combattimento»): una magia dopo che lui ha dichiarato gli attaccanti
+    # (i passi dei blocchi e del danno, passi_lanci di mana_aperto), non all'inizio del combattimento (tappare un attaccante prima e' un'altra cosa) ne' a fine
+    # turno; senza passi_lanci (i dati di prima) resta la fase di combattimento
+    if d.get("passi_lanci") is not None:
+        in_comb = {(t, s_) for t, s_, _g, p_ in d.get("passi_lanci") or [] if p_ in PASSI_TRAPPOLA}
+    else:
+        in_comb = {(t, s_) for t, s_, _g, f in d.get("fasi") or [] if f == "Phase_Combat"}
     comb = {(m[1], m[2]): m for m in d.get("momenti") or [] if m[0] == "comb" and len(m) > 4 and m[4] and isinstance(m[3], dict)}
     p0 = {z["t"]: z["p0"] for z in c["turni"] if z["mio"]}
     out = []

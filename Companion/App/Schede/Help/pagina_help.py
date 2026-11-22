@@ -172,7 +172,7 @@ SEZIONI = (
                 "then WHAT IT IS, WHY IT COSTS, an EXAMPLE and HOW TO FIX. Click a leak to keep only its games, Watch › opens them "
                 "in the replayer right on the mistake. OTHER PLAYERS: in Limited, how often the same leak happens to 17Lands players (all of them and Mythic), "
                 "from their public replays (CC BY 4.0, 17lands.com/public_datasets): 7 leaks of 15 can be measured there, the others need tapped lands or "
-                "the phase of each spell; Constructed has no public replays, the comparison comes with the shared games. Mana kept open for the "
+                "the phase of each spell; Constructed has no public replays, the comparison comes with the shared games. THE GAME ENGINE: in Limited, on the turns with the habit, what our game engine found playing the game forward from your board (the sets it knows: a better line, the same as yours, or too close to tell); it judges the first move of the turn, the attack or the block, a second opinion, not a verdict. Mana kept open for the "
                 "opponent's turn is not a leak: if you cast something on their turn that mana is taken away first, and if you held an instant you could "
                 "pay it counts only as «held mana open and never used it» when you never used it. Synergies count: a creature cast before attacking "
                 "that pumps, taps a blocker, shows you their hand or feeds a payoff the attack turns on (lifegain, their life loss, your creatures "
@@ -228,7 +228,7 @@ SEZIONI = (
              "cards that do the least come first (the ones with few games stay at the end). Merits › shows what each deed of a card is worth, "
              "measured on your games: the board after the deed against the same board without it (won a combat, traded, hit unblocked, dealt the lethal, "
              "saved you from lethal, chump blocked, drew a removal, died for nothing). In Habits, EV IN THOSE TURNS: the turns with that habit against the "
-             "usual. In the replayer, on top, WIN CHANCE · NOW: your chance to win against the opponent's at this step, and how it moved since the start. Then the EV vote of each phase: one row for everything that happened (green: points you gained, red: points you lost; the label says whose they are: your play, the opponent's mistake, the opponent's good play, a result), the phase total at the end of the phase against the usual; click a row to jump to its step. Under some of your plays, two more votes: BEST LINE, the best alternative our search found by playing every option in the same simulated worlds to the end of the opponent's next turn (green: yours was it; red: one was clearly better, with how many points of win chance; grey: about the same; only on games the search has gone through), and STRONG PLAYERS, how many 17Lands players with 60%+ win rate attack or block like you in the same situation (17Lands public replays, CC BY 4.0; Limited data, in Constructed a stretch). Under the phase total, the TOTAL VICTORY POINTS so far: your plays, the opponent's good plays, the opponent's mistakes, draws and results, and the total; a phase counts once it ends. In Advanced filters, under the answer: from the spot to what came next, "
+             "usual. In the replayer, on top, WIN CHANCE · NOW: your chance to win against the opponent's at this step, and how it moved since the start. Under it, CLOCK: in how many turns the Hero's power on the battlefield kills the Opponent and the Opponent's kills the Hero, power against life, and the cards in hand; it explains the number, it does not change it. Then the EV vote of each phase: one row for everything that happened (green: points you gained, red: points you lost; the label says whose they are: your play, the opponent's mistake, the opponent's good play, a result), the phase total at the end of the phase against the usual; click a row to jump to its step. Each of your plays is also set against your same plays with this deck (the same card, else the same kind of card, else the same kind of play, in the same phase and stage of the game; this game left out): «usually +1.2 (14 times, the same card) · vs usual +3.0», and its number is green or red by that difference, grey with few games to compare (they are read in the background the first time). Not blocking when you had an untapped creature is a play too: «You did not block» takes the damage you took. In Constructed, on top of your phases after the Opponent passed with 2+ untapped lands, VS HIS RANGE: how often his deck (the list recognized from the cards he showed, leaning on its archetype and on all decks when the games are few) answers on your turn in that case, with what, and how often your plays go through; answers held and never cast cannot be seen, so it is a minimum; when his deck is one of the meta, recognized from the cards he showed so far, the exact list counts: the answers of that list his open mana pays for, minus those he already used, among his unseen cards, and the chance he holds one. Under each spell you cast, in Constructed, EQUITY VS HIS RANGE: your chance to win if it resolves, if he answers it (the spell gone, one card fewer in his hand), how likely he is to answer, and the two weighed together. Under each of your attacks and blocks (Constructed and Limited) the same line for the combat: your chance if the combat goes as declared (resolved by the rules: blocks, first and double strike, deathtouch, trample, lifelink, indestructible), if he answers before damage by removing your strongest creature in it, and how often decks like his cast an instant before damage. In the story, YOU COULD PLAY gives each card how much casting it usually made at that point with your deck (the same card, else the same type of card; best first); HE CAN PLAY FROM shows the cards he may cast from exile or his graveyard, HIS GRAVEYARD a creature that can come back and with what, IN HIS HAND, KNOWN the cards of his hand Arena showed you. Under some of your plays, two more votes: BEST LINE, the best alternative our search found by playing every option in the same simulated worlds to the end of the opponent's next turn (green: yours was it; red: one was clearly better, with how many points of win chance; grey: about the same; only on games the search has gone through), LOSES TO, in the same worlds, the cards in his hand that make your play cost 5+ points of win chance (instant removal, a counterspell, a flash creature, a combat trick) with how often he held one, and STRONG PLAYERS, how many 17Lands players with 60%+ win rate attack or block like you in the same situation (17Lands public replays, CC BY 4.0; Limited data, in Constructed a stretch). Under the phase total, the TOTAL VICTORY POINTS so far: your plays, the opponent's good plays, the opponent's mistakes, draws and results, and the total; a phase counts once it ends. In Advanced filters, under the answer: from the spot to what came next, "
              "your creatures of the first filtered turn through the Opponent's next turn (survived, removed, died in combat), the removal spells one by one, "
              "and the EV of those turns against the usual. THEIR CARDS in Cards: the Opponent's cards with their EV for them while on their battlefield (red: "
              "they hurt you), and Lists ›: their decks rebuilt from the cards you saw, each card with how often it showed up. In the replayer the key "
@@ -256,7 +256,7 @@ SEZIONI = (
                                  "to the next moment (our win-probability model, trained on 17Lands public replay data, CC BY 4.0, 17lands.com/public_datasets; "
                                  "built on limited, a stretch in constructed) and how far it is from the average of your decisions of the same kind in the same "
                                  "part of the game (red 7+ points worse, yellow 3.5+, green the rest; not estimable without the data); click a row to open the replayer on that "
-                                 "moment, where the story says YOUR DECISION with the same numbers; «What would you do?» shows the red ones one at a time, you choose (attack with "
+                                 "moment, where the phase vote shows the same play; «What would you do?» shows the red ones one at a time, you choose (attack with "
                                  "everything, with some, don't attack; block or not), then you see what you did and what each choice gained on average in your "
                                  "games. A clue, not a verdict"),
       ("Decisions", "every combat as a decision with its outcome, by situation: your attacks (into untapped lands, with everything or holding back, "
@@ -286,7 +286,7 @@ SEZIONI = (
                     "graveyard, exile), one action at a time; the damage step plays as duels, one at a time: the table dims, the attacker and its blocker "
                     "meet, the damage shows on top and the life goes down hit by hit, whoever dies turns grey; the stack shows all its cards, and a spell aimed "
                     "at a card already on the stack points inside the stack; cards you can still play from exile sit next to the hand (FROM EXILE); in the "
-                    "limited games the companion followed, THE COMPANION SAID shows its advice for that turn")]),
+                    "limited games the companion followed, THE COMPANION SAID shows its advice for that turn; the cards in your hand you could play (blue border, YOU COULD PLAY in the story) are only those your lands can pay for, as Arena works it out, not every legal cast")]),
     ("risorse", "Resources", "Gold, gems, packs, cards and wildcards: what you earn and spend, the Farmer that plans how to spend them, the roadmap and the ROI.",
      [("Period · Range · Resource", "what the chart and the income show"), ("Farmer", "goal sliders; Create makes the roadmap, Dismiss ends it"),
       ("Gold value", "My win rate or Pack price"), ("Spend gold on packs", "off: gold never buys packs"), ("Roadmap check", "above or below the plan, day by day")]),
@@ -316,6 +316,28 @@ SEZIONI = (
       ("Version (bottom right, every tab)", "orange \"Download version X\" when a new version is out: click opens the download; green \"Up to date · latest "
                                             "version X\" when you have it; click to check again")]),
 )
+
+
+SEZIONE_DATABASE = ("database", "Database", "Only in your app: your games and the games the testers share, explored by deck. The decks are recognized from the "
+                    "meta lists; the testers are pseudonymous (pilot N) and opponents are never profiled.",
+                    [("Source · Format · Queue · Since", "which games"), ("Meta", "the decks you and the testers met, with the win rate and its range"),
+                     ("Matchups", "the player's deck against the opponent's"), ("Lists", "the lists of a deck, with versions, and the meta list"),
+                     ("Cards", "the opponent's cards seen and the win rate when seen"), ("Pilots", "who plays a deck; a group shows from 5 pilots"),
+                     ("Games", "your games open the replayer; the testers share a summary, no replay")])
+
+
+def sezioni():
+    """Le sezioni della Help: nell'app di Autore anche la scheda Database (21 nov 2026), che l'app pubblica non ha."""
+    try:
+        import account
+        pubblica = account.PUBBLICA
+    except Exception:       # noqa: BLE001
+        pubblica = True
+    if pubblica:
+        return SEZIONI
+    out = list(SEZIONI)
+    i = next((n for n, z in enumerate(out) if z[0] == "settings"), len(out))
+    return tuple(out[:i] + [SEZIONE_DATABASE] + out[i:])
 BOARD_EXTRA = (("Arrange ▾", "next to Add card, groups always whole · CARDS: by mana cost, type, color or rarity, lands last · GROUPS: one under the other · "
                               "CONNECTIONS: Network (parents left, children right, a free lane between columns so every arrow shows) and Network with groups"),
                ("Groups ▾", "next to Arrange · NEW: group the selection or the visible cards · FROM YOUR GAMES: best performers, hard to cast, weak in losses · "
@@ -378,7 +400,7 @@ class PaginaHelp:
             # la collezione di Untapped e la condivisione dei dati stanno nella scheda Settings dal 13 nov 2026 (Schede/Settings/pagina_settings.py)
         # i collegamenti alle sezioni
         link = tk.Frame(self.fr, bg=C["fondo"]); link.pack(fill="x", padx=16, pady=(0, 6))
-        for k, titolo, _d, _c in SEZIONI:
+        for k, titolo, _d, _c in sezioni():
             l = tk.Label(link, text=titolo, bg=C["fondo"], fg=C["accento"], font=F(9, True), cursor="hand2", padx=8)
             l.pack(side="left")
             l.bind("<Button-1>", lambda e, k=k: self.vai(k))
@@ -389,7 +411,7 @@ class PaginaHelp:
         t = self.cv = tk.Text(self.fr, bg=C["fondo"], fg=C["testo"], relief="flat", bd=0, highlightthickness=0, wrap="word", cursor="arrow", padx=0, pady=0,
                               selectbackground=C["sel"], inactiveselectbackground=C["sel"], exportselection=True)
         t.pack(fill="both", expand=True, padx=(16, 4), pady=(0, 10))
-        tutti = [(k, titolo, descr, comandi if comandi is not None else comandi_board()) for k, titolo, descr, comandi in SEZIONI]
+        tutti = [(k, titolo, descr, comandi if comandi is not None else comandi_board()) for k, titolo, descr, comandi in sezioni()]
         f_cmd = tkfont.Font(font=F(9, True))
         tab = 12 + max((f_cmd.measure(c) for _k, _t, _d, cc in tutti for c, _e in cc), default=180) + 18      # la colonna dei comandi, come la griglia di prima
         blocco = dict(background=C["scheda"], lmargincolor=C["scheda"], rmargincolor=C["scheda"], rmargin=12)

@@ -1,6 +1,6 @@
 {
- "version": "0.1.129",
- "date": "2026-11-21",
- "notes": "Replayer: Total victory points split like the EV engine, the kept hand against your deck's usual, the opponent's hand range in Limited; Habits: your lines with a deck under pressure",
+ "version": "0.1.130",
+ "date": "2026-11-22",
+ "notes": "Replayer: CLOCK under the win chance, the equity of your spells against the opponent's range and of every combat, LOSES TO in Limited, one steadier win-chance reading; Leak Finder opens in about 3 seconds",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }
