@@ -413,7 +413,10 @@ class PaginaHelp:
         t.pack(fill="both", expand=True, padx=(16, 4), pady=(0, 10))
         tutti = [(k, titolo, descr, comandi if comandi is not None else comandi_board()) for k, titolo, descr, comandi in sezioni()]
         f_cmd = tkfont.Font(font=F(9, True))
-        tab = 12 + max((f_cmd.measure(c) for _k, _t, _d, cc in tutti for c, _e in cc), default=180) + 18      # la colonna dei comandi, come la griglia di prima
+        # la colonna dei comandi, come la griglia di prima; si misurano solo i 12 comandi piu' lunghi per caratteri (23 nov 2026: misurarli tutti, ~130
+        # chiamate a Tk, costava 0,7 s all'avvio dell'app)
+        lunghi = sorted({c for _k, _t, _d, cc in tutti for c, _e in cc}, key=len, reverse=True)[:12]
+        tab = 12 + max((f_cmd.measure(c) for c in lunghi), default=180) + 18
         blocco = dict(background=C["scheda"], lmargincolor=C["scheda"], rmargincolor=C["scheda"], rmargin=12)
         t.tag_configure("titolo", font=F(12, True), foreground=C["titolo"], lmargin1=12, lmargin2=12, spacing1=10, spacing3=2, **blocco)
         t.tag_configure("descr", font=F(9), foreground=C["grigio"], lmargin1=12, lmargin2=12, spacing3=6, **blocco)

@@ -80,7 +80,9 @@ class Disegno:
 
     def rett(self, x0, y0, x1, y1, riempi=None, bordo=None, larghezza=1.0, raggio=0.0):
         s = SCALA
-        box = (x0 * s, y0 * s, x1 * s - 1, y1 * s - 1)
+        x0, x1 = min(x0, x1), max(x0, x1)       # angoli invertiti: un rettangolo storto, mai un errore che fa cadere il disegno (23 nov 2026)
+        y0, y1 = min(y0, y1), max(y0, y1)
+        box = (x0 * s, y0 * s, max(x0 * s, x1 * s - 1), max(y0 * s, y1 * s - 1))
         self.d.rounded_rectangle(box, radius=raggio * s, fill=_rgba(riempi) if riempi else None, outline=_rgba(bordo) if bordo else None,
                                  width=max(1, round(larghezza * s)) if bordo else 0)
 

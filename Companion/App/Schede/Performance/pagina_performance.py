@@ -531,6 +531,7 @@ class PaginaPerformance:
         self.area_av = {"io": 0, "lui": 0}      # la sottovoce aperta della fase Board (16 nov 2026)      # e la fase aperta di ognuna
         self.costruisci()
         self.fr.bind("<<Davanti>>", lambda e: self.se_sporca(), add="+")
+        self.fr.bind("<Destroy>", lambda e: setattr(self, "_chiusa", True) if e.widget is self.fr else None, add="+")      # i fili di sottofondo si fermano
         self.fr.bind("<Map>", lambda e: self.se_sporca(), add="+")
         self.ricarica()
 
@@ -539,8 +540,21 @@ class PaginaPerformance:
         self.sporca = True
 
     def se_sporca(self):
-        if self.sporca and self.righe is not None:
+        if (self.sporca or getattr(self, "_da_disegnare", False)) and self.righe is not None:
             self.disegna()
+
+    def _a_vista(self):
+        """Vero se la pagina si vede (come Pagina.davanti: montata e non coperta da un'altra scheda)."""
+        from pagina_base import Pagina
+        if Pagina.SUBITO:       # le prove disegnano anche le pagine nascoste
+            return True
+        try:
+            if Pagina.AVVIO or not self.fr.winfo_viewable():
+                return False
+        except Exception:       # noqa: BLE001
+            return False
+        p_ = str(self.fr)
+        return not any(p_ == d or p_.startswith(d + ".") for d in Pagina.DIETRO)
 
     def parti(self, draft, partite, aperto):
         if not self.deciso:
@@ -583,61 +597,81 @@ class PaginaPerformance:
                 return
             self.righe = esito.get("r") or []
             self.togli_carica()
-            self.disegna()
+            if self._a_vista():
+                self.disegna()
+            else:       # dietro un'altra scheda (23 nov 2026: all'avvio il disegno, coi conti dell'EV di tutte le partite, fermava la finestra 7 s)
+                self._da_disegnare = True
             if self._di_nuovo:
                 self.ricarica()
             self.fr.after(2500, lambda: self.scalda_decisioni(list(self.righe or [])))
         self.fr.after(150, aspetta)
 
     def scalda_decisioni(self, righe, da=0, a_volta=4):
-        """Le decisioni di ogni partita (decisioni._ricorda) calcolate a pezzi quando la pagina e' ferma (15 nov 2026, il debug del replayer: il primo replay
-        aperto nella sessione aspettava 1,5 s per il costo delle decisioni di tutte le partite). Poche partite alla volta, cosi' la finestra non si ferma."""
-        if not self.fr.winfo_exists():
-            return
-        if da >= len(righe):        # poi il solito riga per riga del voto per fase (solito_righe, 21 nov 2026), dalla partita piu' recente
-            self.fr.after(500, lambda: self.scalda_solito(list(reversed(righe))))
-            return
-        if getattr(self, "_anim_in_corso", False):          # mai mentre il replayer anima
-            self.fr.after(400, lambda: self.scalda_decisioni(righe, da, a_volta))
-            return
+        """Le decisioni e l'EV di ogni partita (decisioni._ricorda, ev_partita) calcolati prima che servano (15 nov 2026, il debug del replayer: il primo
+        replay aperto nella sessione aspettava 1,5 s). Dal 23 nov 2026 su un filo suo (Autore: «l'app sembra lenta a caricarsi»: sul filo della finestra
+        la fermava a pezzi), mai mentre il replayer anima; finito, la pagina nascosta si lascia preparare in anticipo (prepara_dietro della finestra), e poi
+        parte il solito riga per riga del voto per fase."""
+        import threading
+        import time as _t
         import ev_partita as EV_
-        for x in righe[da:da + a_volta]:
-            try:
-                DEC.per_partita(x)
-                DEC.per_partita_magie(x)
-                EV_._eventi(x)                  # i meriti delle carte dei due lati (il lettore di EV, 18 nov 2026): la prima apertura di Cards non aspetta
-                EV_._eventi(EV_.specchio(x))
-                EV_._giocate_partita(x)         # e le giocate (EV AT CAST, 18 nov 2026): il modello della P su ogni lancio, una volta per partita
-            except Exception:      # noqa: BLE001 - una partita senza dati si salta
-                pass
-        self.fr.after(30, lambda: self.scalda_decisioni(righe, da + a_volta, a_volta))
+        if getattr(self, "_dec_filo", None) is not None and self._dec_filo.is_alive():
+            return
+
+        def lavoro():
+            for x in righe[da:]:
+                if getattr(self, "_chiusa", False):      # mai Tk da questo filo: la pagina alza il segno quando si chiude
+                    return
+                while (getattr(self, "_anim_in_corso", False) or getattr(self, "_replayer_a_vista", False)) and not getattr(self, "_chiusa", False):
+                    _t.sleep(0.4)
+                try:
+                    EV_.partita(x)                  # i turni e l'EV della partita (EV VALUE, SPOT EV, i numeri in cima)
+                    DEC.per_partita(x)
+                    DEC.per_partita_magie(x)
+                    EV_._eventi(x)                  # i meriti delle carte dei due lati (il lettore di EV, 18 nov 2026): la prima apertura di Cards non aspetta
+                    EV_._eventi(EV_.specchio(x))
+                    EV_._giocate_partita(x)         # e le giocate (EV AT CAST, 18 nov 2026): il modello della P su ogni lancio, una volta per partita
+                except Exception:      # noqa: BLE001 - una partita senza dati si salta
+                    pass
+                _t.sleep(0.02)
+            if getattr(self, "_da_disegnare", False):
+                self.sporca = True          # adesso il disegno costa poco: la finestra lo fa quando e' ferma
+            _t.sleep(0.5)
+            if not getattr(self, "_chiusa", False):
+                self.scalda_solito(list(reversed(righe)))       # parte il suo filo, senza toccare Tk
+        self._dec_filo = threading.Thread(target=lavoro, daemon=True, name="scalda_decisioni")
+        self._dec_filo.start()
 
     def scalda_solito(self, righe, da=0):
-        """Le righe del voto per fase di ogni partita (solito_righe.calcola, ~0,17 s a partita), una alla volta e mai mentre il replayer anima; la copia su
-        disco ogni 20 partite. Le partite gia' nella copia non costano niente."""
+        """Le righe del voto per fase di ogni partita (solito_righe.calcola, ~0,17 s a partita), su un filo suo a priorita' di cortesia (23 nov 2026,
+        Autore: «l'app sembra lenta a caricarsi»: fino a quel giorno girava sul filo della finestra, una partita ogni 60 ms, e dopo ogni aggiornamento
+        del codice le rifaceva tutte: la finestra restava ferma 200-400 ms a ogni cambio di scheda per un paio di minuti). Mai mentre il replayer anima;
+        la copia su disco ogni 20 partite. Le partite gia' nella copia non costano niente."""
+        import threading
+        import time as _t
         import solito_righe as SR
-        if not self.fr.winfo_exists():
+        if getattr(self, "_solito_filo", None) is not None and self._solito_filo.is_alive():
             return
-        if da >= len(righe):
-            SR.salva()
-            return
-        if getattr(self, "_anim_in_corso", False):
-            self.fr.after(400, lambda: self.scalda_solito(righe, da))
-            return
-        fatte = 0
-        while da < len(righe) and fatte < 1:
-            x = righe[da]
-            da += 1
-            try:
-                if SR.gia_fatta(x):
+
+        def lavoro():
+            fatte = 0
+            for x in righe[da:]:
+                if getattr(self, "_chiusa", False):      # mai Tk da questo filo
+                    break
+                while (getattr(self, "_anim_in_corso", False) or getattr(self, "_replayer_a_vista", False)) and not getattr(self, "_chiusa", False):
+                    _t.sleep(0.4)
+                try:
+                    if SR.gia_fatta(x):
+                        continue
+                    SR.calcola(x)
+                    fatte += 1
+                except Exception:      # noqa: BLE001 - una partita senza dati si salta
                     continue
-                SR.calcola(x)
-                fatte += 1
-            except Exception:      # noqa: BLE001 - una partita senza dati si salta
-                pass
-        if da % 20 == 0:
+                if fatte % 20 == 0:
+                    SR.salva()
+                _t.sleep(0.15)          # lascia il filo della finestra libero fra una partita e l'altra (con 0,03 la finestra si disegnava a pezzi)
             SR.salva()
-        self.fr.after(60 if fatte else 1, lambda: self.scalda_solito(righe, da))
+        self._solito_filo = threading.Thread(target=lavoro, daemon=True, name="scalda_solito")
+        self._solito_filo.start()
 
     def mostra_carica(self, secondi):
         """«Loading your games…» al centro della pagina mentre la prima lettura dei log e' in corso (13 nov 2026, Autore: «la scheda performance non carica i
@@ -1365,6 +1399,7 @@ class PaginaPerformance:
         if self.righe is None:
             return
         self.sporca = False
+        self._da_disegnare = False
         self.adegua_cartelle()
         tutte = [x for x in self.righe if x["tipo"] == self.tipo]
         if tutte:
@@ -2272,6 +2307,10 @@ class PaginaPerformance:
                 self._passi_chiusi, self._graf_chiuso = True, True
                 self.liste_chiuse().update(mio=True, suo=True)
             f = self.fin_board = tk.Toplevel(self.fr); f.configure(bg=C["scheda"])
+            # il replayer a vista: i lavori di sottofondo (scalda_decisioni, scalda_solito) aspettano, cosi' le animazioni non perdono quadri (23 nov 2026)
+            f.bind("<Map>", lambda e, f=f: setattr(self, "_replayer_a_vista", True) if e.widget is f else None, add="+")
+            f.bind("<Unmap>", lambda e, f=f: setattr(self, "_replayer_a_vista", False) if e.widget is f else None, add="+")
+            f.bind("<Destroy>", lambda e, f=f: setattr(self, "_replayer_a_vista", False) if e.widget is f else None, add="+")
             f.title("The board")
             f.geometry(self.posto_board())
             f.bind("<Escape>", lambda e: self.chiudi_pila() if getattr(self, "_pila_aperta", None) else f.destroy())
@@ -2561,7 +2600,8 @@ class PaginaPerformance:
         fmax = max([1] + [max(z["forza"]) for z in m])
         larga_b = max(2, min(10, (t1 - t0) / max(1, n) / 3))
         for i, z in enumerate(m):
-            hm, hs = z["forza"][0] / fmax * (f1 - f0), z["forza"][1] / fmax * (f1 - f0)
+            # mai sotto zero (23 nov 2026: una forza negativa, i segnalini -1/-1, rovesciava la barretta e il disegno cadeva, timeline compresa)
+            hm, hs = max(0, z["forza"][0]) / fmax * (f1 - f0), max(0, z["forza"][1]) / fmax * (f1 - f0)
             if hm:
                 d.rett(pos(i) - larga_b - 0.5, f1 - hm, pos(i) - 0.5, f1, riempi=(36, 186, 255, 150))
             if hs:

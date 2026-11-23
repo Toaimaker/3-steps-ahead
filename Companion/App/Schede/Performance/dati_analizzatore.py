@@ -1761,7 +1761,9 @@ _CACHE = {}
 # il database delle carte): se cambia una cosa sola dell'ambiente si rifanno tutte, come prima; una partita nuova si fa da sola. Solo quello che esce da
 # riga(): sessioni, serie, versioni e draft si rifanno sempre, perche' dipendono dalle altre partite. RIGHE_COPIA=0 la spegne (le prove d'identita').
 import hashlib as _hashlib  # noqa: E402
-import pickle as _pickle  # noqa: E402
+import pickle as _pickle  # noqa: E402 - solo per l'impronta di una riga (dumps), mai per leggere un file
+import marshal as _marshal  # noqa: E402
+import datetime as _dt  # noqa: E402
 _F_RIGHE = None
 _RIGHE_MEM = {}
 
@@ -1770,12 +1772,26 @@ def _f_righe():
     global _F_RIGHE
     if _F_RIGHE is None:
         from ambiente import LOGDIR
-        _F_RIGHE = os.path.join(LOGDIR, "cache", "righe_analizzatore.pkl")
+        _F_RIGHE = os.path.join(LOGDIR, "cache", "righe_analizzatore.marshal")
     return _F_RIGHE
 
 
+_AMB = {}
+
+
 def _ambiente_righe():
-    """L'impronta di tutto quello da cui riga() dipende oltre la partita: i .py dell'app e del Companion, le regole, il database delle carte."""
+    """L'impronta di tutto quello da cui riga() dipende oltre la partita: i .py dell'app e del Companion, le regole, il database delle carte.
+    Ricordata 60 s (23 nov 2026, Autore: «l'app sembra lenta a caricarsi»: il riscaldamento del voto per fase la chiedeva a ogni partita, e ogni volta
+    percorreva tutti i file del Companion; a regime era la maggior parte del tempo della finestra)."""
+    import time as _t
+    if _AMB.get("v") is not None and _t.time() - _AMB.get("t", 0) < 60:
+        return _AMB["v"]
+    _AMB["v"] = _ambiente_calcola()
+    _AMB["t"] = _t.time()
+    return _AMB["v"]
+
+
+def _ambiente_calcola():
     h = _hashlib.sha1()
     radice = percorsi.ROOT
     for f_ in (os.path.join(radice, "Dati", "scryfall", "carte.json"),):      # i formati e l'identita' di colore delle carte
@@ -1819,6 +1835,20 @@ def _chiave_riga(p, r):
     return h.hexdigest()
 
 
+def _riga_dumps(x):
+    """Una riga in marshal (solo dati, mai codice: SICUREZZA.md R2; fino al 23 nov 2026 era pickle): la data come testo."""
+    q = x.get("quando")
+    return _marshal.dumps(dict(x, quando=q.isoformat()) if isinstance(q, _dt.datetime) else x)
+
+
+def _riga_loads(b):
+    x = _marshal.loads(b)
+    q = x.get("quando")
+    if isinstance(q, str):
+        x["quando"] = _dt.datetime.fromisoformat(q)
+    return x
+
+
 def _copia_righe():
     """{chiave: riga in pickle} della copia su disco, se l'ambiente e' lo stesso; {} se no."""
     if os.environ.get("RIGHE_COPIA") == "0":
@@ -1829,7 +1859,7 @@ def _copia_righe():
         return _RIGHE_MEM.get("righe") or {}
     try:
         with open(_f_righe(), "rb") as h:
-            c = _pickle.load(h)
+            c = _marshal.loads(h.read())
         righe_ = c["righe"] if c.get("amb") == amb else {}
     except Exception:       # noqa: BLE001 - copia assente o rotta: si rifa' tutto
         righe_ = {}
@@ -1846,7 +1876,7 @@ def _salva_righe(nuove):
         f = _f_righe()
         os.makedirs(os.path.dirname(f), exist_ok=True)
         with open(f + ".tmp", "wb") as h:
-            _pickle.dump(dict(amb=_RIGHE_MEM["amb"], righe=nuove), h, protocol=5)
+            _marshal.dump(dict(amb=_RIGHE_MEM["amb"], righe=nuove), h)
         os.replace(f + ".tmp", f)
         _RIGHE_MEM.update(letta=_RIGHE_MEM["amb"], righe=nuove)
     except OSError:
@@ -1882,13 +1912,13 @@ def righe(partite=None):
             b = copia.get(k)
             if b is not None:
                 try:
-                    out.append(_pickle.loads(b)); nuove[k] = b
+                    out.append(_riga_loads(b)); nuove[k] = b
                     continue
                 except Exception:       # noqa: BLE001 - una voce rotta si rifa'
                     pass
             x = riga(p, r)
             out.append(x)
-            nuove[k] = _pickle.dumps(x, protocol=5)
+            nuove[k] = _riga_dumps(x)
     if vere:        # solo le partite dei log: le prove con partite finte non toccano la copia
         _salva_righe(nuove)
     sessioni(out)
