@@ -1,6 +1,6 @@
 {
- "version": "0.1.131",
- "date": "2026-11-23",
- "notes": "Fixes: the replayer timeline no longer disappears in games with negative power; the app opens about twice as fast and switching tabs no longer stalls",
+ "version": "0.1.132",
+ "date": "2026-11-24",
+ "notes": "Replayer: the opponent's library count, lands that tap one at a time, a steadier win chance while a spell is on the stack, and replays that open on the moment of a filtered situation",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

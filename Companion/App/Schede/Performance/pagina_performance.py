@@ -3533,8 +3533,11 @@ class PaginaPerformance:
         if z["dove"] == "comb":
             return next((i for i in cand if p_is_comb(ps[i])), cand[-1])
         if z["dove"] == "magia":
-            i_m = next((i for i in cand if len(ps[i]) > 3 and isinstance(ps[i][3], dict) and ps[i][3].get("tipo") == "spell" and not ps[i][3].get("ab")
-                        and (z["mio"] is None or bool(ps[i][3].get("mio")) == z["mio"])), None)
+            spell_ = lambda i: len(ps[i]) > 3 and isinstance(ps[i][3], dict) and ps[i][3].get("tipo") == "spell" and not ps[i][3].get("ab")                 and (z["mio"] is None or bool(ps[i][3].get("mio")) == z["mio"])
+            # la magia della situazione (24 nov 2026: il board wipe, la contromagia): il passo di quella carta, se no la prima magia di chi la lancia
+            i_m = next((i for i in cand if spell_(i) and z.get("g") and ps[i][3].get("g") == z["g"]), None)
+            if i_m is None:
+                i_m = next((i for i in cand if spell_(i)), None)
             if i_m is not None:
                 return i_m
             # una magia senza bersagli non ha un passo «spell»: il primo passo con la carta nella pila (Every action; voci (nome, mio, abilita', grpId,

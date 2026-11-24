@@ -1426,6 +1426,10 @@ class Tappeto:
             in_comb = set()
             if rel and rel.get("tipo") == "comb":
                 in_comb = {a_[0] for a_ in rel.get("att") or []} | {b_[0] for b_ in rel.get("blocchi") or []}
+            if prima is not None:       # chi si gira in questo passo sta da solo (24 nov 2026: due terre uguali nel gruppo ×2 si giravano in un colpo solo)
+                tap_prima = {c[5]: c[1] for c in prima.get(chi) or [] if len(c) > 5}
+                in_comb = in_comb | {c[5] for c in f[chi] if len(c) > 5 and c[5] in tap_prima and bool(tap_prima[c[5]]) != bool(c[1])
+                                     and c[3] is None}      # solo le carte senza forza (le terre): le creature hanno i loro duelli e le loro frecce
             segni_ = f.get("segni") or {}
             gg = gruppi([c for c in f[chi] if not (len(c) > 5 and c[5] in attaccati)], in_comb, segni_)      # chi combatte sta da solo; le pedine uguali anche nei segni stanno insieme
             self._segni = segni_
@@ -1458,7 +1462,11 @@ class Tappeto:
                 pos[i_] = pos[host_]
         cima_ = f.get("cima") or (None, None)
         messa_ = f.get("messa") or {}
-        self.pila_zona(tela, d, "lib_suo", [], ARANCIO, n="?", retro=True, cima=cima_[1], scatole=scatole, messa=messa_.get("suo"))
+        gr_ = f.get("grimori") or (None, None)      # dal log quando c'e' (24 nov 2026): il suo grimorio non dice piu' «?», il tuo e' quello vero
+        if gr_[0] is not None:
+            grimorio = gr_[0]
+        n_suo_lib = gr_[1] if gr_[1] is not None else "?"
+        self.pila_zona(tela, d, "lib_suo", [], ARANCIO, n=n_suo_lib, retro=True, cima=cima_[1], scatole=scatole, messa=messa_.get("suo"))
         self.pila_zona(tela, d, "cim_suo", cim[1], ARANCIO, scatole=scatole, zone=zone)
         self.pila_zona(tela, d, "esi_suo", esi[1], ARANCIO, scatole=scatole, zone=zone)
         self.pila_zona(tela, d, "lib_mio", [], BLU, n=grimorio if grimorio is not None else "?", retro=True, cima=cima_[0], scatole=scatole, messa=messa_.get("mio"))
@@ -1466,7 +1474,7 @@ class Tappeto:
         self.pila_zona(tela, d, "esi_mio", esi[0], BLU, scatole=scatole, zone=zone)
         vel_ = f.get("vel") or (None, None)
         emb_ = f.get("emblemi") or ((), ())
-        self.giocatore(tela, d, "vita_suo", "OPPONENT", ARANCIO, vite[1], f.get("n_suo", 0), "?", False, pos, vel_[1], (), scatole)
+        self.giocatore(tela, d, "vita_suo", "OPPONENT", ARANCIO, vite[1], f.get("n_suo", 0), n_suo_lib, False, pos, vel_[1], (), scatole)
         self.giocatore(tela, d, "vita_mio", "YOU", BLU, vite[0], len(f.get("mano") or []), grimorio if grimorio is not None else "?", True, pos, vel_[0],
                        (), scatole)
         # gli scudi sotto il cerchio delle vite: i Paradigm attivi (le carte con Paradigm nell'esilio del proprietario) e gli emblemi veri (15 nov 2026)

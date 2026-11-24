@@ -581,14 +581,18 @@ def azioni(righe, nome=lambda g: None, interni=False):
         # ... dovrebbe restare visibile la carta in testa al mazzo / se poi la conosce anche l'avversario, allora dovrebbe avere il logo dell'occhio aperto»):
         # Arena la manda col grpId (privata: la conosce solo il proprietario; pubblica: tutti e due), per posto [grpId, 1 se pubblica] o None
         cm = [None, None]
+        lb = [None, None]       # quante carte nel grimorio di ognuno: la zona elenca anche le carte coperte (24 nov 2026, il «?» dell'Opponent)
         for zid, tp in zone.items():
             if tp == "ZoneType_Library" and zown.get(zid) in (1, 2):
+                lb[zown[zid] - 1] = len(zids.get(zid) or [])
                 ids_l = zids.get(zid) or []
                 o_l = obj.get(ids_l[0]) if ids_l else None
                 if o_l and o_l.get("grpId"):
                     cm[zown[zid] - 1] = [MA.grp_vero(o_l, tutti), 1 if o_l.get("visibility") == "Visibility_Public" else 0]
         if cm[0] or cm[1]:
             out["cm"] = cm
+        if lb[0] is not None or lb[1] is not None:
+            out["lb"] = lb
         # le carte della mano mostrate all'altro giocatore (15 nov 2026, il censimento: InstanceRevealedToOpponent, 698 volte): i grpId per posto
         mostrate = {i for a_ in pers.values() if "AnnotationType_InstanceRevealedToOpponent" in (a_.get("type") or []) for i in a_.get("affectedIds") or []}
         if mostrate:
@@ -1643,6 +1647,9 @@ def prova():
                         turnInfo=dict(turnNumber=2, activePlayer=1, step="Step_Upkeep"),
                         gameObjects=[carta(5, 100, 32, 1, visibility="Visibility_Private"), dict(instanceId=6, zoneId=32, type="GameObjectType_Card")],
                         annotations=[dict(type=["AnnotationType_NewTurnStarted"], affectedIds=[1])])], nomi.get)
+    # quante carte nei grimori (24 nov 2026): due e due, contate anche le coperte; negativa: la zona di un terzo posto non conta
+    casi.append(("i grimori contati dalla zona, anche le carte coperte (2 e 2); negativa: il posto 3 non entra",
+                 bool(fr_cm) and fr_cm[-1]["foto"].get("lb") == [2, 2]))
     # dove finisce la carta messa nel grimorio (15 nov 2026): in cima, in fondo, a meta'; negativa: rimessa in mano non dice il grimorio
     def messa_(lista, dest_tipo="ZoneType_Library"):
         r_ = azioni([gs(type="GameStateType_Full", zones=[dict(zoneId=32, type=dest_tipo, ownerSeatId=1, objectInstanceIds=lista)],

@@ -1008,7 +1008,64 @@ def spot_filtri(x, filtri):
         elif k in _TM.NOMI and v not in ("0", None):
             for t in (_TM.per_partita(x) or {}).get(k[3:]) or []:
                 aggiungi(t, "magia", True)
+        elif k.startswith("s_") and seat in (1, 2) and inizia is not None:
+            for t, dove, mio, g in spot_situa(x, k[2:], v):
+                aggiungi(t, dove, mio, fase=(None, g) if g else None)
     out.sort(key=lambda z: z["t"])
+    return out
+
+
+def spot_situa(x, key, v):
+    """I momenti di una situazione dei replay (situazioni_replay) nella partita x, se la partita ha il valore filtrato: [(turno di Arena, dove, mio, grpId)].
+    24 nov 2026 (Note/Replayer_Lacune.md voce 5): il replayer parte dal momento della situazione, come coi filtri turno per turno. Il board wipe, la
+    contromagia, il bersaglio nel cimitero e le rimozioni sulla magia che li fa; la vita piu' bassa sul primo turno che la tocca; vite, creature e terre a fine
+    del turno della situazione. [] senza un momento (le magie lanciate nella partita) o se la partita non ha quel valore."""
+    vals = v if isinstance(v, (list, tuple)) else [v]
+    if (x.get("situa") or {}).get(key) not in vals:
+        return []
+    d = _MANA.get(x.get("partita")) or {}
+    seat, inizia = x.get("seat"), x.get("inizia")
+    altro_s = 2 if seat == 1 else 1
+    comincia = {"io": inizia, "lui": not inizia}
+    t_di = lambda chi, n: 2 * n - 1 if comincia[chi] else 2 * n
+    out = []
+    m_ = re.fullmatch(r"(wipe|counter|cim|rim)_(io|lui)", key)
+    if m_:
+        tipo, chi = m_.groups()
+        posto = seat if chi == "io" else altro_s
+        for kind, t, _att, f, info in d.get("momenti") or []:
+            if kind != "spell" or not info or info.get("chi") != posto:
+                continue
+            tolti = colpiti_di(info)
+            fuori = info.get("fuori") or []
+            if tipo == "wipe":
+                ok = len(tolti) >= 3
+            elif tipo == "counter":
+                ok = any(z_ == "pila" and pr_ not in (None, posto) for _i, z_, pr_, _g in fuori)
+            elif tipo == "cim":
+                ok = any(z_ == "cim" for _i, z_, _p, _g in fuori)
+            else:
+                c = (f or {}).get("c") or [[], []]
+                suoi = {x_[5] for x_ in c[(altro_s if chi == "io" else seat) - 1] if len(x_) > 5}
+                ok = any(t_ in suoi for t_ in tolti)
+            if ok:
+                out.append((t, "magia", chi == "io", info.get("g")))
+        return out
+    m_ = re.fullmatch(r"(vita|crea)_t(\d+)", key)
+    if m_:
+        return [(t_di("io", int(m_.group(2))), "fine", None, None)]
+    m_ = re.fullmatch(r"terre_(io|lui)(\d+)", key)
+    if m_:
+        return [(t_di(m_.group(1), int(m_.group(2))), "fine", None, None)]
+    m_ = re.fullmatch(r"vita_(io|lui)", key)
+    if m_:
+        i = (seat if m_.group(1) == "io" else altro_s) - 1
+        fascia = lambda m: "16+" if m >= 16 else "11-15" if m >= 11 else "6-10" if m >= 6 else "1-5" if m >= 1 else "0 or less"
+        for t, _a, f in d.get("foto") or []:
+            vv = (f.get("v") or [None, None])[i]
+            if vv is not None and fascia(vv) == x["situa"][key]:
+                return [(t, "fine", None, None)]
+        return [(10 ** 6, "ultimo", None, None)]       # la vita piu' bassa all'ultimo stato (non fra le foto di fine turno)
     return out
 
 
@@ -1516,6 +1573,9 @@ def foto_partita(x):
     lato; None se la partita non ha il log. turni=[(turno, tuo turno?, foto, «fine»|«comb»|«spell», relazioni)]. Una foto: dict(mio=[(nome, tappata, pedina,
     forza, costituzione, id)], suo=[...], mano=[nomi], n_suo=carte nella sua
     mano, vite=(tu, lui), cim=(tuo cimitero, suo), esi=(tuo esilio, suo))."""
+    if x.get("simulata"):       # una partita del motore di partita (partite_motore.py)
+        import partite_motore
+        return partite_motore.foto_partita(x)
     d = _MANA.get(x.get("partita"))
     seat = x.get("seat")
     if not d or seat not in (1, 2) or "foto" not in d:
@@ -1644,6 +1704,7 @@ def gira_foto(f, seat):
                 # la carta in cima al grimorio che si conosce (tua, sua): (nome, pubblica) o None (15 nov 2026)
                 cima=tuple((nome_grp(c_[0]) or f"#{c_[0]}", bool(c_[1])) if c_ else None for c_ in ((f.get("cm") or [None, None])[a], (f.get("cm") or [None, None])[b])),
                 cim=(nomi((f.get("g") or vuoto)[a]), nomi((f.get("g") or vuoto)[b])), esi=(nomi((f.get("e") or vuoto)[a]), nomi((f.get("e") or vuoto)[b])),
+                grimori=tuple((f.get("lb") or [None, None])[k_] for k_ in (a, b)),      # quante carte nei grimori (tuo, suo), dal log (24 nov 2026)
                 pila=[(nome_grp(g) or f"#{g}", chi == seat, bool(ab), g, i) for g, chi, ab, i in f.get("p") or []],
                 riv=[(nome_grp(g) or f"#{g}", chi == seat) for g, chi in f.get("r") or []],        # le carte rivelate (il censimento, 14 nov 2026)
                 mes=[s_ == seat for s_ in f.get("s") or []],                                          # chi rimescola il grimorio: True tu
@@ -1679,6 +1740,9 @@ VERBI = ("paid", "played", "cast", "drew", "gained", "lost", "created", "attacke
 def azioni_partita(x):
     """Il replay azione per azione di una partita dal tuo posto (replay_log, 12 nov 2026): [(nome, foto, turno, relazioni, eventi, danni)], o None senza log.
     Gli eventi: [(tuo?, testo)] col soggetto («You», «Opponent») e i giocatori nei testi («you», «the opponent»)."""
+    if x.get("simulata"):       # una partita del motore di partita (partite_motore.py, 24 nov 2026): i passi li ha gia' fatti lui
+        import partite_motore
+        return partite_motore.azioni(x)
     import replay_log as RL
     seat = x.get("seat")
     mid = x.get("partita")
@@ -2602,6 +2666,25 @@ def zone_extra(f, seat):
     return {"lib_u": v[1], "vis_o": v[2], "_lib_scala": v[3]}
 
 
+def con_pila(f):
+    """La foto con le magie in pila contate come carte di chi le ha lanciate (24 nov 2026, Note/Replayer_Lacune.md voce 4: la WIN CHANCE scendeva in media
+    di 6 punti a ogni lancio e risaliva di 10 alla risoluzione, perche' la carta in pila non stava ne' in mano ne' in campo). Il conto della mano (n) e, per la
+    tua mano coi nomi (m), la carta; le abilita' non sono carte e non contano. La foto senza pila torna com'e'."""
+    pila = [e for e in f.get("p") or [] if len(e) > 2 and not e[2] and e[1] in (1, 2)]
+    if not pila:
+        return f
+    n = list(f.get("n") or [0, 0])
+    m = [list(x or []) for x in (f.get("m") or [[], []])]
+    while len(m) < 2:
+        m.append([])
+    for e in pila:
+        i = e[1] - 1
+        n[i] = (n[i] or 0) + 1
+        if m[i] or (f.get("m") and i < len(f["m"]) and f["m"][i] is not None):
+            m[i].append(e[0])
+    return dict(f, n=n, m=m)
+
+
 def p_foto(f, seat, tocca_me, giro, inizia=None, mull=0, tipo=None, vecchia=False, mano_extra=(0, 0)):
     """R8 (13 nov 2026, Autore: «Sì, con la citazione»): la probabilita' di vincere, in punti percentuali, dal tavolo di una foto, col modello del suggeritore
     (Companion/Suggeritore/prob_vittoria.py, Regole/prob_vittoria.json: gradient boosting tarato sui replay pubblici di 17Lands, CC BY 4.0, sei set del
@@ -2616,6 +2699,7 @@ def p_foto(f, seat, tocca_me, giro, inizia=None, mull=0, tipo=None, vecchia=Fals
         import prob_vittoria as PV
     except Exception:       # noqa: BLE001 - senza il modello niente P
         return None
+    f = con_pila(f)
     a, b = seat - 1, 2 - seat
     lati = f.get("c") or [[], []]
 
@@ -4125,6 +4209,16 @@ def prova():
         dopo_ = None
     _CACHE.clear()
     casi.append(("le partite finte non toccano la copia su disco", prima_ == dopo_))
+    # la magia in pila conta come carta di chi l'ha lanciata (24 nov 2026, la WIN CHANCE che saltava al lancio); negativa: un'abilita' in pila no
+    fp_ = dict(n=[3, 4], m=[[1, 2, 3], []], p=[[500, 1, False, 9], [600, 2, True, 10]])
+    cp_ = con_pila(fp_)
+    # lo spot delle situazioni dei replay (24 nov 2026): il wipe sulla sua magia, vite e terre a fine turno; negativa: un'altra fascia di valore non ha spot
+    xs_ = dict(partita="sim-nessuna", seat=1, inizia=True, situa=dict(vita_t3="Behind", terre_lui2="1 short"))
+    casi.append(("le situazioni dei replay hanno il loro turno (vita_t3 al tuo T3 = 5, terre_lui2 al suo T2 = 4); negativa: Ahead non e' Behind",
+                 spot_situa(xs_, "vita_t3", "Behind") == [(5, "fine", None, None)] and spot_situa(xs_, "terre_lui2", "1 short") == [(4, "fine", None, None)]
+                 and spot_situa(xs_, "vita_t3", "Ahead") == []))
+    casi.append(("la magia in pila conta nella mano di chi la lancia (3 -> 4, la carta coi nomi); negativa: l'abilita' dell'altro no (4 resta 4)",
+                 cp_["n"] == [4, 4] and cp_["m"][0] == [1, 2, 3, 500] and fp_["n"] == [3, 4] and con_pila(dict(n=[1, 1])) == dict(n=[1, 1])))
     for n, ok in casi:
         print(("ok    " if ok else "ROSSO ") + n)
     print(f"{sum(1 for _n, ok in casi if ok)}/{len(casi)}")
