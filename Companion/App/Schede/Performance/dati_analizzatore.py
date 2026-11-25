@@ -1699,6 +1699,7 @@ def gira_foto(f, seat):
     return dict(mio=carte(f["c"][a]), suo=carte(f["c"][b]), mano=nomi(f["m"][a]), n_suo=f["n"][b], vite=(f["v"][a], f["v"][b]),
                 # le tue carte della mano mostrate all'avversario (15 nov 2026; le sue che Arena manda stanno fuori dalla lista della sua mano: residui)
                 mostrate=nomi((f.get("mv") or [[], []])[a]),
+                noti_suo=nomi((f.get("mk") or [[], []])[b]),       # le carte della sua mano che conosci (25 nov 2026)
                 emblemi=(nomi((f.get("em") or [[], []])[a]), nomi((f.get("em") or [[], []])[b])),
                 opzioni=dict(f.get("op") or {}),        # come e' stata lanciata la magia in pila: {id: [KICKED, X = 3...]}      # gli emblemi (tuoi, suoi), col nome della carta
                 # la carta in cima al grimorio che si conosce (tua, sua): (nome, pubblica) o None (15 nov 2026)
@@ -1770,6 +1771,8 @@ def azioni_partita(x):
         elif r_ and r_["k"] == "spell" and nome_grp(r_["g"]):
             rel = dict(tipo="spell", nome=nome_grp(r_["g"]), g=r_["g"], mio=r_["chi"] == seat, ab=r_["ab"], bers=[lato(b_) for b_ in r_["bers"]], colpiti=colpiti_di(r_),
                        fuori=_fuori(r_.get("fuori"), seat), da=list(r_.get("da") or []))       # chi ha fatto scattare l'abilita' (15 nov 2026)
+            if r_.get("comb"):      # il combattimento in corso sotto il trucco (24 nov 2026): le sue frecce restano
+                rel["comb"] = dict(tipo="comb", att=[(i, lato(tg)) for i, tg in r_["comb"]["att"]], blocchi=[(i, list(a_)) for i, a_ in r_["comb"]["blocchi"]])
         nome = f"{'You' if fr['att'] == seat else 'Opponent'} T{(fr['t'] + 1) // 2} · {fr['step'] or '-'}"
         foto_ = gira_foto(fr["foto"], seat)
         if foto_ is not None:       # la foto com'e' nel log e chi e' di turno: servono al voto EV di ogni fase (19 nov 2026, ev_partita.righe_fasi)

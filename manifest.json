@@ -1,6 +1,6 @@
 {
- "version": "0.1.132",
- "date": "2026-11-24",
- "notes": "Replayer: the opponent's library count, lands that tap one at a time, a steadier win chance while a spell is on the stack, and replays that open on the moment of a filtered situation",
+ "version": "0.1.133",
+ "date": "2026-11-25",
+ "notes": "Replayer: arrows for combat tricks, the REMOVED mark only on the spell that really removes the permanent, and the opponent's known hand cards shown face up",
  "download": "https://github.com/Toaimaker/3-steps-ahead/releases/latest/download/3-Steps-Ahead-Setup.exe"
 }

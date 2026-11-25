@@ -6557,16 +6557,21 @@ class PaginaPerformance:
         frecce = []
         prima_pz = getattr(self, "_prima_pezzi", {}) or {}
         dove = lambda k: self._pos_id.get(k) or self._pos_vita.get(k) or (prima_pz.get(k) or (None, None))[1]
-        if rel["tipo"] == "comb":       # prima gli attacchi, poi i blocchi: l'ordine in cui si dichiarano (14 nov 2026)
-            bloccati = {a_ for _b, aa in rel["blocchi"] for a_ in aa}
-            for a_, tg in rel["att"]:
+        # un trucco in combattimento (24 nov 2026, verifica_frecce): sotto la freccia della magia restano quelle dell'attacco e dei blocchi
+        rel_c = rel if rel["tipo"] == "comb" else rel.get("comb")
+        if rel_c is not None and rel_c is not rel and getattr(self, "_board", None):
+            b_f = self._board
+            rel_c = dich_ or self.blocchi_veri(b_f, rel_c, b_f["passi"][b_f["i"]][2])
+        if rel_c:       # prima gli attacchi, poi i blocchi: l'ordine in cui si dichiarano (14 nov 2026)
+            bloccati = {a_ for _b, aa in rel_c["blocchi"] for a_ in aa}
+            for a_, tg in rel_c["att"]:
                 if a_ not in bloccati and dove(a_) and dove(tg):
                     frecce.append((dove(a_), dove(tg), "#ff5d5d", ("att", a_, tg)))
-            for b_, aa in rel["blocchi"]:
+            for b_, aa in rel_c["blocchi"]:
                 for a_ in aa:
                     if dove(b_) and dove(a_):
                         frecce.append((dove(b_), dove(a_), "#ffd23f", ("blk", b_, a_)))
-        elif rel["tipo"] == "spell" and pila_box:
+        if rel["tipo"] == "spell" and pila_box:
             pile = {k_: (x0, y0, x1, y1) for x0, y0, x1, y1, _t, k_, _c in getattr(self, "_box_pile", [])}
             # una magia che ha per bersaglio un giocatore e toglie i suoi permanenti (Settle the Wreckage, un sacrificio: 13 nov 2026, Autore: «dovrebbe
             # esiliare le creature attaccanti ma nel replayer la freccia punta ai punti vita del giocatore»): le frecce vanno ai permanenti, non alle vite

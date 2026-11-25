@@ -551,26 +551,32 @@ def giocabile(im):
     return out
 
 
-def mostrata(im):
+def nota(im):
+    """La carta della sua mano che conosci (25 nov 2026, «Carte note sua mano»: tornata in mano dal campo o dal cimitero, o rivelata): come mostrata, nei
+    colori dell'Opponent, con KNOWN."""
+    return mostrata(im, "KNOWN", (255, 160, 60, 255), (140, 70, 15, 245))
+
+
+def mostrata(im, scritta="SHOWN", bordo=(47, 155, 255, 255), fondo=(15, 70, 140, 245)):
     """La carta della tua mano che l'avversario ha visto (15 nov 2026): il bordo azzurro e, in fondo, la pillola con l'occhio e SHOWN."""
     k = 3
     w, h = im.size
     out = im.copy()
     st = Image.new("RGBA", (w * k, h * k), (0, 0, 0, 0))
     d = ImageDraw.Draw(st)
-    d.rounded_rectangle((k, k, w * k - k, h * k - k), radius=max(4, w // 12) * k, outline=(47, 155, 255, 255), width=max(3, w // 30) * k)
+    d.rounded_rectangle((k, k, w * k - k, h * k - k), radius=max(4, w // 12) * k, outline=bordo, width=max(3, w // 30) * k)
     bh = max(12, w // 6) * k
     y0 = int(h * 0.13) * k       # sotto la barra del nome, a sinistra: nel ventaglio la carta accanto copre la destra
     f = font(max(8, w // 9) * k, "Bold")
-    tw = d.textlength("SHOWN", font=f)
+    tw = d.textlength(scritta, font=f)
     occ = bh * 0.9
     x0 = 6 * k
-    d.rounded_rectangle((x0, y0, x0 + tw + occ + 16 * k, y0 + bh), radius=bh // 2, fill=(15, 70, 140, 245), outline=(255, 255, 255, 230), width=k)
+    d.rounded_rectangle((x0, y0, x0 + tw + occ + 16 * k, y0 + bh), radius=bh // 2, fill=fondo, outline=(255, 255, 255, 230), width=k)
     ex, ey, er = x0 + 8 * k + occ / 2, y0 + bh / 2, occ / 2
     d.ellipse((ex - er, ey - er * 0.55, ex + er, ey + er * 0.55), outline=(255, 255, 255, 255), width=max(2, k * 2))
     d.ellipse((ex - er * 0.28, ey - er * 0.28, ex + er * 0.28, ey + er * 0.28), fill=(255, 255, 255, 255))
-    bb = d.textbbox((0, 0), "SHOWN", font=f)
-    d.text((ex + er + 4 * k - bb[0], ey - (bb[3] - bb[1]) / 2 - bb[1]), "SHOWN", font=f, fill=(255, 255, 255, 255))
+    bb = d.textbbox((0, 0), scritta, font=f)
+    d.text((ex + er + 4 * k - bb[0], ey - (bb[3] - bb[1]) / 2 - bb[1]), scritta, font=f, fill=(255, 255, 255, 255))
     out.alpha_composite(st.resize((w, h), Image.LANCZOS))
     return out
 
@@ -1550,7 +1556,9 @@ class Tappeto:
                     mie.append(((n, wm) + (("play",) if k_g else ()), giocabile(faccia(n, wm)) if k_g else faccia(n, wm)))
             self.ventaglio(tela, mie, cxm, self.H + wm * RAPP / 2 - self.K(130), wm, 6, 0.30, False, scatole, self.K(760), "mano")
             wr = int(self.K(92))
-            self.ventaglio(tela, [(("dorso", wr), dorso(wr))] * n_suo, cxm, -wr * RAPP / 2 + self.K(100), wr, 6, 0.42, True, [], self.K(560), "mano_suo")
+            noti_ = list(f.get("noti_suo") or [])[:n_suo]      # le sue carte che conosci, scoperte (25 nov 2026); le altre di dorso
+            sue_ = [((n, wr, "known"), nota(faccia(n, wr))) for n in noti_] + [(("dorso", wr), dorso(wr))] * (n_suo - len(noti_))
+            self.ventaglio(tela, sue_, cxm, -wr * RAPP / 2 + self.K(100), wr, 6, 0.42, True, [], self.K(560), "mano_suo")
             larga_mano = min(len(mano) * wm * 0.7, self.K(760))
             larga_suo = min(n_suo * wr * 0.58, self.K(560))
             y_mia, y_sua = self.H - self.K(50), self.K(50)
@@ -1585,8 +1593,11 @@ class Tappeto:
                     im_ = faccia(n, w9)
                 mie9.append(giocabile(im_) if k_g else im_)
             for chi, carte_, nomi_, col_ in (("mio", mie9 + [dall_esilio(faccia(n, w9)) for n in esi_mie], mano + esi_mie, BLU),
-                                             ("suo", [dorso(w9)] * n_suo + [dall_esilio(dorso(w9) if n == FACCIA_GIU else faccia(n, w9)) for n in esi_sue],
-                                              [None] * n_suo + [None if n == FACCIA_GIU else n for n in esi_sue], ARANCIO)):
+                                             ("suo", [nota(faccia(n, w9)) for n in list(f.get("noti_suo") or [])[:n_suo]]
+                                              + [dorso(w9)] * (n_suo - len(list(f.get("noti_suo") or [])[:n_suo]))
+                                              + [dall_esilio(dorso(w9) if n == FACCIA_GIU else faccia(n, w9)) for n in esi_sue],
+                                              list(f.get("noti_suo") or [])[:n_suo] + [None] * (n_suo - len(list(f.get("noti_suo") or [])[:n_suo]))
+                                              + [None if n == FACCIA_GIU else n for n in esi_sue], ARANCIO)):
                 bx0, by0, bx1, by1 = self.box(self.dietro(chi)["mano"])
                 self._mani[chi] = (bx0, by0, bx1, by1)
                 self.riga_mano(tela, carte_, nomi_, (bx0 + self.K(10), by0 + self.K(18), bx1 - self.K(10), by1 - self.K(6)), scatole if chi == "mio" else [],

@@ -412,7 +412,9 @@ def azioni(righe, nome=lambda g: None, interni=False):
     # cio' che una magia o un'abilita' toglie dal campo, per le frecce (13 nov 2026, Settle the Wreckage: il bersaglio e' il giocatore, le creature esiliate
     # le dice l'affectorId delle ZoneTransfer): {id in pila: dict(prima=id in campo quando e' entrata, fatti=id che ha spostato lei, rels=[rel delle foto])}
     in_pila, risolve = {}, set()       # risolve: fra ResolutionStart e ResolutionComplete (Arena sposta i permanenti con la magia ancora in pila)
+    campo_vecchio = set()      # il campo alla fine del messaggio prima: chi una magia toglie, lo toglie quando si risolve (25 nov 2026)
     ricordo, origine = {}, {}         # {id: oggetto com'era l'ultima volta}, {id nuovo: id di prima} (ObjectIdChanged)
+    note_mano = {}      # {id in una mano: grpId}: le carte tornate in mano da una zona pubblica, note a tutti e due (25 nov 2026, «Carte note sua mano»)
     scelte_carte, riserva, sorv = {}, {}, None      # la scelta fatta per carta (il censimento); il mana in riserva per posto; il surveil in attesa
     sorv_suo = {}                                   # il surveil che non chiede niente a te (il suo): per abilita', chi, quante, quelle al cimitero
     riassunto, finita, veleno = False, False, {}
@@ -602,6 +604,23 @@ def azioni(righe, nome=lambda g: None, interni=False):
                     mv[zown[zid] - 1] += [obj[i]["grpId"] for i in zids.get(zid, []) if i in mostrate and i in obj and obj[i].get("grpId")]
             if mv[0] or mv[1]:
                 out["mv"] = mv
+        # le carte note della mano di ognuno all'altro giocatore (25 nov 2026, Autore: «Carte note sua mano»: la creatura rimandata in mano, la carta
+        # rivelata): oggetti della zona di quella mano, suoi, col nome, con l'altro fra chi li vede o pubblici (la regola di ev_combattimento.mano_vista,
+        # provata sui log dal 13 ott 2026: i residui della pila nell'elenco della mano non contano). [[grpId noti al posto 2 nella mano del posto 1], [...]]
+        mk = [[], []]
+        for zid, tp in zone.items():
+            s_ = zown.get(zid)
+            if tp != "ZoneType_Hand" or s_ not in (1, 2):
+                continue
+            altro_ = 3 - s_
+            for i in zids.get(zid, []):
+                o_ = obj.get(i)
+                if o_ and o_.get("grpId") and o_.get("zoneId") == zid and o_.get("ownerSeatId") == s_ and                         (altro_ in (o_.get("viewers") or []) or o_.get("visibility") == "Visibility_Public"):
+                    mk[s_ - 1].append(MA.grp_vero(o_, tutti))
+                elif i in note_mano:        # tornata in mano da una zona pubblica: nota anche se Arena la nasconde
+                    mk[s_ - 1].append(note_mano[i])
+        if mk[0] or mk[1]:
+            out["mk"] = mk
         if riserva.get(1) or riserva.get(2):      # il mana in riserva (fluttua): [[colori del posto 1], [del posto 2]]
             out["mp"] = [list(riserva.get(1) or []), list(riserva.get(2) or [])]
         if x:
@@ -822,6 +841,15 @@ def azioni(righe, nome=lambda g: None, interni=False):
             for o in gs.get("gameObjects") or []:
                 obj[o.get("instanceId")] = o
                 ricordo[o.get("instanceId")] = o
+            # una carta che torna in mano dal campo, dalla pila, dal cimitero o dall'esilio: Arena la nasconde (numero nuovo, senza nome), ma il nome e' quello
+            # che aveva prima (ObjectIdChanged lega i due numeri): resta nota finche' sta in quella mano
+            for a in gs.get("annotations") or []:
+                if "AnnotationType_ZoneTransfer" in (a.get("type") or []) and zone.get(_dettaglio(a, "zone_dest")) == "ZoneType_Hand"                         and zone.get(_dettaglio(a, "zone_src")) in ("ZoneType_Battlefield", "ZoneType_Stack", "ZoneType_Graveyard", "ZoneType_Exile"):
+                    for x_ in a.get("affectedIds") or []:
+                        o_n = obj.get(x_) or {}
+                        g_n = o_n.get("grpId") or (ricordo.get(origine.get(x_)) or {}).get("grpId")
+                        if g_n and (o_n.get("type") or (ricordo.get(origine.get(x_)) or {}).get("type")) != "GameObjectType_Token":
+                            note_mano[x_] = MA.grp_vero(o_n if o_n.get("grpId") else ricordo.get(origine.get(x_)), tutti) or g_n
             for x in MA.cancellati(gs):
                 obj.pop(x, None)
             MA.turno_da(gs, ti)
@@ -865,6 +893,8 @@ def azioni(righe, nome=lambda g: None, interni=False):
             for a in gs.get("annotations") or []:
                 if "AnnotationType_ResolutionStart" in (a.get("type") or []):
                     risolve.add(a.get("affectorId"))
+                    if a.get("affectorId") in in_pila and in_pila[a["affectorId"]].get("ris") is None:
+                        in_pila[a["affectorId"]]["ris"] = set(campo_vecchio)     # il campo appena prima che cominci a risolversi
                 elif "AnnotationType_ResolutionComplete" in (a.get("type") or []):
                     finite.add(a.get("affectorId"))
             for a in gs.get("annotations") or []:
@@ -873,12 +903,18 @@ def azioni(righe, nome=lambda g: None, interni=False):
             risolve -= finite
             for x in [x for x in in_pila if x not in pila_ora]:        # ha lasciato la pila: cosa manca dal campo di quando ci e' entrata
                 p_ = in_pila.pop(x)
+                # colpiti: chi manca dal campo quando la magia si risolve, non chi e' uscito prima mentre lei aspettava in pila (25 nov 2026, Autore:
+                # «troppe volte una creatura riceve il segno removed ancora prima che la carta remove arrivi sulla pila, sopratutto quando prima del remove
+                # la pila sta risolvendo altro»: il bersaglio di una magia tolto da un'altra lanciata sopra di lei finiva fra i suoi, e REMOVED usciva gia'
+                # al lancio della prima, prima che l'altra arrivasse)
+                base_ = p_["ris"] if p_.get("ris") is not None else campo_vecchio
                 for rel_ in p_["rels"]:
-                    rel_["colpiti"] = sorted(y for y in p_["prima"] if y not in campo_ora)
+                    rel_["colpiti"] = sorted(y for y in p_["prima"] if y not in campo_ora and (y in base_ or y in p_["fatti"]))
                     rel_["fatti"] = sorted(y for y in p_["fatti"] if y in p_["prima"])
             for x in pila_ora:
                 if x not in in_pila:
-                    in_pila[x] = dict(prima=set(campo_ora), fatti=set(), rels=[])
+                    in_pila[x] = dict(prima=set(campo_ora), fatti=set(), rels=[], ris=None)
+            campo_vecchio = campo_ora
             ev, danni = [], []
             sv_ora = None
             if sorv and sid > sorv["s"]:       # il surveil risolto: le guardate che non vanno al cimitero restano sopra
@@ -1200,7 +1236,8 @@ def azioni(righe, nome=lambda g: None, interni=False):
             # la pila: la magia o l'abilita' in cima, coi bersagli
             pila = ids_di("ZoneType_Stack")
             rel = None
-            if att_ids and ti.get("step") in ("Step_DeclareAttack", "Step_DeclareBlock", "Step_FirstStrikeDamage", "Step_CombatDamage"):
+            in_comb_ = att_ids and ti.get("step") in ("Step_DeclareAttack", "Step_DeclareBlock", "Step_FirstStrikeDamage", "Step_CombatDamage")
+            if in_comb_ and not pila:
                 rel = dict(k="comb", att=att_ids, blocchi=blocchi)
             elif pila:
                 cima = pila[0]
@@ -1209,6 +1246,8 @@ def azioni(righe, nome=lambda g: None, interni=False):
                            bers=list(bersagli.get(cima, [])), colpiti=[], fuori=MA.fuori_campo(bersagli.get(cima, []), zone, zids, zown, tutti))
                 if scattata_da(cima, o):
                     rel["da"] = scattata_da(cima, o)
+                if in_comb_:        # un trucco o un'abilita' durante il combattimento (24 nov 2026, verifica_frecce F-COMB e F-MAI): la sua freccia e anche
+                    rel["comb"] = dict(k="comb", att=att_ids, blocchi=blocchi)      # quelle dell'attacco e dei blocchi, non piu' solo queste
                 if cima in in_pila:
                     in_pila[cima]["rels"].append(rel)
             for x, q, src in perdite:
@@ -1219,6 +1258,7 @@ def azioni(righe, nome=lambda g: None, interni=False):
                 # (14 nov 2026, Autore: «esistono carte in campo che richiedono il compimento di azioni come Perforating Artist ma nel replayer non si vede
                 # cosa accade»): l'abilita' va in pila e si risolve nello stesso messaggio; prima del suo effetto un passo con lei in pila e la freccia
                 ab_id, bers_ab = effetti_abilita[0]
+                bers_ab = list(bersagli.get(ab_id) or bers_ab)      # i bersagli dichiarati da Arena, se ci sono; se no chi ha subito l'effetto (24 nov 2026)
                 o_ab = ogg(ab_id)
                 f_ab = copy.deepcopy(frames[-1]["foto"]) if frames else foto()
                 f_ab.pop("r", None), f_ab.pop("s", None), f_ab.pop("sc", None), f_ab.pop("mn", None)
@@ -1650,6 +1690,41 @@ def prova():
     # quante carte nei grimori (24 nov 2026): due e due, contate anche le coperte; negativa: la zona di un terzo posto non conta
     casi.append(("i grimori contati dalla zona, anche le carte coperte (2 e 2); negativa: il posto 3 non entra",
                  bool(fr_cm) and fr_cm[-1]["foto"].get("lb") == [2, 2]))
+    # le carte note della sua mano (25 nov 2026, «Carte note sua mano»): la creatura rimandata in mano dal campo resta nota col suo nome anche se Arena le
+    # da' un numero nuovo senza grpId; negativa: il residuo della pila nell'elenco della mano (l'oggetto sta in pila) non e' una carta nota
+    zn_ = [dict(zoneId=28, type="ZoneType_Battlefield", objectInstanceIds=[10]), dict(zoneId=27, type="ZoneType_Stack", objectInstanceIds=[12]),
+           dict(zoneId=35, type="ZoneType_Hand", ownerSeatId=2, objectInstanceIds=[])]
+    fr_mk = azioni([gs(type="GameStateType_Full", zones=zn_, players=[dict(systemSeatNumber=1, lifeTotal=20), dict(systemSeatNumber=2, lifeTotal=20)],
+                       turnInfo=dict(turnNumber=3, activePlayer=1, step="Step_Main1"),
+                       gameObjects=[carta(10, 300, 28, 2, cardTypes=["CardType_Creature"], power=dict(value=2), toughness=dict(value=2)), carta(12, 400, 27, 2)],
+                       annotations=[dict(type=["AnnotationType_NewTurnStarted"], affectedIds=[1])]),
+                    gs(type="GameStateType_Diff", zones=[dict(zoneId=28, type="ZoneType_Battlefield", objectInstanceIds=[]),
+                                                         dict(zoneId=35, type="ZoneType_Hand", ownerSeatId=2, objectInstanceIds=[11, 12])],
+                       gameObjects=[dict(instanceId=11, zoneId=35, type="GameObjectType_Card", ownerSeatId=2)], diffDeletedInstanceIds=[10],
+                       annotations=[dict(type=["AnnotationType_ObjectIdChanged"], details=[dict(key="orig_id", valueInt32=[10]), dict(key="new_id", valueInt32=[11])]),
+                                    dict(type=["AnnotationType_ZoneTransfer"], affectedIds=[11],
+                                         details=[dict(key="category", valueString=["Return"]), dict(key="zone_src", valueInt32=[28]),
+                                                  dict(key="zone_dest", valueInt32=[35])])])], nomi.get)
+    # REMOVED solo a chi la magia toglie quando si risolve (25 nov 2026): A prende di mira la creatura 9, R lanciata sopra la uccide e si risolve prima;
+    # A poi lascia la pila senza effetto. Negativa: 9 non e' fra i colpiti di A (prima il REMOVED usciva gia' al lancio di A), e' fra quelli di R
+    zp_ = lambda pila, campo: [dict(zoneId=28, type="ZoneType_Battlefield", objectInstanceIds=campo), dict(zoneId=27, type="ZoneType_Stack", objectInstanceIds=pila),
+                               dict(zoneId=40, type="ZoneType_Graveyard", ownerSeatId=2, objectInstanceIds=[] if 9 in campo else [9])]
+    pl_ = [dict(systemSeatNumber=1, lifeTotal=20), dict(systemSeatNumber=2, lifeTotal=20)]
+    cr_ = carta(9, 900, 28, 2, cardTypes=["CardType_Creature"], power=dict(value=2), toughness=dict(value=2))
+    fr_rs = azioni([gs(type="GameStateType_Full", zones=zp_([], [9]), players=pl_, turnInfo=dict(turnNumber=3, activePlayer=1, step="Step_Main1"),
+                       gameObjects=[cr_], annotations=[dict(type=["AnnotationType_NewTurnStarted"], affectedIds=[1])]),
+                    gs(type="GameStateType_Diff", zones=zp_([4], [9]), gameObjects=[carta(4, 200, 27, 1)], annotations=[zt(4, "CastSpell")],
+                       persistentAnnotations=[dict(type=["AnnotationType_TargetSpec"], affectorId=4, affectedIds=[9])]),
+                    gs(type="GameStateType_Diff", zones=zp_([5, 4], [9]), gameObjects=[carta(5, 300, 27, 2)], annotations=[zt(5, "CastSpell")],
+                       persistentAnnotations=[dict(type=["AnnotationType_TargetSpec"], affectorId=5, affectedIds=[9])]),
+                    gs(type="GameStateType_Diff", zones=zp_([4], []), gameObjects=[carta(9, 900, 40, 2)],
+                       annotations=[dict(type=["AnnotationType_ResolutionStart"], affectorId=5), zt(9, "Destroy")]),
+                    gs(type="GameStateType_Diff", zones=zp_([], []), annotations=[dict(type=["AnnotationType_ResolutionStart"], affectorId=4)])], nomi.get)
+    col_ = {(f_.get("rel") or {}).get("g"): (f_.get("rel") or {}).get("colpiti") for f_ in fr_rs if (f_.get("rel") or {}).get("k") == "spell"}
+    casi.append(("REMOVED alla magia che toglie davvero: R lanciata sopra uccide la creatura, A sotto no (negativa: 9 fra i colpiti di A)",
+                 col_.get(300) == [9] and col_.get(200) == []))
+    casi.append(("la creatura rimandata nella sua mano resta nota col nome (negativa: il residuo della pila nell'elenco della mano no)",
+                 bool(fr_mk) and fr_mk[-1]["foto"].get("mk") == [[], [300]]))
     # dove finisce la carta messa nel grimorio (15 nov 2026): in cima, in fondo, a meta'; negativa: rimessa in mano non dice il grimorio
     def messa_(lista, dest_tipo="ZoneType_Library"):
         r_ = azioni([gs(type="GameStateType_Full", zones=[dict(zoneId=32, type=dest_tipo, ownerSeatId=1, objectInstanceIds=lista)],
