@@ -1,0 +1,30 @@
+{
+ "id": "2026-11-25-bring-a-friend",
+ "scade": "2026-12-31",
+ "etichetta": "Open beta · help us build it",
+ "titolo": "Bring a friend into the beta",
+ "testo": "3 Steps Ahead is free and in open beta, and it gets better with every person who tests it. A friend brings new decks, other formats and the bugs we haven't met yet. That is how we keep building it. Send them the link and have them share their games.",
+ "immagine": "https://toaimaker.github.io/3-steps-ahead/img/hero_performance.jpg",
+ "azione": {
+  "testo": "Copy invite link",
+  "tipo": "copia",
+  "valore": "https://toaimaker.github.io/3-steps-ahead/",
+  "colore": "azzurro"
+ },
+ "schede": [
+  {
+   "tipo": "Article",
+   "riga": "Nov 18 · Launch",
+   "titolo": "Building the tracker in the open: join and help",
+   "immagine": "https://toaimaker.github.io/3-steps-ahead/img/hero_decks.jpg",
+   "url": "https://toaimaker.github.io/3-steps-ahead/news/building-in-the-open.html"
+  },
+  {
+   "tipo": "Founding beta",
+   "riga": "50 numbered spots",
+   "titolo": "Join as a founder: perks for the first 50",
+   "immagine": "https://toaimaker.github.io/3-steps-ahead/img/hero_builder.jpg",
+   "url": "https://toaimaker.github.io/3-steps-ahead/#founders"
+  }
+ ]
+}
